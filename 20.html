@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกม 20 จำนวน</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter font from Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Tone.js for sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .game-container {
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+            border: 2px solid #a7d9f2; /* Light blue border */
+            position: relative; /* Added for absolute positioning of the back button */
+        }
+        .game-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #2c3e50; /* Dark blue-gray */
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        .current-number-display {
+            background-color: #e0f2fe; /* Lighter blue */
+            color: #007bff; /* Vibrant blue */
+            font-size: 4rem;
+            font-weight: 700;
+            padding: 20px 0;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.1);
+            animation: pulse 1.5s infinite alternate;
+        }
+        @keyframes pulse {
+            from { transform: scale(1); }
+            to { transform: scale(1.02); }
+        }
+        .turn-message {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #34495e; /* Medium dark blue-gray */
+            margin-bottom: 20px;
+        }
+        .game-message {
+            font-size: 1.2rem;
+            color: #e74c3c; /* Red for error/lose, green for win */
+            font-weight: 600;
+            margin-bottom: 20px;
+            min-height: 24px; /* Reserve space to prevent layout shift */
+        }
+        .game-message.highlight {
+            font-size: 1.8rem; /* Larger font for emphasis */
+            animation: fadeInScale 0.5s ease-out forwards; /* Simple animation */
+        }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .score-display {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #34495e;
+            margin-bottom: 15px;
+        }
+        .control-buttons button {
+            transition: all 0.2s ease-in-out;
+            transform: translateY(0);
+        }
+        .control-buttons button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        .control-buttons button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .button-reset {
+            background-color: #95a5a6; /* Gray */
+            color: white;
+        }
+        .button-reset:hover {
+            background-color: #7f8c8d; /* Darker gray */
+        }
+        .button-count {
+            background-color: #2ecc71; /* Green */
+            color: white;
+            font-size: 1.2rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            padding: 12px 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            margin: 5px;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+        .button-count:hover {
+            background-color: #27ae60;
+        }
+        .button-count:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Specific styles for win/lose messages */
+        .game-message.win {
+            color: #28a745; /* Green */
+        }
+        .game-message.lose {
+            color: #dc3545; /* Red */
+        }
+        .hidden {
+            display: none;
+        }
+
+        /* Styles for the back to main menu button */
+        .back-to-menu-btn {
+            position: absolute;
+            top: 15px; /* Adjust padding from the top */
+            left: 15px; /* Adjust padding from the left */
+            padding: 8px 15px;
+            font-size: 0.9rem;
+            background-color: #3498db; /* Blue */
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.2s ease, transform 0.1s ease;
+            z-index: 10; /* Ensure it stays on top */
+        }
+        .back-to-menu-btn:hover {
+            background-color: #2980b9; /* Darker blue */
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        .back-to-menu-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- Back to Main Menu Button -->
+        <button id="back-to-main-menu-btn" class="back-to-menu-btn" onclick="goToMainMenu()">
+            กลับเมนูหลัก
+        </button>
+
+        <div id="main-screen">
+            <h1 class="game-title">เกม 20 จำนวน</h1>
+            <button id="play-bot-btn" class="button-reset button-count" onclick="selectMode('bot')">เล่นกับ Bot</button>
+            <button id="play-friend-btn" class="button-reset button-count" onclick="selectMode('friend')">เล่นกับเพื่อน</button>
+        </div>
+
+        <div id="game-screen" class="hidden">
+            <h1 class="game-title">เกม 20 จำนวน</h1>
+            <div id="score-display" class="score-display hidden">ผู้เล่น: 0 - คอมพิวเตอร์: 0</div>
+            <div id="current-number-display" class="current-number-display">0</div>
+            <div id="turn-message" class="turn-message"></div>
+            <div id="game-message" class="game-message"></div>
+
+            <div id="control-buttons-wrapper" class="control-buttons flex justify-center flex-wrap gap-4 mb-6">
+                <button id="count-1-btn" class="button-count" onclick="handlePlayerMove(1)">นับ 1</button>
+                <button id="count-2-btn" class="button-count" onclick="handlePlayerMove(2)">นับ 2</button>
+                <button id="count-3-btn" class="button-count" onclick="handlePlayerMove(3)">นับ 3</button>
+            </div>
+
+            <button id="reset-btn" class="button-reset button-count" onclick="startNewSeries()">เริ่มเกม</button>
+        </div>
+    </div>
+
+    <script>
+        // Game state variables for the current round
+        let currentNumber = 0;
+        let isPlayerTurn = true; // True for current player (Human in bot mode, Player 1 in friend mode)
+        let gameOver = true;
+        let isFirstPlayerMoveInRound = true; // Flag for current player's first move in a round
+
+        // Game state variables for the best-of-three series
+        let playerScore = 0; // Human player's score in bot mode, Player 1's score in friend mode
+        let aiScore = 0;     // AI's score in bot mode, Player 2's score in friend mode
+        let roundNumber = 0; // Tracks current round (1, 2, 3)
+        let firstPlayerInSeries = 'player'; // 'player' (human/player1) or 'ai' (AI/player2) - determines who starts the *entire series*
+
+        let gameMode = ''; // 'bot' or 'friend'
+
+        // UI elements
+        const mainScreen = document.getElementById('main-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const currentNumberDisplay = document.getElementById('current-number-display');
+        const turnMessage = document.getElementById('turn-message');
+        const gameMessage = document.getElementById('game-message');
+        const scoreDisplay = document.getElementById('score-display');
+        const count1Btn = document.getElementById('count-1-btn');
+        const count2Btn = document.getElementById('count-2-btn');
+        const count3Btn = document.getElementById('count-3-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const controlButtonsWrapper = document.getElementById('control-buttons-wrapper');
+        const backToMainMenuBtn = document.getElementById('back-to-main-menu-btn'); // Get the new button
+
+        // Tone.js Synths for sound effects
+        // Synth for general number progression clicks (player and AI) - uses sine for clear distinct tones
+        let numberClickSynth = new Tone.Synth({
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 },
+            volume: -8
+        }).toDestination();
+
+        // Synth for player's first move in a round
+        let firstMoveSynth = new Tone.Synth({
+            oscillator: { type: "square" },
+            envelope: { attack: 0.05, decay: 0.2, sustain: 0.1, release: 0.2 },
+            volume: -10
+        }).toDestination();
+
+        // Synth for player winning a round (more triumphant for round win) - adjusted for a brighter, more "happy" feel
+        let roundWinSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "fmsquare", modIndex: 2, harmonicity: 1.5 },
+            envelope: { attack: 0.05, decay: 0.4, sustain: 0.2, release: 0.5 },
+            volume: -8
+        }).toDestination();
+
+        // Synth for player losing a round (AI wins round) - adjusted for a more "depressing" feel
+        let roundLoseSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "sawtooth" },
+            envelope: { attack: 0.1, decay: 0.8, sustain: 0.1, release: 0.8 },
+            volume: -10
+        }).toDestination();
+
+        // Synth for grand series win (player wins the whole series)
+        let seriesWinSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "fmsquare", modIndex: 5, harmonicity: 2 },
+            envelope: { attack: 0.1, decay: 1.5, sustain: 0.5, release: 2 },
+            volume: -5
+        }).toDestination();
+
+        // Synths for start/reset buttons
+        let startSeriesSound = new Tone.Synth({
+            oscillator: { type: "fatsawtooth", count: 3, spread: 30 },
+            envelope: { attack: 0.05, decay: 0.4, sustain: 0.1, release: 0.8 },
+            volume: -8
+        }).toDestination();
+
+        let startRoundSound = new Tone.Synth({
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.01, decay: 0.1, sustain: 0.05, release: 0.15 },
+            volume: -12
+        }).toDestination();
+
+        // Background music synth (updated to be more melodious and bright, volume reduced)
+        let backgroundMusicSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "triangle" },
+            envelope: {
+                attack: 0.5,
+                decay: 0.5,
+                sustain: 0.8,
+                release: 1
+            },
+            volume: -40 // Further reduced volume (roughly 3-5% of full scale)
+        }).toDestination();
+
+        // Background music notes for a simple, bright arpeggiated melody
+        const backgroundNotesMelody = [
+            ["C4", "E4", "G4"], // C major
+            ["G3", "B3", "D4"], // G major
+            ["A3", "C4", "E4"], // A minor
+            ["F3", "A3", "C4"]  // F major
+        ];
+        let currentMelodyIndex = 0;
+
+        let backgroundLoop = null; // To store the Tone.Loop instance
+
+
+        /**
+         * Plays a specific sound effect using Tone.js.
+         * Ensures the audio context is running on user interaction.
+         * @param {string} type - The type of sound to play ('numberClick', 'win', 'lose', 'seriesWin', 'firstMove', 'startSeries', 'startRound').
+         * @param {number} number - The current number for 'numberClick' sound to vary pitch.
+         */
+        function playSound(type, number = 0) {
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+            switch (type) {
+                case 'numberClick':
+                    // Map number (1-20) to a musical scale for distinct sounds
+                    const notes = [
+                        'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5',
+                        'D5', 'E5', 'F5', 'G5', 'A5', 'B5', 'C6',
+                        'D6', 'E6', 'F6', 'G6', 'A6'
+                    ];
+                    const noteToPlay = notes[number - 1];  
+                    if (noteToPlay) {
+                        numberClickSynth.triggerAttackRelease(noteToPlay, "16n");
+                    }
+                    break;
+                case 'firstMove':
+                    firstMoveSynth.triggerAttackRelease("D5", "8n");
+                    break;
+                case 'win':
+                    roundWinSynth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "1s");
+                    break;
+                case 'lose':
+                    roundLoseSynth.triggerAttackRelease(["E3", "C3", "A2"], "1s");
+                    break;
+                case 'seriesWin':
+                    seriesWinSynth.triggerAttackRelease(["C4", "E4", "G4", "C5", "E5", "G5"], "3s");
+                    break;
+                case 'startSeries':
+                    startSeriesSound.triggerAttackRelease("G4", "0.5s");
+                    break;
+                case 'startRound':
+                    startRoundSound.triggerAttackRelease("E4", "0.2s");
+                    break;
+            }
+        }
+
+        /**
+         * Updates the game display with the current number, turn message, game message, and score.
+         * Also manages the enabled/disabled state of the player input buttons and their labels,
+         * and the visibility of various game elements.
+         */
+        function updateDisplay() {
+            currentNumberDisplay.textContent = currentNumber;
+            currentNumberDisplay.classList.remove('win', 'lose');
+
+            // Update score display based on game mode
+            if (gameMode === 'bot') {
+                scoreDisplay.textContent = `ผู้เล่น: ${playerScore} - คอมพิวเตอร์: ${aiScore}`;
+            } else if (gameMode === 'friend') {
+                scoreDisplay.textContent = `ผู้เล่นที่ 1: ${playerScore} - ผู้เล่นที่ 2: ${aiScore}`;
+            }
+
+            // Update turn message based on game mode
+            if (gameOver) {
+                controlButtonsWrapper.classList.add('hidden'); // Hide count buttons
+                turnMessage.textContent = ''; // Clear turn message
+            } else {
+                controlButtonsWrapper.classList.remove('hidden'); // Show count buttons
+                if (gameMode === 'bot') {
+                    turnMessage.textContent = isPlayerTurn ? 'ตาคุณ!' : 'ตาคอมพิวเตอร์...';
+                } else if (gameMode === 'friend') {
+                    turnMessage.textContent = isPlayerTurn ? 'ตาผู้เล่นที่ 1!' : 'ตาผู้เล่นที่ 2!';
+                }
+                resetBtn.classList.add('hidden'); // Hide reset button during active gameplay
+            }
+            // Clear the game message if the game is not over and there's an old message
+            if (!gameOver && gameMessage.textContent !== '') {
+                gameMessage.textContent = '';
+                gameMessage.className = 'game-message';
+            }
+
+            // Update button labels and disable if they would exceed 20
+            // IMPORTANT FIX: In friend mode, buttons should always be enabled if the game is not over
+            // The isPlayerTurn check is moved to handlePlayerMove to control actual move execution.
+            count1Btn.textContent = `นับ ${currentNumber + 1}`;
+            count1Btn.disabled = gameOver || (currentNumber + 1 > 20);
+
+            count2Btn.textContent = `นับ ${currentNumber + 2}`;
+            count2Btn.disabled = gameOver || (currentNumber + 2 > 20);
+
+            count3Btn.textContent = `นับ ${currentNumber + 3}`;
+            count3Btn.disabled = gameOver || (currentNumber + 3 > 20);
+        }
+
+        /**
+         * Displays a temporary message in the game message area with animation.
+         * @param {string} msg - The message text to display.
+         * @param {string} type - Optional. 'win' or 'lose' to apply specific CSS styling.
+         */
+        function showMessage(msg, type = '') {
+            gameMessage.textContent = msg;
+            gameMessage.className = `game-message ${type} highlight`; // Add highlight class for animation
+            // Remove highlight after animation duration to allow re-triggering for next message
+            setTimeout(() => {
+                gameMessage.classList.remove('highlight');
+            }, 1000); // Match animation duration + buffer
+        }
+
+        /**
+         * Ends the current round and updates series score. Checks for overall series winner.
+         * @param {string} winner - 'player' or 'ai' indicating the winner of the current round.
+         */
+        function endRound(winner) {
+            gameOver = true;
+            updateDisplay(); // Hide count buttons
+            resetBtn.classList.remove('hidden'); // Show reset button after round ends
+
+            if (winner === 'player') {
+                playerScore++;
+                showMessage('คุณชนะรอบนี้!', 'win');
+                playSound('win'); // Play round win sound
+            } else {
+                aiScore++;
+                showMessage('คอมพิวเตอร์ชนะรอบนี้!', 'lose');
+                playSound('lose'); // Play round lose sound
+            }
+            // Update score text immediately after score change
+            if (gameMode === 'bot') {
+                scoreDisplay.textContent = `ผู้เล่น: ${playerScore} - คอมพิวเตอร์: ${aiScore}`;
+            } else if (gameMode === 'friend') {
+                scoreDisplay.textContent = `ผู้เล่นที่ 1: ${playerScore} - ผู้เล่นที่ 2: ${aiScore}`;
+            }
+
+
+            // Check for overall series winner (best of three)
+            if (playerScore >= 2 || aiScore >= 2 || roundNumber >= 3) {
+                let finalMessage = '';
+                if (playerScore > aiScore) {
+                    finalMessage = 'คุณชนะซีรีส์นี้! ยอดเยี่ยมมาก!';
+                    playSound('seriesWin'); // Play grand series win sound
+                } else if (aiScore > playerScore) {
+                    finalMessage = (gameMode === 'bot' ? 'คอมพิวเตอร์' : 'อีกฝ่าย') + 'ชนะซีรีส์นี้! ลองอีกครั้ง!';
+                    playSound('lose'); // Play player lose sound (AI/Opponent wins series)
+                } else {
+                    finalMessage = 'ซีรีส์นี้เสมอ! เล่นใหม่ไหม?';
+                }
+                showMessage(finalMessage, playerScore > aiScore ? 'win' : (aiScore > playerScore ? 'lose' : ''));
+                resetBtn.textContent = 'เริ่มซีรีส์ใหม่'; // Button to restart the whole series
+                resetBtn.onclick = startNewSeries; // Ensure it calls startNewSeries
+            } else {
+                resetBtn.textContent = 'เล่นรอบต่อไป'; // Button to start next round
+                resetBtn.onclick = startNewRound; // Ensure it calls startNewRound
+            }
+        }
+
+        /**
+         * Handles the human player's move (or current player's move in friend mode).
+         * @param {number} count - The number of steps the player chooses to count (1, 2, or 3).
+         */
+        function handlePlayerMove(count) {
+            if (gameOver) return; // Game is over, no moves allowed
+
+            // Only allow move if it's the current player's turn based on gameMode
+            // In friend mode, `isPlayerTurn` toggles between Player 1 and Player 2.
+            // In bot mode, `isPlayerTurn` is true for Human, false for AI.
+            if (!isPlayerTurn && gameMode === 'bot') {
+                return; // Prevent human clicks if it's AI's turn in bot mode
+            }
+
+            // Play first move sound if it's the current player's first move in this round
+            if (isFirstPlayerMoveInRound) {
+                playSound('firstMove');
+                isFirstPlayerMoveInRound = false;
+            }
+            
+            let nextNumber = currentNumber + count;
+            
+            // Play sound for each number counted by the player, up to the final number
+            let soundDelay = 0;
+            for (let i = currentNumber + 1; i <= nextNumber; i++) {
+                if (i <= 20) { // Only play sounds for numbers up to 20
+                    setTimeout(() => playSound('numberClick', i), soundDelay);
+                    soundDelay += 150; // Small delay between each number sound
+                }
+            }
+
+            if (nextNumber === 20) {
+                currentNumber = 20; // Player lands on 20
+                updateDisplay();
+                setTimeout(() => endRound('player'), soundDelay + 300); // Delay endRound after all sounds + buffer
+                return;
+            } else if (nextNumber > 20) {
+                currentNumber = 20; // Player goes over 20, clamp to 20 for display
+                updateDisplay();
+                setTimeout(() => endRound('ai'), soundDelay + 300); // Delay endRound after all sounds + buffer (opponent wins)
+                return;
+            }
+
+            currentNumber = nextNumber;
+            
+            // Toggle the turn after a valid move
+            isPlayerTurn = !isPlayerTurn;  
+            updateDisplay();
+
+            // If in bot mode and now it's AI's turn, trigger AI move
+            if (gameMode === 'bot' && !isPlayerTurn) {  
+                setTimeout(aiMove, soundDelay + 500); // Adjust delay for AI turn start after player sounds + buffer
+            }
+            // In friend mode, no further action is needed here; the next human player will click their button.
+        }
+
+        /**
+         * Calculates and performs the AI's move based on a mix of strategic and random play.
+         * This function is only called when gameMode is 'bot'.
+         */
+        function aiMove() {
+            if (gameOver || gameMode !== 'bot') return; // Only execute if bot mode and game is active
+
+            let numbersToSay = 0;
+            const remainder = currentNumber % 4;
+            // Strategic move: how many steps to get to the next multiple of 4
+            const strategicCount = (4 - remainder) % 4;
+            const STRATEGY_BIAS = 0.7; // 70% chance to play strategically
+
+            if (currentNumber >= 17) { // Always play strategically when close to 20 to try to hit 20
+                numbersToSay = 20 - currentNumber;
+            } else if (Math.random() < STRATEGY_BIAS) { // Play strategically with a bias
+                numbersToSay = (strategicCount === 0 && currentNumber !== 0) ? 1 : strategicCount;
+            } else { // Play randomly
+                numbersToSay = Math.floor(Math.random() * 3) + 1; // Random 1, 2, or 3
+                // Ensure random move doesn't go beyond 20 if it's not the winning move
+                if (currentNumber + numbersToSay > 20) {
+                    numbersToSay = 20 - currentNumber;
+                    if (numbersToSay < 1) numbersToSay = 1;
+                }
+            }
+
+            // Final check to ensure move is valid (1, 2, or 3) and doesn't exceed 20
+            numbersToSay = Math.max(1, Math.min(3, numbersToSay));
+            if (currentNumber + numbersToSay > 20) {
+                numbersToSay = 20 - currentNumber;
+                if (numbersToSay < 1) numbersToSay = 1;
+            }
+
+
+            // Simulate AI counting numbers step-by-step for visual effect and sound
+            let countStepsLeft = numbersToSay;
+            let currentNumberForAnimation = currentNumber; // Temp variable for animation/sound progression
+            let soundDelay = 0;
+
+            let countInterval = setInterval(() => {
+                if (countStepsLeft > 0) {
+                    currentNumberForAnimation++; // Increment for display and sound
+                    currentNumberDisplay.textContent = currentNumberForAnimation; // Update display immediately
+                    if (currentNumberForAnimation <= 20) { // Only play sounds for numbers up to 20
+                        setTimeout(() => playSound('numberClick', currentNumberForAnimation), soundDelay);
+                        soundDelay += 150; // Add delay for each note sound
+                    }
+                    countStepsLeft--;
+                } else {
+                    clearInterval(countInterval); // AI is done counting
+
+                    currentNumber = currentNumberForAnimation; // Update actual game state number
+                    updateDisplay(); // Final display update
+
+                    if (currentNumber === 20) { // If AI hit 20
+                        setTimeout(() => endRound('ai'), soundDelay + 300); // Delay endRound
+                    } else {
+                        // If the game isn't over by AI winning, switch turn to player
+                        if (!gameOver) {
+                            isPlayerTurn = true;
+                            updateDisplay();
+                        }
+                    }
+                }
+            }, 500); // This 500ms is the delay between AI "steps" or "spoken numbers"
+        }
+
+        /**
+         * Starts a new round in the ongoing series.
+         * Resets current number, toggles who starts, and updates UI.
+         */
+        function startNewRound() {
+            currentNumber = 0;
+            gameOver = false;
+            isFirstPlayerMoveInRound = true; // Reset for new round
+            gameMessage.textContent = ''; // Clear game message from previous round
+            roundNumber++;
+
+            // Determine who starts this specific round based on `firstPlayerInSeries` and `roundNumber`.
+            // Round 1: firstPlayerInSeries starts
+            // Round 2: The other player starts
+            // Round 3: firstPlayerInSeries starts again
+            if (firstPlayerInSeries === 'player') {
+                isPlayerTurn = (roundNumber % 2 !== 0); // Player starts round 1 & 3. Opponent starts round 2.
+            } else { // firstPlayerInSeries === 'ai' (or 'player2' in friend mode)
+                isPlayerTurn = (roundNumber % 2 === 0); // Opponent starts round 1 & 3. Player starts round 2.
+            }
+
+            scoreDisplay.classList.remove('hidden'); // Ensure score is visible
+            currentNumberDisplay.classList.remove('hidden'); // Ensure number display is visible
+            turnMessage.classList.remove('hidden'); // Ensure turn message is visible
+            resetBtn.classList.add('hidden'); // Hide reset button during active game
+
+            playSound('startRound'); // Play sound for starting a new round
+
+            updateDisplay(); // Update number, button labels/states, and visibility of control buttons
+
+            // If in bot mode and AI starts this round, trigger AI move
+            if (gameMode === 'bot' && !isPlayerTurn) {  
+                turnMessage.textContent = 'คอมพิวเตอร์กำลังเริ่ม...';
+                setTimeout(aiMove, 1000);
+            } else {
+                // For player turn in bot mode, or any turn in friend mode
+                turnMessage.textContent = isPlayerTurn ? (gameMode === 'bot' ? 'ตาคุณ!' : 'ตาผู้เล่นที่ 1!') : 'ตาผู้เล่นที่ 2!';
+            }
+        }
+
+        /**
+         * Starts a brand new series of best-of-three games.
+         * Resets scores, round count, and randomly determines who starts the first round of the series.
+         */
+        function startNewSeries() {
+            playerScore = 0;
+            aiScore = 0;
+            roundNumber = 0; // Reset round count
+            
+            // Randomly determine who starts the very first game of this new series
+            firstPlayerInSeries = Math.random() < 0.5 ? 'player' : 'ai';
+            
+            // Set the button's behavior to call startNewRound for subsequent rounds in this series
+            resetBtn.onclick = startNewRound;
+            resetBtn.textContent = 'เล่นรอบต่อไป'; // Change button label for subsequent games in the series
+
+            playSound('startSeries'); // Play sound for starting a new series
+
+            // Start background music loop if not already started
+            if (!backgroundLoop || !backgroundLoop.state || backgroundLoop.state !== 'started') {
+                backgroundLoop = new Tone.Loop(time => {
+                    // Play the current chord in the sequence
+                    backgroundMusicSynth.triggerAttackRelease(backgroundNotesMelody[currentMelodyIndex], "2n", time); // Play for a half note duration
+                    currentMelodyIndex = (currentMelodyIndex + 1) % backgroundNotesMelody.length;
+                }, "2n").start(0); // Loop every half note
+                Tone.Transport.start(); // Start Tone.js transport for loops
+            } else if (backgroundLoop.state !== 'started') {
+                    backgroundLoop.start(0); // Restart if stopped
+                    Tone.Transport.start();
+            }
+
+
+            // Make sure all elements are visible for gameplay
+            scoreDisplay.classList.remove('hidden');
+            currentNumberDisplay.classList.remove('hidden');
+            turnMessage.classList.remove('hidden');
+            
+            startNewRound(); // Start the first round
+        }
+
+        /**
+         * Handles mode selection from the main screen.
+         * @param {string} mode - 'bot' or 'friend'.
+         */
+        function selectMode(mode) {
+            gameMode = mode;
+            mainScreen.classList.add('hidden');
+            gameScreen.classList.remove('hidden');
+            startNewSeries(); // Start the game flow for the selected mode
+        }
+
+        /**
+         * Navigates back to the index.html page.
+         */
+        function goToMainMenu() {
+            // Stop background music if it's playing
+            if (backgroundLoop && backgroundLoop.state === 'started') {
+                backgroundLoop.stop();
+                Tone.Transport.stop();
+            }
+            window.location.href = 'index.html';
+        }
+
+        // Initialize game on window load
+        window.onload = function() {
+            // Ensure audio context resumes on first user interaction for web audio APIs
+            document.documentElement.addEventListener('click', () => {
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+            }, { once: true });
+            
+            // Initial setup for when the page loads (show main screen)
+            currentNumberDisplay.textContent = 0;
+            scoreDisplay.textContent = 'ผู้เล่น: 0 - คอมพิวเตอร์: 0'; // Initial score (will be updated by updateDisplay)
+            turnMessage.textContent = 'กด "เริ่มเกม" เพื่อเริ่มซีรีส์ใหม่!'; // Initial prompt on game screen
+            gameMessage.textContent = '';
+
+            // Hide game-play elements initially, show only main screen
+            mainScreen.classList.remove('hidden');
+            gameScreen.classList.add('hidden');
+
+            // Set initial state of elements within game-screen (though hidden)
+            scoreDisplay.classList.add('hidden');
+            currentNumberDisplay.classList.add('hidden');
+            turnMessage.classList.add('hidden');
+            controlButtonsWrapper.classList.add('hidden');
+            resetBtn.textContent = 'เริ่มเกม'; // This is the text for the button inside game-screen, not main-screen
+            resetBtn.onclick = startNewSeries;  
+            gameOver = true;    
+            updateDisplay(); // Call once to set initial button labels (though they are hidden)
+        };
+    </script>
+</body>
+</html>

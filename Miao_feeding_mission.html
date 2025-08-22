@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ภารกิจให้อาหารน้องเหมียว</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/tone@14.9.15/build/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
+
+        :root {
+            --primary-color: #FFC0CB; /* Pink */
+            --secondary-color: #FFD700; /* Gold */
+            --bg-color: #F8F4E3; /* Creamy white */
+            --text-color: #333;
+            --success-color: #4CAF50;
+            --failure-color: #F44336;
+        }
+
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .game-container {
+            background-color: #fff;
+            border-radius: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .stage-info {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #888;
+        }
+
+        .cat-display {
+            font-size: 100px;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease-in-out;
+        }
+        
+        .cat-display.bounce {
+            animation: bounce 0.5s;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .game-message {
+            font-size: 1.5rem;
+            font-weight: 700;
+            min-height: 40px;
+            margin-bottom: 20px;
+            color: var(--text-color);
+        }
+
+        .message-success {
+            color: var(--success-color);
+        }
+
+        .message-failure {
+            color: var(--failure-color);
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .game-button, .answer-button {
+            background: linear-gradient(135deg, var(--primary-color), #FF69B4);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .answer-button {
+            padding: 10px 20px;
+            font-size: 1rem;
+        }
+
+        .game-button:hover, .answer-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+        }
+
+        .game-button:active, .answer-button:active {
+            transform: translateY(0);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Visually hidden but readable by screen readers */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-container" role="main">
+		<button class="flex items-center rounded-md border border-slate-300 py-2 px-4 text-center text-sm transition-all shadow-sm hover:shadow-lg text-slate-600 hover:text-white hover:bg-slate-800 hover:border-slate-800 focus:text-white focus:bg-slate-800 focus:border-slate-800 active:border-slate-800 active:text-white active:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none" type="button" onclick="location.href='index.html'">
+			กลับเมนูหลัก
+		   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 ml-1.5">
+			<path fill-rule="evenodd" d="M16.28 11.47a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 0 1 1.06-1.06l7.5 7.5Z" clip-rule="evenodd" />
+		  </svg>
+		</button>
+		<h1>ภารกิจให้อาหารน้องเหมียว</h1>
+		        <!-- aria-live is crucial for screen readers to announce changes -->
+        <div id="announcement-region" class="sr-only" aria-live="polite"></div>
+
+        <div id="stage-info" class="stage-info"></div>
+        <div id="cat-emoji" class="cat-display" aria-label="Cat emoji">😺</div>
+        <div id="game-message" class="game-message"></div>
+        
+        <div id="start-button-container">
+            <button id="start-button" class="game-button">เริ่มภารกิจ</button>
+        </div>
+
+        <div id="answer-buttons-container" class="button-container hidden"></div>
+        
+    </div>
+
+    <script>
+        // Game state variables
+        let currentStage = -1;
+        let isGameOver = false;
+
+        // UI elements
+        const announcementRegion = document.getElementById('announcement-region');
+        const stageInfo = document.getElementById('stage-info');
+        const catEmoji = document.getElementById('cat-emoji');
+        const gameMessage = document.getElementById('game-message');
+        const startButtonContainer = document.getElementById('start-button-container');
+        const answerButtonsContainer = document.getElementById('answer-buttons-container');
+        const startButton = document.getElementById('start-button');
+
+        // Game data for all 5 missions
+        const missions = [
+            {
+                prompt: 'วิธีแรกที่ควรทำเพื่อให้อาหารน้องเหมียวคืออะไร?',
+                answers: [
+                    { text: 'อ่านฉลากและวันหมดอายุ', isCorrect: true },
+                    { text: 'พาไปวิ่งเล่นก่อน', isCorrect: false },
+                    { text: 'ทำความสะอาดบ้าน', isCorrect: false }
+                ],
+                successMessage: 'ถูกต้อง! การอ่านฉลากเป็นสิ่งสำคัญเพื่อความปลอดภัยของน้องเหมียว',
+                catEmoji: '😸',
+                foodEmoji: '🍽️'
+            },
+            {
+                prompt: 'ควรให้อาหารแมวในที่แบบไหน?',
+                answers: [
+                    { text: 'ในห้องครัวที่วุ่นวาย', isCorrect: false },
+                    { text: 'ในมุมที่สงบและเป็นส่วนตัว', isCorrect: true },
+                    { text: 'ข้างกระบะทราย', isCorrect: false }
+                ],
+                successMessage: 'ยอดเยี่ยม! การให้อาหารในที่สงบช่วยลดความเครียดและทำให้น้องเหมียวมีความสุข',
+                catEmoji: '😸',
+                foodEmoji: '🥣'
+            },
+            {
+                prompt: 'หากน้องเหมียวของคุณดูไม่สบาย จะทำอย่างไรกับอาหารของมัน?',
+                answers: [
+                    { text: 'เพิ่มเครื่องปรุงรสให้กินง่ายขึ้น', isCorrect: false },
+                    { text: 'ให้กินเหมือนเดิม', isCorrect: false },
+                    { text: 'ปรึกษาสัตวแพทย์เพื่อขอคำแนะนำ', isCorrect: true }
+                ],
+                successMessage: 'เยี่ยมมาก! ควรปรึกษาสัตวแพทย์ทันทีเมื่อน้องเหมียวป่วย เพื่อรับคำแนะนำที่ถูกต้อง',
+                catEmoji: '😸',
+                foodEmoji: '🐟'
+            },
+            {
+                prompt: 'หลังจากน้องเหมียวทานอาหารเสร็จแล้ว สิ่งที่คุณควรทำคือ?',
+                answers: [
+                    { text: 'ปล่อยชามอาหารทิ้งไว้', isCorrect: false },
+                    { text: 'รีบให้อาหารมื้อต่อไปทันที', isCorrect: false },
+                    { text: 'ล้างชามให้สะอาด', isCorrect: true }
+                ],
+                successMessage: 'เก่งมาก! การล้างชามอาหารทุกครั้งช่วยป้องกันแบคทีเรียและโรคต่างๆ',
+                catEmoji: '😸',
+                foodEmoji: '🍗'
+            },
+            {
+                prompt: 'คุณควรเปลี่ยนน้ำในชามน้ำของน้องเหมียวบ่อยแค่ไหน?',
+                answers: [
+                    { text: 'สัปดาห์ละครั้ง', isCorrect: false },
+                    { text: 'วันละครั้งหรือเมื่อน้ำสกปรก', isCorrect: true },
+                    { text: 'เมื่อเห็นว่าน้ำในชามหมด', isCorrect: false }
+                ],
+                successMessage: 'สมบูรณ์แบบ! น้ำสะอาดเป็นสิ่งจำเป็นสำหรับสุขภาพที่ดีและช่วยป้องกันภาวะขาดน้ำ',
+                catEmoji: '😸',
+                foodEmoji: '💧'
+            }
+        ];
+
+        // Tone.js for sounds
+        const successSynth = new Tone.Synth({
+            oscillator: { type: 'triangle' },
+            envelope: {
+                attack: 0.05,
+                decay: 0.3,
+                sustain: 0.1,
+                release: 0.5,
+            }
+        }).toDestination();
+
+        const failureSynth = new Tone.Synth({
+            oscillator: { type: 'sawtooth' },
+            envelope: {
+                attack: 0.01,
+                decay: 0.1,
+                sustain: 0,
+                release: 0.2,
+            }
+        }).toDestination();
+
+        // Function to announce a message for screen readers
+        function announce(message) {
+            announcementRegion.textContent = message;
+        }
+
+        // Function to play sound for success
+        function playSuccessSound() {
+            successSynth.triggerAttackRelease("C5", "8n");
+            successSynth.triggerAttackRelease("E5", "8n", "+0.2");
+            successSynth.triggerAttackRelease("G5", "8n", "+0.4");
+        }
+
+        // Function to play sound for failure
+        function playFailureSound() {
+            failureSynth.triggerAttackRelease("A3", "8n");
+            failureSynth.triggerAttackRelease("E3", "8n", "+0.2");
+        }
+
+        // Function to initialize or restart the game
+        function initializeGame() {
+            currentStage = -1; // -1 indicates initial state
+            isGameOver = false;
+            catEmoji.textContent = '😺';
+            gameMessage.textContent = 'น้องเหมียวหิวแล้ว! ช่วยหาอาหารให้หน่อย';
+            stageInfo.textContent = '';
+            startButtonContainer.classList.remove('hidden');
+            answerButtonsContainer.classList.add('hidden');
+            gameMessage.classList.remove('message-success', 'message-failure');
+            announce('เกมเริ่มต้น. น้องเหมียวหิวแล้ว. กดปุ่มเพื่อเริ่มภารกิจ');
+        }
+
+        // Function to start the next mission stage
+        function startMission() {
+            currentStage++;
+            
+            if (currentStage >= missions.length) {
+                completeGame();
+                return;
+            }
+
+            const mission = missions[currentStage];
+            
+            stageInfo.textContent = `ภารกิจที่ ${currentStage + 1} / ${missions.length}`;
+            gameMessage.textContent = mission.prompt;
+            catEmoji.textContent = '😺'; // Happy cat at the start of each mission
+            gameMessage.classList.remove('message-success', 'message-failure');
+            
+            startButtonContainer.classList.add('hidden');
+            answerButtonsContainer.classList.remove('hidden');
+            answerButtonsContainer.innerHTML = '';
+            
+            mission.answers.forEach(answer => {
+                const button = document.createElement('button');
+                button.textContent = answer.text;
+                button.classList.add('answer-button');
+                button.setAttribute('data-is-correct', answer.isCorrect);
+                button.addEventListener('click', handleAnswer);
+                answerButtonsContainer.appendChild(button);
+            });
+            
+            // Announce only the mission number for screen readers
+            announce(`ภารกิจที่ ${currentStage + 1} เริ่มขึ้นแล้ว.`);
+        }
+
+        // Function to handle the answer click
+        function handleAnswer(event) {
+            const isCorrect = event.target.getAttribute('data-is-correct') === 'true';
+
+            if (isCorrect) {
+                succeedMission();
+            } else {
+                failMission();
+            }
+        }
+
+        // Function to handle mission success
+        function succeedMission() {
+            playSuccessSound();
+            const mission = missions[currentStage];
+            
+            // Show success animation and message
+            catEmoji.textContent = `${mission.catEmoji}${mission.foodEmoji}`;
+            gameMessage.textContent = mission.successMessage;
+            gameMessage.classList.add('message-success');
+
+            // Clear and hide all answer buttons
+            answerButtonsContainer.innerHTML = '';
+            
+            // Automatically start the next mission after a delay
+            setTimeout(() => {
+                startMission();
+            }, 2000); // 2-second delay to show the success screen
+            
+            announce(`น้องเหมียวกำลังดีใจ. ${mission.successMessage}`);
+        }
+
+        // Function to handle mission failure
+        function failMission() {
+            playFailureSound();
+            isGameOver = true;
+            catEmoji.textContent = '😿'; // Sad cat
+            gameMessage.textContent = 'ภารกิจล้มเหลว... น้องเหมียวเสียใจ';
+            gameMessage.classList.add('message-failure');
+            stageInfo.textContent = '';
+            
+            // Disable and clear all answer buttons
+            answerButtonsContainer.innerHTML = '';
+            
+            // Show restart button
+            const restartButton = document.createElement('button');
+            restartButton.textContent = 'ลองอีกครั้ง';
+            restartButton.classList.add('game-button');
+            restartButton.addEventListener('click', initializeGame);
+            answerButtonsContainer.appendChild(restartButton);
+
+            announce('น้องเหมียวกำลังเสียใจ. ภารกิจล้มเหลว... น้องเหมียวเสียใจ. กดปุ่มเพื่อลองอีกครั้ง.');
+        }
+
+        // Final completion message
+        function completeGame() {
+            isGameOver = true;
+            catEmoji.textContent = '😻'; // Very happy cat
+            gameMessage.textContent = 'ภารกิจสำเหร็จแล้ว! น้องเหมียวของคุณกำลังกินอาหารอย่างมีความสุข';
+            stageInfo.textContent = ''; // Clear stage info
+            
+            // Clear all buttons and only show the restart button
+            answerButtonsContainer.innerHTML = '';
+            const restartButton = document.createElement('button');
+            restartButton.textContent = 'เล่นอีกครั้ง?';
+            restartButton.classList.add('game-button');
+            restartButton.addEventListener('click', initializeGame);
+            answerButtonsContainer.appendChild(restartButton);
+
+            announce('ภารกิจทั้งหมดสำเร็จแล้ว น้องเหมียวกำลังมีความสุขมาก');
+        }
+
+        // Add event listener to the start button
+        startButton.addEventListener('click', startMission);
+
+        // Initial setup
+        window.onload = initializeGame;
+    </script>
+
+</body>
+</html>

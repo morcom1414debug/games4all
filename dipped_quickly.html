@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จิ้มให้เร็ว</title>
+    <!-- โหลด Tailwind CSS สำหรับการจัดสไตล์ที่ตอบสนอง -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* ตั้งค่าฟอนต์เริ่มต้นและจัดกึ่งกลางเนื้อหาในหน้าจอ */
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+            overflow: hidden; /* ป้องกันการเลื่อนบนมือถือสำหรับปุ่มขนาดใหญ่ */
+        }
+        /* กำหนดการจัดกึ่งกลางของเนื้อหาหลักเมื่อมีขนาดหน้าจอต่างกัน */
+        .game-container {
+            max-width: 90%; /* ใช้พื้นที่ 90% ของความกว้างหน้าจอ */
+            width: 500px;   /* ความกว้างสูงสุด 500px */
+        }
+        @media (min-width: 640px) {
+            .game-container {
+                max-width: 4xl; /* สำหรับหน้าจอขนาดใหญ่ ใช้ max-w-4xl ของ Tailwind */
+            }
+        }
+        /* คลาสสำหรับซ่อน/แสดงเวลา */
+        .time-display-wrapper {
+            display: none; /* ซ่อนไว้ตอนเริ่มต้น */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <!-- คอนเทนเนอร์หลักของเกม -->
+    <div class="game-container bg-white p-8 rounded-lg shadow-xl text-center">
+
+		<button class="flex items-center rounded-md border border-slate-300 py-2 px-4 text-center text-sm transition-all shadow-sm hover:shadow-lg text-slate-600 hover:text-white hover:bg-slate-800 hover:border-slate-800 focus:text-white focus:bg-slate-800 focus:border-slate-800 active:border-slate-800 active:text-white active:bg-slate-800 disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none" type="button" onclick="location.href='index.html'">
+			กลับเมนูหลัก
+		   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 ml-1.5">
+			<path fill-rule="evenodd" d="M16.28 11.47a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 0 1 1.06-1.06l7.5 7.5Z" clip-rule="evenodd" />
+		  </svg>
+		</button>
+		
+        <!-- หัวข้อเกมใหม่ (ขนาด text-xl และข้อความคงที่) -->
+        <h1 class="text-xl font-bold text-gray-800 mb-6">เกมจิ้มเร็ว 7 วิ</h1>
+
+        <!-- แสดงเวลาและคะแนน (ซ่อนไว้ตอนแรก จะแสดงเมื่อเกมจบ โดยเวลาจะถูกซ่อนอีกครั้งเมื่อเกมจบ) (ขนาดมาตรฐาน) -->
+        <div id="scoreAndTimeContainer" class="flex flex-col sm:flex-row justify-around items-center mb-8 space-y-4 sm:space-y-0 hidden">
+            <div id="timeDisplayWrapper" class="text-lg text-gray-700">
+                เวลา: <span id="timerDisplay" class="font-semibold text-blue-600">--.--</span> วินาที
+            </div>
+            <div class="text-lg text-gray-700">
+                คะแนน: <span id="scoreDisplay" class="font-semibold text-green-600">--</span>
+            </div>
+        </div>
+
+        <!-- ปุ่มสำหรับคลิก (ขนาดใหญ่) -->
+        <button id="clickButton"
+                class="w-full h-80 bg-red-500 hover:bg-red-600 text-white font-extrabold text-7xl rounded-2xl shadow-lg transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-red-300">
+            จิ้มให้เร็ว
+        </button>
+
+        <!-- ข้อความแสดงสถานะเกม (ขนาดมาตรฐาน) -->
+        <p id="messageDisplay" class="text-lg text-gray-600 mt-6 min-h-8">
+            &nbsp; <!-- ใช้ &nbsp; เพื่อรักษาระยะห่างแต่ไม่มีข้อความเริ่มต้น -->
+        </p>
+
+        <!-- ปุ่มเล่นใหม่ (ซ่อนไว้ตอนแรก จะแสดงเมื่อเกมจบ) (ขนาดมาตรฐาน) -->
+        <button id="playAgainButton"
+                class="mt-4 px-8 py-4 bg-blue-500 hover:bg-blue-600 text-white font-bold text-xl rounded-lg shadow-md transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-blue-300 hidden">
+            เล่นใหม่
+        </button>
+    </div>
+
+    <script>
+        // กำหนดตัวแปรสำหรับองค์ประกอบ HTML
+        const clickButton = document.getElementById('clickButton');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const messageDisplay = document.getElementById('messageDisplay');
+        // const gameTimeValue = document.getElementById('gameTimeValue'); // ไม่จำเป็นแล้วเมื่อหัวข้อคงที่
+        const scoreAndTimeContainer = document.getElementById('scoreAndTimeContainer');
+        const playAgainButton = document.getElementById('playAgainButton');
+        const timeDisplayWrapper = document.getElementById('timeDisplayWrapper'); // ตัว wrapper ของเวลา
+
+        // ตัวแปรสถานะเกม
+        let score = 0;
+        let gameStarted = false; // บอกว่าเกมกำลังดำเนินอยู่ (นับเวลาอยู่)
+        let gameOver = false;    // บอกว่าเกมจบแล้ว (รอการเล่นใหม่)
+        let gameInterval;
+        let gameTimeout;
+        let soundTimeout;
+
+        const GAME_DURATION_SECONDS = 7; // ระยะเวลาเกมสำหรับคลิกและเสียงเตือน
+
+        // อัปเดตค่าเวลาในหัวข้อ - ไม่จำเป็นต้องใช้ gameTimeValue.textContent แล้ว
+        // gameTimeValue.textContent = GAME_DURATION_SECONDS;
+
+        // ฟังก์ชันสำหรับเล่นเสียงบี๊บสั้นๆ (เมื่อคลิก)
+        function playShortBeep() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.05);
+            } catch (error) {
+                console.error("Failed to play short beep sound:", error);
+            }
+        }
+
+        // ฟังก์ชันสำหรับเล่นเสียงบี๊บยาวๆ (เมื่อหมดเวลา)
+        function playLongBeep() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 1.5);
+            } catch (error) {
+                console.error("Failed to play long beep sound:", error);
+                messageDisplay.textContent = "ไม่สามารถเล่นเสียงได้: " + error.message;
+            }
+        }
+
+        // ฟังก์ชันเริ่มต้นตรรกะเกม (เริ่มนับเวลา)
+        function startGameLogic() {
+            gameStarted = true; // ตั้งค่าสถานะว่าเกมกำลังดำเนินอยู่
+
+            let startTime = performance.now();
+            
+            // แสดงเวลา (ชั่วคราวขณะเล่น)
+            timeDisplayWrapper.style.display = 'block';
+
+            gameInterval = setInterval(() => {
+                const elapsedTime = (performance.now() - startTime) / 1000;
+                const remainingTime = GAME_DURATION_SECONDS - elapsedTime;
+                if (remainingTime <= 0) {
+                    timerDisplay.textContent = '0.00';
+                    endGame();
+                } else {
+                    timerDisplay.textContent = remainingTime.toFixed(2);
+                }
+            }, 100);
+
+            // ตั้งเวลาสำหรับจบเกมและเล่นเสียงเตือนพร้อมกัน
+            gameTimeout = setTimeout(endGame, GAME_DURATION_SECONDS * 1000);
+            soundTimeout = setTimeout(() => {
+                playLongBeep();
+            }, GAME_DURATION_SECONDS * 1000);
+        }
+
+        // ฟังก์ชันรีเซ็ตเกมให้อยู่ในสถานะเริ่มต้น (ก่อนเริ่มจับเวลา)
+        function resetGame() {
+            score = 0;
+            gameStarted = false; // สำคัญ: เกมยังไม่เริ่มนับเวลา
+            gameOver = false;
+            
+            // ซ่อนเวลาและคะแนน และปุ่มเล่นใหม่
+            scoreAndTimeContainer.classList.add('hidden');
+            playAgainButton.classList.add('hidden');
+            timeDisplayWrapper.style.display = 'none'; // ซ่อนเวลา
+
+            scoreDisplay.textContent = '--';
+            timerDisplay.textContent = '--.--';
+            messageDisplay.innerHTML = '&nbsp;'; // ไม่มีข้อความเริ่มต้น
+
+            clickButton.textContent = 'จิ้มให้เร็ว';
+            clickButton.classList.remove('pointer-events-none', 'opacity-50'); // เปิดใช้งานปุ่ม
+
+            // ล้างตัวจับเวลา/ช่วงเวลาที่มีอยู่ทั้งหมด
+            clearInterval(gameInterval);
+            clearTimeout(gameTimeout);
+            clearTimeout(soundTimeout);
+        }
+
+        // ฟังก์ชันจบเกม
+        function endGame() {
+            if (gameOver) return; // ป้องกันการเรียกใช้ซ้ำ
+            gameOver = true;
+            gameStarted = false; // ตั้งค่าสถานะว่าเกมจบแล้ว
+            clearInterval(gameInterval);
+            clearTimeout(gameTimeout);
+
+            // ซ่อนเวลาแต่แสดงคะแนน
+            timeDisplayWrapper.style.display = 'none'; // ซ่อนเวลา
+            scoreAndTimeContainer.classList.remove('hidden'); // แสดงคอนเทนเนอร์รวม
+            scoreDisplay.textContent = score;
+
+            messageDisplay.textContent = `หมดเวลา! คะแนนของคุณคือ ${score} ครั้ง!`;
+            clickButton.textContent = 'เกมจบแล้ว';
+            clickButton.classList.add('pointer-events-none', 'opacity-50'); // ปิดใช้งานปุ่มหลัก
+
+            // แสดงปุ่มเล่นใหม่
+            playAgainButton.classList.remove('hidden');
+        }
+
+        // Event Listener สำหรับปุ่มคลิกหลัก
+        clickButton.addEventListener('click', () => {
+            if (!gameStarted && !gameOver) {
+                // นี่คือการคลิกครั้งแรก (ทั้งตอนโหลดหน้าหรือหลังจากกดเล่นใหม่)
+                // เริ่มตรรกะการเล่นเกม (เริ่มจับเวลา)
+                startGameLogic();
+                score++; // นับคะแนนสำหรับการคลิกครั้งแรกนี้ด้วย
+                scoreDisplay.textContent = score; // อัปเดตคะแนน
+                playShortBeep(); // เล่นเสียงบี๊บสั้น
+                messageDisplay.textContent = 'จิ้มให้เร็วที่สุดเท่าที่จะทำได้!'; // แสดงข้อความระหว่างเล่น
+            } else if (gameStarted && !gameOver) {
+                // สำหรับการคลิกระหว่างเกมที่กำลังดำเนินอยู่
+                score++;
+                // scoreDisplay.textContent จะถูกอัปเดตเมื่อเกมจบ
+                playShortBeep();
+            }
+        });
+
+        // Event Listener สำหรับปุ่มเล่นใหม่
+        playAgainButton.addEventListener('click', () => {
+            resetGame(); // รีเซ็ตเกมเพื่อรอการคลิกครั้งแรกเพื่อเริ่มนับเวลา
+        });
+
+        // กำหนดสถานะเริ่มต้นเมื่อโหลดหน้าครั้งแรก
+        resetGame();
+    </script>
+</body>
+</html>
