@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมทายเพลง 7 วิ</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .game-container {
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative; /* เพิ่มเพื่อให้ปุ่ม "กลับเมนูหลัก" สามารถใช้ absolute positioning ได้ */
+        }
+        .btn {
+            padding: 12px 25px;
+            border-radius: 10px;
+            font-weight: bold;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary {
+            background-image: linear-gradient(to right, #6a11cb 0%, #20e2d7 100%);
+            color: white;
+            border: none;
+        }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+            opacity: 0.9;
+        }
+        .btn-secondary {
+            background-color: #edf2f7; /* Light gray */
+            color: #2d3748; /* Dark gray text */
+            border: 1px solid #cbd5e0; /* Gray border */
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #e2e8f0;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.08);
+        }
+        .btn-disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .answer-button {
+            width: 100%;
+            text-align: center;
+            white-space: normal; /* Allow text to wrap */
+            word-wrap: break-word; /* Ensure long words break */
+        }
+        .message-box {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+        .message-success {
+            background-color: #d1fae5; /* Green light */
+            color: #065f46; /* Green dark */
+        }
+        .message-error {
+            background-color: #fee2e2; /* Red light */
+            color: #991b1b; /* Red dark */
+        }
+        .score-display {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 20px;
+        }
+        .solution-item {
+            display: flex;
+            flex-direction: column; /* Stack details vertically */
+            align-items: flex-start; /* Align text to the left */
+            padding: 10px 0;
+            border-bottom: 1px dashed #e2e8f0;
+            text-align: left; /* Ensure text inside is left-aligned */
+        }
+        .solution-item:last-child {
+            border-bottom: none;
+        }
+        .solution-item .label {
+            font-weight: bold;
+            color: #4a5568;
+            margin-bottom: 5px; /* Space between question number and answers */
+        }
+        .solution-item .value {
+            color: #2d3748;
+            margin-left: 10px; /* Indent the answers */
+        }
+        .solution-item .correct {
+            color: #065f46; /* Green for correct answer */
+            font-weight: bold;
+        }
+        .solution-item .user-answer {
+            color: #991b1b; /* Red for wrong user answer */
+        }
+        /* Style for the back to main menu button */
+        #backToMainMenuButton {
+            position: absolute;
+            top: 20px; /* ระยะห่างจากด้านบน */
+            left: 20px; /* ระยะห่างจากด้านซ้าย */
+            padding: 8px 15px;
+            font-size: 0.9em;
+            background-color: #cbd5e0; /* สีเทาอ่อน */
+            color: #2d3748; /* สีดำเทา */
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s ease-in-out;
+            z-index: 10; /* ให้ปุ่มอยู่ด้านบนสุด */
+        }
+        #backToMainMenuButton:hover {
+            background-color: #a0aec0; /* สีเทาเข้มขึ้นเมื่อ hover */
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- ปุ่ม กลับเมนูหลัก -->
+        <button id="backToMainMenuButton" class="btn">กลับเมนูหลัก</button>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen">
+            <h1 class="text-4xl font-extrabold text-indigo-700 mb-6">เกมทายเพลง 7 วิ</h1>
+            <p class="text-lg text-gray-700 mb-8 leading-relaxed">
+                เพียงกดฟังเพลง โดยจะเล่นเพียง 7 วินาที จะเป็นเพลงที่มาจากละคร ภาพยนตร์ และการ์ตูนดังในอดีต แล้วตอบให้ถูกต้อง ในระดับผู้เริ่มต้นจะเล่นทั้งหมด 20 เพลง ส่วนระดับ Advance จะเล่นทั้งหมด 28 เพลง พร้อมแล้วลุยเลย!
+            </p>
+            <button id="startButton" class="btn btn-primary text-xl">เริ่มกันเลย (ระดับผู้เริ่มต้น)</button>
+        </div>
+
+        <!-- Question Screen -->
+        <div id="question-screen" class="screen hidden">
+            <h2 id="question-number" class="text-2xl font-bold text-gray-800 mb-4"></h2>
+            <button id="playMusicButton" class="btn btn-primary text-xl mb-6">กดฟังซ้ำ</button>
+            <div id="answer-choices" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Answer buttons will be injected here by JavaScript -->
+            </div>
+        </div>
+
+        <!-- Feedback Screen (no longer actively used as a separate screen) -->
+        <div id="feedback-screen" class="screen hidden">
+            <div id="feedback-message" class="message-box"></div>
+        </div>
+
+        <!-- Solution Screen (now also acts as Summary) -->
+        <div id="solution-screen" class="screen hidden">
+            <h2 class="text-3xl font-bold text-indigo-700 mb-4">ผลการเล่นและเฉลย</h2>
+            <p id="solution-score" class="score-display mb-6">คุณตอบถูก 0/20 ข้อ</p>
+            <div id="solution-details" class="text-left bg-gray-50 p-6 rounded-lg mb-8">
+                <!-- Solution details will be injected here -->
+            </div>
+            <div class="flex flex-col md:flex-row gap-4 justify-center">
+                <button id="advanceLevelButton" class="btn btn-primary text-xl hidden">พิชิตระดับ Advance</button>
+                <button id="restartButton" class="btn btn-secondary text-xl">เริ่มเล่นใหม่</button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen hidden">
+            <h2 class="text-3xl font-bold text-red-700 mb-4">จบเกม!</h2>
+            <p id="game-over-message" class="text-lg text-gray-700 mb-8 leading-relaxed"></p>
+            <button id="restartGameFromGameOverButton" class="btn btn-primary text-xl">เริ่มเล่นใหม่ทั้งหมด</button>
+        </div>
+    </div>
+
+    <script>
+        // Array containing all song data for Beginner level
+        const beginnerSongsData = [
+            { file: 'q01.ogg', answer: 'เปาบุ้นจิ้น' },
+            { file: 'q02.ogg', answer: 'บุเพสันนิวาส' },
+            { file: 'q03.ogg', answer: 'แฟนฉัน' },
+            { file: 'q04.ogg', answer: 'โดราเอม่อน' },
+            { file: 'q05.ogg', answer: 'ไททานิก' },
+            { file: 'q06.ogg', answer: 'กุมภาพันธ์' },
+            { file: 'q07.ogg', answer: 'จักรยานสีแดง' },
+            { file: 'q08.ogg', answer: 'ชินจัง' },
+            { file: 'q09.ogg', answer: 'นางนาก' },
+            { file: 'q10.ogg', answer: 'อังกอร์' },
+            { file: 'q11.ogg', answer: 'สายโลหิต' },
+            { file: 'q12.ogg', answer: 'อิคคิวซัง' },
+            { file: 'q13.ogg', answer: 'สี่ยอดกุมาร' },
+            { file: 'q14.ogg', answer: 'คู่กรรม2533' },
+            { file: 'q15.ogg', answer: 'บุญชูผู้น่ารัก' },
+            { file: 'q16.ogg', answer: 'สามหนุ่มสามมุม' },
+            { file: 'q17.ogg', answer: 'แดจังกึม' },
+            { file: 'q18.ogg', answer: 'ดราก้อนบอล' },
+            { file: 'q19.ogg', answer: 'ปริศนา' },
+            { file: 'q20.ogg', answer: 'ผยอง2536' }
+        ];
+
+        // Array containing all song data for Advanced level
+        const advancedSongsData = [
+            { file: 'q21.ogg', answer: 'สุภาพบุรุษจุฑาเทพ' },
+            { file: 'q22.ogg', answer: 'วิมานหนาม' },
+            { file: 'q23.ogg', answer: 'ด็อกเตอร์สลัม' },
+            { file: 'q24.ogg', answer: 'เพื่อนสนิท' },
+            { file: 'q25.ogg', answer: 'เจ้ากรรมนายเวร' },
+            { file: 'q26.ogg', answer: 'ทวิภพ2537' },
+            { file: 'q27.ogg', answer: 'บัลลังก์เมฆ' },
+            { file: 'q28.ogg', answer: 'ผู้กองเจ้าเสน่ห์' },
+            { file: 'q29.ogg', answer: 'พริกขี้หนูฯ กับหมูแฮม' }, /* แก้ชื่อให้สั้นลงเพื่อการแสดงผล */
+            { file: 'q30.ogg', answer: 'พี่มากพระโขนง' },
+            { file: 'q31.ogg', answer: 'รักแห่งสยาม' },
+            { file: 'q32.ogg', answer: 'สี่แผ่นดิน' },
+            { file: 'q33.ogg', answer: 'วนาลี' },
+            { file: 'q34.ogg', answer: 'ทายาทอสูร' },
+            { file: 'q35.ogg', answer: 'ห้องหุ่น' },
+            { file: 'q36.ogg', answer: 'แต่ปางก่อน' },
+            { file: 'q37.ogg', answer: '007' },
+            { file: 'q38.ogg', answer: '18 ฝน' },
+            { file: 'q39.ogg', answer: 'Armageddon' }, /* แก้ไขตัวพิมพ์ใหญ่ */
+            { file: 'q40.ogg', answer: 'Mission Impossible' },
+            { file: 'q41.ogg', answer: 'กระบี่ไร้เทียมทาน' },
+            { file: 'q42.ogg', answer: 'นางชฎา' },
+            { file: 'q43.ogg', answer: 'Friend Zone' }, /* แก้ไขตัวพิมพ์ใหญ่ */
+            { file: 'q44.ogg', answer: 'ผู้หญิงข้าใครอย่าแตะ' },
+            { file: 'q45.ogg', answer: 'ชิงชัง' },
+            { file: 'q46.ogg', answer: 'ศิลามณี 2551' }, /* เพิ่มวรรค */
+            { file: 'q47.ogg', answer: 'เงาอโศก' },
+            { file: 'q48.ogg', answer: 'ดอกส้มสีทอง' }
+        ];
+
+        // Combine all possible correct answers from both levels for the fake answer pool
+        const allCorrectAnswersPool = [...beginnerSongsData.map(s => s.answer), ...advancedSongsData.map(s => s.answer)];
+
+        // Expanded list of fake answers for more variety in choices, including Thai/international films, dramas, cartoons
+        const additionalFakeAnswers = [
+            // Thai Dramas/Movies
+            'ดาวพระศุกร์', 'ทองเนื้อเก้า', 'สี่แผ่นดิน', 'แรงเงา', 'รถไฟฟ้ามาหานะเธอ',
+            'สิ่งเล็กเล็กที่เรียกว่ารัก', 'กวน มึน โฮ', 'ฉลาดเกมส์โกง',
+            'ฟ้าจรดทราย', 'ขุนศึก', 'นาคี', 'คุณชายรัชชานนท์', 'มงกุฎดอกส้ม',
+            'ทรายสีเพลิง', 'บ้านทรายทอง', 'ทาสรัก', 'วนิดา', 'เพื่อนสนิท', 'รถรางเที่ยวสุดท้าย',
+            'ยอดมนุษย์เงินเดือน', 'คิดถึงวิทยา', 'น้องใหม่ร้ายบริสุทธิ์', 'พรจากฟ้า',
+            'โหมโรง', 'ปัญญาเรณู', 'สิ่งเล็กๆ ที่เรียกว่ารัก', 'คู่แท้ 2 โลก',
+            'ผู้กองยอดรัก', 'เหนือเมฆ', 'รอยไหม', 'บุษบาเรณู', 'เมียหลวง', 'รักนี้ชั่วนิจนิรันดร์',
+            'บุพเพสันนิวาส', 'พราว', 'สะใภ้จ้าว', 'คุณชายปวรรุจ', 'คุณชายพุฒิภัทร', 'คุณชายรณพีร์',
+            'เวียงร้อยดาว', 'เพลิงพระนาง', 'พิษสวาท', 'ล่า', 'ใบไม้ที่ปลิดปลิว',
+
+            // Cartoons
+            'เซเลอร์มูน', 'วันพีซ', 'นารูโตะ', 'โคนัน', 'โปเกมอน', 'สปองบ็อบ สแควร์แพ้นท์',
+            'มาสค์ไรเดอร์', 'ขบวนการ 5 สี', 'หมีพูห์', 'อุลตร้าแมน', 'เบ็นเท็น', 'เจ้าหญิงนิทรา',
+            'ซิมป์สันส์', 'ทอมกับเจอร์รี่', 'ก้านกล้วย', 'ปังปอนด์', 'หนูหิ่นอินเตอร์',
+
+            // International Movies/Dramas (translated or common titles)
+            'อวตาร', 'ลอร์ดออฟเดอะริงส์', 'แฮร์รี่ พอตเตอร์', 'สตาร์ วอร์ส', 'จูราสสิค พาร์ค',
+            'คนเหล็ก', 'เดอะ มาทริกซ์', 'ฟาสต์ แอนด์ ฟิวเรียส', 'ทรานส์ฟอร์เมอร์ส', 'ก็อตซิลล่า',
+            'คิงคอง', 'เดอะ อเวนเจอร์ส', 'สไปเดอร์แมน', 'แบทแมน', 'ซุปเปอร์แมน',
+            'เกม ออฟ โธรนส์', 'วอล์กกิ้ง เดด', 'เฟรนส์', 'บิ๊กแบง ทฤษฎีวุ่นวาย', 'ซีเอสไอ',
+            'เชอร์ล็อค โฮล์มส์', 'แผ่นดินต้องคำสาป', 'เจมส์ บอนด์', 'อินเดียน่า โจนส์', 'เพอร์ซี่ แจ็กสัน',
+            'มิสเตอร์บีน', 'โฮม อะโลน', 'ทอย สตอรี่', 'ไฟน์ดิง นีโม', 'โฟรเซ่น', 'ซูโทเปีย',
+            'คุกกี้รัน', 'มายคราฟท์'
+        ];
+
+
+        // Global game state variables
+        let currentRoundSongs = []; // All songs for the current game round (20 for beginner, 28 for advanced)
+        let currentQuestionIndex = 0;
+        let score = 0;
+        // audioPlayCount will track initial play (0) and one replay (1). Total 2 plays.
+        let audioPlayCount = 0;
+        let audioPlayer = new Audio(); // Reusable audio element
+        let audioTimeout; // To store the setTimeout ID for stopping audio
+        let userAnswers = []; // Stores objects like { question: "...", userAnswer: "...", correctAnswer: "...", isCorrect: boolean }
+
+        let currentLevel = 'beginner'; // 'beginner' or 'advanced'
+        let incorrectAttempts = 0; // Number of wrong answers in the current round
+        // If incorrectAttempts reaches or exceeds this threshold, it's game over.
+        // Beginner: User can make 2 wrong answers, 3rd wrong answer is game over. (threshold = 3)
+        // Advanced: User can make 1 wrong answer, 2nd wrong answer is game over. (threshold = 2)
+        const maxIncorrectAttemptsThreshold = {
+            'beginner': 3,
+            'advanced': 2
+        };
+
+        // Get DOM elements
+        const startScreen = document.getElementById('start-screen');
+        const questionScreen = document.getElementById('question-screen');
+        const feedbackScreen = document.getElementById('feedback-screen'); // Kept for reference, but not actively used as a separate screen now
+        const solutionScreen = document.getElementById('solution-screen');
+        const gameOverScreen = document.getElementById('game-over-screen'); // New game over screen
+
+        const startButton = document.getElementById('startButton');
+        const playMusicButton = document.getElementById('playMusicButton');
+        const questionNumberDisplay = document.getElementById('question-number');
+        const answerChoicesDiv = document.getElementById('answer-choices');
+        // feedbackMessageDiv is no longer needed since feedback is visual on buttons
+        const solutionScoreDisplay = document.getElementById('solution-score');
+        const solutionDetailsDiv = document.getElementById('solution-details');
+        const advanceLevelButton = document.getElementById('advanceLevelButton'); // New button for advancing to next level
+        const restartButton = document.getElementById('restartButton'); // On solution screen
+        const gameOverMessage = document.getElementById('game-over-message'); // On game over screen
+        const restartGameFromGameOverButton = document.getElementById('restartGameFromGameOverButton'); // On game over screen
+        const backToMainMenuButton = document.getElementById('backToMainMenuButton'); // ปุ่มใหม่
+
+        // --- Helper Functions ---
+
+        /**
+         * Shuffles an array in place (Fisher-Yates algorithm).
+         * @param {Array} array - The array to shuffle.
+         * @returns {Array} The shuffled array.
+         */
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        /**
+         * Plays an audio file for a specific duration.
+         * Stops any currently playing audio before starting a new one.
+         * @param {string} filename - The name of the audio file (e.g., 'q01.ogg').
+         * @param {number} duration - The duration in milliseconds to play the audio. Pass 0 for full duration.
+         */
+        function playAudio(filename, duration = 7000) {
+            // Clear any previous timeout to stop audio
+            if (audioTimeout) {
+                clearTimeout(audioTimeout);
+            }
+            // Pause and reset current audio if playing
+            if (!audioPlayer.paused) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+            }
+
+            audioPlayer.src = filename;
+            audioPlayer.play().catch(e => console.error("Error playing audio:", e));
+
+            if (duration > 0) {
+                // Set a timeout to pause the audio after the specified duration
+                audioTimeout = setTimeout(() => {
+                    audioPlayer.pause();
+                    audioPlayer.currentTime = 0; // Reset to start for next play
+                }, duration);
+            }
+        }
+
+        /**
+         * Generates an array of unique incorrect answers from a combined pool.
+         * @param {string} correctAnswer - The correct answer for the current question.
+         * @param {Array<Object>} songsInCurrentLevelPool - The full array of songs for the current level (e.g., beginnerSongsData or advancedSongsData).
+         * @param {Array<string>} allCorrectAnswersGlobalPool - All possible correct answers from all levels.
+         * @param {Array<string>} allFakeAnswersGlobalPool - All manually added fake answers.
+         * @param {number} count - The number of incorrect answers to generate.
+         * @returns {Array<string>} An array of unique incorrect answer strings.
+         */
+        function getIncorrectAnswers(correctAnswer, songsInCurrentLevelPool, allCorrectAnswersGlobalPool, allFakeAnswersGlobalPool, count) {
+            const candidates = new Set();
+
+            // Add correct answers from the *current level's pool*, excluding the current correct answer
+            // This ensures choices are somewhat relevant to the current level's themes
+            songsInCurrentLevelPool.forEach(song => {
+                if (song.answer !== correctAnswer) {
+                    candidates.add(song.answer);
+                }
+            });
+
+            // Add other correct answers from the *global pool*, excluding the current correct answer
+            // This provides even more variety
+            allCorrectAnswersGlobalPool.forEach(ans => {
+                if (ans !== correctAnswer) {
+                    candidates.add(ans);
+                }
+            });
+
+            // Add all fake answers, ensuring they are not the correct answer
+            allFakeAnswersGlobalPool.forEach(ans => {
+                if (ans !== correctAnswer) {
+                    candidates.add(ans);
+                }
+            });
+
+            let finalCandidates = Array.from(candidates);
+            shuffleArray(finalCandidates);
+
+            // Return up to 'count' unique incorrect answers
+            return finalCandidates.slice(0, count);
+        }
+
+        // --- UI State Management ---
+
+        /**
+         * Hides all game screens and shows the specified one.
+         * @param {HTMLElement} screenToShow - The DOM element of the screen to show.
+         */
+        function showScreen(screenToShow) {
+            startScreen.classList.add('hidden');
+            questionScreen.classList.add('hidden');
+            feedbackScreen.classList.add('hidden'); // Still hiding it, though not directly used to show content
+            solutionScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden'); // Hide game over screen
+            screenToShow.classList.remove('hidden');
+        }
+
+        // --- Game Logic Functions ---
+
+        /**
+         * Initializes the game for a new round and a specified level.
+         * @param {string} level - The level to start ('beginner' or 'advanced').
+         */
+        function startGame(level) {
+            playAudio('qstart.ogg', 0); // Play start game sound
+
+            currentLevel = level;
+            let songsSource = level === 'beginner' ? beginnerSongsData : advancedSongsData;
+
+            // Select ALL songs for the current round from the respective level's pool and shuffle them
+            currentRoundSongs = shuffleArray([...songsSource]);
+            currentQuestionIndex = 0;
+            score = 0;
+            incorrectAttempts = 0; // Reset incorrect attempts for new game/level
+            userAnswers = []; // Clear previous answers
+
+            renderQuestionScreen();
+            playCurrentSong(); // Auto-play song when game starts
+        }
+
+        /**
+         * Renders the current question screen.
+         */
+        function renderQuestionScreen() {
+            showScreen(questionScreen);
+
+            const currentSong = currentRoundSongs[currentQuestionIndex];
+            // Display current question number and allowed incorrect attempts
+            questionNumberDisplay.textContent = `ข้อที่ ${currentQuestionIndex + 1}/${currentRoundSongs.length} (ผิด ${incorrectAttempts}/${maxIncorrectAttemptsThreshold[currentLevel] - 1} ครั้ง)`;
+
+            // Reset audio play count for new question
+            audioPlayCount = 0;
+            playMusicButton.disabled = false;
+            playMusicButton.classList.remove('btn-disabled');
+
+
+            // Generate answer choices: 1 correct + 3 incorrect
+            const correct = currentSong.answer;
+            const incorrects = getIncorrectAnswers(correct, currentLevel === 'beginner' ? beginnerSongsData : advancedSongsData, allCorrectAnswersPool, additionalFakeAnswers, 3);
+            const allChoices = shuffleArray([correct, ...incorrects]);
+
+            answerChoicesDiv.innerHTML = ''; // Clear previous choices
+
+            allChoices.forEach(choice => {
+                const button = document.createElement('button');
+                button.textContent = choice;
+                button.classList.add('btn', 'btn-secondary', 'answer-button');
+                button.onclick = () => checkAnswer(choice);
+                answerChoicesDiv.appendChild(button);
+            });
+        }
+
+        /**
+         * Handles playing the current song.
+         */
+        function playCurrentSong() {
+            // Allow 1 initial play (audioPlayCount=0) + 1 replay (audioPlayCount=1). Total 2 plays.
+            if (audioPlayCount < 2) {
+                const currentSongFile = currentRoundSongs[currentQuestionIndex].file;
+                playAudio(currentSongFile, 7000); // Play for 7 seconds
+                audioPlayCount++;
+                // Disable button if no plays left (after 2 plays total)
+                if (audioPlayCount >= 2) {
+                    playMusicButton.disabled = true;
+                    playMusicButton.classList.add('btn-disabled');
+                }
+            }
+        }
+
+        /**
+         * Checks the user's selected answer.
+         * @param {string} selectedAnswer - The answer selected by the user.
+         */
+        function checkAnswer(selectedAnswer) {
+            const currentSong = currentRoundSongs[currentQuestionIndex];
+            const correctAnswer = currentSong.answer;
+            const isCorrect = (selectedAnswer === correctAnswer);
+
+            // Stop any playing audio
+            if (!audioPlayer.paused) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+                if (audioTimeout) clearTimeout(audioTimeout);
+            }
+
+            if (!isCorrect) {
+                incorrectAttempts++;
+                playAudio('qwrong.ogg', 0); // Play wrong sound
+            } else {
+                score++;
+                playAudio('qtrue.ogg', 0); // Play correct sound
+            }
+
+            userAnswers.push({
+                questionNumber: currentQuestionIndex + 1,
+                correctSongFile: currentSong.file, // Store file for debugging if needed
+                userAnswer: selectedAnswer,
+                correctAnswer: correctAnswer,
+                isCorrect: isCorrect,
+                level: currentLevel // Track level for solution display
+            });
+
+            // Disable all answer buttons after choice and highlight
+            Array.from(answerChoicesDiv.children).forEach(button => {
+                button.disabled = true;
+                button.classList.add('btn-disabled');
+                if (button.textContent === correctAnswer) {
+                    button.classList.remove('btn-secondary');
+                    button.classList.add('bg-green-200', 'text-green-800'); // Green for correct
+                } else if (button.textContent === selectedAnswer && !isCorrect) {
+                    button.classList.remove('btn-secondary');
+                    button.classList.add('bg-red-200', 'text-red-800'); // Red for incorrect user choice
+                }
+            });
+            playMusicButton.disabled = true; // Also disable play button
+            playMusicButton.classList.add('btn-disabled');
+
+            // Automatically move to the next state after a short delay (2 seconds)
+            setTimeout(() => {
+                if (incorrectAttempts >= maxIncorrectAttemptsThreshold[currentLevel]) {
+                    gameOver();
+                } else {
+                    nextQuestion();
+                }
+            }, 2000); // Delay of 2 seconds to allow feedback sound to play and for a short pause
+        }
+
+        /**
+         * Advances to the next question or the solution screen.
+         */
+        function nextQuestion() {
+            currentQuestionIndex++;
+            if (currentQuestionIndex < currentRoundSongs.length) { // Check against the total number of songs in the current level
+                renderQuestionScreen();
+                playCurrentSong(); // Auto-play song when going to next question
+            } else {
+                renderSolutionScreen(); // Go to solution screen after all questions in the current level
+            }
+        }
+
+        /**
+         * Handles the Game Over state.
+         */
+        function gameOver() {
+            // Stop any playing audio
+            if (!audioPlayer.paused) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+                if (audioTimeout) clearTimeout(audioTimeout);
+            }
+
+            showScreen(gameOverScreen);
+            playAudio('qSad.ogg', 0); // เปลี่ยนมาใช้ qSad.ogg เมื่อ Game Over
+            // Display a message indicating why the game ended
+            gameOverMessage.textContent = `คุณตอบผิดไป ${incorrectAttempts} ครั้ง ซึ่งเกินจำนวนที่กำหนดสำหรับระดับ ${currentLevel === 'beginner' ? 'ผู้เริ่มต้น' : 'Advance'} (${maxIncorrectAttemptsThreshold[currentLevel] -1} ครั้ง) โปรดเริ่มเล่นใหม่ทั้งหมด`;
+        }
+
+        /**
+         * Renders the solution screen showing detailed answers.
+         */
+        function renderSolutionScreen() {
+            showScreen(solutionScreen);
+            playAudio('qend.ogg', 0); // ยังคงใช้ qend.ogg เมื่อจบเกมแบบปกติ
+
+            solutionScoreDisplay.textContent = `คุณตอบถูก ${score}/${currentRoundSongs.length} ข้อ`;
+            solutionDetailsDiv.innerHTML = ''; // Clear previous details
+
+            userAnswers.forEach((data, index) => {
+                const solutionItem = document.createElement('div');
+                solutionItem.classList.add('solution-item');
+
+                const questionLabel = document.createElement('span');
+                questionLabel.classList.add('label');
+                questionLabel.textContent = `ข้อที่ ${data.questionNumber}: ${data.correctAnswer}`; // Show original song name (correct answer)
+                solutionItem.appendChild(questionLabel);
+
+                const userAnswerSpan = document.createElement('span');
+                userAnswerSpan.textContent = `คุณตอบ: ${data.userAnswer}`;
+                userAnswerSpan.classList.add('value', data.isCorrect ? 'text-green-600' : 'text-red-600');
+                solutionItem.appendChild(userAnswerSpan);
+
+                if (!data.isCorrect) {
+                    const correctAnswerSpan = document.createElement('span');
+                    correctAnswerSpan.textContent = `คำตอบที่ถูก: ${data.correctAnswer}`;
+                    correctAnswerSpan.classList.add('value', 'text-green-800');
+                    solutionItem.appendChild(correctAnswerSpan);
+                }
+
+                solutionDetailsDiv.appendChild(solutionItem);
+            });
+
+            // Conditional display of advance level button
+            // Show only if current level is beginner AND player didn't game over
+            if (currentLevel === 'beginner' && incorrectAttempts < maxIncorrectAttemptsThreshold['beginner']) {
+                advanceLevelButton.classList.remove('hidden');
+                // Adjust restart button style if advance button is shown
+                restartButton.classList.remove('btn-primary');
+                restartButton.classList.add('btn-secondary');
+            } else {
+                advanceLevelButton.classList.add('hidden');
+                // Ensure restart button is primary if no advance option
+                restartButton.classList.remove('btn-secondary');
+                restartButton.classList.add('btn-primary');
+            }
+        }
+
+        /**
+         * Restarts the game completely from the beginning (start screen), resetting all progress.
+         */
+        function restartGameEntirely() {
+            // Stop any playing audio
+            if (!audioPlayer.paused) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+                if (audioTimeout) clearTimeout(audioTimeout);
+            }
+            showScreen(startScreen);
+            playAudio('qstart.ogg', 0); // Play start game sound when returning to start screen
+            currentLevel = 'beginner'; // Reset to beginner by default for the next game
+            incorrectAttempts = 0; // Reset for a fresh start
+            score = 0;
+            userAnswers = [];
+            currentQuestionIndex = 0;
+            currentRoundSongs = [];
+            // Update the start button text as it might have changed to 'Advanced'
+            startButton.textContent = 'เริ่มกันเลย (ระดับผู้เริ่มต้น)';
+        }
+
+        // --- Event Listeners ---
+        // Start the game at 'beginner' level when startButton is clicked
+        startButton.addEventListener('click', () => startGame('beginner'));
+        playMusicButton.addEventListener('click', playCurrentSong);
+        // Start the game at 'advanced' level when advanceLevelButton is clicked
+        advanceLevelButton.addEventListener('click', () => {
+            startGame('advanced');
+            startButton.textContent = 'เริ่มกันเลย (ระดับผู้เริ่มต้น)'; // Reset start button text if user advanced
+        });
+        // Restart the entire game from solution screen
+        restartButton.addEventListener('click', restartGameEntirely);
+        // Restart the entire game from game over screen
+        restartGameFromGameOverButton.addEventListener('click', restartGameEntirely);
+
+        // Event listener for the new "Back to Main Menu" button
+        backToMainMenuButton.addEventListener('click', () => {
+            // Stop any playing audio before redirecting
+            if (!audioPlayer.paused) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+                if (audioTimeout) clearTimeout(audioTimeout);
+            }
+            window.location.href = '../index.html'; // กำหนดให้กลับไปยัง ../index.html
+        });
+
+
+        // Initial screen load: Show start screen and play start sound
+        window.onload = () => {
+            showScreen(startScreen);
+            playAudio('qstart.ogg', 0);
+        };
+
+    </script>
+</body>
+</html>
