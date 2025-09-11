@@ -109,69 +109,6 @@
         #move-left-button { background-color: #3b82f6; color: white; }
         #move-center-button { background-color: #fca5a5; color: white; }
         #move-right-button { background-color: #3b82f6; color: white; }
-        .pause-button {
-            background-color: #64748b;
-            color: white;
-            padding: 0.5rem 1rem;
-            font-size: 1rem;
-            border: none;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            margin-top: 1rem;
-        }
-        .pause-button:hover {
-            background-color: #475569;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.6);
-            backdrop-filter: blur(5px);
-            justify-content: center;
-            align-items: center;
-        }
-        .modal-content {
-            background-color: #1a2a3a;
-            padding: 2rem;
-            border-radius: 1rem;
-            border: 3px solid #fca5a5;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            width: 80%;
-            max-width: 400px;
-            text-align: center;
-        }
-        .modal-content h2 {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #fca5a5;
-            margin-bottom: 1rem;
-        }
-        .modal-content p {
-            font-size: 1.25rem;
-            margin-bottom: 1rem;
-            color: #e0f2fe;
-        }
-        .modal-button {
-            background-color: #10b981;
-            color: white;
-            padding: 0.75rem 2rem;
-            border: none;
-            border-radius: 9999px;
-            cursor: pointer;
-            font-size: 1.2rem;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-        .modal-button:hover {
-            background-color: #059669;
-        }
         .back-button {
             position: absolute;
             top: 1.5rem;
@@ -184,7 +121,6 @@
         .back-button:hover {
             background-color: #64748b;
         }
-
         .dug-image {
             width: 150px;
             height: auto;
@@ -197,27 +133,19 @@
 <body class="flex flex-col items-center">
 
     <div class="container">
-        <!-- Main Game UI -->
-        <div id="start-ui">
-            <!-- ปุ่ม "กลับเมนูหลัก" -->
+        <div id="start-ui" aria-hidden="false">
             <button id="back-to-main-button" class="back-button">กลับเมนูหลัก</button>
-
             <h1 id="game-title" class="game-title">เจ้าเป็ดจอมกวน</h1>
             <img id="duck-image" src="dug.png" alt="เจ้าเป็ดจอมกวนตัวสีเหลืองน่าฟัด!" class="dug-image">
             <p id="game-info" class="game-info">ฟังเสียงว่า เจ้าเป็ดจอมกวนมาจากทางไหน แล้วกดยิงได้เลย</p>
-            <p id="message" class="text-xl text-center">พลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 10 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย</p>
-            
+            <p id="message" class="text-xl text-center">คุณพลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 2 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย</p>
             <button id="start-button" class="start-button">เริ่มเกม</button>
             <button id="permission-button" class="permission-button hidden">เริ่มเกมแบบ ขออนุญาตเข้าถึงการเคลื่อนไหว</button>
         </div>
         
-        <div id="game-ui" class="hidden">
-            <div id="game-stats" class="game-stats">
-                <!-- Removed score and miss count display during the game -->
-            </div>
+        <div id="game-ui" class="hidden" aria-hidden="true" tabindex="-1">
+            <div id="game-stats" class="game-stats hidden"></div>
             <p id="game-message" class="text-xl text-center mt-8">รอบที่ 0</p>
-            
-            <!-- Controls with only 3 buttons -->
             <div id="controls" class="controls-container">
                 <button id="move-left-button" class="control-button">ยิงซ้าย</button>
                 <button id="move-center-button" class="control-button">ยิงตรง</button>
@@ -226,18 +154,7 @@
         </div>
     </div>
 
-    <!-- End Game Modal -->
-    <div id="status-modal" class="modal">
-        <div class="modal-content">
-            <h2 id="modal-title"></h2>
-            <img id="modal-duck-image" src="dug.png" alt="เจ้าเป็ดจอมกวนตัวสีเหลืองน่าฟัด!" class="dug-image hidden">
-            <p id="modal-score"></p>
-            <button id="modal-button" class="modal-button"></button>
-        </div>
-    </div>
-
     <script>
-        // Game state variables
         let isGameRunning = false;
         let duckLocation = '';
         let gameRound = 0;
@@ -245,51 +162,39 @@
         let score = 0;
         let currentTimeoutId = null;
         let isGameOver = false;
-        let lastFocusedButton = null;
-        let isControlsDisabled = false;
+        let isInputActive = false;
         let lastDuckLocation = null;
         let consecutiveCount = 0;
-        
-        // Motion sensor variables
-        const TILT_THRESHOLD = 5;
-        const TILT_FORWARD_THRESHOLD = -5; // Negative value for tilting forward along z-axis
 
-        // DOM elements
+        const TILT_THRESHOLD = 5;
+        const TILT_FORWARD_THRESHOLD = -5;
+        let lastTiltDirection = null;
+
         const startUI = document.getElementById('start-ui');
         const gameUI = document.getElementById('game-ui');
         const messageElement = document.getElementById('game-message');
         const startButton = document.getElementById('start-button');
         const permissionButton = document.getElementById('permission-button');
-        const controlsContainer = document.getElementById('controls');
-        const gameStatsContainer = document.getElementById('game-stats');
-        const gameTitle = document.getElementById('game-title');
-        const gameInfo = document.getElementById('game-info');
-        const scoreDisplay = document.getElementById('score'); // Keeping this for the end game screen
         const moveLeftButton = document.getElementById('move-left-button');
         const moveCenterButton = document.getElementById('move-center-button');
         const moveRightButton = document.getElementById('move-right-button');
-        const statusModal = document.getElementById('status-modal');
-        const modalTitle = document.getElementById('modal-title');
-        const modalScore = document.getElementById('modal-score');
-        const modalButton = document.getElementById('modal-button');
         const backToMainButton = document.getElementById('back-to-main-button');
         const duckImage = document.getElementById('duck-image');
-        const modalDuckImage = document.getElementById('modal-duck-image');
+        const gameTitle = document.getElementById('game-title');
+        const gameInfo = document.getElementById('game-info');
         const controlButtons = [moveLeftButton, moveCenterButton, moveRightButton];
 
-        // Audio files
         const audio = {
-            duggun: new Audio('duggun.ogg'),
             dugleft: new Audio('dugleft.ogg'),
             dugmid: new Audio('dugmid.ogg'),
             dugright: new Audio('dugright.ogg'),
             dugmatch: new Audio('dugmatch.ogg'),
             dugfail: new Audio('dugfail.ogg'),
+            dug0: new Audio('dug0.ogg'),
             endlost: new Audio('endlost.ogg'),
             endhappy: new Audio('endhappy.ogg')
         };
-        
-        // Function to stop all audio playback
+
         function stopAllAudio() {
             for (let key in audio) {
                 audio[key].pause();
@@ -297,222 +202,168 @@
             }
         }
 
-        // Function to play a single audio with a callback for when it ends
-        function playSingleAudio(audioName, callback) {
+        function playSingleAudio(name, callback) {
             stopAllAudio();
-            const audioElement = audio[audioName];
-            
-            const onEndedHandler = () => {
-                audioElement.removeEventListener('ended', onEndedHandler);
-                if (callback) {
-                    callback();
-                }
+            const a = audio[name];
+            a.onended = () => {
+                a.onended = null;
+                if (callback) callback();
             };
-            audioElement.addEventListener('ended', onEndedHandler);
-
-            audioElement.play().catch(e => console.error("Error playing audio:", e));
+            a.play().catch(e => console.error(e));
         }
 
-        function updateMessage() {
-            messageElement.textContent = `รอบที่ ${gameRound}`;
-        }
-        
-        function showGameUI() {
-            startUI.classList.add('hidden');
-            gameUI.classList.remove('hidden');
-            gameStatsContainer.classList.add('hidden'); // Hide game stats completely
-            backToMainButton.classList.add('hidden');
-            duckImage.classList.add('hidden'); // Hide duck image in game UI
-            
-            window.addEventListener('devicemotion', handleMotion);
-            
-            // Start the game logic
-            setTimeout(startDuckFlight, 500);
-        }
-        
-        function showStartUI() {
-            startUI.classList.remove('hidden');
-            gameUI.classList.add('hidden');
-            backToMainButton.classList.remove('hidden');
-            duckImage.classList.remove('hidden');
-            
-            // Stop motion sensor listening when not in game
-            window.removeEventListener('devicemotion', handleMotion);
-            
-            // Reset game state for a new start
+        function resetGameVariables() {
             isGameRunning = false;
             duckLocation = '';
             gameRound = 0;
             missCount = 0;
             score = 0;
-            currentTimeoutId = null;
             isGameOver = false;
-            lastFocusedButton = null;
-            isControlsDisabled = false;
+            isInputActive = false;
             lastDuckLocation = null;
             consecutiveCount = 0;
-            
-            // Check for Device Motion permission requirement
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                startButton.classList.add('hidden');
-                permissionButton.classList.remove('hidden');
-                messageElement.textContent = 'กรุณากดปุ่มเพื่อเริ่มเกมและอนุญาตการเข้าถึงเซ็นเซอร์';
-            } else {
-                startButton.classList.remove('hidden');
-                permissionButton.classList.add('hidden');
-                messageElement.textContent = "พลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 10 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย";
-            }
-            
-            // Update UI elements for the initial screen
+            lastTiltDirection = null;
+            if (currentTimeoutId) clearTimeout(currentTimeoutId);
+            currentTimeoutId = null;
+        }
+
+        function updateMessage() {
+            messageElement.textContent = `รอบที่ ${gameRound}`;
+        }
+
+        function activateApplicationMode() {
+            startUI.setAttribute('aria-hidden', 'true');
+            gameUI.classList.remove('hidden');
+            gameUI.setAttribute('aria-hidden', 'false');
+            gameUI.setAttribute('role', 'application');
+            gameUI.setAttribute('tabindex', '0');
+            try { gameUI.focus(); } catch (e) {}
+        }
+
+        function deactivateApplicationMode() {
+            gameUI.setAttribute('aria-hidden', 'true');
+            gameUI.classList.add('hidden');
+            gameUI.removeAttribute('role');
+            gameUI.removeAttribute('tabindex');
+            startUI.setAttribute('aria-hidden', 'false');
+            try { startButton.focus(); } catch (e) {}
+        }
+
+        function showGameUI() {
+            startUI.classList.add('hidden');
+            gameUI.classList.remove('hidden');
+            backToMainButton.classList.add('hidden');
+            duckImage.classList.add('hidden');
+            window.addEventListener('devicemotion', handleMotion);
+            activateApplicationMode();
+            setTimeout(startDuckFlight, 500);
+        }
+
+        function showStartUI() {
+            resetGameVariables();
+            startUI.classList.remove('hidden');
+            gameUI.classList.add('hidden');
+            backToMainButton.classList.remove('hidden');
+            duckImage.classList.remove('hidden');
+            window.removeEventListener('devicemotion', handleMotion);
+            startButton.textContent = "เริ่มเกม";
             gameTitle.textContent = "เจ้าเป็ดจอมกวน";
             gameInfo.textContent = "ฟังเสียงว่า เจ้าเป็ดจอมกวนมาจากทางไหน แล้วกดยิงได้เลย";
-            startButton.textContent = "เริ่มเกม";
-        }
-        
-        function enableControls() {
-            isControlsDisabled = false;
-            controlButtons.forEach(button => {
-                button.disabled = false;
-            });
-        }
-        
-        function disableControls() {
-            isControlsDisabled = true;
-            controlButtons.forEach(button => {
-                button.disabled = true;
-            });
+            messageElement.textContent = "พลาดได้ 2 ครั้ง...";
+            deactivateApplicationMode();
         }
 
-        // Handles the timeout when the player doesn't react in time
+        function enableControls() {
+            isInputActive = false;
+            controlButtons.forEach(b => b.disabled = false);
+        }
+
+        function disableControls() {
+            isInputActive = true;
+            controlButtons.forEach(b => b.disabled = true);
+        }
+
         function handleTimeout() {
             if (isGameOver) return;
-            
             missCount++;
-            
             disableControls();
-
-            playSingleAudio('dugfail', () => {
+            playSingleAudio('dug0', () => {
                 if (missCount >= 2) {
                     gameOver("lose");
                 } else {
-                    setTimeout(() => {
-                        enableControls();
-                        startDuckFlight();
-                    }, 800);
+                    startDuckFlight();
                 }
             });
         }
 
-        // Starts a new round of duck flight
         function startDuckFlight() {
-            if (!isGameRunning || isGameOver || gameRound >= 10) {
-                if(gameRound >= 10){
-                    gameOver("win");
-                }
+            if (!isGameRunning || isGameOver) return;
+            if (currentTimeoutId) clearTimeout(currentTimeoutId);
+
+            if (gameRound >= 30) {
+                gameOver("win");
                 return;
             }
-            
+
             gameRound++;
             updateMessage();
-            
-            const locations = ['left', 'center', 'right'];
-            let newDuckLocation;
-            
+
+            const locations = ['left','center','right'];
+            let newLoc;
             if (consecutiveCount >= 2) {
-                const availableLocations = locations.filter(loc => loc !== lastDuckLocation);
-                newDuckLocation = availableLocations[Math.floor(Math.random() * availableLocations.length)];
+                const available = locations.filter(l => l !== lastDuckLocation);
+                newLoc = available[Math.floor(Math.random()*available.length)];
                 consecutiveCount = 1;
             } else {
-                newDuckLocation = locations[Math.floor(Math.random() * locations.length)];
-                
-                if (newDuckLocation === lastDuckLocation) {
-                    consecutiveCount++;
-                } else {
-                    consecutiveCount = 1;
-                }
+                newLoc = locations[Math.floor(Math.random()*locations.length)];
+                consecutiveCount = (newLoc === lastDuckLocation) ? consecutiveCount+1 : 1;
             }
-            
-            duckLocation = newDuckLocation;
-            lastDuckLocation = newDuckLocation;
+            duckLocation = newLoc;
+            lastDuckLocation = newLoc;
 
             enableControls();
+            lastTiltDirection = null;
 
-            let duckAudioName = '';
-            if (duckLocation === 'left') {
-                duckAudioName = 'dugleft';
-            } else if (duckLocation === 'center') {
-                duckAudioName = 'dugmid';
-            } else {
-                duckAudioName = 'dugright';
-            }
+            const sound = (newLoc==='left'?'dugleft':newLoc==='center'?'dugmid':'dugright');
 
-            playSingleAudio(duckAudioName, () => {
-                const timeoutTime = gameRound === 1 ? 10000 : (gameRound > 5 ? 850 : 3000);
+            playSingleAudio(sound, () => {
+                let timeoutTime;
+                if (gameRound <= 10) timeoutTime = 2000;
+                else if (gameRound <= 20) timeoutTime = 100;
+                else timeoutTime = 3;
                 currentTimeoutId = setTimeout(handleTimeout, timeoutTime);
             });
         }
-        
-        // Handles player's move (shooting)
-        function handleMove(moveDirection, event) {
-            if (!isGameRunning || isGameOver || isControlsDisabled) {
-                return;
-            }
-            clearTimeout(currentTimeoutId);
-            disableControls();
-            
-            // Check if event is from a button click or a key press
-            if (event && event.target) {
-              lastFocusedButton = event.target;
-            }
 
-            playSingleAudio('duggun', () => {
-                if (moveDirection === duckLocation) {
-                    score++;
-                    playSingleAudio('dugmatch', () => {
-                        if (gameRound >= 10) {
-                            gameOver("win");
-                        } else {
-                            setTimeout(() => {
-                                enableControls();
-                                if (lastFocusedButton) {
-                                    lastFocusedButton.focus();
-                                }
-                                startDuckFlight();
-                            }, 500);
-                        }
-                    });
-                } else {
-                    missCount++;
-                    playSingleAudio('dugfail', () => {
-                        if (missCount >= 2) {
-                            gameOver("lose");
-                        } else {
-                            setTimeout(() => {
-                                enableControls();
-                                if (lastFocusedButton) {
-                                    lastFocusedButton.focus();
-                                }
-                                startDuckFlight();
-                            }, 500);
-                        }
-                    });
-                }
-            });
+        function handleMove(direction) {
+            if (isInputActive || isGameOver) return;
+            isInputActive = true;
+            if (currentTimeoutId) clearTimeout(currentTimeoutId);
+            disableControls();
+
+            if (direction === duckLocation) {
+                score++;
+                playSingleAudio('dugmatch', () => {
+                    if (gameRound >= 30) gameOver("win");
+                    else setTimeout(startDuckFlight, 500);
+                });
+            } else {
+                missCount++;
+                playSingleAudio('dugfail', () => {
+                    if (missCount >= 2) gameOver("lose");
+                    else setTimeout(startDuckFlight, 500);
+                });
+            }
         }
-        
+
         function gameOver(result) {
             isGameRunning = false;
             isGameOver = true;
-            clearTimeout(currentTimeoutId);
-            
+            if (currentTimeoutId) clearTimeout(currentTimeoutId);
             stopAllAudio();
             window.removeEventListener('devicemotion', handleMotion);
 
-            if (result === "lose") {
-                playSingleAudio('endlost');
-            } else {
-                playSingleAudio('endhappy');
-            }
+            playSingleAudio(result==="lose"?'endlost':'endhappy');
             showGameOverScreen();
         }
 
@@ -520,111 +371,67 @@
             startUI.classList.remove('hidden');
             gameUI.classList.add('hidden');
             backToMainButton.classList.remove('hidden');
-            
-            // Show duck image on game over screen
             duckImage.classList.remove('hidden');
-            
-            // Hide the game stats from the start screen
-            gameStatsContainer.classList.add('hidden');
-
             gameTitle.textContent = "จบเกมแล้ว";
             gameInfo.textContent = `คะแนนที่ทำได้: ${score} คะแนน`;
             messageElement.textContent = `จำนวนที่พลาด: ${missCount} ครั้ง`;
             startButton.textContent = "เริ่มเกมใหม่";
+            deactivateApplicationMode();
         }
-        
-        // Handle motion sensor data
-        function handleMotion(event) {
-            if (!isGameRunning || isControlsDisabled) {
-                return;
-            }
-            const acceleration = event.accelerationIncludingGravity;
 
-            // Tilt Left/Right
-            const tiltLeft = acceleration.x < -TILT_THRESHOLD;
-            const tiltRight = acceleration.x > TILT_THRESHOLD;
+        function handleMotion(e) {
+            if (!isGameRunning) return;
+            const a = e.accelerationIncludingGravity;
+            let tilt = null;
+            if (a.x < -TILT_THRESHOLD) tilt = 'left';
+            else if (a.x > TILT_THRESHOLD) tilt = 'right';
+            else if (a.z < TILT_FORWARD_THRESHOLD) tilt = 'center';
 
-            // Tilt Forward (pitch forward)
-            // A negative value in the z-axis acceleration often indicates a tilt forward
-            const tiltForward = acceleration.z < TILT_FORWARD_THRESHOLD;
-
-            if (tiltLeft) {
-                handleMove('left');
-            } else if (tiltRight) {
-                handleMove('right');
-            } else if (tiltForward) {
-                handleMove('center');
+            if (tilt && tilt !== lastTiltDirection) {
+                handleMove(tilt);
+                lastTiltDirection = tilt;
             }
         }
 
-        // Event Listeners
         startButton.addEventListener('click', () => {
-            isGameOver = false;
-            gameRound = 0;
-            missCount = 0;
-            score = 0;
+            resetGameVariables();
             isGameRunning = true;
-            
             showGameUI();
         });
-        
+
         permissionButton.addEventListener('click', () => {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            isGameOver = false;
-                            gameRound = 0;
-                            missCount = 0;
-                            score = 0;
-                            isGameRunning = true;
-                            showGameUI();
-                        } else {
-                            // User denied permission, can't use motion controls
-                            alert('ไม่ได้รับอนุญาตให้เข้าถึงการเคลื่อนไหวของอุปกรณ์ จะใช้การควบคุมด้วยปุ่มแทน');
-                            startButton.classList.remove('hidden');
-                            permissionButton.classList.add('hidden');
-                            messageElement.textContent = "พลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 10 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย";
-                        }
-                    })
-                    .catch(console.error);
+                DeviceOrientationEvent.requestPermission().then(state => {
+                    if (state === 'granted') {
+                        resetGameVariables();
+                        isGameRunning = true;
+                        showGameUI();
+                    } else {
+                        alert('ไม่ได้รับอนุญาต...');
+                    }
+                }).catch(console.error);
             } else {
-                // Not iOS 13+ or not Safari, just start the game
-                isGameOver = false;
-                gameRound = 0;
-                missCount = 0;
-                score = 0;
+                resetGameVariables();
                 isGameRunning = true;
                 showGameUI();
             }
         });
 
-        moveLeftButton.addEventListener('click', (event) => handleMove('left', event));
-        moveCenterButton.addEventListener('click', (event) => handleMove('center', event));
-        moveRightButton.addEventListener('click', (event) => handleMove('right', event));
-        
+        moveLeftButton.addEventListener('click', () => handleMove('left'));
+        moveCenterButton.addEventListener('click', () => handleMove('center'));
+        moveRightButton.addEventListener('click', () => handleMove('right'));
+
+        document.addEventListener('keydown', e => {
+            if (!isGameRunning || isInputActive) return;
+            if (e.key === 'ArrowLeft') handleMove('left');
+            if (e.key === 'ArrowUp') handleMove('center');
+            if (e.key === 'ArrowRight') handleMove('right');
+        });
+
         backToMainButton.addEventListener('click', () => {
             window.location.href = '../index.html';
         });
 
-        // Add keyboard controls
-        document.addEventListener('keydown', (event) => {
-            if (isGameRunning && !isControlsDisabled) {
-                switch (event.key) {
-                    case 'ArrowLeft':
-                        handleMove('left', event);
-                        break;
-                    case 'ArrowUp':
-                        handleMove('center', event);
-                        break;
-                    case 'ArrowRight':
-                        handleMove('right', event);
-                        break;
-                }
-            }
-        });
-
-        // Initial setup
         showStartUI();
     </script>
 </body>
