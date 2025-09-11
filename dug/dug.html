@@ -55,7 +55,7 @@
             font-weight: bold;
             color: #fde68a;
         }
-        .start-button, .back-button {
+        .start-button, .back-button, .permission-button {
             background-color: #10b981;
             color: white;
             padding: 1.25rem 2.5rem;
@@ -70,11 +70,15 @@
         .start-button {
             margin-top: 2rem;
         }
-        .start-button:hover, .back-button:hover {
+        .permission-button {
+            background-color: #f97316;
+            margin-top: 1rem;
+        }
+        .start-button:hover, .back-button:hover, .permission-button:hover {
             background-color: #059669;
             transform: translateY(-2px);
         }
-        .start-button:active, .back-button:active {
+        .start-button:active, .back-button:active, .permission-button:active {
             transform: scale(0.95);
         }
         .controls-container {
@@ -202,7 +206,9 @@
             <img id="duck-image" src="dug.png" alt="เจ้าเป็ดจอมกวนตัวสีเหลืองน่าฟัด!" class="dug-image">
             <p id="game-info" class="game-info">ฟังเสียงว่า เจ้าเป็ดจอมกวนมาจากทางไหน แล้วกดยิงได้เลย</p>
             <p id="message" class="text-xl text-center">พลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 10 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย</p>
+            
             <button id="start-button" class="start-button">เริ่มเกม</button>
+            <button id="permission-button" class="permission-button hidden">ขออนุญาตเข้าถึงการเคลื่อนไหว</button>
         </div>
         
         <div id="game-ui" class="hidden">
@@ -256,6 +262,7 @@
         const gameUI = document.getElementById('game-ui');
         const messageElement = document.getElementById('game-message');
         const startButton = document.getElementById('start-button');
+        const permissionButton = document.getElementById('permission-button');
         const controlsContainer = document.getElementById('controls');
         const gameStatsContainer = document.getElementById('game-stats');
         const gameTitle = document.getElementById('game-title');
@@ -320,21 +327,10 @@
             backToMainButton.classList.add('hidden');
             duckImage.classList.add('hidden'); // Hide duck image in game UI
             
-            // Request permission for motion sensors on iOS 13+
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            window.addEventListener('devicemotion', handleMotion);
-                        } else {
-                            console.error('Device motion permission denied.');
-                            alert('Device motion permission denied. Keyboard controls will be used.');
-                        }
-                    })
-                    .catch(console.error);
-            } else {
-                window.addEventListener('devicemotion', handleMotion);
-            }
+            window.addEventListener('devicemotion', handleMotion);
+            
+            // Start the game logic
+            setTimeout(startDuckFlight, 500);
         }
         
         function showStartUI() {
@@ -359,10 +355,20 @@
             lastDuckLocation = null;
             consecutiveCount = 0;
             
+            // Check for Device Motion permission requirement
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                startButton.classList.add('hidden');
+                permissionButton.classList.remove('hidden');
+                messageElement.textContent = 'กรุณากดปุ่มเพื่อเริ่มเกมและอนุญาตการเข้าถึงเซ็นเซอร์';
+            } else {
+                startButton.classList.remove('hidden');
+                permissionButton.classList.add('hidden');
+                messageElement.textContent = "พลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 10 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย";
+            }
+            
             // Update UI elements for the initial screen
             gameTitle.textContent = "เจ้าเป็ดจอมกวน";
             gameInfo.textContent = "ฟังเสียงว่า เจ้าเป็ดจอมกวนมาจากทางไหน แล้วกดยิงได้เลย";
-            messageElement.textContent = "พลาดได้ 2 ครั้ง? พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย";
             startButton.textContent = "เริ่มเกม";
         }
         
@@ -456,7 +462,11 @@
             }
             clearTimeout(currentTimeoutId);
             disableControls();
-            lastFocusedButton = event.target;
+            
+            // Check if event is from a button click or a key press
+            if (event && event.target) {
+              lastFocusedButton = event.target;
+            }
 
             playSingleAudio('duggun', () => {
                 if (moveDirection === duckLocation) {
@@ -566,10 +576,39 @@
             isGameRunning = true;
             
             showGameUI();
-            
-            setTimeout(startDuckFlight, 500);
         });
         
+        permissionButton.addEventListener('click', () => {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            isGameOver = false;
+                            gameRound = 0;
+                            missCount = 0;
+                            score = 0;
+                            isGameRunning = true;
+                            showGameUI();
+                        } else {
+                            // User denied permission, can't use motion controls
+                            alert('ไม่ได้รับอนุญาตให้เข้าถึงการเคลื่อนไหวของอุปกรณ์ จะใช้การควบคุมด้วยปุ่มแทน');
+                            startButton.classList.remove('hidden');
+                            permissionButton.classList.add('hidden');
+                            messageElement.textContent = "พลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 10 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย";
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Not iOS 13+ or not Safari, just start the game
+                isGameOver = false;
+                gameRound = 0;
+                missCount = 0;
+                score = 0;
+                isGameRunning = true;
+                showGameUI();
+            }
+        });
+
         moveLeftButton.addEventListener('click', (event) => handleMove('left', event));
         moveCenterButton.addEventListener('click', (event) => handleMove('center', event));
         moveRightButton.addEventListener('click', (event) => handleMove('right', event));
