@@ -46,16 +46,7 @@
             margin-top: 2rem;
             min-height: 4rem;
         }
-        .game-stats {
-            display: flex;
-            justify-content: center;
-            width: 100%;
-            margin-top: 1.5rem;
-            font-size: 1.25rem;
-            font-weight: bold;
-            color: #fde68a;
-        }
-        .start-button, .back-button, .permission-button {
+        .start-button, .back-button, .movement-button {
             background-color: #10b981;
             color: white;
             padding: 1.25rem 2.5rem;
@@ -66,19 +57,13 @@
             cursor: pointer;
             transition: background-color 0.3s, transform 0.1s;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .start-button {
-            margin-top: 2rem;
-        }
-        .permission-button {
-            background-color: #f97316;
             margin-top: 1rem;
         }
-        .start-button:hover, .back-button:hover, .permission-button:hover {
+        .start-button:hover, .back-button:hover, .movement-button:hover {
             background-color: #059669;
             transform: translateY(-2px);
         }
-        .start-button:active, .back-button:active, .permission-button:active {
+        .start-button:active, .back-button:active, .movement-button:active {
             transform: scale(0.95);
         }
         .controls-container {
@@ -138,9 +123,9 @@
             <h1 id="game-title" class="game-title">เจ้าเป็ดจอมกวน</h1>
             <img id="duck-image" src="dug.png" alt="เจ้าเป็ดจอมกวนตัวสีเหลืองน่าฟัด!" class="dug-image">
             <p id="game-info" class="game-info">ฟังเสียงว่า เจ้าเป็ดจอมกวนมาจากทางไหน แล้วกดยิงได้เลย</p>
-            <p id="message" class="text-xl text-center">คุณพลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 2 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ พร้อมจัดการเจ้าเป็ดจอมกวนแล้ว ลุยเลย</p>
+            <p id="message" class="text-xl text-center">คุณพลาดได้ 2 ครั้ง? รอบแรก คุณมีเวลา 2 วินาที รอบต่อๆไป คุณจะมีเวลาน้อยลงเรื่อยๆ</p>
             <button id="start-button" class="start-button">เริ่มเกม</button>
-            <button id="permission-button" class="permission-button hidden">เริ่มเกมแบบ ขออนุญาตเข้าถึงการเคลื่อนไหว</button>
+            <button id="movement-button" class="movement-button">เริ่มเล่นแบบ Movement</button>
         </div>
         
         <div id="game-ui" class="hidden" aria-hidden="true" tabindex="-1">
@@ -165,6 +150,7 @@
         let isInputActive = false;
         let lastDuckLocation = null;
         let consecutiveCount = 0;
+        let useMovement = false;
 
         const TILT_THRESHOLD = 5;
         const TILT_FORWARD_THRESHOLD = -5;
@@ -174,7 +160,7 @@
         const gameUI = document.getElementById('game-ui');
         const messageElement = document.getElementById('game-message');
         const startButton = document.getElementById('start-button');
-        const permissionButton = document.getElementById('permission-button');
+        const movementButton = document.getElementById('movement-button');
         const moveLeftButton = document.getElementById('move-left-button');
         const moveCenterButton = document.getElementById('move-center-button');
         const moveRightButton = document.getElementById('move-right-button');
@@ -254,13 +240,14 @@
             gameUI.classList.remove('hidden');
             backToMainButton.classList.add('hidden');
             duckImage.classList.add('hidden');
-            window.addEventListener('devicemotion', handleMotion);
+            if (useMovement) window.addEventListener('devicemotion', handleMotion);
             activateApplicationMode();
             setTimeout(startDuckFlight, 500);
         }
 
         function showStartUI() {
             resetGameVariables();
+            useMovement = false;
             startUI.classList.remove('hidden');
             gameUI.classList.add('hidden');
             backToMainButton.classList.remove('hidden');
@@ -329,8 +316,8 @@
             playSingleAudio(sound, () => {
                 let timeoutTime;
                 if (gameRound <= 10) timeoutTime = 2000;
-                else if (gameRound <= 20) timeoutTime = 100;
-                else timeoutTime = 3;
+                else if (gameRound <= 20) timeoutTime = 300;
+                else timeoutTime = 100;
                 currentTimeoutId = setTimeout(handleTimeout, timeoutTime);
             });
         }
@@ -380,7 +367,7 @@
         }
 
         function handleMotion(e) {
-            if (!isGameRunning) return;
+            if (!isGameRunning || !useMovement) return;
             const a = e.accelerationIncludingGravity;
             let tilt = null;
             if (a.x < -TILT_THRESHOLD) tilt = 'left';
@@ -395,23 +382,27 @@
 
         startButton.addEventListener('click', () => {
             resetGameVariables();
+            useMovement = false;
             isGameRunning = true;
             showGameUI();
         });
 
-        permissionButton.addEventListener('click', () => {
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(state => {
+        movementButton.addEventListener('click', () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission().then(state => {
                     if (state === 'granted') {
                         resetGameVariables();
+                        useMovement = true;
                         isGameRunning = true;
                         showGameUI();
                     } else {
-                        alert('ไม่ได้รับอนุญาต...');
+                        alert('ไม่ได้รับอนุญาตให้ใช้การเคลื่อนไหว');
                     }
                 }).catch(console.error);
             } else {
+                // สำหรับเบราว์เซอร์ที่ไม่ต้องขออนุญาต (Android)
                 resetGameVariables();
+                useMovement = true;
                 isGameRunning = true;
                 showGameUI();
             }
@@ -422,7 +413,7 @@
         moveRightButton.addEventListener('click', () => handleMove('right'));
 
         document.addEventListener('keydown', e => {
-            if (!isGameRunning || isInputActive) return;
+            if (!isGameRunning || isInputActive || useMovement) return;
             if (e.key === 'ArrowLeft') handleMove('left');
             if (e.key === 'ArrowUp') handleMove('center');
             if (e.key === 'ArrowRight') handleMove('right');
