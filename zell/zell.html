@@ -149,7 +149,12 @@ function nextRound(){
   document.getElementById('roundInfo').textContent = 'รอบที่ ' + round;
   announce('รอบที่ ' + round);
 
-  let count = Math.min(3 + Math.floor(round/2), 8);
+  // กำหนดจำนวน action ต่อรอบ
+  let count = 1;
+  if(round > 3) {
+    count = Math.min(2 + Math.floor((round-4)/1), 8); 
+  }
+
   sequence = [];
   while(sequence.length < count){
     let pick = actions[Math.floor(Math.random()*actions.length)];
@@ -164,25 +169,28 @@ function nextRound(){
   window.addEventListener('deviceorientation', handleOrientation);
   window.addEventListener('devicemotion', handleShake);
 
-  timeLeft = baseTimeLimit + (sequence.length*1000);
-  updateTime(timeLeft);
-  timeTimer = setInterval(()=>{
-    timeLeft -= 200;
+  // หน่วงเวลา 3 วินาที ก่อนเล่นรอบใหม่
+  setTimeout(()=>{
+    timeLeft = baseTimeLimit + (sequence.length*1000);
     updateTime(timeLeft);
-    if(timeLeft<=0){
-      wrongCount++;
-      updateWrong();
-      stopPlayerInput();
-      clearInterval(timeTimer);
-      if(wrongCount>=3){ endGameFailed(); }
-      else {
-        document.getElementById('lost').play().catch(()=>{});
-        setTimeout(()=>{ round++; nextRound(); }, 2000);
+    timeTimer = setInterval(()=>{
+      timeLeft -= 200;
+      updateTime(timeLeft);
+      if(timeLeft<=0){
+        wrongCount++;
+        updateWrong();
+        stopPlayerInput();
+        clearInterval(timeTimer);
+        if(wrongCount>=3){ endGameFailed(); }
+        else {
+          document.getElementById('lost').play().catch(()=>{});
+          setTimeout(()=>{ round++; nextRound(); }, 2000);
+        }
       }
-    }
-  },200);
+    },200);
 
-  playSequence();
+    playSequence();
+  },3000); // หน่วง 3 วินาที
 }
 
 function playSequence(){
@@ -201,7 +209,6 @@ function playSequence(){
 
 function handleOrientation(e){
   if(!playing) return;
-  console.log("Orientation:", e.beta, e.gamma);
 
   let action = null;
   if(e.gamma > 20) action = 'right';
@@ -221,14 +228,12 @@ function handleShake(e){
     let now = Date.now();
     if(now - lastShakeTime > 1200){
       lastShakeTime = now;
-      console.log("Shake detected:", magnitude);
       checkAction('shake');
     }
   }
 }
 
 function checkAction(action){
-  console.log("Check:", action, "Expect:", sequence[inputIndex].type);
   if(action === sequence[inputIndex].type){
     try{ new Audio('01.mp3').play().catch(()=>{}); }catch(e){}
     score += 10; updateScore(); inputIndex++;
