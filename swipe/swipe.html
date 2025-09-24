@@ -1,203 +1,391 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <title>Swipe Game</title>
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background: #111;
-      color: #fff;
-      font-family: sans-serif;
-      user-select: none;
-      overflow: hidden;
-    }
-    #gameArea {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-    }
-    button {
-      padding: 1em 2em;
-      font-size: 1.2em;
-      border-radius: 12px;
-      border: none;
-      cursor: pointer;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swipe</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        .game-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            width: 100vw;
+            height: 100vh;
+            background-color: #1a1a1a;
+            color: white;
+            transition: background-color 0.5s ease-in-out;
+        }
+        .game-message {
+            font-size: 2rem;
+            text-align: center;
+            padding: 1rem;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .start-button {
+            background-color: #4CAF50; /* Green */
+            border: none;
+            color: white;
+            padding: 1rem 2rem;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 1.5rem;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: transform 0.2s ease-in-out, background-color 0.2s ease-in-out;
+        }
+        .start-button:hover {
+            background-color: #45a049;
+            transform: scale(1.05);
+        }
+        .lives-display {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff4d4d;
+        }
+    </style>
 </head>
 <body>
-  <div id="gameArea">
-    <button id="startBtn">เริ่มเกม</button>
-  </div>
 
-  <audio id="bgm" src="background.mp3" loop></audio>
-  <audio id="startSound" src="start.mp3"></audio>
-  <audio id="win" src="win.mp3"></audio>
-  <audio id="lost" src="lost.mp3"></audio>
-  <audio id="endHappy" src="endhappy.mp3"></audio>
-  <audio id="endLost" src="endlost.mp3"></audio>
+<div id="game-container" class="game-container">
+    <div id="message-display" class="game-message">
+        <h1 class="text-4xl font-bold mb-4">เกม Swipe</h1>
+        <p>คุณพร้อมจะทดสอบความเร็วแล้วหรือยัง?</p>
+    </div>
+    <div id="start-area" class="mt-8">
+        <button id="start-button" class="start-button">
+            เริ่มเกม
+        </button>
+    </div>
+    <div id="lives-display" class="lives-display hidden">
+        หัวใจ: ❤️❤️❤️
+    </div>
+</div>
 
-  <audio id="left" src="left.mp3"></audio>
-  <audio id="right" src="right.mp3"></audio>
-  <audio id="up" src="up.mp3"></audio>
-  <audio id="down" src="down.mp3"></audio>
-  <audio id="tap" src="touch.mp3"></audio>
-  <audio id="doubletap" src="touch2.mp3"></audio>
-
-  <script>
-    const startBtn = document.getElementById("startBtn");
-    const gameArea = document.getElementById("gameArea");
-    const bgm = document.getElementById("bgm");
-
-    const sounds = {
-      start: document.getElementById("startSound"),
-      win: document.getElementById("win"),
-      lost: document.getElementById("lost"),
-      endHappy: document.getElementById("endHappy"),
-      endLost: document.getElementById("endLost"),
-      left: document.getElementById("left"),
-      right: document.getElementById("right"),
-      up: document.getElementById("up"),
-      down: document.getElementById("down"),
-      tap: document.getElementById("tap"),
-      doubletap: document.getElementById("doubletap")
+<script>
+    // Audio URLs (ตัวอย่าง)
+    const audioUrls = {
+        start: 'https://cdn.pixabay.com/audio/2023/11/17/start-153835.mp3',
+        background: 'https://cdn.pixabay.com/audio/2023/07/04/background-143006.mp3',
+        left: 'https://cdn.pixabay.com/audio/2023/04/09/move-left-141208.mp3',
+        right: 'https://cdn.pixabay.com/audio/2023/04/09/move-right-141209.mp3',
+        up: 'https://cdn.pixabay.com/audio/2023/04/09/move-up-141210.mp3',
+        down: 'https://cdn.pixabay.com/audio/2023/04/09/move-down-141207.mp3',
+        touch: 'https://cdn.pixabay.com/audio/2023/04/09/touch-141211.mp3',
+        touch2: 'https://cdn.pixabay.com/audio/2023/04/09/double-touch-141206.mp3',
+        win: 'https://cdn.pixabay.com/audio/2023/04/09/correct-141203.mp3',
+        lost: 'https://cdn.pixabay.com/audio/2023/04/09/wrong-141212.mp3',
+        endlost: 'https://cdn.pixabay.com/audio/2023/04/09/game-over-141205.mp3',
+        endhappy: 'https://cdn.pixabay.com/audio/2023/04/09/game-complete-141204.mp3'
     };
 
-    const gestures = ["left", "right", "up", "down", "tap", "doubletap"];
+    // Load audio files
+    const sounds = {};
+    for (const key in audioUrls) {
+        sounds[key] = new Audio(audioUrls[key]);
+        sounds[key].preload = 'auto';
+    }
 
-    let round = 1;
-    let seq = [];
-    let playerIndex = 0;
-    let mistakes = 0;
-    let listening = false;
+    // Game State Variables
+    const gestures = ['left', 'right', 'up', 'down', 'touch', 'touch2'];
+    const gestureAudioMap = {
+        'left': sounds.left, 'right': sounds.right, 'up': sounds.up, 'down': sounds.down,
+        'touch': sounds.touch, 'touch2': sounds.touch2
+    };
+    let gameStatus = 'waiting'; // 'waiting', 'start-prompt', 'playing', 'lost', 'won'
+    let currentRound = 1;
+    let lives = 3;
+    let currentSequence = [];
+    let sequenceIndex = 0;
+    let timeoutTimer;
+    let backgroundAudioPlaying = false;
     let lastTapTime = 0;
+    const doubleTapThreshold = 300; // ms
 
-    function playSound(name) {
-      if (sounds[name]) {
-        sounds[name].currentTime = 0;
-        sounds[name].play();
-      }
-    }
+    // DOM Elements
+    const gameContainer = document.getElementById('game-container');
+    const messageDisplay = document.getElementById('message-display');
+    const startButton = document.getElementById('start-button');
+    const livesDisplay = document.getElementById('lives-display');
 
-    function newSequence(round) {
-      let length = Math.min(10, Math.floor((round+1)/2));
-      seq = [];
-      for (let i=0; i<length; i++) {
-        let g = gestures[Math.floor(Math.random() * gestures.length)];
-        seq.push(g);
-      }
-    }
+    // Touch Event Variables
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchMoveX = 0;
+    let touchMoveY = 0;
+    const swipeThreshold = 50;
 
-    function playSequence() {
-      let i = 0;
-      listening = false;
-      function next() {
-        if (i < seq.length) {
-          playSound(seq[i]);
-          setTimeout(next, 1500);
-          i++;
+    // Helper functions
+    const playSound = (sound, onEndedCallback) => {
+        if (sound) {
+            sound.pause();
+            sound.currentTime = 0;
+            sound.play();
+            sound.onended = onEndedCallback;
+        }
+    };
+
+    const stopBackgroundAudio = () => {
+        if (backgroundAudioPlaying) {
+            sounds.background.pause();
+            sounds.background.currentTime = 0;
+            backgroundAudioPlaying = false;
+        }
+    };
+
+    const updateLivesDisplay = () => {
+        livesDisplay.innerText = 'หัวใจ: ' + '❤️'.repeat(lives);
+    };
+
+    const getRoundDetails = (round) => {
+        let gesturesCount, timeLimit;
+        if (round <= 3) {
+            gesturesCount = 1;
+            timeLimit = 2000;
+        } else if (round <= 6) {
+            gesturesCount = 2;
+            timeLimit = 2000;
+        } else if (round <= 9) {
+            gesturesCount = 3;
+            timeLimit = 2500;
+        } else if (round <= 12) {
+            gesturesCount = 4;
+            timeLimit = 3000;
+        } else if (round <= 15) {
+            gesturesCount = 5;
+            timeLimit = 3500;
+        } else if (round <= 18) {
+            gesturesCount = 6;
+            timeLimit = 4000;
+        } else if (round <= 21) {
+            gesturesCount = 7;
+            timeLimit = 4500;
+        } else if (round <= 24) {
+            gesturesCount = 8;
+            timeLimit = 5000;
+        } else if (round <= 27) {
+            gesturesCount = 9;
+            timeLimit = 5500;
         } else {
-          playerIndex = 0;
-          listening = true;
+            gesturesCount = 10;
+            timeLimit = 6000;
         }
-      }
-      setTimeout(next, 1000);
-    }
+        return { gesturesCount, timeLimit };
+    };
 
-    function checkGesture(input) {
-      if (!listening) return;
-      if (seq[playerIndex] === input) {
-        playerIndex++;
-        if (playerIndex >= seq.length) {
-          playSound("win");
-          round++;
-          if (round > 20) {
-            bgm.pause();
-            playSound("endHappy");
-            resetGame();
-          } else {
-            setTimeout(startRound, 1500);
-          }
+    const startNextRound = () => {
+        if (gameStatus !== 'playing') return;
+        
+        clearTimeout(timeoutTimer);
+        const roundDetails = getRoundDetails(currentRound);
+        
+        // Generate a new random sequence of gestures
+        currentSequence = [];
+        for (let i = 0; i < roundDetails.gesturesCount; i++) {
+            currentSequence.push(gestures[Math.floor(Math.random() * gestures.length)]);
         }
-      } else {
-        mistakes++;
-        playSound("lost");
-        if (mistakes >= 3) {
-          bgm.pause();
-          playSound("endLost");
-          resetGame();
+        sequenceIndex = 0;
+        
+        // Start the timer for the round
+        timeoutTimer = setTimeout(() => {
+            handleMistake();
+        }, roundDetails.timeLimit);
+        
+        // Play the first gesture audio
+        playSound(gestureAudioMap[currentSequence[sequenceIndex]]);
+    };
+
+    const handleMistake = () => {
+        clearTimeout(timeoutTimer);
+        lives--;
+        updateLivesDisplay();
+        if (lives > 0) {
+            playSound(sounds.lost, () => {
+                // Wait 1 second before starting the next round
+                setTimeout(startNextRound, 1000);
+            });
         } else {
-          setTimeout(startRound, 1500);
+            gameStatus = 'lost';
+            stopBackgroundAudio();
+            playSound(sounds.lost, () => {
+                playSound(sounds.endlost);
+                messageDisplay.innerHTML = `
+                    <p class="text-3xl font-bold text-red-500">คุณแพ้แล้ว!</p>
+                    <p class="text-lg mt-2">ใช้ 2 นิ้วปัดขึ้นเพื่อเล่นอีกครั้ง</p>
+                `;
+                livesDisplay.classList.add('hidden');
+                messageDisplay.classList.remove('hidden');
+            });
         }
-      }
-    }
-
-    function startRound() {
-      newSequence(round);
-      playSequence();
-    }
-
-    function resetGame() {
-      round = 1;
-      mistakes = 0;
-      seq = [];
-      playerIndex = 0;
-      listening = false;
-      startBtn.style.display = "block";
-    }
-
-    function startGame() {
-      startBtn.style.display = "none";
-      playSound("start");
-      bgm.currentTime = 0;
-      bgm.play();
-      setTimeout(startRound, 2000);
-    }
-
-    // Gesture detection
-    let touchStartX=0, touchStartY=0;
-    gameArea.addEventListener("touchstart", e => {
-      if (e.touches.length===1) {
-        let now = Date.now();
-        if (now - lastTapTime < 300) {
-          checkGesture("doubletap");
+    };
+    
+    const handleWinRound = () => {
+        clearTimeout(timeoutTimer);
+        
+        if (currentRound >= 30) {
+            // Player won the game
+            gameStatus = 'won';
+            stopBackgroundAudio();
+            playSound(sounds.win, () => {
+                playSound(sounds.endhappy);
+                messageDisplay.innerHTML = `
+                    <p class="text-3xl font-bold text-green-500">คุณชนะ!</p>
+                    <p class="text-lg mt-2">สุดยอดมาก! ใช้ 2 นิ้วปัดขึ้นเพื่อเล่นอีกครั้ง</p>
+                `;
+                livesDisplay.classList.add('hidden');
+                messageDisplay.classList.remove('hidden');
+            });
         } else {
-          setTimeout(()=>checkGesture("tap"), 300);
+            // Player won the round, proceed to next
+            playSound(sounds.win, () => {
+                currentRound++;
+                // Wait 1 second before starting the next round
+                setTimeout(startNextRound, 1000);
+            });
         }
-        lastTapTime = now;
-      } else if (e.touches.length===2) {
-        // two finger swipe up to start game
+    };
+
+    const checkPlayerGesture = (gesture) => {
+        if (gameStatus !== 'playing') return;
+        
+        if (gesture === currentSequence[sequenceIndex]) {
+            sequenceIndex++;
+            if (sequenceIndex >= currentSequence.length) {
+                // User completed the sequence correctly
+                handleWinRound();
+            }
+        } else {
+            // User made a mistake
+            handleMistake();
+        }
+    };
+
+    // Event Listeners for Touch Gestures
+    gameContainer.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
-      }
-    });
-
-    gameArea.addEventListener("touchend", e => {
-      if (e.changedTouches.length===1) {
-        let dx = e.changedTouches[0].clientX - touchStartX;
-        let dy = e.changedTouches[0].clientY - touchStartY;
-        if (Math.abs(dx) > Math.abs(dy)) {
-          if (dx > 50) checkGesture("right");
-          else if (dx < -50) checkGesture("left");
-        } else {
-          if (dy > 50) checkGesture("down");
-          else if (dy < -50) checkGesture("up");
+        
+        if (gameStatus === 'playing' && e.touches.length === 1) {
+            // Check for tap or double tap
+            const currentTime = Date.now();
+            if (currentTime - lastTapTime < doubleTapThreshold) {
+                // Double Tap
+                checkPlayerGesture('touch2');
+                lastTapTime = 0; // Reset
+            } else {
+                // Single Tap
+                lastTapTime = currentTime;
+            }
         }
-      } else if (e.changedTouches.length===2) {
-        let dy = e.changedTouches[0].clientY - touchStartY;
-        if (dy < -50) startGame();
-      }
+    }, { passive: false });
+
+    gameContainer.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) {
+            // If it's a single finger touch that didn't move much, it's a tap
+            const touchDeltaX = Math.abs(touchStartX - touchMoveX);
+            const touchDeltaY = Math.abs(touchStartY - touchMoveY);
+            if (touchDeltaX < 10 && touchDeltaY < 10 && gameStatus === 'playing') {
+                const currentTime = Date.now();
+                if (currentTime - lastTapTime >= doubleTapThreshold) {
+                    checkPlayerGesture('touch');
+                }
+            }
+        }
     });
 
-    startBtn.addEventListener("click", startGame);
-  </script>
+    gameContainer.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        touchMoveX = e.touches[0].clientX;
+        touchMoveY = e.touches[0].clientY;
+
+        if (gameStatus === 'waiting-for-gesture' && e.touches.length === 2) {
+            // Check for 2-finger swipe up to start the game
+            const deltaY = touchStartY - touchMoveY;
+            if (deltaY > swipeThreshold) {
+                gameContainer.removeEventListener('touchmove', this);
+                startGame();
+            }
+        } else if (gameStatus === 'playing' && e.touches.length === 1) {
+            // Check for 1-finger swipes
+            const deltaX = touchMoveX - touchStartX;
+            const deltaY = touchMoveY - touchStartY;
+            
+            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > swipeThreshold) {
+                // Horizontal swipe
+                if (deltaX > 0) {
+                    checkPlayerGesture('right');
+                } else {
+                    checkPlayerGesture('left');
+                }
+                touchStartX = touchMoveX; // Reset to prevent multiple events
+            } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > swipeThreshold) {
+                // Vertical swipe
+                if (deltaY > 0) {
+                    checkPlayerGesture('down');
+                } else {
+                    checkPlayerGesture('up');
+                }
+                touchStartY = touchMoveY; // Reset to prevent multiple events
+            }
+        }
+    }, { passive: false });
+
+    const startGame = () => {
+        gameStatus = 'playing';
+        messageDisplay.classList.add('hidden');
+        livesDisplay.classList.remove('hidden');
+        
+        currentRound = 1;
+        lives = 3;
+        updateLivesDisplay();
+        
+        playSound(sounds.background, () => {
+            sounds.background.loop = true;
+            sounds.background.play();
+        });
+        backgroundAudioPlaying = true;
+        
+        messageDisplay.innerText = '';
+        
+        setTimeout(() => {
+            startNextRound();
+        }, 3000); // Initial 3-second delay
+    };
+    
+    // Main Game Flow
+    const init = () => {
+        startButton.addEventListener('click', () => {
+            gameStatus = 'start-prompt';
+            startButton.classList.add('hidden');
+            messageDisplay.innerHTML = 'กรุณาปิดตัวอ่านหน้าจอ...';
+            
+            playSound(sounds.start, () => {
+                gameStatus = 'waiting-for-gesture';
+                messageDisplay.innerHTML = `
+                    <p class="text-3xl font-bold">ใช้ 2 นิ้วปัดขึ้นเพื่อเริ่ม</p>
+                `;
+            });
+        });
+    };
+
+    window.onload = init;
+
+</script>
 </body>
 </html>
