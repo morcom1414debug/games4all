@@ -1,89 +1,477 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <title>Swipe — Audio-only Gesture Game</title>
-  <style>
-    body {
-      background: black;
-      color: white;
-      font-family: sans-serif;
-      text-align: center;
-      padding: 2rem;
-    }
-    button {
-      font-size: 1.5rem;
-      padding: 1rem 2rem;
-      border-radius: 1rem;
-      border: none;
-      background: #444;
-      color: white;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Swipe Game</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        
+        /* สไตล์หลักของเกม */
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1f2937, #374151);
+            color: #d1d5db;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            touch-action: manipulation; /* ปิดท่าทางสัมผัสของระบบทั้งหมด */
+        }
+
+        .game-container {
+            width: 95%;
+            max-width: 600px;
+            aspect-ratio: 1 / 1; /* กำหนดให้เป็นสี่เหลี่ยมจัตุรัส */
+            background-color: #111827;
+            border-radius: 1rem;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            box-sizing: border-box;
+            position: relative;
+            user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+        }
+
+        .main-message {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 2rem;
+            animation: fadeIn 1s ease-in-out;
+            color: #f3f4f6;
+        }
+
+        .instruction-message {
+            font-size: 1.25rem;
+            text-align: center;
+            color: #9ca3af;
+        }
+
+        .start-button {
+            background: linear-gradient(45deg, #4f46e5, #818cf8);
+            border: none;
+            color: white;
+            padding: 1.5rem 3rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+            position: absolute;
+            bottom: 2rem;
+        }
+        
+        .start-button:hover {
+            transform: scale(1.05);
+        }
+
+        .start-button:active {
+            transform: scale(0.95);
+            box-shadow: none;
+        }
+
+        .gesture-area {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none; /* ป้องกันการเลื่อนหน้าจอ */
+        }
+
+        .game-status {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            font-size: 1.25rem;
+            color: #e5e7eb;
+        }
+
+        .game-status.lives {
+            left: auto;
+            right: 2rem;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .start-message {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
 </head>
 <body>
-  <h1>🎮 เกมปัด</h1>
-  <p>ปิด VoiceOver ก่อน แล้วแตะปุ่มด้านล่างเพื่อเริ่มเกม</p>
-  <button id="startBtn">เริ่มเกม</button>
-  <audio id="beep" src="beep.mp3" preload="auto"></audio>
-  <audio id="correct" src="correct.mp3" preload="auto"></audio>
-  <audio id="wrong" src="wrong.mp3" preload="auto"></audio>
+    <div class="game-container">
+        <!-- ส่วนแสดงข้อความหลักของเกม -->
+        <div class="main-message">Swipe Game</div>
+        <div class="instruction-message">แตะปุ่ม "เริ่ม" เพื่อเริ่มเล่น</div>
 
-  <script>
-    const startBtn = document.getElementById('startBtn');
-    const beep = document.getElementById('beep');
-    const correct = document.getElementById('correct');
-    const wrong = document.getElementById('wrong');
+        <!-- ปุ่มเริ่มเกม -->
+        <button id="startButton" class="start-button">เริ่ม</button>
 
-    let gameStarted = false;
-    let expectedDirection = null;
+        <!-- ส่วนของเกมที่ใช้ตรวจจับท่าทางสัมผัส -->
+        <div id="gameArea" class="gesture-area hidden">
+            <!-- สถานะเกมและจำนวนชีวิต -->
+            <div id="gameStatus" class="game-status">รอบที่: 0</div>
+            <div id="livesStatus" class="game-status lives">ชีวิต: 3</div>
+            <!-- ข้อความที่แสดงระหว่างเกม -->
+            <div id="gameMessage" class="main-message start-message"></div>
+        </div>
+    </div>
 
-    function playRandomDirection() {
-      const directions = ['ขึ้น', 'ลง', 'ซ้าย', 'ขวา'];
-      expectedDirection = directions[Math.floor(Math.random() * directions.length)];
-      const msg = new SpeechSynthesisUtterance("ปัด " + expectedDirection);
-      speechSynthesis.speak(msg);
-    }
+    <script>
+        // กำหนด URL ของไฟล์เสียง (ต้องแทนที่ด้วยไฟล์จริง)
+        const AUDIO_URLS = {
+            start: 'https://example.com/start.mp3', // ไฟล์เสียงเริ่มต้น
+            background: 'https://example.com/background.mp3', // ไฟล์เสียงพื้นหลัง
+            left: 'https://example.com/left.mp3', // ปัดซ้าย
+            right: 'https://example.com/right.mp3', // ปัดขวา
+            up: 'https://example.com/up.mp3', // ปัดขึ้น
+            down: 'https://example.com/down.mp3', // ปัดลง
+            touch: 'https://example.com/touch.mp3', // แตะ
+            touch2: 'https://example.com/touch2.mp3', // แตะเบิ้ล
+            win: 'https://example.com/win.mp3', // ชนะ
+            lost: 'https://example.com/lost.mp3', // แพ้
+            endlost: 'https://example.com/endlost.mp3', // จบเกม แพ้
+            endhappy: 'https://example.com/endhappy.mp3' // จบเกม ชนะ
+        };
 
-    function handleGesture(direction) {
-      if (!gameStarted) return;
-      if (direction === expectedDirection) {
-        correct.play();
-        playRandomDirection();
-      } else {
-        wrong.play();
-      }
-    }
+        // กำหนดข้อมูลเสียงและการกระทำ
+        const GESTURES = {
+            'left': 'left',
+            'right': 'right',
+            'up': 'up',
+            'down': 'down',
+            'tap': 'touch',
+            'doubletap': 'touch2'
+        };
 
-    // ใช้ touchstart + touchend เพื่อจับทิศทาง
-    let startX = 0;
-    let startY = 0;
+        // ตัวแปรสถานะของเกม
+        let isGameRunning = false;
+        let isRoundActive = false;
+        let currentRound = 0;
+        let lives = 3;
+        let gestureSequence = [];
+        let gestureIndex = 0;
+        let timerId;
+        let touchTimeout;
+        let lastTapTime = 0;
+        let startTouch = {};
+        let touchCount = 0;
 
-    document.addEventListener('touchstart', e => {
-      const t = e.changedTouches[0];
-      startX = t.clientX;
-      startY = t.clientY;
-    });
+        // ตัวแปรสำหรับองค์ประกอบ DOM
+        const startButton = document.getElementById('startButton');
+        const gameArea = document.getElementById('gameArea');
+        const mainMessage = document.querySelector('.main-message');
+        const instructionMessage = document.querySelector('.instruction-message');
+        const gameStatus = document.getElementById('gameStatus');
+        const livesStatus = document.getElementById('livesStatus');
+        const gameMessage = document.getElementById('gameMessage');
 
-    document.addEventListener('touchend', e => {
-      const t = e.changedTouches[0];
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
+        // โหลดไฟล์เสียง
+        const audio = {};
+        for (const key in AUDIO_URLS) {
+            audio[key] = new Audio(AUDIO_URLS[key]);
+        }
+        // ตั้งค่าให้ไฟล์เสียงพื้นหลังเล่นวนซ้ำ
+        audio.background.loop = true;
+        
+        // ฟังก์ชันสำหรับหน่วงเวลา
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
 
-      if (Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 50) handleGesture('ขวา');
-        else if (dx < -50) handleGesture('ซ้าย');
-      } else {
-        if (dy > 50) handleGesture('ลง');
-        else if (dy < -50) handleGesture('ขึ้น');
-      }
-    });
+        // ฟังก์ชันเล่นไฟล์เสียง
+        function playAudio(audioName) {
+            return new Promise(resolve => {
+                if (audio[audioName]) {
+                    audio[audioName].currentTime = 0;
+                    audio[audioName].play().then(() => {
+                        const onAudioEnd = () => {
+                            audio[audioName].removeEventListener('ended', onAudioEnd);
+                            resolve();
+                        };
+                        audio[audioName].addEventListener('ended', onAudioEnd);
+                    }).catch(error => {
+                        console.error(`Error playing audio ${audioName}:`, error);
+                        resolve();
+                    });
+                } else {
+                    resolve();
+                }
+            });
+        }
 
-    startBtn.addEventListener('click', () => {
-      gameStarted = true;
-      beep.play();
-      setTimeout(playRandomDirection, 1000);
-    });
-  </script>
+        // ฟังก์ชันสำหรับอัปเดต UI
+        function updateUI(mainMsg, instMsg, buttonVisible, gameAreaVisible, gameMsg) {
+            mainMessage.textContent = mainMsg;
+            instructionMessage.textContent = instMsg;
+            if (buttonVisible) {
+                startButton.classList.remove('hidden');
+            } else {
+                startButton.classList.add('hidden');
+            }
+            if (gameAreaVisible) {
+                gameArea.classList.remove('hidden');
+            } else {
+                gameArea.classList.add('hidden');
+            }
+            gameMessage.textContent = gameMsg;
+            gameStatus.textContent = `รอบที่: ${currentRound}`;
+            livesStatus.textContent = `ชีวิต: ${lives}`;
+        }
+
+        // ฟังก์ชันเริ่มเกม
+        async function startGame() {
+            updateUI('', 'กรุณาฟังคำแนะนำจากโค้ช', true, false, '');
+            startButton.classList.add('hidden');
+            
+            // เล่นไฟล์เสียงเริ่มต้น
+            await playAudio('start');
+            updateUI('เตรียมตัวให้พร้อม!', 'ใช้ 2 นิ้วปัดขึ้นเพื่อเริ่มเกม!', false, true, 'ใช้ 2 นิ้วปัดขึ้นเพื่อเริ่มเกม!');
+        }
+
+        // ฟังก์ชันเริ่มรอบใหม่
+        async function startRound() {
+            isRoundActive = false;
+            if (lives <= 0) {
+                endGame(false); // แพ้
+                return;
+            }
+
+            // คำนวณจำนวนท่าทางและเวลา
+            let gestureCount, timeLimit;
+            if (currentRound <= 3) {
+                gestureCount = 1;
+                timeLimit = 2000;
+            } else if (currentRound <= 6) {
+                gestureCount = 2;
+                timeLimit = 2000;
+            } else if (currentRound <= 9) {
+                gestureCount = 3;
+                timeLimit = 2500;
+            } else if (currentRound <= 12) {
+                gestureCount = 4;
+                timeLimit = 3000;
+            } else if (currentRound <= 15) {
+                gestureCount = 5;
+                timeLimit = 3500;
+            } else if (currentRound <= 18) {
+                gestureCount = 6;
+                timeLimit = 4000;
+            } else if (currentRound <= 21) {
+                gestureCount = 7;
+                timeLimit = 4500;
+            } else if (currentRound <= 24) {
+                gestureCount = 8;
+                timeLimit = 5000;
+            } else if (currentRound <= 27) {
+                gestureCount = 9;
+                timeLimit = 5500;
+            } else {
+                gestureCount = 10;
+                timeLimit = 6000;
+            }
+            
+            // กรณีชนะ
+            if (currentRound > 27) {
+                endGame(true);
+                return;
+            }
+
+            gestureIndex = 0;
+            gestureSequence = [];
+            const allGestures = Object.keys(GESTURES);
+
+            // สร้างลำดับท่าทางแบบสุ่ม
+            for (let i = 0; i < gestureCount; i++) {
+                gestureSequence.push(allGestures[Math.floor(Math.random() * allGestures.length)]);
+            }
+
+            updateUI('', '', false, true, 'ฟังให้ดีนะ!');
+            await delay(3000); // หน่วงเวลา 3 วินาที
+
+            // ให้โค้ชบอกท่าทาง
+            for (let i = 0; i < gestureSequence.length; i++) {
+                await playAudio(GESTURES[gestureSequence[i]]);
+            }
+
+            isRoundActive = true;
+
+            // ตั้งเวลาสำหรับรอบ
+            timerId = setTimeout(() => {
+                if (isRoundActive) {
+                    handleIncorrect();
+                }
+            }, timeLimit);
+        }
+
+        // ฟังก์ชันจัดการกรณีที่ท่าทางไม่ถูกต้อง
+        async function handleIncorrect() {
+            if (!isRoundActive) return;
+            isRoundActive = false;
+            clearTimeout(timerId);
+            lives--;
+            updateUI('', '', false, true, `ผิด! เหลือ ${lives} ชีวิต`);
+            await playAudio('lost');
+            await delay(1000);
+            if (lives > 0) {
+                currentRound++;
+                startRound();
+            } else {
+                endGame(false);
+            }
+        }
+
+        // ฟังก์ชันจัดการกรณีที่ท่าทางถูกต้อง
+        async function handleCorrect() {
+            if (!isRoundActive) return;
+            isRoundActive = false;
+            clearTimeout(timerId);
+            updateUI('', '', false, true, 'เยี่ยมมาก!');
+            await playAudio('win');
+            await delay(1000);
+            currentRound++;
+            startRound();
+        }
+
+        // ฟังก์ชันตรวจจับท่าทางสัมผัส
+        function getGesture(event) {
+            const endTouch = event.changedTouches[0];
+            const dx = endTouch.pageX - startTouch.pageX;
+            const dy = endTouch.pageY - startTouch.pageY;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                return dx > 0 ? 'right' : 'left';
+            } else {
+                return dy > 0 ? 'down' : 'up';
+            }
+        }
+
+        // ฟังก์ชันตรวจสอบท่าทางที่ผู้ใช้ทำ
+        function checkGesture(gesture) {
+            if (!isRoundActive) return;
+
+            if (gestureSequence[gestureIndex] === gesture) {
+                gestureIndex++;
+                if (gestureIndex === gestureSequence.length) {
+                    handleCorrect();
+                }
+            } else {
+                handleIncorrect();
+            }
+        }
+        
+        // ฟังก์ชันจบเกม
+        async function endGame(isWin) {
+            isGameRunning = false;
+            audio.background.pause();
+            audio.background.currentTime = 0;
+
+            if (isWin) {
+                updateUI('ชนะแล้ว!', 'คุณคือปรมาจารย์! ใช้ 2 นิ้วปัดขึ้นเพื่อเริ่มใหม่', false, true, 'ชนะแล้ว!');
+                await playAudio('win');
+                await playAudio('endhappy');
+            } else {
+                updateUI('เกมโอเวอร์', 'คุณแพ้แล้ว! ใช้ 2 นิ้วปัดขึ้นเพื่อเริ่มใหม่', false, true, 'เกมโอเวอร์');
+                await playAudio('lost');
+                await playAudio('endlost');
+            }
+        }
+
+        // รีเซ็ตเกมเพื่อเริ่มใหม่
+        function resetGame() {
+            isGameRunning = true;
+            currentRound = 1;
+            lives = 3;
+            audio.background.play();
+            updateUI('', '', false, true, 'เริ่มรอบ 1!');
+            startRound();
+        }
+
+        // ---- ส่วนจัดการเหตุการณ์สัมผัส ----
+        gameArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchCount = e.touches.length;
+            if (touchCount === 1) {
+                startTouch.pageX = e.touches[0].pageX;
+                startTouch.pageY = e.touches[0].pageY;
+            } else if (touchCount === 2) {
+                // สำหรับท่าทาง 2 นิ้วปัดขึ้น
+                startTouch.pageX = e.touches[0].pageX;
+                startTouch.pageY = e.touches[0].pageY;
+            }
+        });
+
+        gameArea.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (e.changedTouches.length === 1) {
+                const now = Date.now();
+                if (now - lastTapTime < 300) {
+                    // Double Tap
+                    checkGesture('doubletap');
+                    clearTimeout(touchTimeout);
+                } else {
+                    // Single Tap or Swipe
+                    const endTouch = e.changedTouches[0];
+                    const dx = endTouch.pageX - startTouch.pageX;
+                    const dy = endTouch.pageY - startTouch.pageY;
+
+                    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                        // Tap
+                        touchTimeout = setTimeout(() => checkGesture('tap'), 300);
+                    } else {
+                        // Swipe
+                        checkGesture(getGesture(e));
+                    }
+                }
+                lastTapTime = now;
+            } else if (touchCount === 2) {
+                // ท่าทาง 2 นิ้วปัดขึ้นเพื่อเริ่มเกม
+                const endTouch = e.changedTouches[0];
+                const dy = endTouch.pageY - startTouch.pageY;
+                if (dy < -50) { // ปัดขึ้น
+                    if (!isGameRunning) {
+                        resetGame();
+                    } else {
+                        endGame(false); // ออกจากเกม
+                    }
+                }
+            }
+        });
+
+        // ป้องกันการทำงานของระบบอื่นๆ
+        window.addEventListener('scroll', (e) => e.preventDefault(), { passive: false });
+        document.body.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        document.body.addEventListener('gesturstart', (e) => e.preventDefault());
+        document.body.addEventListener('gesturmove', (e) => e.preventDefault());
+
+        // เริ่มต้นเกมเมื่อหน้าโหลดเสร็จ
+        window.onload = function() {
+            startButton.addEventListener('click', startGame);
+        };
+
+    </script>
 </body>
 </html>
