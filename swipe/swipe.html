@@ -1,391 +1,436 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="th">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Swipe</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            touch-action: none;
-            user-select: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-        }
-        .game-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            width: 100vw;
-            height: 100vh;
-            background-color: #1a1a1a;
-            color: white;
-            transition: background-color 0.5s ease-in-out;
-        }
-        .game-message {
-            font-size: 2rem;
-            text-align: center;
-            padding: 1rem;
-            transition: opacity 0.5s ease-in-out;
-        }
-        .start-button {
-            background-color: #4CAF50; /* Green */
-            border: none;
-            color: white;
-            padding: 1rem 2rem;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 1.5rem;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 12px;
-            transition: transform 0.2s ease-in-out, background-color 0.2s ease-in-out;
-        }
-        .start-button:hover {
-            background-color: #45a049;
-            transform: scale(1.05);
-        }
-        .lives-display {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #ff4d4d;
-        }
-    </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Swipe (accessible)</title>
+<style>
+  /* Minimal, mostly invisible UI -- game is audio driven for blind users */
+  html,body{height:100%;margin:0;background:#111;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans Thai UI",sans-serif}
+  #gameArea{height:100vh;display:flex;align-items:center;justify-content:center}
+  button{font-size:1.25rem;padding:16px 24px;border-radius:12px;border:none}
+  .visually-hidden{position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap}
+</style>
 </head>
 <body>
-
-<div id="game-container" class="game-container">
-    <div id="message-display" class="game-message">
-        <h1 class="text-4xl font-bold mb-4">เกม Swipe</h1>
-        <p>คุณพร้อมจะทดสอบความเร็วแล้วหรือยัง?</p>
-    </div>
-    <div id="start-area" class="mt-8">
-        <button id="start-button" class="start-button">
-            เริ่มเกม
-        </button>
-    </div>
-    <div id="lives-display" class="lives-display hidden">
-        หัวใจ: ❤️❤️❤️
-    </div>
+<div id="gameArea" role="application" aria-label="Swipe game area">
+  <!-- Visible start button only for activation. After start, UI remains minimal. -->
+  <button id="startBtn" aria-label="เริ่มเกม">เริ่ม</button>
 </div>
+<!-- Live region to communicate state to screen readers (kept minimal) -->
+<div id="live" class="visually-hidden" aria-live="assertive"></div>
 
 <script>
-    // Audio URLs (ตัวอย่าง)
-    const audioUrls = {
-        start: 'https://cdn.pixabay.com/audio/2023/11/17/start-153835.mp3',
-        background: 'https://cdn.pixabay.com/audio/2023/07/04/background-143006.mp3',
-        left: 'https://cdn.pixabay.com/audio/2023/04/09/move-left-141208.mp3',
-        right: 'https://cdn.pixabay.com/audio/2023/04/09/move-right-141209.mp3',
-        up: 'https://cdn.pixabay.com/audio/2023/04/09/move-up-141210.mp3',
-        down: 'https://cdn.pixabay.com/audio/2023/04/09/move-down-141207.mp3',
-        touch: 'https://cdn.pixabay.com/audio/2023/04/09/touch-141211.mp3',
-        touch2: 'https://cdn.pixabay.com/audio/2023/04/09/double-touch-141206.mp3',
-        win: 'https://cdn.pixabay.com/audio/2023/04/09/correct-141203.mp3',
-        lost: 'https://cdn.pixabay.com/audio/2023/04/09/wrong-141212.mp3',
-        endlost: 'https://cdn.pixabay.com/audio/2023/04/09/game-over-141205.mp3',
-        endhappy: 'https://cdn.pixabay.com/audio/2023/04/09/game-complete-141204.mp3'
-    };
+/*
+  Swipe game (audio-first, touch-gesture driven).
+  - Plays start.mp3 when user presses Start (asks to turn off screen reader).
+  - Waits for two-finger swipe up to begin the actual game.
+  - On two-finger swipe up: plays background.mp3 loop and begins rounds.
+  - Gesture mapping (beta1): left,right,up,down,touch,double-touch mapped to audio files.
+  - Rounds progression: blocks of 3 rounds; gestures per round increases by 1 every 3 rounds.
+    (1 gesture: rounds 1-3, 2 gestures: 4-6, ... continues until 10 gestures -> player wins)
+  - Timing per round: as specified in the request.
+  - Player has max 3 mistakes (on 3rd mistake player loses).
+  - Plays win.mp3 on successful round, lost.mp3 on failure. After those play and 1s pause, next round begins.
 
-    // Load audio files
-    const sounds = {};
-    for (const key in audioUrls) {
-        sounds[key] = new Audio(audioUrls[key]);
-        sounds[key].preload = 'auto';
+  NOTES / LIMITATIONS:
+  - Browsers do NOT provide a reliable API to know whether a screen reader is on or off. Therefore this code cannot truly "detect" VoiceOver state.
+    As a practical check, the game asks player to turn off the screen reader via start.mp3 and will only progress when the user performs the required two-finger swipe up. This acts as the user's confirmation.
+  - On mobile platforms some system gestures may still intercept touches; we attempt to preventDefault touchmove to reduce interference but cannot guarantee full suppression of system gestures.
+*/
+
+// Configuration
+const SFX = {
+  start: 'start.mp3',
+  background: 'background.mp3',
+  left: 'left.mp3',
+  right: 'right.mp3',
+  up: 'up.mp3',
+  down: 'down.mp3',
+  touch: 'touch.mp3',
+  touch2: 'touch2.mp3',
+  win: 'win.mp3',
+  lost: 'lost.mp3',
+  endlost: 'endlost.mp3',
+  endhappy: 'endhappy.mp3'
+};
+
+const gestureNames = ['left','right','up','down','touch','touch2'];
+
+// Round timing rules specified
+function gesturesForRound(round){
+  // pattern: each block of 3 rounds increments gestures by 1, starting with 1 at rounds 1-3
+  // gestures = 1 + floor((round-1)/3)
+  return 1 + Math.floor((round-1)/3);
+}
+
+function timeForRound(round){
+  // mapping from user's spec for rounds 1..18; then continue pattern: increase time slightly as gestures increase.
+  if(round<=3) return 2000;
+  if(round<=6) return 2000;
+  if(round<=9) return 2500;
+  if(round<=12) return 3000;
+  if(round<=15) return 3500;
+  if(round<=18) return 4000;
+  // continue incremental progression beyond 18 up to 10 gestures
+  const base = 4000; // for 6 gestures
+  const extraBlocks = Math.floor((gesturesForRound(round)-6));
+  return base + Math.max(0,extraBlocks) * 500; // each extra gesture block +0.5s
+}
+
+// Game state
+let round = 0;
+let mistakes = 0;
+const maxMistakes = 3;
+let inRound = false;
+let requiredSequence = [];
+let backgroundAudio = null;
+let playingBackground = false;
+let awaitingStartSwipe = false;
+let gameActive = false;
+
+const startBtn = document.getElementById('startBtn');
+const live = document.getElementById('live');
+const gameArea = document.getElementById('gameArea');
+
+function announce(text){
+  // announce to SR (but user asked no visible text; still provide announcement for accessibility)
+  live.textContent = text;
+}
+
+function audio(src, loop=false){
+  const a = new Audio(src);
+  a.preload = 'auto';
+  a.loop = !!loop;
+  a.onplay = ()=>{};
+  return a;
+}
+
+function preloadAll(){
+  for(const k in SFX){
+    const a = new Audio(SFX[k]);
+    a.preload = 'auto';
+  }
+}
+preloadAll();
+
+// Prevent default gestures on gameArea as much as possible
+['touchstart','touchmove','touchend','pointerdown','pointermove','pointerup'].forEach(ev=>{
+  gameArea.addEventListener(ev, e=>{
+    // only when game has been started we try to prevent defaults to keep custom gestures.
+    if(gameActive){
+      try{ e.preventDefault(); }catch(_){ }
     }
+  }, {passive:false});
+});
 
-    // Game State Variables
-    const gestures = ['left', 'right', 'up', 'down', 'touch', 'touch2'];
-    const gestureAudioMap = {
-        'left': sounds.left, 'right': sounds.right, 'up': sounds.up, 'down': sounds.down,
-        'touch': sounds.touch, 'touch2': sounds.touch2
-    };
-    let gameStatus = 'waiting'; // 'waiting', 'start-prompt', 'playing', 'lost', 'won'
-    let currentRound = 1;
-    let lives = 3;
-    let currentSequence = [];
-    let sequenceIndex = 0;
-    let timeoutTimer;
-    let backgroundAudioPlaying = false;
-    let lastTapTime = 0;
-    const doubleTapThreshold = 300; // ms
+// Utility: random sequence of N gestures
+function randomSequence(n){
+  const seq = [];
+  for(let i=0;i<n;i++){
+    const idx = Math.floor(Math.random()*gestureNames.length);
+    seq.push(gestureNames[idx]);
+  }
+  return seq;
+}
 
-    // DOM Elements
-    const gameContainer = document.getElementById('game-container');
-    const messageDisplay = document.getElementById('message-display');
-    const startButton = document.getElementById('start-button');
-    const livesDisplay = document.getElementById('lives-display');
+// Gesture detection (single-finger taps/double taps and swipes, plus two-finger swipe up to start)
+let pointerData = {active:false, startX:0, startY:0, startTime:0, taps:0, lastTapTime:0};
+let multiTouchStart = null;
 
-    // Touch Event Variables
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchMoveX = 0;
-    let touchMoveY = 0;
-    const swipeThreshold = 50;
+function detectSwipe(startX,startY,endX,endY){
+  const dx = endX-startX, dy = endY-startY;
+  if(Math.abs(dx) > Math.abs(dy)){
+    return dx>0 ? 'right' : 'left';
+  }else{
+    return dy>0 ? 'down' : 'up';
+  }
+}
 
-    // Helper functions
-    const playSound = (sound, onEndedCallback) => {
-        if (sound) {
-            sound.pause();
-            sound.currentTime = 0;
-            sound.play();
-            sound.onended = onEndedCallback;
+// We'll listen to touch events for gestures
+let touchStartInfo = null;
+
+gameArea.addEventListener('touchstart', e=>{
+  if(e.touches.length===2){
+    // record two finger start for the special 'start game' gesture
+    multiTouchStart = [
+      {x:e.touches[0].clientX,y:e.touches[0].clientY},
+      {x:e.touches[1].clientX,y:e.touches[1].clientY}
+    ];
+  }
+  if(e.touches.length===1){
+    const t = e.touches[0];
+    touchStartInfo = {x:t.clientX,y:t.clientY,time:Date.now()};
+  }
+}, {passive:false});
+
+gameArea.addEventListener('touchend', e=>{
+  // If there was a two-finger touch and now ended -> detect two-finger swipe up
+  if(multiTouchStart && (!e.touches || e.touches.length===0)){
+    // Some platforms report changedTouches; use changedTouches
+    const changed = e.changedTouches ? e.changedTouches : [];
+    // find avg end positions from changed or last known positions
+    if(changed.length>=2){
+      const avgStartY = (multiTouchStart[0].y + multiTouchStart[1].y)/2;
+      const avgEndY = (changed[0].clientY + changed[1].clientY)/2;
+      const deltaY = avgEndY - avgStartY;
+      if(deltaY < -30){ // upward
+        // two-finger swipe up detected
+        onTwoFingerSwipeUp();
+      }
+    }else{
+      // if we can't reliably get changed touches, still attempt to start if any upward movement
+      onTwoFingerSwipeUp();
+    }
+    multiTouchStart = null;
+  }
+
+  if(touchStartInfo){
+    const t = e.changedTouches && e.changedTouches[0];
+    const end = t ? {x:t.clientX,y:t.clientY} : touchStartInfo;
+    const dt = Date.now() - touchStartInfo.time;
+    const dx = end.x - touchStartInfo.x, dy = end.y - touchStartInfo.y;
+    const dist = Math.hypot(dx,dy);
+    if(dist < 12 && dt < 400){
+      // tap
+      handleGesture('touch');
+      // detect double tap: naive approach using timestamp
+      const now = Date.now();
+      if(now - pointerData.lastTapTime < 400){
+        // double tap registered
+        handleGesture('touch2');
+      }
+      pointerData.lastTapTime = now;
+    }else if(dist >= 12){
+      const g = detectSwipe(touchStartInfo.x,touchStartInfo.y,end.x,end.y);
+      handleGesture(g);
+    }
+  }
+
+  touchStartInfo = null;
+}, {passive:false});
+
+// For mouse / desktop testing we can also support click & key events (optional)
+
+document.addEventListener('keydown', e=>{
+  // allow starting/restarting with arrow keys (for testing or keyboard users)
+  if(e.key === 'ArrowUp' && (e.ctrlKey && e.altKey)){
+    // ctrl+alt+up as an alternate two-finger swipe for testing
+    onTwoFingerSwipeUp();
+  }
+});
+
+// Core handlers
+function onTwoFingerSwipeUp(){
+  if(!awaitingStartSwipe) return;
+  // this acts as the "confirmation" that player turned off screen reader
+  awaitingStartSwipe = false;
+  startBackground();
+  setTimeout(()=>{
+    startNewGame();
+  }, 3000); // requested 3s delay before first round after start gesture
+}
+
+function startBackground(){
+  if(backgroundAudio){ backgroundAudio.pause(); backgroundAudio=null; }
+  backgroundAudio = audio(SFX.background, true);
+  backgroundAudio.loop = true;
+  backgroundAudio.play().catch(()=>{});
+  playingBackground = true;
+}
+function stopBackground(){
+  if(backgroundAudio){ backgroundAudio.pause(); backgroundAudio.currentTime=0; backgroundAudio=null; }
+  playingBackground = false;
+}
+
+function playSFX(name){
+  if(!SFX[name]) return Promise.resolve();
+  return new Promise(resolve=>{
+    const a = audio(SFX[name], false);
+    a.onended = ()=>resolve();
+    a.onerror = ()=>resolve();
+    a.play().catch(()=>resolve());
+  });
+}
+
+async function startNewGame(){
+  round = 1;
+  mistakes = 0;
+  gameActive = true;
+  announce('เริ่มเกม รอบที่ 1');
+  await runRound();
+}
+
+async function runRound(){
+  if(!gameActive) return;
+  if(mistakes >= maxMistakes){
+    await handleLoss();
+    return;
+  }
+  const gcount = gesturesForRound(round);
+  // win condition: if gcount >=10 -> completing this round finishes the whole game
+  const timeLimit = timeForRound(round);
+  requiredSequence = randomSequence(gcount);
+  inRound = true;
+  announce(`รอบ ${round} มี ${gcount} ท่าทาง`);
+
+  // Play each gesture audio in sequence with a small gap (so the player hears the coach for each gesture)
+  for(let i=0;i<requiredSequence.length;i++){
+    const name = requiredSequence[i];
+    await playSFX(name);
+    // slight short gap between commands to avoid overlap
+    await new Promise(r=>setTimeout(r,200));
+  }
+
+  // Now wait for player input for the whole sequence within the timeLimit
+  const startTime = Date.now();
+  let idx = 0;
+  let timedOut = false;
+
+  announce('ฟังแล้วทำตามท่าทาง ทีละท่าภายในเวลาที่กำหนด');
+
+  // temporary storage of inputs
+  const inputs = [];
+
+  // create a listener that captures gestures and checks sequence
+  function onInputGesture(g){
+    if(!inRound) return;
+    inputs.push(g);
+    // For taps we might receive both touch and touch2 if double-detected; we treat each as separate expected token
+    // Check correctness progressively
+    if(g !== requiredSequence[idx]){
+      // wrong
+      inRound = false;
+      mistakes += 1;
+      playSFX('lost').then(async ()=>{
+        // after lost and 1s delay
+        await new Promise(r=>setTimeout(r,1000));
+        // if mistakes reached max -> end
+        if(mistakes >= maxMistakes){
+          await handleLoss();
+        }else{
+          round += 1;
+          await runRound();
         }
-    };
-
-    const stopBackgroundAudio = () => {
-        if (backgroundAudioPlaying) {
-            sounds.background.pause();
-            sounds.background.currentTime = 0;
-            backgroundAudioPlaying = false;
+      });
+      // remove temporary listener
+      document.removeEventListener('gamegesture', gestureEventHandler);
+      return;
+    }
+    idx++;
+    if(idx >= requiredSequence.length){
+      // cleared round
+      inRound = false;
+      document.removeEventListener('gamegesture', gestureEventHandler);
+      playSFX('win').then(async ()=>{
+        await new Promise(r=>setTimeout(r,1000));
+        // if this round had >=10 gestures -> full win
+        if(requiredSequence.length >= 10){
+          await handleFullWin();
+        }else{
+          round += 1;
+          await runRound();
         }
-    };
+      });
+    }
+  }
 
-    const updateLivesDisplay = () => {
-        livesDisplay.innerText = 'หัวใจ: ' + '❤️'.repeat(lives);
-    };
+  // wrapper to dispatch custom event
+  function gestureEventHandler(e){ onInputGesture(e.detail); }
+  document.addEventListener('gamegesture', gestureEventHandler);
 
-    const getRoundDetails = (round) => {
-        let gesturesCount, timeLimit;
-        if (round <= 3) {
-            gesturesCount = 1;
-            timeLimit = 2000;
-        } else if (round <= 6) {
-            gesturesCount = 2;
-            timeLimit = 2000;
-        } else if (round <= 9) {
-            gesturesCount = 3;
-            timeLimit = 2500;
-        } else if (round <= 12) {
-            gesturesCount = 4;
-            timeLimit = 3000;
-        } else if (round <= 15) {
-            gesturesCount = 5;
-            timeLimit = 3500;
-        } else if (round <= 18) {
-            gesturesCount = 6;
-            timeLimit = 4000;
-        } else if (round <= 21) {
-            gesturesCount = 7;
-            timeLimit = 4500;
-        } else if (round <= 24) {
-            gesturesCount = 8;
-            timeLimit = 5000;
-        } else if (round <= 27) {
-            gesturesCount = 9;
-            timeLimit = 5500;
-        } else {
-            gesturesCount = 10;
-            timeLimit = 6000;
-        }
-        return { gesturesCount, timeLimit };
-    };
+  // time monitoring loop
+  while(inRound){
+    if(Date.now() - startTime > timeLimit){
+      timedOut = true; break;
+    }
+    // small tick
+    await new Promise(r=>setTimeout(r,100));
+  }
 
-    const startNextRound = () => {
-        if (gameStatus !== 'playing') return;
-        
-        clearTimeout(timeoutTimer);
-        const roundDetails = getRoundDetails(currentRound);
-        
-        // Generate a new random sequence of gestures
-        currentSequence = [];
-        for (let i = 0; i < roundDetails.gesturesCount; i++) {
-            currentSequence.push(gestures[Math.floor(Math.random() * gestures.length)]);
-        }
-        sequenceIndex = 0;
-        
-        // Start the timer for the round
-        timeoutTimer = setTimeout(() => {
-            handleMistake();
-        }, roundDetails.timeLimit);
-        
-        // Play the first gesture audio
-        playSound(gestureAudioMap[currentSequence[sequenceIndex]]);
-    };
+  if(timedOut){
+    inRound = false;
+    document.removeEventListener('gamegesture', gestureEventHandler);
+    mistakes += 1;
+    await playSFX('lost');
+    await new Promise(r=>setTimeout(r,1000));
+    if(mistakes >= maxMistakes){
+      await handleLoss();
+    }else{
+      round += 1;
+      await runRound();
+    }
+  }
+}
 
-    const handleMistake = () => {
-        clearTimeout(timeoutTimer);
-        lives--;
-        updateLivesDisplay();
-        if (lives > 0) {
-            playSound(sounds.lost, () => {
-                // Wait 1 second before starting the next round
-                setTimeout(startNextRound, 1000);
-            });
-        } else {
-            gameStatus = 'lost';
-            stopBackgroundAudio();
-            playSound(sounds.lost, () => {
-                playSound(sounds.endlost);
-                messageDisplay.innerHTML = `
-                    <p class="text-3xl font-bold text-red-500">คุณแพ้แล้ว!</p>
-                    <p class="text-lg mt-2">ใช้ 2 นิ้วปัดขึ้นเพื่อเล่นอีกครั้ง</p>
-                `;
-                livesDisplay.classList.add('hidden');
-                messageDisplay.classList.remove('hidden');
-            });
-        }
-    };
-    
-    const handleWinRound = () => {
-        clearTimeout(timeoutTimer);
-        
-        if (currentRound >= 30) {
-            // Player won the game
-            gameStatus = 'won';
-            stopBackgroundAudio();
-            playSound(sounds.win, () => {
-                playSound(sounds.endhappy);
-                messageDisplay.innerHTML = `
-                    <p class="text-3xl font-bold text-green-500">คุณชนะ!</p>
-                    <p class="text-lg mt-2">สุดยอดมาก! ใช้ 2 นิ้วปัดขึ้นเพื่อเล่นอีกครั้ง</p>
-                `;
-                livesDisplay.classList.add('hidden');
-                messageDisplay.classList.remove('hidden');
-            });
-        } else {
-            // Player won the round, proceed to next
-            playSound(sounds.win, () => {
-                currentRound++;
-                // Wait 1 second before starting the next round
-                setTimeout(startNextRound, 1000);
-            });
-        }
-    };
+async function handleLoss(){
+  gameActive = false;
+  stopBackground();
+  announce('แพ้ เล่นไม่ผ่านจำนวนครั้งที่กำหนด');
+  await playSFX('lost');
+  await playSFX('endlost');
+  // Now game waits for two-finger swipe up to restart
+  awaitingStartSwipe = true;
+}
 
-    const checkPlayerGesture = (gesture) => {
-        if (gameStatus !== 'playing') return;
-        
-        if (gesture === currentSequence[sequenceIndex]) {
-            sequenceIndex++;
-            if (sequenceIndex >= currentSequence.length) {
-                // User completed the sequence correctly
-                handleWinRound();
-            }
-        } else {
-            // User made a mistake
-            handleMistake();
-        }
-    };
+async function handleFullWin(){
+  gameActive = false;
+  stopBackground();
+  announce('ชนะ เล่นจนครบท่าทางที่กำหนด');
+  await playSFX('win');
+  await playSFX('endhappy');
+  awaitingStartSwipe = true;
+}
 
-    // Event Listeners for Touch Gestures
-    gameContainer.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-        
-        if (gameStatus === 'playing' && e.touches.length === 1) {
-            // Check for tap or double tap
-            const currentTime = Date.now();
-            if (currentTime - lastTapTime < doubleTapThreshold) {
-                // Double Tap
-                checkPlayerGesture('touch2');
-                lastTapTime = 0; // Reset
-            } else {
-                // Single Tap
-                lastTapTime = currentTime;
-            }
-        }
-    }, { passive: false });
+// External gesture handler that maps detected gestures into 'gamegesture' events
+function handleGesture(g){
+  // Accept only our known gestures
+  if(!gestureNames.includes(g)) return;
+  // If awaiting start swipe, ignore gestures except two-finger swipe which triggers onTwoFingerSwipeUp
+  if(awaitingStartSwipe) return;
+  // If background isn't playing yet, gestures shouldn't trigger game input (except the special start)
+  if(!gameActive) return;
+  // Dispatch custom event
+  const ev = new CustomEvent('gamegesture', {detail: g});
+  document.dispatchEvent(ev);
+}
 
-    gameContainer.addEventListener('touchend', (e) => {
-        if (e.touches.length === 0) {
-            // If it's a single finger touch that didn't move much, it's a tap
-            const touchDeltaX = Math.abs(touchStartX - touchMoveX);
-            const touchDeltaY = Math.abs(touchStartY - touchMoveY);
-            if (touchDeltaX < 10 && touchDeltaY < 10 && gameStatus === 'playing') {
-                const currentTime = Date.now();
-                if (currentTime - lastTapTime >= doubleTapThreshold) {
-                    checkPlayerGesture('touch');
-                }
-            }
-        }
-    });
+// Start button behavior
+startBtn.addEventListener('click', async ()=>{
+  // Play start audio asking user to turn off screen reader and that two-finger swipe up will begin the game
+  startBtn.disabled = true;
+  announce('กำลังเล่นเสียงเริ่ม กรุณาปิดตัวอ่านหน้าจอ แล้วทำการปัดสองนิ้วขึ้นเพื่อเริ่มเกม');
+  await playSFX('start');
+  // After start.mp3 finishes, we mark that we are awaiting the special two-finger swipe up
+  awaitingStartSwipe = true;
+  // keep the background stopped until two-finger swipe
+});
 
-    gameContainer.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        touchMoveX = e.touches[0].clientX;
-        touchMoveY = e.touches[0].clientY;
+// Map low-level detections to handleGesture wrapper
+function mapAndHandle(g){
+  // g might be 'touch' or 'touch2' or swipes
+  handleGesture(g);
+}
 
-        if (gameStatus === 'waiting-for-gesture' && e.touches.length === 2) {
-            // Check for 2-finger swipe up to start the game
-            const deltaY = touchStartY - touchMoveY;
-            if (deltaY > swipeThreshold) {
-                gameContainer.removeEventListener('touchmove', this);
-                startGame();
-            }
-        } else if (gameStatus === 'playing' && e.touches.length === 1) {
-            // Check for 1-finger swipes
-            const deltaX = touchMoveX - touchStartX;
-            const deltaY = touchMoveY - touchStartY;
-            
-            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > swipeThreshold) {
-                // Horizontal swipe
-                if (deltaX > 0) {
-                    checkPlayerGesture('right');
-                } else {
-                    checkPlayerGesture('left');
-                }
-                touchStartX = touchMoveX; // Reset to prevent multiple events
-            } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > swipeThreshold) {
-                // Vertical swipe
-                if (deltaY > 0) {
-                    checkPlayerGesture('down');
-                } else {
-                    checkPlayerGesture('up');
-                }
-                touchStartY = touchMoveY; // Reset to prevent multiple events
-            }
-        }
-    }, { passive: false });
+// Expose handleGesture to the rest of code (used by touchend logic above)
+window.handleGesture = (g)=>{
+  mapAndHandle(g);
+};
 
-    const startGame = () => {
-        gameStatus = 'playing';
-        messageDisplay.classList.add('hidden');
-        livesDisplay.classList.remove('hidden');
-        
-        currentRound = 1;
-        lives = 3;
-        updateLivesDisplay();
-        
-        playSound(sounds.background, () => {
-            sounds.background.loop = true;
-            sounds.background.play();
-        });
-        backgroundAudioPlaying = true;
-        
-        messageDisplay.innerText = '';
-        
-        setTimeout(() => {
-            startNextRound();
-        }, 3000); // Initial 3-second delay
-    };
-    
-    // Main Game Flow
-    const init = () => {
-        startButton.addEventListener('click', () => {
-            gameStatus = 'start-prompt';
-            startButton.classList.add('hidden');
-            messageDisplay.innerHTML = 'กรุณาปิดตัวอ่านหน้าจอ...';
-            
-            playSound(sounds.start, () => {
-                gameStatus = 'waiting-for-gesture';
-                messageDisplay.innerHTML = `
-                    <p class="text-3xl font-bold">ใช้ 2 นิ้วปัดขึ้นเพื่อเริ่ม</p>
-                `;
-            });
-        });
-    };
+// Our internal handleGesture function called by touchend detection
+function handleGesture(g){
+  // If we are currently in awaitingStartSwipe and g is 'up' from a two-finger check, it's handled in onTwoFingerSwipeUp
+  // Here we map single gestures into input
+  // For double tap we used 'touch2' earlier; but ensure not to treat single tap twice
+  const ev = new CustomEvent('gamegesture', {detail:g});
+  document.dispatchEvent(ev);
+}
 
-    window.onload = init;
+// For safety: expose a restart API using two-finger swipe up when game inactive
+// (already handled by onTwoFingerSwipeUp which checks awaitingStartSwipe)
 
+// Friendly hint for non-touch testing: reveal instructions in console
+console.log('Swipe game loaded. Use Start button. On touch devices: two-finger swipe up to begin.');
 </script>
 </body>
 </html>
