@@ -1,442 +1,203 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="th">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Swipe (beta1)</title>
-<style>
-  html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Arial}
-  .app{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:16px}
-  button{font-size:18px;padding:12px 18px;border-radius:8px}
-  .overlay{position:fixed;inset:0;background:#000000cc;color:#fff;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;padding:20px}
-  .hidden{display:none}
-  .info{max-width:720px;text-align:center}
-  .game-area{width:100%;max-width:720px;height:60vh;border-radius:12px;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;touch-action:none;-ms-touch-action:none}
-  .status{margin-top:8px}
-</style>
+  <meta charset="UTF-8">
+  <title>Swipe Game</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    #gameArea {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+    button {
+      padding: 1em 2em;
+      font-size: 1.2em;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-<div class="app">
-  <h1>Swipe (beta1)</h1>
-  <div class="info">ปัดและแตะตามที่โค้ชบอกให้ทัน — กดปุ่มเริ่มเพื่อฟังคำแนะนำ แล้วยืนยันว่าปิดตัวอ่านหน้าจอเรียบร้อย (ต้องปิดจริง ๆ เกมจึงจะไปต่อได้)</div>
-  <button id="startButton">เริ่ม</button>
-  <div class="status" id="status">สถานะ: รอการเริ่ม</div>
-  <div class="game-area" id="gameArea" aria-hidden="true">แตะหรือปัดที่นี่ตามคำสั่ง (ปิดตัวอ่านหน้าจอก่อน)</div>
-  <div id="debug" class="hidden"></div>
-</div>
-
-<!-- audio elements (ไฟล์ต้องอยู่ในไดเรกทอรีเดียวกัน) -->
-<audio id="audio_start" src="start.mp3" preload="auto"></audio>
-<audio id="audio_background" src="background.mp3" preload="auto" loop></audio>
-<audio id="audio_left" src="left.mp3" preload="auto"></audio>
-<audio id="audio_right" src="right.mp3" preload="auto"></audio>
-<audio id="audio_up" src="up.mp3" preload="auto"></audio>
-<audio id="audio_down" src="down.mp3" preload="auto"></audio>
-<audio id="audio_touch" src="touch.mp3" preload="auto"></audio>
-<audio id="audio_touch2" src="touch2.mp3" preload="auto"></audio>
-<audio id="audio_win" src="win.mp3" preload="auto"></audio>
-<audio id="audio_lost" src="lost.mp3" preload="auto"></audio>
-<audio id="audio_endlost" src="endlost.mp3" preload="auto"></audio>
-<audio id="audio_endhappy" src="endhappy.mp3" preload="auto"></audio>
-
-<!-- overlay shown after start audio finishes to confirm user turned off screen reader -->
-<div id="confirmOverlay" class="overlay hidden" role="dialog" aria-modal="true">
-  <div style="max-width:640px;text-align:center">
-    <p id="overlayText">กรุณาปิดตัวอ่านหน้าจอ (VoiceOver/ TalkBack) แล้วกดปุ่ม "ยืนยันปิดแล้ว" เพื่อดำเนินการต่อ</p>
-    <button id="confirmOff">ยืนยันปิดแล้ว</button>
-    <p style="font-size:13px;margin-top:10px;opacity:0.9">หมายเหตุ: ด้วยข้อจำกัดทางเว็บ เราไม่สามารถตรวจสอบการปิดตัวอ่านหน้าจอโดยตรง จึงต้องให้ผู้เล่นยืนยันด้วยตนเอง</p>
+  <div id="gameArea">
+    <button id="startBtn">เริ่มเกม</button>
   </div>
-</div>
 
-<script>
-// --- การตั้งค่าเกมและท่าทาง ---
-const GESTURES = [
-  {id:'swipe_left', name:'ปัดซ้าย', audio:document.getElementById('audio_left')},
-  {id:'swipe_right', name:'ปัดขวา', audio:document.getElementById('audio_right')},
-  {id:'swipe_up', name:'ปัดขึ้น', audio:document.getElementById('audio_up')},
-  {id:'swipe_down', name:'ปัดลง', audio:document.getElementById('audio_down')},
-  {id:'tap', name:'แตะ', audio:document.getElementById('audio_touch')},
-  {id:'double_tap', name:'แตะสองครั้ง', audio:document.getElementById('audio_touch2')}
-];
+  <audio id="bgm" src="background.mp3" loop></audio>
+  <audio id="startSound" src="start.mp3"></audio>
+  <audio id="win" src="win.mp3"></audio>
+  <audio id="lost" src="lost.mp3"></audio>
+  <audio id="endHappy" src="endhappy.mp3"></audio>
+  <audio id="endLost" src="endlost.mp3"></audio>
 
-// รอบ (user-provided up to 16-18), we'll programmatically extend until sequences of length 10
-// base schedule given by user (round ranges inclusive):
-const baseRounds = [
-  {from:1,to:3, gestures:1, timeLimit:2000},
-  {from:4,to:6, gestures:2, timeLimit:2000},
-  {from:7,to:9, gestures:3, timeLimit:2500},
-  {from:10,to:12, gestures:4, timeLimit:3000},
-  {from:13,to:15, gestures:5, timeLimit:3500},
-  {from:16,to:18, gestures:6, timeLimit:4000}
-];
+  <audio id="left" src="left.mp3"></audio>
+  <audio id="right" src="right.mp3"></audio>
+  <audio id="up" src="up.mp3"></audio>
+  <audio id="down" src="down.mp3"></audio>
+  <audio id="tap" src="touch.mp3"></audio>
+  <audio id="doubletap" src="touch2.mp3"></audio>
 
-// We'll extend schedule so that game can progress until gesture count reaches 10.
-// Strategy: after round 18, increase gestures by 1 every 2 rounds and timeLimit +500ms every 2 rounds until gestures==10
-function buildFullSchedule() {
-  const schedule = baseRounds.slice();
-  let currentGestures = 6;
-  let roundStart = 19;
-  let timeLimit = 4000;
-  while (currentGestures < 10) {
-    const roundEnd = roundStart + 1; // two rounds per step
-    currentGestures += 1;
-    timeLimit += 500;
-    schedule.push({from:roundStart,to:roundEnd, gestures:currentGestures, timeLimit:timeLimit});
-    roundStart = roundEnd + 1;
-  }
-  // now schedule covers rounds up until gestures reach 10
-  return schedule;
-}
-const SCHEDULE = buildFullSchedule();
+  <script>
+    const startBtn = document.getElementById("startBtn");
+    const gameArea = document.getElementById("gameArea");
+    const bgm = document.getElementById("bgm");
 
-// For reference: this schedule will get to 10 gestures by the following rounds. (used by game for progression)
-// --- Game state ---
-let roundNumber = 0;
-let mistakes = 0;
-const MAX_MISTAKES = 3;
-let inRound = false;
-let expectedSequence = [];
-let userIndex = 0;
-let roundTimer = null;
-let allowInputs = false;
-let backgroundAudio = document.getElementById('audio_background');
-let startAudio = document.getElementById('audio_start');
-let audioWin = document.getElementById('audio_win');
-let audioLost = document.getElementById('audio_lost');
-let audioEndLost = document.getElementById('audio_endlost');
-let audioEndHappy = document.getElementById('audio_endhappy');
-
-const statusEl = document.getElementById('status');
-const startBtn = document.getElementById('startButton');
-const confirmOverlay = document.getElementById('confirmOverlay');
-const confirmOffBtn = document.getElementById('confirmOff');
-const gameArea = document.getElementById('gameArea');
-
-// Prevent system gestures on gameArea
-['touchstart','touchmove','touchend','gesturestart','gesturechange','gestureend'].forEach(ev => {
-  gameArea.addEventListener(ev, e=>{ e.preventDefault && e.preventDefault(); }, {passive:false});
-});
-
-// Start button plays start.mp3 and then shows confirmation overlay
-startBtn.addEventListener('click', async ()=>{
-  startBtn.disabled = true;
-  statusEl.textContent = 'สถานะ: กำลังเล่นเสียงเริ่มต้น...';
-  try { await startAudio.play(); } catch(e) { /* some browsers require interaction - click already did */ }
-  // when start audio ends, show confirm overlay
-  startAudio.onended = ()=>{
-    confirmOverlay.classList.remove('hidden');
-  };
-});
-
-// When user confirms they turned off screen reader, we wait for 2-finger swipe up to actually start the game
-confirmOffBtn.addEventListener('click', ()=>{
-  confirmOverlay.classList.add('hidden');
-  statusEl.textContent = 'สถานะ: กรุณาใช้ 2 นิ้วปัดขึ้นบนพื้นที่เกม เพื่อเริ่ม (จะเล่น background.mp3 เมื่อเริ่มจริง)';
-  // allow the area to listen for the 2-finger swipe
-});
-
-// Detect 2-finger swipe up to start or restart
-let startTouchInfo = null;
-
-gameArea.addEventListener('touchstart', (e)=>{
-  if (e.touches.length === 2) {
-    startTouchInfo = {y:[e.touches[0].clientY,e.touches[1].clientY],startTime:Date.now()};
-  }
-});
-
-gameArea.addEventListener('touchend', (e)=>{
-  if (startTouchInfo && e.changedTouches.length >= 1) {
-    // check swipe up: compute average delta
-    const endY = Array.from(e.changedTouches).slice(0,2).map(t=>t.clientY).reduce((a,b)=>a+b,0)/Math.min(2,e.changedTouches.length);
-    const startY = (startTouchInfo.y[0]+startTouchInfo.y[1])/2;
-    const dy = startY - endY;
-    const dt = Date.now() - startTouchInfo.startTime;
-    startTouchInfo = null;
-    if (dy > 50 && dt < 800) {
-      // recognized 2-finger swipe up
-      // if game is not running, start game; if game ended, restart
-      if (!backgroundAudio.paused) {
-        // game is running -> ignore
-        return;
-      }
-      startGame(true);
-    }
-  }
-});
-
-// General gesture detection for player input (single finger)
-let touchStart = null;
-let lastTap = 0;
-
-gameArea.addEventListener('touchstart', (e)=>{
-  if (!allowInputs) return;
-  if (e.touches.length > 1) return; // ignore multi-finger during gameplay
-  touchStart = {x:e.touches[0].clientX, y:e.touches[0].clientY, t:Date.now()};
-});
-
-gameArea.addEventListener('touchend', (e)=>{
-  if (!allowInputs || !touchStart) return;
-  const touch = e.changedTouches[0];
-  const dx = touch.clientX - touchStart.x;
-  const dy = touch.clientY - touchStart.y;
-  const dt = Date.now() - touchStart.t;
-  touchStart = null;
-  const absX = Math.abs(dx), absY = Math.abs(dy);
-  let detected = null;
-  const SWIPE_MIN = 40;
-  if (absX > SWIPE_MIN || absY > SWIPE_MIN) {
-    // swipe
-    if (absX > absY) {
-      detected = dx > 0 ? 'swipe_right' : 'swipe_left';
-    } else {
-      detected = dy > 0 ? 'swipe_down' : 'swipe_up';
-    }
-  } else {
-    // tap or double-tap
-    const now = Date.now();
-    if (now - lastTap < 350) {
-      lastTap = 0;
-      detected = 'double_tap';
-    } else {
-      lastTap = now;
-      detected = 'tap';
-    }
-  }
-  if (detected) {
-    handlePlayerGesture(detected);
-  }
-});
-
-function playGestureAudioById(id) {
-  const g = GESTURES.find(x=>x.id===id);
-  if (g && g.audio) {
-    try { g.audio.currentTime = 0; g.audio.play(); } catch(e){}
-  }
-}
-
-function handlePlayerGesture(gestureId) {
-  // only accept when inRound
-  if (!inRound) return;
-  // check expected
-  const expected = expectedSequence[userIndex];
-  // temporarily play the audio of performed gesture for feedback
-  playGestureAudioById(gestureId);
-  if (gestureId === expected) {
-    userIndex++;
-    // completed round?
-    if (userIndex >= expectedSequence.length) {
-      // player completed this round correctly
-      inRound = false;
-      allowInputs = false;
-      clearTimeout(roundTimer);
-      audioWin.currentTime = 0; audioWin.play();
-      audioWin.onended = ()=>{
-        setTimeout(()=>{ nextRound(); }, 1000);
-      };
-    }
-  } else {
-    // wrong gesture -> immediate failure of this round
-    inRound = false;
-    allowInputs = false;
-    clearTimeout(roundTimer);
-    mistakes++;
-    audioLost.currentTime = 0; audioLost.play();
-    audioLost.onended = ()=>{
-      if (mistakes >= MAX_MISTAKES) {
-        // game over - lost
-        audioEndLost.currentTime = 0; audioEndLost.play();
-        audioEndLost.onended = ()=>{
-          endGame(false);
-        };
-      } else {
-        // continue to next round after 1s
-        setTimeout(()=>{ nextRound(); }, 1000);
-      }
+    const sounds = {
+      start: document.getElementById("startSound"),
+      win: document.getElementById("win"),
+      lost: document.getElementById("lost"),
+      endHappy: document.getElementById("endHappy"),
+      endLost: document.getElementById("endLost"),
+      left: document.getElementById("left"),
+      right: document.getElementById("right"),
+      up: document.getElementById("up"),
+      down: document.getElementById("down"),
+      tap: document.getElementById("tap"),
+      doubletap: document.getElementById("doubletap")
     };
-  }
-}
 
-function startGame(isRestart=false) {
-  // reset if new
-  if (!isRestart) { }
-  if (!isRestart) {
-    roundNumber = 0; mistakes = 0;
-  }
-  statusEl.textContent = 'สถานะ: เกมเริ่ม - กำลังเล่นเสียงพื้นหลัง';
-  try { backgroundAudio.currentTime = 0; backgroundAudio.play(); } catch(e){}
-  // initial 3 second delay before first prompt
-  setTimeout(()=>{ nextRound(); }, 3000);
-}
+    const gestures = ["left", "right", "up", "down", "tap", "doubletap"];
 
-function stopBackground() {
-  try { backgroundAudio.pause(); backgroundAudio.currentTime = 0; } catch(e){}
-}
+    let round = 1;
+    let seq = [];
+    let playerIndex = 0;
+    let mistakes = 0;
+    let listening = false;
+    let lastTapTime = 0;
 
-function nextRound() {
-  // determine next round
-  roundNumber++;
-  // find schedule entry
-  const entry = SCHEDULE.find(s=> roundNumber >= s.from && roundNumber <= s.to) || SCHEDULE[SCHEDULE.length-1];
-  const gesturesNeeded = entry.gestures;
-  const timeLimit = entry.timeLimit;
-  statusEl.textContent = `สถานะ: รอบ ${roundNumber} — ต้องทำ ${gesturesNeeded} ท่าทาง ภายใน ${timeLimit/1000} วินาที`;
-  // if gesturesNeeded >= 10 -> win game if achieved
-  // build random sequence of gesturesNeeded
-  expectedSequence = [];
-  for (let i=0;i<gesturesNeeded;i++) {
-    const g = GESTURES[Math.floor(Math.random()*GESTURES.length)];
-    expectedSequence.push(g.id);
-  }
-  // Play sequence as audio coach: play each associated audio in sequence with small gap
-  playSequenceAsCoach(expectedSequence, ()=>{
-    // after coach finishes, allow input and start timer
-    inRound = true; allowInputs = true; userIndex = 0;
-    roundTimer = setTimeout(()=>{ // time expired -> treat as loss of round
-      inRound = false; allowInputs = false; mistakes++;
-      audioLost.currentTime = 0; audioLost.play();
-      audioLost.onended = ()=>{
-        if (mistakes >= MAX_MISTAKES) {
-          audioEndLost.currentTime = 0; audioEndLost.play();
-          audioEndLost.onended = ()=>{ endGame(false); };
-        } else {
-          setTimeout(()=>{ nextRound(); }, 1000);
-        }
-      };
-    }, timeLimit);
-  });
-}
-
-function playSequenceAsCoach(seq, done) {
-  // Play each gesture's audio with 700ms gap
-  let i = 0;
-  function playNext() {
-    if (i >= seq.length) { done && done(); return; }
-    const id = seq[i];
-    playGestureAudioById(id);
-    // wait for the audio to end or fixed 700ms (use 700ms gap)
-    const delay = 700; // gap between prompts
-    i++;
-    setTimeout(playNext, delay);
-  }
-  playNext();
-}
-
-function endGame(won) {
-  stopBackground();
-  allowInputs = false; inRound = false;
-  if (won) {
-    statusEl.textContent = 'สถานะ: ชนะ! เล่นเสียงฉลอง...';
-    audioWin.currentTime = 0; audioWin.play();
-    audioWin.onended = ()=>{ audioEndHappy.currentTime = 0; audioEndHappy.play(); };
-  } else {
-    statusEl.textContent = 'สถานะ: แพ้ - เกมจบ';
-    // endlost already played prior to calling endGame in flows, but ensure it plays if not
-    audioEndLost.currentTime = 0; audioEndLost.play();
-  }
-}
-
-// Monitor successful completion to full 10-gesture goal
-// After each successful round we check if gesturesNeeded >= 10 -> win
-// Modify nextRound to check victory based on gesturesWanted
-
-// Adjusted nextRound wrapper to check final win
-const origNextRound = nextRound;
-nextRound = function(){
-  roundNumber++;
-  const entry = SCHEDULE.find(s=> roundNumber >= s.from && roundNumber <= s.to) || SCHEDULE[SCHEDULE.length-1];
-  const gesturesNeeded = entry.gestures;
-  // Build expectedSequence
-  expectedSequence = [];
-  for (let i=0;i<gesturesNeeded;i++) {
-    const g = GESTURES[Math.floor(Math.random()*GESTURES.length)];
-    expectedSequence.push(g.id);
-  }
-  // If gesturesNeeded >= 10 then completing this round -> full win condition
-  playSequenceAsCoach(expectedSequence, ()=>{
-    inRound = true; allowInputs = true; userIndex = 0;
-    roundTimer = setTimeout(()=>{ // time expired -> loss
-      inRound = false; allowInputs = false; mistakes++;
-      audioLost.currentTime = 0; audioLost.play();
-      audioLost.onended = ()=>{
-        if (mistakes >= MAX_MISTAKES) {
-          audioEndLost.currentTime = 0; audioEndLost.play();
-          audioEndLost.onended = ()=>{ endGame(false); };
-        } else {
-          setTimeout(()=>{ nextRound(); }, 1000);
-        }
-      };
-    }, entry.timeLimit);
-  });
-  statusEl.textContent = `สถานะ: รอบ ${roundNumber} — ต้องทำ ${gesturesNeeded} ท่าทาง ภายใน ${entry.timeLimit/1000} วินาที`;
-  // store the gesturesNeeded on this round so we can detect win
-  const thisGesturesNeeded = gesturesNeeded;
-  // override handlePlayerGesture completion branch to detect full win
-  // We will intercept via checking after user completes sequence
-  const originalHandle = handlePlayerGesture;
-  // to avoid complexity, simply check after user completes: if thisGesturesNeeded >= 10 then trigger full win
-  // Achieved via checking in handlePlayerGesture when userIndex >= expectedSequence.length -> if gesturesNeeded>=10 -> endGame(won=true)
-  // (We already handle playing win.mp3 and then nextRound; modify to call endGame when gesturesNeeded>=10)
-};
-
-// To implement final win detection, monkey-patch handlePlayerGesture to check current round length
-const originalHandle = handlePlayerGesture;
-handlePlayerGesture = function(gestureId) {
-  if (!inRound) return;
-  playGestureAudioById(gestureId);
-  const expected = expectedSequence[userIndex];
-  if (gestureId === expected) {
-    userIndex++;
-    if (userIndex >= expectedSequence.length) {
-      inRound = false; allowInputs = false; clearTimeout(roundTimer);
-      // player completed this round correctly
-      audioWin.currentTime = 0; audioWin.play();
-      audioWin.onended = ()=>{
-        // if this round had >=10 gestures -> overall game win
-        const entry = SCHEDULE.find(s=> roundNumber >= s.from && roundNumber <= s.to) || SCHEDULE[SCHEDULE.length-1];
-        if (entry.gestures >= 10) {
-          setTimeout(()=>{ audioEndHappy.currentTime = 0; audioEndHappy.play(); }, 0);
-          endGame(true);
-        } else {
-          setTimeout(()=>{ nextRound(); }, 1000);
-        }
-      };
-    }
-  } else {
-    inRound = false; allowInputs = false; clearTimeout(roundTimer);
-    mistakes++;
-    audioLost.currentTime = 0; audioLost.play();
-    audioLost.onended = ()=>{
-      if (mistakes >= MAX_MISTAKES) {
-        audioEndLost.currentTime = 0; audioEndLost.play();
-        audioEndLost.onended = ()=>{ endGame(false); };
-      } else {
-        setTimeout(()=>{ nextRound(); }, 1000);
+    function playSound(name) {
+      if (sounds[name]) {
+        sounds[name].currentTime = 0;
+        sounds[name].play();
       }
-    };
-  }
-};
+    }
 
-// Allow restart by 2-finger swipe up even after game ends
-// The start two-finger detection will call startGame(true) which resets rounds
-// but ensure startGame called with isRestart true resets rounds properly
-startGame = function(isRestart=false){
-  if (!isRestart) { roundNumber = 0; mistakes = 0; }
-  else { roundNumber = 0; mistakes = 0; }
-  statusEl.textContent = 'สถานะ: เกมเริ่ม - กำลังเล่นเสียงพื้นหลัง';
-  try { backgroundAudio.currentTime = 0; backgroundAudio.play(); } catch(e){}
-  setTimeout(()=>{ nextRound(); }, 3000);
-};
+    function newSequence(round) {
+      let length = Math.min(10, Math.floor((round+1)/2));
+      seq = [];
+      for (let i=0; i<length; i++) {
+        let g = gestures[Math.floor(Math.random() * gestures.length)];
+        seq.push(g);
+      }
+    }
 
-// Optional: keyboard support for testing on desktop (arrow keys and space/double-space)
-window.addEventListener('keydown',(e)=>{
-  if (!allowInputs) return;
-  const map = {ArrowLeft:'swipe_left',ArrowRight:'swipe_right',ArrowUp:'swipe_up',ArrowDown:'swipe_down',' ': 'tap'};
-  if (map[e.key]) handlePlayerGesture(map[e.key]);
-});
+    function playSequence() {
+      let i = 0;
+      listening = false;
+      function next() {
+        if (i < seq.length) {
+          playSound(seq[i]);
+          setTimeout(next, 1500);
+          i++;
+        } else {
+          playerIndex = 0;
+          listening = true;
+        }
+      }
+      setTimeout(next, 1000);
+    }
 
-// On page load, show short instruction
-statusEl.textContent = 'สถานะ: พร้อม — กด เริ่ม แล้วยืนยันว่าคุณปิดตัวอ่านหน้าจอ (ไม่สามารถตรวจสอบอัตโนมัติทางเว็บ)'
+    function checkGesture(input) {
+      if (!listening) return;
+      if (seq[playerIndex] === input) {
+        playerIndex++;
+        if (playerIndex >= seq.length) {
+          playSound("win");
+          round++;
+          if (round > 20) {
+            bgm.pause();
+            playSound("endHappy");
+            resetGame();
+          } else {
+            setTimeout(startRound, 1500);
+          }
+        }
+      } else {
+        mistakes++;
+        playSound("lost");
+        if (mistakes >= 3) {
+          bgm.pause();
+          playSound("endLost");
+          resetGame();
+        } else {
+          setTimeout(startRound, 1500);
+        }
+      }
+    }
 
-</script>
+    function startRound() {
+      newSequence(round);
+      playSequence();
+    }
+
+    function resetGame() {
+      round = 1;
+      mistakes = 0;
+      seq = [];
+      playerIndex = 0;
+      listening = false;
+      startBtn.style.display = "block";
+    }
+
+    function startGame() {
+      startBtn.style.display = "none";
+      playSound("start");
+      bgm.currentTime = 0;
+      bgm.play();
+      setTimeout(startRound, 2000);
+    }
+
+    // Gesture detection
+    let touchStartX=0, touchStartY=0;
+    gameArea.addEventListener("touchstart", e => {
+      if (e.touches.length===1) {
+        let now = Date.now();
+        if (now - lastTapTime < 300) {
+          checkGesture("doubletap");
+        } else {
+          setTimeout(()=>checkGesture("tap"), 300);
+        }
+        lastTapTime = now;
+      } else if (e.touches.length===2) {
+        // two finger swipe up to start game
+        touchStartY = e.touches[0].clientY;
+      }
+    });
+
+    gameArea.addEventListener("touchend", e => {
+      if (e.changedTouches.length===1) {
+        let dx = e.changedTouches[0].clientX - touchStartX;
+        let dy = e.changedTouches[0].clientY - touchStartY;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          if (dx > 50) checkGesture("right");
+          else if (dx < -50) checkGesture("left");
+        } else {
+          if (dy > 50) checkGesture("down");
+          else if (dy < -50) checkGesture("up");
+        }
+      } else if (e.changedTouches.length===2) {
+        let dy = e.changedTouches[0].clientY - touchStartY;
+        if (dy < -50) startGame();
+      }
+    });
+
+    startBtn.addEventListener("click", startGame);
+  </script>
 </body>
 </html>
