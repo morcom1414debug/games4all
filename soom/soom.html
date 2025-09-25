@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>โปรแกรมสุ่มตัวเลข</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f3f4f6;
+            transition: background-color 0.3s ease;
+        }
+        .container {
+            max-width: 90%;
+            margin: auto;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 0;
+        }
+        .card {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 600px;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .btn {
+            padding: 1rem 1.5rem;
+            border-radius: 9999px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+        .btn:hover:enabled {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .btn:disabled {
+            background-color: #d1d5db;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .result-display {
+            font-size: 4rem;
+            font-weight: 700;
+            color: #3b82f6;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            animation: popIn 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+        .list-group {
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 0.5rem;
+            border-radius: 0.75rem;
+            background-color: #f9fafb;
+        }
+        /* Update history separator to a comma */
+        .list-group > span:not(:last-child)::after {
+            content: ', ';
+        }
+        .input-group input {
+            border: 2px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 0.75rem;
+            transition: border-color 0.3s ease;
+            -moz-appearance: textfield; /* Hide number input arrows for Firefox */
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        .input-group input::-webkit-outer-spin-button,
+        .input-group input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .pop-up {
+            animation: popUp 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes popIn {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes popUp {
+            from { transform: scale(0); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center">
+
+<div class="container">
+    <div id="main-menu" class="card text-center">
+        <h1 class="text-3xl font-bold mb-6 text-gray-800">โปรแกรมสุ่มตัวเลข</h1>
+        <p class="text-gray-500 mb-8">เลือกโหมดการสุ่มที่ต้องการ</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button id="mode-1" class="btn bg-blue-500 text-white hover:bg-blue-600">
+                สุ่มตัวเลข 1 ถึง 99
+            </button>
+            <button id="mode-2" class="btn bg-green-500 text-white hover:bg-green-600">
+                สุ่มตัวเลขจากเลขไหนถึงเลขไหน
+            </button>
+            <button id="mode-3" class="btn bg-purple-500 text-white hover:bg-purple-600">
+                สุ่มตัวเลขตามประสงค์
+            </button>
+        </div>
+    </div>
+
+    <!-- Mode 1: 1 to 99 -->
+    <div id="mode-1-page" class="card hidden text-center">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">สุ่มตัวเลข 1 ถึง 99</h2>
+        <div class="flex items-center justify-center h-48 my-8 bg-blue-50 border-4 border-dashed border-blue-200 rounded-2xl">
+            <span id="result-1" class="result-display text-blue-500" tabindex="-1">?</span>
+        </div>
+        <button id="start-1" class="btn bg-blue-500 text-white w-full">เริ่มสุ่มทันที</button>
+        <button id="reset-1" class="btn bg-gray-400 text-white w-full mt-2 hidden">สุ่มใหม่</button>
+        <div class="mt-8 text-left">
+            <h3 class="font-bold text-gray-600 mb-2">ประวัติการสุ่ม:</h3>
+            <div id="history-1" class="list-group text-gray-600 flex flex-wrap">
+                <!-- History items will be added here -->
+            </div>
+        </div>
+        <button id="back-1" class="btn bg-gray-300 text-gray-800 w-full mt-4">กลับ</button>
+    </div>
+
+    <!-- Mode 2: Custom Range -->
+    <div id="mode-2-page" class="card hidden text-center">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">สุ่มตัวเลขจากเลขไหนถึงเลขไหน</h2>
+        <p class="text-sm text-gray-500 mb-4">ใส่ตัวเลขระหว่าง 1 ถึง 999</p>
+        <div class="flex flex-col md:flex-row gap-4 mb-6 input-group">
+            <input type="number" id="start-num" placeholder="ตัวเลขตั้งต้น (1-999)" class="w-full text-center" min="1" max="999" inputmode="numeric">
+            <input type="number" id="end-num" placeholder="ตัวเลขสุดท้าย (1-999)" class="w-full text-center" min="1" max="999" inputmode="numeric">
+        </div>
+        <div class="flex items-center justify-center h-48 my-8 bg-green-50 border-4 border-dashed border-green-200 rounded-2xl">
+            <span id="result-2" class="result-display text-green-500" tabindex="-1">?</span>
+        </div>
+        <button id="start-2" class="btn bg-green-500 text-white w-full">เริ่มสุ่มทันที</button>
+        <button id="reset-2" class="btn bg-gray-400 text-white w-full mt-2 hidden">สุ่มใหม่</button>
+        <div class="mt-8 text-left">
+            <h3 class="font-bold text-gray-600 mb-2">ประวัติการสุ่ม:</h3>
+            <div id="history-2" class="list-group text-gray-600 flex flex-wrap">
+                <!-- History items will be added here -->
+            </div>
+        </div>
+        <button id="back-2" class="btn bg-gray-300 text-gray-800 w-full mt-4">กลับ</button>
+    </div>
+
+    <!-- Mode 3: Custom List -->
+    <div id="mode-3-page" class="card hidden text-center">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">สุ่มตัวเลขตามประสงค์</h2>
+        <p class="text-sm text-gray-500 mb-4">ใส่ตัวเลขที่ต้องการสุ่ม (สูงสุด 99 ช่อง)</p>
+        <div id="input-container-3" class="flex flex-col gap-4 mb-4">
+            <div class="input-group flex gap-2">
+                <input type="number" class="w-full text-center custom-num" placeholder="ตัวเลขที่ 1" inputmode="numeric">
+                <input type="number" class="w-full text-center custom-num" placeholder="ตัวเลขที่ 2" inputmode="numeric">
+            </div>
+        </div>
+        <button id="add-input-3" class="btn bg-gray-200 text-gray-800 w-full mb-6">เพิ่มช่องใส่ตัวเลข</button>
+        <div class="flex items-center justify-center h-48 my-8 bg-purple-50 border-4 border-dashed border-purple-200 rounded-2xl">
+            <span id="result-3" class="result-display text-purple-500" tabindex="-1">?</span>
+        </div>
+        <button id="start-3" class="btn bg-purple-500 text-white w-full">เริ่มสุ่มทันที</button>
+        <button id="reset-3" class="btn bg-gray-400 text-white w-full mt-2 hidden">สุ่มใหม่</button>
+        <div class="mt-8 text-left">
+            <h3 class="font-bold text-gray-600 mb-2">ประวัติการสุ่ม:</h3>
+            <div id="history-3" class="list-group text-gray-600 flex flex-wrap">
+                <!-- History items will be added here -->
+            </div>
+        </div>
+        <button id="back-3" class="btn bg-gray-300 text-gray-800 w-full mt-4">กลับ</button>
+    </div>
+
+    <!-- General Message/Modal (Hidden by default) -->
+    <div id="modal-container" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div id="modal" class="bg-white p-8 rounded-2xl shadow-xl text-center w-full max-w-sm pop-up">
+            <h3 id="modal-title" class="text-xl font-bold mb-4"></h3>
+            <p id="modal-message" class="text-gray-600 mb-6"></p>
+            <button id="modal-close" class="btn bg-blue-500 text-white w-full">ตกลง</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Elements
+        const mainMenu = document.getElementById('main-menu');
+        const mode1Page = document.getElementById('mode-1-page');
+        const mode2Page = document.getElementById('mode-2-page');
+        const mode3Page = document.getElementById('mode-3-page');
+        const modalContainer = document.getElementById('modal-container');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalCloseBtn = document.getElementById('modal-close');
+
+        // State
+        let usedNumbers = [];
+        let customListNumbers = [];
+        let isRandomizing = false;
+
+        // Audio files
+        const audio01 = new Audio('audio/01.mp3');
+        const audio02 = new Audio('audio/02.mp3');
+        const audio03 = new Audio('audio/03.mp3');
+
+        // Utility Functions
+        const showModal = (title, message) => {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            modalContainer.classList.remove('hidden');
+        };
+
+        const hideModal = () => {
+            modalContainer.classList.add('hidden');
+        };
+        
+        const playAudio = (audio) => {
+            audio.currentTime = 0; // Rewind to the start
+            audio.play().catch(e => console.error("Error playing audio:", e));
+        };
+
+        const showPage = (pageToShow) => {
+            const pages = [mainMenu, mode1Page, mode2Page, mode3Page];
+            pages.forEach(page => page.classList.add('hidden'));
+            pageToShow.classList.remove('hidden');
+        };
+
+        const updateHistory = (historyElement, number) => {
+            const span = document.createElement('span');
+            span.className = 'px-3 py-1 text-sm bg-gray-200 text-gray-800 rounded-full transition-all duration-300 pop-up';
+            span.textContent = number;
+            historyElement.appendChild(span);
+        };
+
+        const clearHistory = (historyElement, resultElement, startBtn, resetBtn) => {
+            historyElement.innerHTML = '';
+            resultElement.textContent = '?';
+            usedNumbers = [];
+            startBtn.classList.remove('hidden');
+            resetBtn.classList.add('hidden');
+        };
+
+        const getRandomNumber = (min, max) => {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        };
+
+        const randomize = async (resultEl, historyEl, getNumbersFunc, startBtn, resetBtn) => {
+            if (isRandomizing) return;
+            isRandomizing = true;
+            resultEl.textContent = '...';
+            startBtn.disabled = true;
+            startBtn.textContent = 'กำลังสุ่ม...';
+
+            // Play audio 01.mp3 and wait for it to finish
+            try {
+                await new Promise((resolve) => {
+                    audio01.onended = resolve;
+                    playAudio(audio01);
+                });
+            } catch (e) {
+                console.error("Audio 01 playback error:", e);
+            }
+
+            const availableNumbers = getNumbersFunc().filter(num => !usedNumbers.includes(num));
+            
+            if (availableNumbers.length === 0) {
+                showModal('หมดตัวเลขที่จะสุ่มแล้ว', 'ไม่มีตัวเลขเหลือให้สุ่มอีกแล้ว กรุณาเริ่มใหม่');
+                startBtn.disabled = false;
+                startBtn.textContent = 'เริ่มสุ่มทันที';
+                resetBtn.classList.remove('hidden');
+                isRandomizing = false;
+                return;
+            }
+
+            const randomIndex = getRandomNumber(0, availableNumbers.length - 1);
+            const result = availableNumbers[randomIndex];
+            usedNumbers.push(result);
+
+            resultEl.textContent = result;
+            updateHistory(historyEl, result);
+            
+            // Set focus to the result element for accessibility
+            resultEl.focus();
+
+            // Play audio 03.mp3 after a short delay
+            setTimeout(() => {
+                playAudio(audio03);
+            }, 500);
+
+            startBtn.disabled = false;
+            startBtn.textContent = 'สุ่มอีกครั้ง';
+            resetBtn.classList.remove('hidden');
+            isRandomizing = false;
+        };
+
+        // Event Listeners for Main Menu
+        document.getElementById('mode-1').addEventListener('click', () => {
+            playAudio(audio02);
+            clearHistory(document.getElementById('history-1'), document.getElementById('result-1'), document.getElementById('start-1'), document.getElementById('reset-1'));
+            showPage(mode1Page);
+            document.getElementById('start-1').focus();
+        });
+        document.getElementById('mode-2').addEventListener('click', () => {
+            playAudio(audio02);
+            clearHistory(document.getElementById('history-2'), document.getElementById('result-2'), document.getElementById('start-2'), document.getElementById('reset-2'));
+            showPage(mode2Page);
+            document.getElementById('start-num').focus();
+        });
+        document.getElementById('mode-3').addEventListener('click', () => {
+            playAudio(audio02);
+            clearHistory(document.getElementById('history-3'), document.getElementById('result-3'), document.getElementById('start-3'), document.getElementById('reset-3'));
+            showPage(mode3Page);
+            document.querySelector('.custom-num').focus();
+        });
+
+        // Event Listeners for Back Buttons
+        document.getElementById('back-1').addEventListener('click', () => showPage(mainMenu));
+        document.getElementById('back-2').addEventListener('click', () => showPage(mainMenu));
+        document.getElementById('back-3').addEventListener('click', () => showPage(mainMenu));
+        modalCloseBtn.addEventListener('click', hideModal);
+
+        // --- Mode 1: 1 to 99 ---
+        const result1El = document.getElementById('result-1');
+        const history1El = document.getElementById('history-1');
+        const start1Btn = document.getElementById('start-1');
+        const reset1Btn = document.getElementById('reset-1');
+
+        start1Btn.addEventListener('click', () => {
+            playAudio(audio02);
+            randomize(result1El, history1El, () => {
+                const numbers = [];
+                for (let i = 1; i <= 99; i++) {
+                    numbers.push(i);
+                }
+                return numbers;
+            }, start1Btn, reset1Btn);
+        });
+
+        reset1Btn.addEventListener('click', () => {
+            playAudio(audio02);
+            clearHistory(history1El, result1El, start1Btn, reset1Btn);
+            start1Btn.textContent = 'เริ่มสุ่มทันที';
+            start1Btn.focus();
+        });
+
+        // --- Mode 2: Custom Range ---
+        const startNumInput = document.getElementById('start-num');
+        const endNumInput = document.getElementById('end-num');
+        const result2El = document.getElementById('result-2');
+        const history2El = document.getElementById('history-2');
+        const start2Btn = document.getElementById('start-2');
+        const reset2Btn = document.getElementById('reset-2');
+
+        start2Btn.addEventListener('click', () => {
+            playAudio(audio02);
+            const startNum = parseInt(startNumInput.value);
+            const endNum = parseInt(endNumInput.value);
+
+            if (isNaN(startNum) || isNaN(endNum) || startNum < 1 || endNum > 999 || startNum > endNum) {
+                showModal('ข้อมูลไม่ถูกต้อง', 'กรุณาใส่ตัวเลขให้ครบถ้วนและถูกต้อง (1-999) และตัวเลขตั้งต้นต้องไม่เกินตัวเลขสุดท้าย');
+                return;
+            }
+
+            const currentRange = `${startNum}-${endNum}`;
+            const lastRange = start2Btn.dataset.range || '';
+            if (currentRange !== lastRange) {
+                clearHistory(history2El, result2El, start2Btn, reset2Btn);
+                start2Btn.dataset.range = currentRange;
+                start2Btn.textContent = 'เริ่มสุ่มทันที';
+            }
+
+            randomize(result2El, history2El, () => {
+                const numbers = [];
+                for (let i = startNum; i <= endNum; i++) {
+                    numbers.push(i);
+                }
+                return numbers;
+            }, start2Btn, reset2Btn);
+        });
+
+        reset2Btn.addEventListener('click', () => {
+            playAudio(audio02);
+            clearHistory(history2El, result2El, start2Btn, reset2Btn);
+            start2Btn.textContent = 'เริ่มสุ่มทันที';
+            start2Btn.dataset.range = '';
+            startNumInput.value = '';
+            endNumInput.value = '';
+            startNumInput.focus();
+        });
+
+        // --- Mode 3: Custom List ---
+        const inputContainer3 = document.getElementById('input-container-3');
+        const addInput3Btn = document.getElementById('add-input-3');
+        const result3El = document.getElementById('result-3');
+        const history3El = document.getElementById('history-3');
+        const start3Btn = document.getElementById('start-3');
+        const reset3Btn = document.getElementById('reset-3');
+
+        addInput3Btn.addEventListener('click', () => {
+            const existingInputs = document.querySelectorAll('.custom-num');
+            if (existingInputs.length >= 99) {
+                showModal('เกินขีดจำกัด', 'สามารถเพิ่มช่องใส่ตัวเลขได้สูงสุด 99 ช่องเท่านั้น');
+                return;
+            }
+            
+            const newInput = document.createElement('input');
+            newInput.type = 'number';
+            newInput.className = 'w-full text-center custom-num px-3 py-2 border-2 rounded-xl transition-colors duration-300 focus:border-purple-500';
+            newInput.placeholder = `ตัวเลขที่ ${existingInputs.length + 1}`;
+            newInput.inputmode = 'numeric';
+            newInput.min = '1';
+            newInput.max = '999';
+
+            inputContainer3.appendChild(newInput);
+            newInput.focus();
+        });
+
+        start3Btn.addEventListener('click', () => {
+            playAudio(audio02);
+            const inputElements = document.querySelectorAll('#input-container-3 .custom-num');
+            customListNumbers = [];
+            let isValid = true;
+            const uniqueCheck = new Set();
+
+            inputElements.forEach(input => {
+                const num = parseInt(input.value);
+                if (input.value.trim() === '') {
+                    return;
+                }
+                if (isNaN(num) || num < 1 || num > 999) {
+                    isValid = false;
+                    return;
+                }
+                if (uniqueCheck.has(num)) {
+                    isValid = false;
+                    return;
+                }
+                uniqueCheck.add(num);
+                customListNumbers.push(num);
+            });
+
+            if (!isValid) {
+                showModal('ข้อมูลไม่ถูกต้อง', 'กรุณาใส่ตัวเลขให้ถูกต้องและไม่ซ้ำกัน และต้องเป็นตัวเลขระหว่าง 1-999');
+                return;
+            }
+
+            if (customListNumbers.length === 0) {
+                showModal('ไม่มีตัวเลข', 'กรุณาใส่ตัวเลขที่ต้องการสุ่มอย่างน้อย 1 ตัว');
+                return;
+            }
+
+            const currentListHash = JSON.stringify(customListNumbers);
+            const lastListHash = start3Btn.dataset.listHash || '';
+            if (currentListHash !== lastListHash) {
+                clearHistory(history3El, result3El, start3Btn, reset3Btn);
+                start3Btn.dataset.listHash = currentListHash;
+                start3Btn.textContent = 'เริ่มสุ่มทันที';
+            }
+
+            randomize(result3El, history3El, () => customListNumbers, start3Btn, reset3Btn);
+        });
+
+        reset3Btn.addEventListener('click', () => {
+            playAudio(audio02);
+            clearHistory(history3El, result3El, start3Btn, reset3Btn);
+            start3Btn.textContent = 'เริ่มสุ่มทันที';
+            start3Btn.dataset.listHash = '';
+            
+            // Remove all additional input groups, leaving the first two fields
+            const inputElements = document.querySelectorAll('#input-container-3 .custom-num');
+            if (inputElements.length > 2) {
+                for (let i = inputElements.length - 1; i >= 2; i--) {
+                    inputElements[i].remove();
+                }
+            }
+
+            // Clear the values of the initial two input fields
+            inputElements[0].value = '';
+            inputElements[1].value = '';
+
+            inputElements[0].focus();
+        });
+    });
+</script>
+</body>
+</html>
