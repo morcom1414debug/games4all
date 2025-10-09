@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Animal Sounds</title>
+<style>
+  body {
+    font-family: "Sarabun", sans-serif;
+    background-color: #fefefe;
+    color: #222;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+  }
+  .container {
+    position: relative;
+    max-width: 600px;
+    margin: 60px auto;
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  }
+  button {
+    font-size: 18px;
+    padding: 10px 18px;
+    margin: 8px;
+    border-radius: 12px;
+    border: 2px solid #333;
+    background-color: #fff;
+    cursor: pointer;
+  }
+  button:hover {
+    background-color: #e0e0e0;
+  }
+  #backToMainMenu {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+  }
+  .choices button {
+    display: block;
+    width: 90%;
+    margin: 10px auto;
+  }
+</style>
+</head>
+<body>
+
+<div class="container" id="menuContainer">
+  <button id="backToMainMenu" onclick="window.location.href='../index.html'" aria-label="กลับเมนูหลัก ไปยังหน้าหลักของเกม">กลับเมนูหลัก</button>
+  <h1>Animal Sounds</h1>
+  <p>
+    ขอต้อนรับสู่เกมที่จะพาท่านไปเข้าสู่ <br>
+    โลกของสัตว์โลกนานาชนิด<br><br>
+    เสียงที่ท่านได้รับฟัง คือสัตว์ชนิดไหน มาประลองกันได้ <br>
+    ผิดได้เพียง 2 ครั้งเท่านั้น <br>
+    และกดฟังใหม่ได้อีกครั้ง ถ้ายังไม่แน่ใจ พร้อมแล้วลุยกันเลย
+  </p>
+  <button id="startButton">เริ่มกันเลย</button>
+</div>
+
+<div class="container" id="gameContainer" style="display:none;">
+  <button id="backToMainMenu" onclick="window.location.href='../index.html'" aria-label="กลับเมนูหลัก ไปยังหน้าหลักของเกม">กลับเมนูหลัก</button>
+  <h2>ฟังเสียงแล้วตอบให้ถูก</h2>
+  <button id="replayButton">กดฟังอีกครั้ง</button>
+  <div class="choices" id="choicesContainer"></div>
+</div>
+
+<div class="container" id="resultContainer" style="display:none;">
+  <button id="backToMainMenu" onclick="window.location.href='../index.html'" aria-label="กลับเมนูหลัก ไปยังหน้าหลักของเกม">กลับเมนูหลัก</button>
+  <h2 id="resultText"></h2>
+  <p id="scoreText"></p>
+  <button id="restartButton">เริ่มเกมใหม่</button>
+</div>
+
+<audio id="questionAudio"></audio>
+<audio id="systemAudio"></audio>
+
+<script>
+const animalSounds = {
+  "กบ.ogg": "กบ", "กระต่าย.ogg": "กระต่าย", "กระรอก.ogg": "กระรอก", "กวาง.ogg": "กวาง",
+  "แกะ.ogg": "แกะ", "ไก่.ogg": "ไก่", "ควาย.ogg": "ควาย", "คางคก.ogg": "คางคก",
+  "งู.ogg": "งู", "จระเข้.ogg": "จระเข้", "จิ้งจก.ogg": "จิ้งจก", "ช้าง.ogg": "ช้าง",
+  "เป็ด.ogg": "เป็ด", "ผึ้ง.ogg": "ผึ้ง", "แพะ.ogg": "แพะ", "ม้า.ogg": "ม้า",
+  "แมว.ogg": "แมว", "วัว.ogg": "วัว", "สุนัข.ogg": "สุนัข", "เสือ.ogg": "เสือ"
+};
+
+const allAnimalNames = [...new Set(Object.values(animalSounds))];
+
+let questionList = [];
+let currentQuestion = 0;
+let wrongCount = 0;
+let score = 0;
+let replayUsed = false;
+
+document.getElementById("startButton").onclick = startGame;
+document.getElementById("restartButton").onclick = startGame;
+
+function startGame() {
+  questionList = shuffle(Object.keys(animalSounds));
+  currentQuestion = 0;
+  wrongCount = 0;
+  score = 0;
+  document.getElementById("menuContainer").style.display = "none";
+  document.getElementById("resultContainer").style.display = "none";
+  document.getElementById("gameContainer").style.display = "block";
+  nextQuestion();
+}
+
+function playQuestionSound(filename) {
+  const audio = document.getElementById("questionAudio");
+  audio.src = `audio/${filename}`;
+  audio.loop = false;
+  audio.play();
+}
+
+function nextQuestion() {
+  if (currentQuestion >= questionList.length) {
+    endGame(true);
+    return;
+  }
+  const file = questionList[currentQuestion];
+  const correctAnswer = animalSounds[file];
+  replayUsed = false;
+
+  playQuestionSound(file);
+  const choices = getChoices(correctAnswer);
+  renderChoices(choices, correctAnswer);
+}
+
+function getChoices(correct) {
+  const temp = allAnimalNames.filter(a => a !== correct);
+  const randoms = shuffle(temp).slice(0, 3);
+  return shuffle([correct, ...randoms]);
+}
+
+function renderChoices(choices, correct) {
+  const container = document.getElementById("choicesContainer");
+  container.innerHTML = "";
+  document.getElementById("replayButton").disabled = false;
+  document.getElementById("replayButton").onclick = () => {
+    if (!replayUsed) {
+      replayUsed = true;
+      playQuestionSound(questionList[currentQuestion]);
+      document.getElementById("replayButton").disabled = true;
+    }
+  };
+  choices.forEach(choice => {
+    const btn = document.createElement("button");
+    btn.textContent = choice;
+    btn.onclick = () => handleAnswer(choice === correct);
+    container.appendChild(btn);
+  });
+  document.getElementById("replayButton").focus();
+}
+
+function handleAnswer(isCorrect) {
+  document.getElementById("questionAudio").pause();
+  const sys = document.getElementById("systemAudio");
+  sys.loop = false;
+  if (isCorrect) {
+    score += 10;
+    sys.src = "system/true.ogg";
+  } else {
+    wrongCount++;
+    sys.src = "system/wrong.ogg";
+  }
+  sys.play();
+  sys.onended = () => {
+    setTimeout(() => {
+      if (wrongCount >= 2) {
+        endGame(false);
+      } else {
+        currentQuestion++;
+        nextQuestion();
+      }
+    }, 200);
+  };
+}
+
+function endGame(isWin) {
+  document.getElementById("gameContainer").style.display = "none";
+  const result = document.getElementById("resultContainer");
+  result.style.display = "block";
+  const sys = document.getElementById("systemAudio");
+  sys.pause();
+  sys.currentTime = 0;
+  sys.loop = false;
+  if (isWin) {
+    sys.src = "system/endhappy.ogg";
+    document.getElementById("resultText").textContent =
+      "ยินดีด้วยค่ะ คุณคือผู้เชี่ยวชาญของ Animal quiz ยอดเยี่ยมมากค่ะ";
+    document.getElementById("scoreText").textContent = `คะแนนทั้งหมด: ${score} คะแนน`;
+  } else {
+    sys.src = "system/endlost.ogg";
+    document.getElementById("resultText").textContent = "เกมจบแล้วค่ะ";
+    document.getElementById("scoreText").textContent = `คุณได้คะแนนทั้งหมด ${score} คะแนน`;
+  }
+  sys.loop = false;
+  sys.play();
+  sys.onended = () => {
+    sys.pause();
+    sys.currentTime = 0;
+  };
+}
+
+function shuffle(array) {
+  return array.sort(() => Math.random() - 0.5);
+}
+</script>
+</body>
+</html>
