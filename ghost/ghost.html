@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>จุดพัก..ผี</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans','Helvetica Neue',Arial;}
+    body{margin:0;padding:24px;background:#0b0b0b;color:#f6f6f6;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .card{max-width:760px;width:100%;background:#111;padding:20px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+    h1{font-size:28px;margin:0 0 8px}
+    p{margin:8px 0 16px;line-height:1.6}
+    .btn{display:inline-block;padding:12px 18px;border-radius:10px;background:#c0392b;color:#fff;text-decoration:none;border:none;font-size:16px}
+    .hidden{display:none !important}
+    .stage-title{font-weight:600;margin-bottom:8px}
+    .input-row{margin-top:12px;display:flex;gap:8px;align-items:center}
+    input[type="text"]{padding:10px;border-radius:8px;border:1px solid #333;background:#0b0b0b;color:#fff;font-size:18px;min-width:140px}
+    button.primary{padding:10px 14px;border-radius:8px;border:none;background:#27ae60;color:white;font-size:16px}
+    .notice{margin-top:10px;padding:10px;border-radius:8px;background:#2c3e50;color:#fff}
+    .muted{color:#aeb7c2}
+    .skip-btn{display:block;margin:20px auto 0 auto;padding:12px 20px;background:#8e44ad;color:#fff;border:none;border-radius:10px;font-size:16px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="card" id="app">
+    <!-- หน้าแรก -->
+    <div id="start-screen">
+      <h1 id="gameTitle" tabindex="-1">จุดพัก..ผี</h1>
+      <p>มาติดตามเรื่องราวที่สยดสยอง โดยมีทั้งหมด 7 บท
+      <br>ถ้าท่านต้องการติดตามบทถัดๆไป ต้องตอบคำถามให้ถูกเท่านั้น ถึงจะไปต่อได้ พร้อมแล้วกดเริ่มได้ทันที</p>
+      <button id="startBtn" class="btn" aria-label="เริ่มติดตาม">เริ่มติดตาม</button>
+    </div>
+
+    <!-- หน้าหลักเกม -->
+    <div id="game-screen" class="hidden" aria-live="polite">
+      <div class="stage-title" id="stageTitle">บทที่ 1</div>
+      <div id="playingNote" class="muted">กำลังเล่นไฟล์เสียง... โปรดรอฟังจนจบ</div>
+      <button id="skipBtn" class="skip-btn hidden">ข้ามไปตอบคำถามเลย</button>
+
+      <div id="questionArea" class="hidden">
+        <label for="answerInput">ตอบคำถาม (พิมพ์ตัวเลขเท่านั้น)</label>
+        <div class="input-row">
+          <input id="answerInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="ช่องกรอกคำตอบ" />
+          <button id="submitBtn" class="primary">ส่งคำตอบ</button>
+        </div>
+      </div>
+
+      <div id="notice" class="notice hidden" tabindex="-1" role="alert" aria-live="assertive"></div>
+    </div>
+  </div>
+
+  <!-- ไฟล์เสียง -->
+  <audio id="a1" preload="auto" src="audio/a1.mp3"></audio>
+  <audio id="a2" preload="auto" src="audio/a2.mp3"></audio>
+  <audio id="a3" preload="auto" src="audio/a3.mp3"></audio>
+  <audio id="a4" preload="auto" src="audio/a4.mp3"></audio>
+  <audio id="a5" preload="auto" src="audio/a5.mp3"></audio>
+  <audio id="a6" preload="auto" src="audio/a6.mp3"></audio>
+  <audio id="a7" preload="auto" src="audio/a7.mp3"></audio>
+  <audio id="a8" preload="auto" src="audio/a8.mp3"></audio>
+
+  <script>
+    (function(){
+      const answers={1:'704',2:'13',3:'31',4:'2502',5:'20',6:'2',7:null};
+      const audioMap={1:a1,2:a2,3:a3,4:a4,5:a5,6:a6,7:a7,8:a8};
+      let currentChapter=1,wrongCount=0,maxWrong=2;
+
+      const startScreen=document.getElementById('start-screen');
+      const gameScreen=document.getElementById('game-screen');
+      const stageTitle=document.getElementById('stageTitle');
+      const playingNote=document.getElementById('playingNote');
+      const questionArea=document.getElementById('questionArea');
+      const answerInput=document.getElementById('answerInput');
+      const submitBtn=document.getElementById('submitBtn');
+      const notice=document.getElementById('notice');
+      const startBtn=document.getElementById('startBtn');
+      const skipBtn=document.getElementById('skipBtn');
+      const gameTitle=document.getElementById('gameTitle');
+
+      function show(el){el.classList.remove('hidden');}
+      function hide(el){el.classList.add('hidden');}
+      function onlyDigits(v){return v.replace(/\D+/g,'');}
+
+      function playChapter(chapter){
+        currentChapter=chapter;
+        stageTitle.textContent='บทที่ '+chapter;
+        hide(questionArea);show(playingNote);hide(notice);
+
+        // หยุดเสียงทั้งหมด
+        Object.values(audioMap).forEach(a=>{try{a.pause();a.currentTime=0;}catch(e){}});
+        const audio=audioMap[chapter];
+        if(!audio){goToStart();return;}
+
+        // แสดงปุ่มเฉพาะบท 1–6 เท่านั้น
+        if(chapter>=1 && chapter<=6){
+          show(skipBtn);
+          skipBtn.disabled=false;
+        }else{
+          hide(skipBtn);
+          skipBtn.disabled=true;
+        }
+
+        // เล่นเสียง
+        audio.play().catch(()=>{});
+
+        audio.onended=()=>{
+          // หากเป็นบทสุดท้าย ให้กลับไปหน้าแรก และซ่อนปุ่ม
+          if(chapter===7){
+            hide(skipBtn);
+            skipBtn.disabled=true;
+            goToStart();
+            return;
+          }
+          showQuestion(chapter);
+        };
+      }
+
+      function showQuestion(chapter){
+        if(chapter===7){
+          hide(skipBtn);
+          skipBtn.disabled=true;
+          goToStart();
+          return;
+        }
+        show(questionArea);hide(playingNote);hide(skipBtn);
+        skipBtn.disabled=true;
+        answerInput.value='';answerInput.focus();
+      }
+
+      skipBtn.addEventListener('click',()=>{
+        // ถ้าเป็นบทที่ 7 ไม่ให้ทำงานแน่นอน
+        if(currentChapter===7)return;
+        const audio=audioMap[currentChapter];
+        if(audio){audio.pause();audio.currentTime=0;}
+        showQuestion(currentChapter);
+      });
+
+      function submitAnswer(){
+        const val=onlyDigits(answerInput.value);answerInput.value=val;
+        if(!val){showNotice('กรุณาพิมพ์ตัวเลขเท่านั้น');return;}
+
+        const correct=answers[currentChapter];
+        if(correct===null){goToStart();return;}
+
+        if(val===correct){
+          currentChapter++;playChapter(currentChapter);
+        }else{
+          wrongCount++;
+          answerInput.value=''; // ล้างช่องตอบ
+          if(wrongCount>=maxWrong){
+            hide(questionArea);show(playingNote);
+            playingNote.textContent='คำตอบผิดครบกำหนด กำลังเล่นเสียง...';
+            const lose=audioMap[8];
+            Object.values(audioMap).forEach(a=>{try{if(a!==lose){a.pause();a.currentTime=0;}}catch(e){}});
+            lose.play().catch(()=>{});lose.onended=()=>goToStart();
+          }else{
+            showNotice('คำตอบยังไม่ถูกต้อง ลองใหม่ได้อีกครั้งเดียวเท่านั้น');
+            notice.focus();
+            setTimeout(()=>{answerInput.focus();},2000);
+          }
+        }
+      }
+
+      function showNotice(text){notice.textContent=text;show(notice);}
+      function goToStart(){
+        wrongCount=0;currentChapter=1;
+        Object.values(audioMap).forEach(a=>{try{a.pause();a.currentTime=0;}catch(e){}});
+        hide(gameScreen);show(startScreen);
+        playingNote.textContent='กำลังเล่นไฟล์เสียง... โปรดรอฟังจนจบ';
+        hide(notice);hide(questionArea);hide(skipBtn);
+        skipBtn.disabled=true;
+        gameTitle.focus();
+      }
+
+      startBtn.addEventListener('click',()=>{
+        hide(startScreen);show(gameScreen);
+        wrongCount=0;currentChapter=1;playChapter(1);
+      });
+      submitBtn.addEventListener('click',()=>submitAnswer());
+      answerInput.addEventListener('keydown',e=>{
+        if(e.key && e.key.length===1 && /\D/.test(e.key)) e.preventDefault();
+        if(e.key==='Enter'){e.preventDefault();submitAnswer();}
+      });
+      answerInput.addEventListener('input',()=>{
+        const clean=onlyDigits(answerInput.value);
+        if(clean!==answerInput.value) answerInput.value=clean;
+      });
+
+      (function init(){show(startScreen);hide(gameScreen);gameTitle.focus();})();
+    })();
+  </script>
+</body>
+</html>
