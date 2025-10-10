@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>จุดพัก..ผี</title>
+  <style>
+    :root{font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial;}
+    body{margin:0;padding:24px;background:#0b0b0b;color:#f6f6f6;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .card{max-width:760px;width:100%;background:#111;padding:20px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+    h1{font-size:28px;margin:0 0 8px}
+    p{margin:8px 0 16px;line-height:1.6}
+    .btn{display:inline-block;padding:12px 18px;border-radius:10px;background:#c0392b;color:#fff;text-decoration:none;border:none;font-size:16px}
+    .center{display:flex;gap:12px;align-items:center}
+    .hidden{display:none}
+    .stage-title{font-weight:600;margin-bottom:8px}
+    .input-row{margin-top:12px;display:flex;gap:8px;align-items:center}
+    input[type="text"]{padding:10px;border-radius:8px;border:1px solid #333;background:#0b0b0b;color:#fff;font-size:18px;min-width:140px}
+    button.primary{padding:10px 14px;border-radius:8px;border:none;background:#27ae60;color:white;font-size:16px}
+    .notice{margin-top:10px;padding:10px;border-radius:8px;background:#2c3e50;color:#fff}
+    .muted{color:#aeb7c2}
+    footer{margin-top:16px;font-size:13px;color:#aeb7c2}
+  </style>
+</head>
+<body>
+  <div class="card" id="app">
+    <!-- Start screen -->
+    <div id="start-screen">
+      <h1>จุดพัก..ผี</h1>
+      <p>มาติดตามเรื่องราวที่สยดสยอง โดยมีทั้งหมด 7 บท
+      <br>ถ้าท่านต้องการติดตามบทถัดๆไป ต้องตอบคำถามให้ถูกเท่านั้น ถึงจะไปต่อได้ พร้อมแล้วกดเริ่มได้ทันที</p>
+      <button id="startBtn" class="btn" aria-label="เริ่มติดตาม">เริ่มติดตาม</button>
+    </div>
+
+    <!-- Game screen -->
+    <div id="game-screen" class="hidden" aria-live="polite">
+      <div class="stage-title" id="stageTitle">บทที่ 1</div>
+      <div id="playingNote" class="muted">กำลังเล่นไฟล์เสียง... โปรดรอฟังจนจบ</div>
+
+      <div id="questionArea" class="hidden">
+        <label for="answerInput">ตอบคำถาม (พิมพ์ตัวเลขเท่านั้น)</label>
+        <div class="input-row">
+          <input id="answerInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="ช่องกรอกคำตอบ" />
+          <button id="submitBtn" class="primary">ส่งคำตอบ</button>
+        </div>
+      </div>
+
+      <div id="notice" class="notice hidden" tabindex="-1" role="alert" aria-live="assertive"></div>
+    </div>
+
+  </div>
+
+  <!-- Hidden audio elements -->
+  <audio id="a1" preload="auto" src="audio/a1.mp3"></audio>
+  <audio id="a2" preload="auto" src="audio/a2.mp3"></audio>
+  <audio id="a3" preload="auto" src="audio/a3.mp3"></audio>
+  <audio id="a4" preload="auto" src="audio/a4.mp3"></audio>
+  <audio id="a5" preload="auto" src="audio/a5.mp3"></audio>
+  <audio id="a6" preload="auto" src="audio/a6.mp3"></audio>
+  <audio id="a7" preload="auto" src="audio/a7.mp3"></audio>
+  <audio id="a8" preload="auto" src="audio/a8.mp3"></audio>
+
+  <script>
+    (function(){
+      const answers = {
+        1: '704',
+        2: '13',
+        3: '13',
+        4: '2502',
+        5: '20',
+        6: '2',
+        7: null // final chapter, no question after — returns to start
+      };
+
+      // Map chapter -> audio element id
+      const audioMap = {
+        1: document.getElementById('a1'),
+        2: document.getElementById('a2'),
+        3: document.getElementById('a3'),
+        4: document.getElementById('a4'),
+        5: document.getElementById('a5'),
+        6: document.getElementById('a6'),
+        7: document.getElementById('a7'),
+        8: document.getElementById('a8') // lose sound
+      };
+
+      let currentChapter = 1;
+      let wrongCount = 0; // total wrong across the whole game (max 2)
+      const maxWrong = 2;
+
+      // elements
+      const startScreen = document.getElementById('start-screen');
+      const gameScreen = document.getElementById('game-screen');
+      const stageTitle = document.getElementById('stageTitle');
+      const playingNote = document.getElementById('playingNote');
+      const questionArea = document.getElementById('questionArea');
+      const answerInput = document.getElementById('answerInput');
+      const submitBtn = document.getElementById('submitBtn');
+      const notice = document.getElementById('notice');
+      const startBtn = document.getElementById('startBtn');
+
+      // helper to show/hide
+      function show(el){ el.classList.remove('hidden'); }
+      function hide(el){ el.classList.add('hidden'); }
+
+      // sanitize input to digits only
+      function onlyDigits(value){ return value.replace(/\D+/g,''); }
+
+      // prepare UI for a chapter
+      function playChapter(chapter){
+        currentChapter = chapter;
+        stageTitle.textContent = 'บทที่ ' + chapter;
+        hide(questionArea);
+        show(playingNote);
+        hide(notice);
+        // stop all audios first
+        Object.values(audioMap).forEach(a=>{ try{ a.pause(); a.currentTime=0; }catch(e){} });
+
+        const audio = audioMap[chapter];
+        if(!audio){
+          // safety: go to start
+          goToStart();
+          return;
+        }
+
+        // play (user initiated because startBtn clicked earlier so browsers should allow)
+        audio.play().catch(err=>{
+          // If autoplay blocked, show message and focus a control for user to press play
+          playingNote.textContent = 'การเล่นเสียงอัตโนมัติถูกบล็อก กรุณากดปุ่มเริ่มเล่นเสียงอีกครั้ง';
+          show(questionArea); // show input so user has a control to interact
+          answerInput.focus();
+          return;
+        });
+
+        audio.onended = function(){
+          // short delay then show question (0.1s)
+          setTimeout(()=>{
+            // if it's final chapter (7), after playing go back to start
+            if(chapter === 7){
+              // final chapter: return to start screen
+              goToStart();
+              return;
+            }
+
+            // show question UI
+            show(questionArea);
+            hide(playingNote);
+            answerInput.value = '';
+            // set input attributes for mobile numeric keypad
+            answerInput.setAttribute('inputmode','numeric');
+            answerInput.setAttribute('pattern','[0-9]*');
+            answerInput.autocomplete = 'off';
+            answerInput.focus();
+          }, 100);
+        };
+      }
+
+      // submit answer
+      function submitAnswer(){
+        const raw = answerInput.value || '';
+        const val = onlyDigits(raw);
+        answerInput.value = val; // sanitize
+        if(val === ''){
+          showNotice('กรุณาพิมพ์ตัวเลขเท่านั้น');
+          return;
+        }
+
+        const correct = answers[currentChapter];
+        if(correct === null){
+          // no question
+          goToStart();
+          return;
+        }
+
+        if(val === correct){
+          // correct -> next chapter
+          currentChapter += 1;
+          playChapter(currentChapter);
+        }else{
+          wrongCount += 1;
+          if(wrongCount >= maxWrong){
+            // play lose audio a8 then return to start when finished
+            hide(questionArea);
+            show(playingNote);
+            playingNote.textContent = 'คำตอบผิดครบกำหนด กำลังเล่นเสียง...';
+            const lose = audioMap[8];
+            // stop other audios
+            Object.values(audioMap).forEach(a=>{ try{ if(a!==lose){ a.pause(); a.currentTime=0; } }catch(e){} });
+            lose.play().catch(()=>{});
+            lose.onended = function(){
+              goToStart();
+            };
+          }else{
+            // first wrong (i.e., wrongCount ==1)
+            showNotice('คำตอบยังไม่ถูกต้อง ลองใหม่ได้อีกครั้งเดียวเท่านั้น');
+            // focus the notice as requested
+            notice.focus();
+          }
+        }
+      }
+
+      function showNotice(text){
+        notice.textContent = text;
+        show(notice);
+      }
+
+      function goToStart(){
+        // reset state
+        wrongCount = 0;
+        currentChapter = 1;
+        // stop all audio
+        Object.values(audioMap).forEach(a=>{ try{ a.pause(); a.currentTime=0; }catch(e){} });
+        // show start
+        hide(gameScreen);
+        show(startScreen);
+        // restore messages
+        playingNote.textContent = 'กำลังเล่นไฟล์เสียง... โปรดรอฟังจนจบ';
+        hide(notice);
+        hide(questionArea);
+        startBtn.focus();
+      }
+
+      // event listeners
+      startBtn.addEventListener('click', function(){
+        // start game
+        hide(startScreen);
+        show(gameScreen);
+        wrongCount = 0;
+        currentChapter = 1;
+        playChapter(1);
+      });
+
+      submitBtn.addEventListener('click', function(e){
+        submitAnswer();
+      });
+
+      // allow Enter key in input to submit
+      answerInput.addEventListener('keydown', function(e){
+        // prevent non-digit characters
+        if(e.key && e.key.length === 1 && /\D/.test(e.key)){
+          // allow on mobile keys like + and etc? block non-digits
+          e.preventDefault();
+        }
+        if(e.key === 'Enter'){
+          e.preventDefault();
+          submitAnswer();
+        }
+      });
+
+      // also sanitize on paste
+      answerInput.addEventListener('input', function(){
+        const clean = onlyDigits(answerInput.value);
+        if(clean !== answerInput.value){
+          answerInput.value = clean;
+        }
+      });
+
+      // On load, ensure start screen is visible
+      (function init(){
+        show(startScreen);
+        hide(gameScreen);
+      })();
+
+    })();
+  </script>
+</body>
+</html>
