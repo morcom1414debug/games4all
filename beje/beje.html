@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมเรียงเพชรไทย - Bejeweled Thai</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700;800&display=swap');
+
+        /* Global Styles */
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #0d1a26;
+            color: #e0f2fe;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            text-align: center;
+            user-select: none;
+            touch-manipulation: none;
+        }
+        .container {
+            background-color: #1a2a3a;
+            border: 4px solid #4a5c6c;
+            border-radius: 1.5rem;
+            padding: 2rem 1.5rem; 
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+            max-width: 95%;
+            width: 600px;
+            position: relative;
+        }
+        .game-title {
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 800;
+            color: #93c5fd; 
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.3);
+            margin-bottom: 1rem;
+        }
+        .info-panel {
+            font-size: 1.125rem;
+            margin-bottom: 1rem;
+            color: #94a3b8;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            background-color: #2a3a4a;
+        }
+
+        /* Button Styles */
+        .game-button {
+            background-color: #10b981; 
+            color: white;
+            padding: 1rem 2rem;
+            font-size: 1.25rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            margin: 0.5rem;
+        }
+        .game-button:hover {
+            background-color: #059669;
+            transform: translateY(-2px);
+        }
+        .game-button:active {
+            transform: scale(0.95);
+        }
+        .game-button.secondary {
+            background-color: #f97316; 
+        }
+        .game-button.secondary:hover {
+            background-color: #ea580c;
+        }
+        .game-button.mode {
+            width: 100%;
+            margin: 0.5rem 0;
+        }
+
+        /* Game Board Styles */
+        #game-board-container {
+            margin: 1rem auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #game-board {
+            display: grid;
+            border: 5px solid #6366f1; 
+            border-radius: 0.5rem;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+            background-color: #2a3a4a;
+            max-width: 100%;
+            aspect-ratio: 1 / 1;
+        }
+
+        .gem {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: clamp(0.8rem, 3vw, 1.5rem);
+            font-weight: bold;
+            color: black;
+            border: 1px solid rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            position: relative;
+            user-select: none;
+            outline: none;
+        }
+
+        /* Gem Colors (Thai Names) */
+        .gem-แดง { background-color: #ef4444; } 
+        .gem-เขียว { background-color: #10b981; } 
+        .gem-น้ำเงิน { background-color: #3b82f6; } 
+        .gem-เหลือง { background-color: #facc15; } 
+        .gem-ม่วง { background-color: #a855f7; } 
+        .gem-ชมพู { background-color: #ec4899; } 
+        .gem-ฟ้า { background-color: #06b6d4; } 
+
+        /* Focus & Selected States */
+        .focused {
+            border: 3px solid #fde047; 
+            box-shadow: 0 0 10px #fde047;
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        .selected {
+            border: 3px solid #ff0000; 
+            box-shadow: 0 0 15px #ff0000;
+            transform: scale(1.1);
+            animation: pulse 0.5s infinite alternate;
+            z-index: 11;
+        }
+
+        @keyframes pulse {
+            from { box-shadow: 0 0 15px #ff0000; }
+            to { box-shadow: 0 0 20px #ff0000, 0 0 5px rgba(255, 0, 0, 0.8); }
+        }
+
+        /* Game Stats */
+        #game-stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 1rem;
+            background-color: #0f172a;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+        .stat-label {
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            color: #38bdf8;
+        }
+        #timer-value {
+            color: #fca5a5; 
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Main Menu UI -->
+        <div id="main-menu-ui">
+            <h1 class="game-title">เกมเรียงเพชรไทย</h1>
+            <p class="info-panel">เลือกโหมดเกมเพื่อเริ่มเล่น! คะแนนโบนัส: เรียง 3 อันขึ้นไปรับเพิ่ม 3 วินาที</p>
+
+            <h2 class="text-xl font-bold mb-2 text-cyan-400">โหมดเกม</h2>
+            <button class="game-button mode" onclick="loadGame(5)">5 x 5</button>
+            <button class="game-button mode secondary" onclick="loadGame(6)">6 x 6</button>
+
+            <div id="loading-status" class="mt-4 text-yellow-400 hidden">
+                กำลังโหลดไฟล์เสียง... โปรดรอสักครู่
+            </div>
+        </div>
+
+        <!-- Game UI -->
+        <!-- role="application" คือหัวใจสำคัญในการดักจับท่าทางสัมผัส VoiceOver (ปัด 1 นิ้ว จะถูกแปลงเป็น Arrow Keys) -->
+        <div id="game-ui" class="hidden">
+            <div id="game-stats">
+                <div class="stat-item">
+                    <span class="stat-label">คะแนน</span>
+                    <span id="score-value" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">เวลา</span>
+                    <span id="timer-value" class="stat-value">60</span>
+                </div>
+            </div>
+
+            <!-- Game Board will be injected here -->
+            <div id="game-board-container">
+                <div id="game-board" role="grid"></div>
+            </div>
+
+            <p id="key-controls" class="info-panel text-sm mt-4 p-2">
+                ควบคุม: (↑ ↓ ← →) หรือ (ปัด 1 นิ้ว) = ย้าย | (Enter / Space) หรือ (แตะ 2 ครั้ง) = เลือก / สลับ
+            </p>
+        </div>
+
+        <!-- Game Over/Summary UI -->
+        <div id="summary-ui" class="hidden">
+            <h1 class="game-title text-red-400">จบเกม!</h1>
+            <p class="info-panel text-2xl font-bold">สรุปผลการเล่น</p>
+            <p id="final-score" class="text-3xl font-extrabold text-green-400 mb-4"></p>
+
+            <button class="game-button" onclick="loadGame(boardSize)">เล่นอีกครั้ง</button>
+            <button class="game-button secondary" onclick="showMainMenu()">กลับไปเลือกโหมดใหม่</button>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let boardSize = 0;
+        let board = [];
+        let score = 0;
+        let timeLeft = 60;
+        let gameTimer = null;
+        let selectedGem = null;
+        let focusedRow = 0;
+        let focusedCol = 0;
+        let isSwapping = false;
+        let isClearing = false;
+        let isGameReady = false;
+
+        // Gem Data
+        const GEM_COLORS_THAI = ["แดง", "เขียว", "น้ำเงิน", "เหลือง", "ม่วง", "ชมพู", "ฟ้า"];
+        const GEM_COUNT = 5; 
+
+        // Audio files map
+        const AUDIO_FILES = {
+            'a1.mp3': 'select', 
+            'a2.mp3': 'match',  
+            'a3.mp3': 'fail',   
+            'a4.mp3': 'end'     
+        };
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffers = {};
+
+        /**
+         * Utility functions for Audio
+         */
+        async function loadAudioFile(url, name) {
+            try {
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                audioBuffers[name] = await audioContext.decodeAudioData(arrayBuffer);
+            } catch (error) {
+                console.error(`Error loading audio file ${url}:`, error);
+                audioBuffers[name] = new Audio(url);
+            }
+        }
+
+        async function loadAllAudio() {
+            const loadingStatus = document.getElementById('loading-status');
+            loadingStatus.classList.remove('hidden');
+
+            const loadPromises = Object.entries(AUDIO_FILES).map(([filename, name]) =>
+                loadAudioFile(`audio/${filename}`, name) 
+            );
+
+            await Promise.all(loadPromises);
+
+            loadingStatus.textContent = 'โหลดไฟล์เสียงเสร็จสมบูรณ์! พร้อมเริ่มเกม';
+            setTimeout(() => loadingStatus.classList.add('hidden'), 1000);
+        }
+
+        function playSound(name) {
+            const buffer = audioBuffers[name];
+            if (!buffer) {
+                console.warn(`Audio buffer '${name}' not found. Cannot play sound.`);
+                return;
+            }
+
+            if (buffer instanceof Audio) {
+                buffer.currentTime = 0;
+                buffer.play().catch(e => console.error(`Error playing fallback audio ${name}:`, e));
+                return;
+            }
+
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start(0);
+        }
+
+        /**
+         * UI and Game Flow
+         */
+        function showMainMenu() {
+            document.getElementById('main-menu-ui').classList.remove('hidden');
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('summary-ui').classList.add('hidden');
+            isGameReady = false;
+            // VoiceOver/NVDA returns to normal browse mode
+            deactivateApplicationMode();
+        }
+
+        // --- Focus Mode Activation (VoiceOver Application Mode) ---
+        function activateApplicationMode() {
+            const gameUI = document.getElementById('game-ui');
+            // role="application" forces VoiceOver/NVDA into app mode, capturing keyboard events (Arrow Keys from Swipes)
+            gameUI.setAttribute('role', 'application'); 
+            gameUI.setAttribute('tabindex', '0');
+            // Ensure focus is on the container to receive key events
+            setTimeout(() => {
+                try {
+                    gameUI.focus();
+                } catch (e) {
+                    console.error("Could not set focus on game UI:", e);
+                }
+            }, 100);
+        }
+
+        function deactivateApplicationMode() {
+            const gameUI = document.getElementById('game-ui');
+            gameUI.removeAttribute('role');
+            gameUI.removeAttribute('tabindex');
+            gameUI.removeAttribute('aria-activedescendant'); 
+
+            // Clean up tabindexes on all gems to prevent browse-mode chaos
+            document.querySelectorAll('.gem').forEach(gem => gem.removeAttribute('tabindex'));
+        }
+
+        async function loadGame(size) {
+            boardSize = size;
+            score = 0;
+            timeLeft = 60;
+            isSwapping = false;
+            isClearing = false;
+            selectedGem = null;
+            focusedRow = 0;
+            focusedCol = 0;
+
+            if (gameTimer) clearInterval(gameTimer);
+
+            document.getElementById('main-menu-ui').classList.add('hidden');
+            document.getElementById('summary-ui').classList.add('hidden');
+            document.getElementById('game-ui').classList.remove('hidden');
+
+            updateStats();
+
+            if (!isGameReady) {
+                await loadAllAudio();
+                isGameReady = true;
+            }
+
+            setupBoard(boardSize);
+            renderBoard();
+            
+            // Activate Application Mode and set initial focus
+            activateApplicationMode();
+            setFocus(0, 0); 
+
+            startGameTimer();
+        }
+
+        /**
+         * Game Board Setup & Rendering
+         */
+        function checkMatchAt(r, c, currentBoard, isSetup = false) {
+            if (!isSetup) return false;
+            const color = currentBoard[r][c];
+            if (!color) return false;
+
+            if (c >= 2 && currentBoard[r][c - 1] === color && currentBoard[r][c - 2] === color) {
+                return true;
+            }
+
+            if (r >= 2 && currentBoard[r - 1][c] === color && currentBoard[r - 2][c] === color) {
+                return true;
+            }
+
+            return false;
+        }
+
+        function setupBoard(size) {
+            const availableColors = GEM_COLORS_THAI.slice(0, size === 5 ? GEM_COUNT : GEM_COLORS_THAI.length);
+            board = Array(size).fill(0).map(() => Array(size).fill(0));
+
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    let newColor;
+                    do {
+                        newColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+                        board[r][c] = newColor;
+                    } while (checkMatchAt(r, c, board, true));
+                }
+            }
+        }
+
+        function renderBoard() {
+            const boardElement = document.getElementById('game-board');
+            boardElement.innerHTML = '';
+            boardElement.style.gridTemplateColumns = `repeat(${boardSize}, 1fr)`;
+            boardElement.style.width = boardElement.style.height = `min(90vw, 500px)`; 
+
+            for (let r = 0; r < boardSize; r++) {
+                for (let c = 0; c < boardSize; c++) {
+                    const gem = document.createElement('div');
+                    gem.id = `gem-${r}-${c}`;
+                    gem.classList.add('gem', `gem-${board[r][c]}`);
+                    
+                    // เพิ่ม aria-label เพื่อให้ VoiceOver อ่านสีและตำแหน่ง
+                    gem.setAttribute('aria-label', `${board[r][c]} ช่องที่ ${r + 1} แถว ${c + 1}`);
+                    gem.setAttribute('role', 'gridcell');
+
+                    // NOTE: ไม่ใส่ tabindex="0" ตรงนี้ แต่จะใส่เฉพาะตอนที่ถูก setFocus เท่านั้น
+                    
+                    boardElement.appendChild(gem);
+                }
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('score-value').textContent = score;
+            document.getElementById('timer-value').textContent = timeLeft;
+        }
+
+        function startGameTimer() {
+            if (gameTimer) clearInterval(gameTimer);
+            gameTimer = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    updateStats();
+                } else {
+                    clearInterval(gameTimer);
+                    gameOver();
+                }
+            }, 1000);
+        }
+
+        function gameOver() {
+            playSound('end');
+            if (gameTimer) clearInterval(gameTimer);
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('summary-ui').classList.remove('hidden');
+            document.getElementById('final-score').textContent = `คุณทำคะแนนได้: ${score} แต้ม`;
+            deactivateApplicationMode(); 
+        }
+
+        /**
+         * Focus and Selection Logic
+         */
+        function setFocus(r, c) {
+            const gameUI = document.getElementById('game-ui');
+            
+            // 1. Boundary check and update coordinates
+            focusedRow = Math.max(0, Math.min(r, boardSize - 1));
+            focusedCol = Math.max(0, Math.min(c, boardSize - 1));
+            const newGemId = `gem-${focusedRow}-${focusedCol}`;
+
+            // 2. Remove focus/tabindex from old gem
+            const oldGem = document.querySelector('.focused');
+            if (oldGem) {
+                oldGem.classList.remove('focused');
+                oldGem.removeAttribute('tabindex'); 
+            }
+
+            // 3. Add visual focus and tabindex to new gem
+            const newGem = document.getElementById(newGemId);
+            if (newGem) {
+                newGem.classList.add('focused');
+                newGem.setAttribute('tabindex', '0'); // กำหนด tabindex เพื่อให้ VoiceOver อ่านเมื่อมีการเปลี่ยนโฟกัส
+
+                // 4. Update aria-activedescendant on the application root
+                gameUI.setAttribute('aria-activedescendant', newGemId);
+
+                // 5. Re-assert focus on the game container to capture keyboard events (Arrow Keys/Swipes)
+                gameUI.focus(); 
+            }
+        }
+
+        function handleSelect(r, c) {
+            if (isSwapping || isClearing) return;
+
+            const currentGem = { r, c };
+            const gemElement = document.getElementById(`gem-${r}-${c}`);
+
+            if (!selectedGem) {
+                // First selection
+                selectedGem = currentGem;
+                gemElement.classList.add('selected');
+                playSound('select'); 
+            } else if (selectedGem.r === r && selectedGem.c === c) {
+                // Deselect
+                gemElement.classList.remove('selected');
+                selectedGem = null;
+            } else if (isAdjacent(selectedGem, currentGem)) {
+                // Second selection - attempt swap
+                attemptSwap(selectedGem, currentGem);
+            } else {
+                // Select a new, non-adjacent gem (or simply change selection)
+                document.getElementById(`gem-${selectedGem.r}-${selectedGem.c}`).classList.remove('selected');
+                selectedGem = currentGem;
+                gemElement.classList.add('selected');
+                playSound('select');
+            }
+        }
+
+        function isAdjacent(gem1, gem2) {
+            return (
+                Math.abs(gem1.r - gem2.r) + Math.abs(gem1.c - gem2.c) === 1
+            );
+        }
+
+        /**
+         * Game Logic (Swap, Match, Gravity) - Unchanged
+         */
+        async function attemptSwap(gem1, gem2) {
+            isSwapping = true;
+            document.getElementById(`gem-${selectedGem.r}-${selectedGem.c}`).classList.remove('selected');
+            selectedGem = null;
+
+            await visualSwap(gem1, gem2);
+            swapGems(gem1, gem2);
+
+            const matchedGems = findMatches(board);
+
+            if (matchedGems.length > 0) {
+                await handleClearing(matchedGems);
+            } else {
+                playSound('fail');
+                await visualSwap(gem1, gem2, true); 
+                swapGems(gem1, gem2); 
+            }
+
+            isSwapping = false;
+        }
+
+        function swapGems(gem1, gem2) {
+            const temp = board[gem1.r][gem1.c];
+            board[gem1.r][gem1.c] = board[gem2.r][gem2.c];
+            board[gem2.r][gem2.c] = temp;
+        }
+
+        async function visualSwap(gem1, gem2, swapBack = false) {
+            const tempColor1 = board[gem1.r][gem1.c];
+            const tempColor2 = board[gem2.r][gem2.c];
+
+            const gemElement1 = document.getElementById(`gem-${gem1.r}-${gem1.c}`);
+            const gemElement2 = document.getElementById(`gem-${gem2.r}-${gem2.c}`);
+
+            if (gemElement1 && gemElement2) {
+                // Swap Gem 1 to Color 2
+                gemElement1.classList.remove(`gem-${tempColor1}`);
+                gemElement1.classList.add(`gem-${tempColor2}`);
+                gemElement1.setAttribute('aria-label', `${tempColor2} ช่องที่ ${gem1.r + 1} แถว ${gem1.c + 1}`);
+
+                // Swap Gem 2 to Color 1
+                gemElement2.classList.remove(`gem-${tempColor2}`);
+                gemElement2.classList.add(`gem-${tempColor1}`);
+                gemElement2.setAttribute('aria-label', `${tempColor1} ช่องที่ ${gem2.r + 1} แถว ${gem2.c + 1}`);
+            }
+
+            return new Promise(resolve => setTimeout(resolve, swapBack ? 200 : 100));
+        }
+
+        function findMatches(currentBoard) {
+            const matches = new Set();
+            const size = currentBoard.length;
+
+            // Check horizontal matches
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c <= size - 3; c++) {
+                    const color = currentBoard[r][c];
+                    if (color && color === currentBoard[r][c + 1] && color === currentBoard[r][c + 2]) {
+                        let startC = c;
+                        while(startC < size && currentBoard[r][startC] === color) {
+                             matches.add(`${r},${startC}`);
+                             startC++;
+                        }
+                        c = startC - 1; 
+                    }
+                }
+            }
+
+            // Check vertical matches
+            for (let c = 0; c < size; c++) {
+                for (let r = 0; r <= size - 3; r++) {
+                    const color = currentBoard[r][c];
+                    if (color && color === currentBoard[r + 1][c] && color === currentBoard[r + 2][c]) {
+                        let startR = r;
+                         while(startR < size && currentBoard[startR][c] === color) {
+                             matches.add(`${startR},${c}`);
+                             startR++;
+                        }
+                        r = startR - 1;
+                    }
+                }
+            }
+
+            return Array.from(matches).map(str => {
+                const [r, c] = str.split(',').map(Number);
+                return { r, c };
+            });
+        }
+
+        async function handleClearing(initialMatches) {
+            isClearing = true;
+            let currentMatches = initialMatches;
+
+            while (currentMatches.length > 0) {
+                // 1. Update Score and Bonus Time
+                score += currentMatches.length;
+                timeLeft += 3; 
+                updateStats();
+                playSound('match');
+
+                // 2. Clear matched gems (set them to null/empty)
+                for (const { r, c } of currentMatches) {
+                    board[r][c] = null;
+                    const gemEl = document.getElementById(`gem-${r}-${c}`);
+                    if (gemEl) {
+                        gemEl.classList.remove(...gemEl.classList);
+                        gemEl.classList.add('gem');
+                        gemEl.setAttribute('aria-label', `ช่องว่าง`);
+                        gemEl.removeAttribute('tabindex'); 
+                    }
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 300)); 
+
+                // 3. Drop gems to fill empty spaces
+                applyGravity();
+
+                // 4. Fill empty top spaces with new random gems
+                fillNewGems();
+
+                // 5. Re-render the board after drops and refills
+                renderBoard();
+
+                // Re-apply focus 
+                setFocus(focusedRow, focusedCol); 
+
+                // 6. Check for new matches created by the drop
+                currentMatches = findMatches(board);
+            }
+
+            isClearing = false;
+        }
+
+        function applyGravity() {
+            const size = boardSize;
+            for (let c = 0; c < size; c++) {
+                let writeRow = size - 1;
+                for (let r = size - 1; r >= 0; r--) {
+                    if (board[r][c] !== null) {
+                        if (r !== writeRow) {
+                            board[writeRow][c] = board[r][c];
+                            board[r][c] = null;
+                        }
+                        writeRow--;
+                    }
+                }
+            }
+        }
+
+        function fillNewGems() {
+            const size = boardSize;
+            const availableColors = GEM_COLORS_THAI.slice(0, size === 5 ? GEM_COUNT : GEM_COLORS_THAI.length);
+
+            for (let c = 0; c < size; c++) {
+                for (let r = 0; r < size; r++) {
+                    if (board[r][c] === null) {
+                        board[r][c] = availableColors[Math.floor(Math.random() * availableColors.length)];
+                    }
+                }
+            }
+        }
+
+        /**
+         * Keyboard Controls (Drives both physical keyboard and VoiceOver Swipes)
+         */
+        document.addEventListener('keydown', (e) => {
+            // Only handle input if game is active and not animating
+            if (document.getElementById('game-ui').classList.contains('hidden') || isSwapping || isClearing) {
+                return;
+            }
+
+            let newR = focusedRow;
+            let newC = focusedCol;
+
+            switch (e.key) {
+                case 'ArrowUp':
+                    e.preventDefault();
+                    newR = focusedRow - 1;
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    newR = focusedRow + 1;
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    newC = focusedCol - 1;
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    newC = focusedCol + 1;
+                    break;
+                case 'Enter':
+                case ' ':
+                    // VoiceOver "Activate" gesture (แตะ 2 ครั้ง) ส่ง Enter/Space เข้ามา
+                    e.preventDefault();
+                    handleSelect(focusedRow, focusedCol);
+                    return; 
+                default:
+                    return;
+            }
+
+            // Check boundaries and move focus
+            if (newR >= 0 && newR < boardSize && newC >= 0 && newC < boardSize) {
+                setFocus(newR, newC);
+            }
+        });
+
+        // Initialize: Load audio files first and show main menu
+        window.onload = () => {
+            showMainMenu();
+        };
+
+    </script>
+</body>
+</html>
