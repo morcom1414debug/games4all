@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Squid Game - for blind</title>
+<style>
+body{
+  font-family:sans-serif;
+  text-align:center;
+  background-color:#000;
+  color:#fff;
+  margin:0;
+  padding:0;
+}
+img{
+  max-width:300px;
+  display:block;
+  margin:20px auto 10px auto;
+}
+button{
+  font-size:1.2em;
+  padding:8px 16px;
+  margin-top:20px;
+  border-radius:10px;
+  border:none;
+  background-color:#e50914;
+  color:#fff;
+  cursor:pointer;
+  transition:background-color 0.3s;
+}
+button:hover{ background-color:#ff3b30; }
+button:disabled{ background-color:#555; cursor:not-allowed; }
+#gameContainer{ margin-top:50px; }
+.status-text{ font-size:1.2em; margin-top:10px; }
+</style>
+</head>
+<body>
+<div id="gameContainer" role="main" aria-live="assertive"></div>
+
+<script>
+const audioFiles=[
+ 'start.mp3','go1.mp3','go2.mp3','go3.mp3','go4.mp3',
+ 'pass.mp3','pass-die1.mp3','pass-die2.mp3','over.mp3','end.mp3','pic.png'
+];
+
+let audios={}, deaths=0, distance=0, startTime=0;
+let isGoing=false, inGoRound=false, playerStoppedDuringGo=false, playerMovedThisRound=false;
+let lastDieSound='', isGameEnded=false, isLocked=false, isAudioLoaded=false;
+let tempAudio=null, motionAllowed=false, lastTiltTime=0;
+let audioContext=null, safariBuffers={};
+let isIPhoneSafari=false;
+
+const container=document.getElementById('gameContainer');
+
+// ---------------- ตรวจจับ Safari บน iPhone ----------------
+function detectIPhoneSafari(){
+ const ua = navigator.userAgent;
+ return /iPhone/i.test(ua) && /Safari/i.test(ua) && !/CriOS|FxiOS|OPiOS/i.test(ua);
+}
+
+// ---------------- Focus Mode ----------------
+function activateFocusMode(){
+ container.setAttribute('role','application');
+ container.setAttribute('tabindex','0');
+ try{container.focus();}catch(e){}
+}
+function deactivateFocusMode(){
+ container.removeAttribute('role');
+ container.removeAttribute('tabindex');
+}
+
+// ---------------- โหลดไฟล์เสียง ----------------
+async function loadAssets(){
+ container.innerHTML=`
+   <img src="audio/pic.png" alt="ลุยไปด้วยกัน">
+   <p id="loadText" class="status-text">กำลังโหลดไฟล์เสียง กรุณารอสักครู่...</p>
+   <button id="startGameBtn" disabled>เริ่มเกม</button>
+ `;
+ const startBtn=document.getElementById('startGameBtn');
+ const loadText=document.getElementById('loadText');
+
+ let loaded=0,total=audioFiles.length;
+ function checkDone(){
+   if(loaded===total){
+     isAudioLoaded=true;
+     startBtn.disabled=false;
+     loadText.textContent='พร้อมแล้ว กดปุ่มเริ่มเกมได้ทันที';
+   }
+ }
+
+ if(isIPhoneSafari){
+   if(!audioContext){
+     audioContext=new (window.AudioContext||window.webkitAudioContext)();
+   }
+ }
+
+ const bufferPreload=[
+   'go1.mp3','go2.mp3','go3.mp3','go4.mp3',
+   'pass.mp3','pass-die1.mp3','pass-die2.mp3',
+   'over.mp3','end.mp3'
+ ];
+
+ for(const f of audioFiles){
+   if(isIPhoneSafari && bufferPreload.includes(f)){
+     try{
+       const res=await fetch('audio/'+f);
+       const arrBuf=await res.arrayBuffer();
+       const buf=await audioContext.decodeAudioData(arrBuf);
+       safariBuffers[f]=buf;
+     }catch(e){console.warn('โหลด buffer ไม่สำเร็จ',f);}
+     loaded++;checkDone();
+   }else if(f.endsWith('.mp3')){
+     const a=new Audio('audio/'+f);
+     a.addEventListener('canplaythrough',()=>{loaded++;checkDone();},{once:true});
+     a.load();
+     audios[f]=a;
+   }else{
+     const img=new Image();
+     img.src='audio/'+f;
+     img.onload=()=>{loaded++;checkDone();};
+   }
+ }
+
+ startBtn.onclick=()=>{
+   if(tempAudio){ try{tempAudio.pause();tempAudio.currentTime=0;}catch(e){} }
+   setTimeout(()=>{
+     startMainGame();
+     activateFocusMode();
+   },500);
+ };
+}
+
+// ---------------- ขออนุญาต motion sensor ----------------
+async function requestMotionPermission(){
+ if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+   try{
+     const res=await DeviceMotionEvent.requestPermission();
+     if(res==='granted'){
+       motionAllowed=true;
+       window.addEventListener('deviceorientation',handleTilt);
+     }
+   }catch(e){}
+ }else{
+   motionAllowed=true;
+   window.addEventListener('deviceorientation',handleTilt);
+ }
+}
+
+// ---------------- ควบคุมด้วยการเอียง ----------------
+function handleTilt(e){
+ if(!motionAllowed || isLocked)return;
+ if(!inGoRound)return; // ✅ ต้องอยู่ในรอบ go เท่านั้น
+ const tilt=e.beta;
+ const now=Date.now();
+ if(Math.abs(tilt)>30 && now-lastTiltTime>1500){
+   lastTiltTime=now;
+   const goBtn=document.getElementById('goBtn');
+   if(goBtn && !goBtn.disabled){
+     toggleGoStop(goBtn); // ✅ ทำงานเหมือนกดปุ่ม
+   }
+ }
+}
+
+// ---------------- หยุดเสียงทั้งหมด ----------------
+function stopAllAudio(){
+ for(let key in audios){
+   try{ audios[key].pause(); audios[key].currentTime=0; }catch(e){}
+ }
+ // ❌ ไม่ปิด audioContext เพื่อให้ Safari เล่นต่อได้
+}
+
+// ---------------- หน้าหลัก ----------------
+function startGameMenu(){
+ deactivateFocusMode();
+ isLocked=false;
+ isIPhoneSafari=detectIPhoneSafari();
+ container.innerHTML=`
+   <h1 tabindex="0">Squid Game - for blind</h1>
+   <img src="audio/pic.png" alt="S">
+   <p>คุณมี 2 ชีวิต และต้องเดินให้ครบ 20 เมตร!<br>กด "เตรียมตัว" เพื่อเริ่มโหลดเสียง</p>
+   <button id="prepareBtn">เตรียมตัว</button>
+ `;
+ document.querySelector('h1').focus();
+
+ document.getElementById('prepareBtn').onclick=()=>{
+   if(/Android|iPhone|iPad/i.test(navigator.userAgent)){
+     requestMotionPermission();
+   }
+   if(tempAudio){ try{tempAudio.pause();tempAudio.currentTime=0;}catch(e){} }
+   tempAudio=new Audio('audio/start.mp3');
+   tempAudio.play().catch(()=>{});
+   loadAssets();
+ };
+}
+
+// ---------------- เริ่มเกม ----------------
+function startMainGame(){
+ deaths=0; distance=0;
+ renderGameScreen();
+ setTimeout(playNextRound,500);
+}
+
+function renderGameScreen(){
+ if(isLocked)return;
+ container.innerHTML=`
+   <h1 tabindex="0">Squid Game - for blind</h1>
+   <img src="audio/pic.png" alt="ฉากในเกม Squid game">
+   <p id="status">ระยะทาง: ${distance.toFixed(1)} เมตร | ชีวิต: ${2-deaths}</p>
+   <button id="goBtn" disabled>ไป</button>
+ `;
+ const goBtn=document.getElementById('goBtn');
+ goBtn.focus();
+ goBtn.onclick=()=>{
+   if(!inGoRound||isLocked)return;
+   toggleGoStop(goBtn);
+ };
+}
+
+// ---------------- ปุ่ม ไป / หยุด ----------------
+function toggleGoStop(goBtn){
+ if(isLocked)return;
+ if(!inGoRound)return;
+
+ isGoing=!isGoing;
+ playerMovedThisRound=true; // ✅ มีการเคลื่อนไหวจริง
+
+ goBtn.textContent=isGoing?'หยุด':'ไป';
+
+ if(isGoing){
+   startTime=Date.now();
+   playerStoppedDuringGo=false;
+ }else{
+   playerStoppedDuringGo=true;
+   const elapsed=(Date.now()-startTime)/1000;
+   distance+=elapsed;
+   updateStatus();
+   if(distance>=20)return gameWin();
+ }
+ updateStatus();
+}
+
+// ---------------- สถานะ ----------------
+function updateStatus(){
+ const st=document.getElementById('status');
+ if(st)st.textContent='ระยะทาง: '+distance.toFixed(1)+' เมตร | ชีวิต: '+(2-deaths);
+}
+
+// ---------------- เล่นเสียง (รองรับ Safari Buffer) ----------------
+async function playSoundSmart(name,callback){
+ if(isIPhoneSafari && safariBuffers[name] && audioContext){
+   try{
+     await audioContext.resume();
+     const src=audioContext.createBufferSource();
+     src.buffer=safariBuffers[name];
+     src.connect(audioContext.destination);
+     src.start(0);
+     src.onended=()=>callback&&callback();
+   }catch(e){
+     console.warn('เล่น buffer ไม่ได้',name,e);
+     callback&&callback();
+   }
+ }else{
+   playAudio(name,callback);
+ }
+}
+
+// ---------------- เล่นรอบใหม่ ----------------
+function playNextRound(){
+ if(deaths>=2)return gameOver();
+ if(distance>=20)return gameWin();
+ if(isLocked)return;
+
+ renderGameScreen();
+
+ const goFiles=['go1.mp3','go2.mp3','go3.mp3','go4.mp3'];
+ const randomFile=goFiles[Math.floor(Math.random()*goFiles.length)];
+
+ inGoRound=true; 
+ isGoing=false; 
+ playerStoppedDuringGo=false;
+ playerMovedThisRound=false;
+
+ const goBtn=document.getElementById('goBtn');
+ goBtn.disabled=false; 
+ goBtn.textContent='ไป';
+ goBtn.focus();
+
+ playSoundSmart(randomFile,()=>{
+   inGoRound=false;
+   goBtn.disabled=true;
+
+   // ✅ ตรวจสอบผลรอบนี้หลังเสียง go จบ
+   setTimeout(()=>{
+     if(!playerMovedThisRound){
+       // ไม่เคย “ไป” เลย => เสียชีวิต
+       deaths++;
+       let dieSound=lastDieSound==='pass-die1.mp3'?'pass-die2.mp3':'pass-die1.mp3';
+       lastDieSound=dieSound;
+       playSoundSmart(dieSound,()=>{
+         if(deaths>=2)return gameOver();
+         setTimeout(()=>{renderGameScreen();playNextRound();},1000);
+       });
+     }else if(playerStoppedDuringGo){
+       // เดินแล้วหยุดถูกต้อง
+       playSoundSmart('pass.mp3',()=>setTimeout(()=>{renderGameScreen();playNextRound();},1000));
+     }else{
+       // เดินแต่ไม่หยุดทัน
+       deaths++;
+       let dieSound=lastDieSound==='pass-die1.mp3'?'pass-die2.mp3':'pass-die1.mp3';
+       lastDieSound=dieSound;
+       playSoundSmart(dieSound,()=>{
+         if(deaths>=2)return gameOver();
+         setTimeout(()=>{renderGameScreen();playNextRound();},1000);
+       });
+     }
+     updateStatus();
+   },100);
+ });
+}
+
+// ---------------- เล่นเสียงปกติ ----------------
+function playAudio(name,callback){
+ const a=audios[name];
+ if(!a)return callback&&callback();
+ a.currentTime=0;
+ a.play().then(()=>{ a.onended=()=>callback&&callback(); }).catch(()=>{ callback&&callback(); });
+}
+
+// ---------------- จบเกม ----------------
+function gameOver(){
+ if(isGameEnded)return;
+ isGameEnded=true; isLocked=true;
+ showOnlyImage(); stopAllAudio();
+ setTimeout(async ()=>{
+   if(isIPhoneSafari) await audioContext.resume();
+   stopAllAudio();
+   playSoundSmart('over.mp3',()=>{
+     deactivateFocusMode();
+     resetToStartScreen();
+   });
+ },500);
+}
+
+function gameWin(){
+ if(isGameEnded)return;
+ isGameEnded=true; isLocked=true;
+ showOnlyImage(); stopAllAudio();
+ setTimeout(async ()=>{
+   if(isIPhoneSafari) await audioContext.resume();
+   stopAllAudio();
+   playSoundSmart('end.mp3',()=>{
+     deactivateFocusMode();
+     resetToStartScreen();
+   });
+ },500);
+}
+
+function showOnlyImage(){
+ container.innerHTML=`
+   <img src="audio/pic.png" alt="ฉากในเกม Squid game">
+   <p>Squid game : audio only</p>
+ `;
+}
+
+// ---------------- กลับไปหน้าเริ่มเกม ----------------
+function resetToStartScreen(){
+ deaths=0; distance=0; isGameEnded=false; isLocked=false;
+ loadAssets(); 
+}
+
+// ---------------- Shortcut Key (เฉพาะ PC) ----------------
+document.addEventListener('keydown',e=>{
+ if(isLocked)return;
+ if(e.key==='ArrowUp'){
+   const goBtn=document.getElementById('goBtn');
+   if(goBtn && !goBtn.disabled && !isGoing)toggleGoStop(goBtn);
+ }
+});
+document.addEventListener('keyup',e=>{
+ if(isLocked)return;
+ if(e.key==='ArrowUp'){
+   const goBtn=document.getElementById('goBtn');
+   if(goBtn && !goBtn.disabled && isGoing)toggleGoStop(goBtn);
+ }
+});
+
+startGameMenu();
+</script>
+</body>
+</html>
