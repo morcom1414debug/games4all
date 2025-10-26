@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เกมเรียงเพชรไทย - Bejeweled Thai</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700;800&display=swap');
+
+/* Global Styles */
+body {
+    font-family: 'Sarabun', sans-serif;
+    background-color: #0d1a26;
+    color: #e0f2fe;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    text-align: center;
+    user-select: none;
+    touch-manipulation: none;
+}
+.container {
+    background-color: #1a2a3a;
+    border: 4px solid #4a5c6c;
+    border-radius: 1.5rem;
+    padding: 2rem 1.5rem; 
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+    max-width: 95%;
+    width: 600px;
+    position: relative;
+}
+.game-title {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 800;
+    color: #93c5fd; 
+    text-shadow: 3px 3px 6px rgba(0,0,0,0.3);
+    margin-bottom: 1rem;
+}
+.info-panel {
+    font-size: 1.125rem;
+    margin-bottom: 1rem;
+    color: #94a3b8;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    background-color: #2a3a4a;
+}
+
+/* Button Styles */
+.game-button {
+    background-color: #10b981; 
+    color: white;
+    padding: 1rem 2rem;
+    font-size: 1.25rem;
+    font-weight: bold;
+    border: none;
+    border-radius: 9999px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    margin: 0.5rem;
+}
+.game-button:hover {
+    background-color: #059669;
+    transform: translateY(-2px);
+}
+.game-button:active {
+    transform: scale(0.95);
+}
+.game-button.secondary {
+    background-color: #f97316; 
+}
+.game-button.secondary:hover {
+    background-color: #ea580c;
+}
+.game-button.mode {
+    width: 100%;
+    margin: 0.5rem 0;
+}
+
+/* Game Board Styles */
+#game-board-container {
+    margin: 1rem auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#game-board {
+    display: grid;
+    border: 5px solid #6366f1; 
+    border-radius: 0.5rem;
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+    background-color: #2a3a4a;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+}
+
+.gem {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: clamp(0.8rem, 3vw, 1.5rem);
+    font-weight: bold;
+    color: black;
+    border: 1px solid rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    position: relative;
+    user-select: none;
+    outline: none;
+}
+
+/* Gem Colors (Thai Names) */
+.gem-แดง { background-color: #ef4444; } 
+.gem-เขียว { background-color: #10b981; } 
+.gem-น้ำเงิน { background-color: #3b82f6; } 
+.gem-เหลือง { background-color: #facc15; } 
+.gem-ม่วง { background-color: #a855f7; } 
+.gem-ชมพู { background-color: #ec4899; } 
+.gem-ฟ้า { background-color: #06b6d4; } 
+
+/* Focus & Selected States */
+.focused {
+    border: 3px solid #fde047; 
+    box-shadow: 0 0 10px #fde047;
+    transform: scale(1.05);
+    z-index: 10;
+}
+.selected {
+    border: 3px solid #ff0000; 
+    box-shadow: 0 0 15px #ff0000;
+    animation: pulse 0.5s infinite alternate;
+    z-index: 11;
+}
+
+@keyframes pulse {
+    from { box-shadow: 0 0 15px #ff0000; }
+    to { box-shadow: 0 0 20px #ff0000, 0 0 5px rgba(255, 0, 0, 0.8); }
+}
+
+/* Game Stats */
+#game-stats {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 1rem;
+    background-color: #0f172a;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    flex-wrap: wrap; /* ให้แสดงผลได้ดีบนมือถือ */
+}
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-weight: bold;
+    line-height: 1.2;
+    padding: 0.25rem 0.5rem;
+}
+.stat-label {
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+.stat-value {
+    font-size: 1.5rem;
+    color: #38bdf8;
+}
+#target-value {
+    color: #fde047;
+}
+#timer-value {
+    color: #fca5a5; 
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+<!-- Main Menu UI -->
+<div id="main-menu-ui">
+    <h1 class="game-title">เกมเรียงเพชรไทย</h1>
+    <p class="info-panel">
+        ยินดีต้อนรับ! พิชิต 10 ด่านเพื่อเป็นสุดยอดนักเรียงเพชร!
+        <br>ด่านสูงขึ้น เวลาลดลง
+        <br>โบนัส: เรียง 3 อันขึ้นไปรับเพิ่ม 3 วินาที
+    </p>
+
+    <h2 class="text-xl font-bold mb-2 text-cyan-400">ขนาดกระดาน</h2>
+    <button class="game-button mode" onclick="startLevelMode(5)">5 x 5</button>
+    <button class="game-button mode secondary" onclick="startLevelMode(6)">6 x 6</button>
+
+    <div id="loading-status" class="mt-4 text-yellow-400 hidden">
+        กำลังโหลดไฟล์เสียง... โปรดรอสักครู่
+    </div>
+</div>
+
+<!-- Game UI -->
+<!-- role="application" คือหัวใจสำคัญในการดักจับท่าทางสัมผัส VoiceOver (ปัด 1 นิ้ว จะถูกแปลงเป็น Arrow Keys) -->
+<div id="game-ui" class="hidden">
+    <div id="game-stats">
+        <div class="stat-item">
+            <span class="stat-label">ด่านที่</span>
+            <span id="level-value" class="stat-value">1</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">เป้าหมาย</span>
+            <span id="target-value" class="stat-value text-yellow-400">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">คะแนนรวม</span>
+            <span id="total-score-value" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">คะแนนด่านนี้</span>
+            <span id="score-value" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label">เวลา</span>
+            <span id="timer-value" class="stat-value">60</span>
+        </div>
+    </div>
+
+    <!-- Game Board will be injected here -->
+    <div id="game-board-container">
+        <div id="game-board" role="grid"></div>
+    </div>
+
+    <p id="key-controls" class="info-panel text-sm mt-4 p-2">
+        ควบคุม: (↑ ↓ ← →) หรือ (ปัด 1 นิ้ว) = ย้าย | (Enter / Space) หรือ (แตะ 2 ครั้ง) = เลือก / สลับ
+    </p>
+</div>
+
+<!-- Level/Game Summary UI -->
+<div id="summary-ui" class="hidden">
+    <!-- heading ผลคะแนนที่ต้องการให้ focus ชี้ไปทันที -->
+    <h1 id="summary-heading" class="text-3xl font-extrabold text-red-400 mb-4" tabindex="-1"></h1>
+    <p class="info-panel text-2xl font-bold">จะลองอีกรอบหรือจะเปลี่ยนโหมด เลือกได้เลย?</p>
+
+    <div id="summary-buttons" class="flex flex-wrap justify-center mt-6">
+        <!-- ปุ่มนี้จะถูกใช้เพื่อแสดงการหน่วงเวลาและจะซ่อนไป -->
+        <button class="game-button" id="next-level-button" onclick="loadNextLevel()" style="display:none;">ด่านต่อไปกำลังจะเริ่ม</button>
+        <!-- ปุ่มนี้จะแสดงเมื่อจบเกม (แพ้หรือชนะ) -->
+        <button class="game-button" id="new-game-button" onclick="startLevelMode(boardSize)" style="display:none;">เล่นใหม่อีกครั้ง</button>
+        <button class="game-button secondary" id="main-menu-button" onclick="showMainMenu()">กลับไปเลือกโหมดใหม่</button>
+    </div>
+</div>
+</div>
+
+<script>
+// Global variables
+let boardSize = 0;
+let board = [];
+let score = 0; // Current score for the level
+let totalScore = 0; // Total score across all levels
+let currentLevel = 1;
+let levelTargetScore = 200; // Updated dynamically
+let timeLeft = 60;
+const MAX_LEVEL = 10; // กำหนดจำนวนด่านสูงสุด
+let gameTimer = null;
+let selectedGem = null;
+let focusedRow = 0;
+let focusedCol = 0;
+let isSwapping = false;
+let isClearing = false;
+let isGameReady = false;
+let isPausedForAudio = false; // NEW: สถานะเพื่อรอไฟล์เสียง a6.mp3 เล่นจบ
+let warningAudio = null; // NEW: เพื่อเก็บ instance ของเสียง timerWarning เพื่อหยุดได้
+
+// Gem Data
+const GEM_COLORS_THAI = ["แดง", "เขียว", "น้ำเงิน", "เหลือง", "ม่วง", "ชมพู", "ฟ้า"];
+
+// Audio files map - UPDATED: เพิ่ม heart.mp3, f.mp3
+const AUDIO_FILES = {
+    'a1.mp3': 'select', 
+    'a2.mp3': 'match',  // ใช้สำหรับแมทช์แรก
+    'a3.mp3': 'fail',   
+    'a4.mp3': 'end',     
+    'a5.mp3': 'move',    // NEW: การเคลื่อนที่
+    'a6.mp3': 'levelStart', // NEW: เริ่มเกม/ด่าน
+    'a7.mp3': 'combo',   // NEW: คอมโบต่อเนื่อง
+    'heart.mp3': 'timerWarning', // NEW: เสียงเตือนเมื่อเหลือ 10 วินาที
+    'f.mp3': 'fail2'     // NEW: เสียงเมื่อสลับเพชรที่ไม่ติดกัน
+};
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+const audioBuffers = {};
+
+/**
+ * Level Calculation Functions
+ */
+function calculateLevelTime(level) {
+    // ด่าน 1: 60s, ด่าน 10: 30s. ลดลง 30s ใน 9 ช่วง
+    const reductionPerInterval = 30 / (MAX_LEVEL - 1); 
+    const time = 60 - (level - 1) * reductionPerInterval;
+    // ปัดเป็นจำนวนเต็มที่ใกล้ที่สุด
+    return Math.round(time); 
+}
+
+function calculateTargetScore(level) {
+    // ฐาน: 200, เพิ่มขึ้นด่านละ 100
+    return 200 + (level - 1) * 100;
+}
+
+function getColorCount(level) {
+    // NEW: ปรับจำนวนสีเพื่อให้ด่านแรกๆ ง่ายขึ้น (สีน้อย = เรียงง่ายกว่า)
+    if (level <= 1) return 3; // ด่าน 1: 3 สี
+    if (level <= 4) return 4; // ด่าน 2-4: 4 สี
+    if (level <= 7) return 5; // ด่าน 5-7: 5 สี
+    if (level <= 9) return 6; // ด่าน 8-9: 6 สี
+    return 7; // ด่าน 10: 7 สี
+}
+
+/**
+ * Utility functions for Audio
+ */
+async function loadAudioFile(url, name) {
+    try {
+        // Assume audio files are in a standard 'audio/' directory
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        audioBuffers[name] = await audioContext.decodeAudioData(arrayBuffer);
+    } catch (error) {
+        console.error(`Error loading audio file ${url}:`, error);
+        // Fallback to HTML Audio if decoding fails
+        const audio = new Audio(url);
+        audio.preload = 'auto';
+        audioBuffers[name] = audio;
+    }
+}
+
+async function loadAllAudio() {
+    const loadingStatus = document.getElementById('loading-status');
+    loadingStatus.classList.remove('hidden');
+
+    const loadPromises = Object.entries(AUDIO_FILES).map(([filename, name]) =>
+        loadAudioFile(`audio/${filename}`, name) 
+    );
+
+    await Promise.all(loadPromises);
+
+    loadingStatus.textContent = 'โหลดไฟล์เสียงเสร็จสมบูรณ์! พร้อมเริ่มเกม';
+    setTimeout(() => loadingStatus.classList.add('hidden'), 1000);
+}
+
+function playSound(name) {
+    const buffer = audioBuffers[name];
+    if (!buffer) {
+        console.warn(`Audio buffer '${name}' not found. Cannot play sound.`);
+        return;
+    }
+
+    let instance;
+    if (buffer instanceof Audio) {
+        // Fallback HTML Audio
+        buffer.currentTime = 0;
+        buffer.play().catch(e => console.error(`Error playing fallback audio ${name}:`, e));
+        instance = buffer;
+    } else {
+        // Web Audio API
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+        instance = source;
+    }
+
+    // NEW: ถ้าเป็น timerWarning เก็บ instance เพื่อหยุดได้
+    if (name === 'timerWarning') {
+        warningAudio = instance;
+    }
+
+    return instance;
+}
+
+// NEW: ฟังก์ชันหยุดเสียง timerWarning
+function stopWarningSound() {
+    if (warningAudio) {
+        if (warningAudio instanceof Audio) {
+            // HTML Audio
+            warningAudio.pause();
+            warningAudio.currentTime = 0;
+        } else {
+            // Web Audio Source
+            warningAudio.stop();
+        }
+        warningAudio = null;
+    }
+}
+
+/**
+ * NEW: ฟังก์ชันเล่นเสียงและรอจนกว่าเสียงจะเล่นจบ (สำหรับ a6.mp3)
+ * @param {string} name - ชื่อไฟล์เสียงที่ต้องการเล่น ('levelStart')
+ * @returns {Promise<void>} - Resolve เมื่อเสียงเล่นจบ
+ */
+async function playAudioAndAwait(name) {
+    const buffer = audioBuffers[name];
+    if (!buffer) {
+        console.warn(`Audio buffer '${name}' not found. No delay applied.`);
+        return;
+    }
+
+    if (buffer instanceof Audio) {
+        // Fallback HTML Audio
+        buffer.currentTime = 0;
+        return new Promise(resolve => {
+            const onEnded = () => {
+                buffer.removeEventListener('ended', onEnded);
+                resolve();
+            };
+            // NOTE: Add a timeout to resolve in case the 'ended' event is missed
+            const timeoutId = setTimeout(resolve, 3000); 
+
+            buffer.addEventListener('ended', onEnded);
+            buffer.play().catch(e => {
+                console.error("Error playing fallback audio, resolving immediately:", e);
+                clearTimeout(timeoutId);
+                resolve();
+            });
+        });
+    }
+
+    // Web Audio API
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    
+    return new Promise(resolve => {
+        source.onended = resolve;
+        source.start(0);
+    });
+}
+
+/**
+ * UI and Game Flow
+ */
+function showMainMenu() {
+    // Clear timer when returning to main menu
+    if (gameTimer) clearInterval(gameTimer);
+    stopWarningSound(); // NEW: หยุดเสียงเตือนถ้ามี
+    document.getElementById('main-menu-ui').classList.remove('hidden');
+    document.getElementById('game-ui').classList.add('hidden');
+    document.getElementById('summary-ui').classList.add('hidden');
+    isGameReady = false;
+    isPausedForAudio = false; // Ensure unpaused
+    // VoiceOver/NVDA returns to normal browse mode
+    deactivateApplicationMode();
+}
+
+/**
+ * ฟังก์ชันสำหรับตั้งค่าโฟกัสไปที่ heading ของหน้าสรุปผล เพื่อการเข้าถึง (Accessibility)
+ */
+function focusSummaryHeading() {
+    const summaryHeading = document.getElementById('summary-heading');
+    // กำหนด tabindex="-1" เพื่อให้รับโฟกัสด้วย .focus() ได้ โดยไม่ถูกรวมในลำดับการ Tab ปกติ
+    summaryHeading.setAttribute('tabindex', '-1'); 
+    summaryHeading.focus();
+    // ประกาศให้ Screen Reader ทราบว่ามีการเปลี่ยนหน้า/สถานะ
+    speakAnnouncement(summaryHeading.textContent); 
+}
+
+function speakAnnouncement(text) {
+    // Helper to announce non-visual updates for screen readers
+    const announcementEl = document.createElement('div');
+    announcementEl.setAttribute('role', 'alert');
+    // sr-only style to hide visually but allow screen readers to read
+    announcementEl.classList.add('sr-only', 'absolute', 'w-1', 'h-1', 'overflow-hidden'); 
+    announcementEl.textContent = text;
+    document.body.appendChild(announcementEl);
+    // Remove after a short delay
+    setTimeout(() => announcementEl.remove(), 2000); 
+}
+
+// --- Focus Mode Activation (VoiceOver Application Mode) ---
+function activateApplicationMode() {
+    const gameUI = document.getElementById('game-ui');
+    // role="application" forces VoiceOver/NVDA into app mode, capturing keyboard events (Arrow Keys from Swipes)
+    gameUI.setAttribute('role', 'application'); 
+    gameUI.setAttribute('tabindex', '0');
+    // Ensure focus is on the container to receive key events
+    setTimeout(() => {
+        try {
+            gameUI.focus();
+        } catch (e) {
+            console.error("Could not set focus on game UI:", e);
+        }
+    }, 100);
+}
+
+function deactivateApplicationMode() {
+    const gameUI = document.getElementById('game-ui');
+    gameUI.removeAttribute('role');
+    gameUI.removeAttribute('tabindex');
+    gameUI.removeAttribute('aria-activedescendant'); 
+
+    // Clean up tabindexes on all gems to prevent browse-mode chaos
+    document.querySelectorAll('.gem').forEach(gem => gem.removeAttribute('tabindex'));
+}
+
+async function startLevelMode(size) {
+    boardSize = size;
+    totalScore = 0; // Reset total score for a new game
+    currentLevel = 1; // Start at Level 1
+    // Load the first level
+    await loadNextLevel(true); 
+}
+
+async function loadNextLevel(isNewGame = false) {
+    // Stop any existing timer
+    if (gameTimer) clearInterval(gameTimer);
+
+    // 1. Reset/Setup Level Variables
+    score = 0; // Reset score for the new level
+    levelTargetScore = calculateTargetScore(currentLevel);
+    timeLeft = calculateLevelTime(currentLevel);
+
+    isSwapping = false;
+    isClearing = false;
+    selectedGem = null;
+    focusedRow = 0;
+    focusedCol = 0;
+    isPausedForAudio = true; // NEW: PAUSE INPUT เพื่อรอเสียง a6.mp3 เล่นจบ
+
+    // 2. UI Setup
+    document.getElementById('main-menu-ui').classList.add('hidden');
+    document.getElementById('summary-ui').classList.add('hidden');
+    document.getElementById('game-ui').classList.remove('hidden');
+
+    updateStats();
+
+    if (!isGameReady) {
+        // Load audio only once
+        await loadAllAudio();
+        isGameReady = true;
+    }
+
+    // 3. Board Setup
+    setupBoard(boardSize);
+    renderBoard();
+    
+    // 4. Initial Focus
+    activateApplicationMode();
+    setFocus(0, 0); 
+    
+    // 5. Play Start Audio (a6.mp3) and Delay Game Start
+    // Play a6.mp3 และรอจนกว่าจะจบ ก่อนเริ่มจับเวลา
+    await playAudioAndAwait('levelStart'); 
+    
+    // 6. Resume Game Flow
+    isPausedForAudio = false; // UNPAUSE INPUT
+    startGameTimer();
+
+    // Announce the new level for accessibility if it's not the first game load
+    if (!isNewGame) {
+        const levelAnnouncement = `ด่านที่ ${currentLevel} เริ่มแล้ว! เป้าหมายคะแนน: ${levelTargetScore} คะแนน เวลา: ${timeLeft} วินาที`;
+        speakAnnouncement(levelAnnouncement);
+    }
+}
+
+/**
+ * Game Board Setup & Rendering (unchanged)
+ */
+function checkMatchAt(r, c, currentBoard, isSetup = false) {
+    if (!isSetup) return false;
+    const color = currentBoard[r][c];
+    if (!color) return false;
+
+    if (c >= 2 && currentBoard[r][c - 1] === color && currentBoard[r][c - 2] === color) {
+        return true;
+    }
+
+    if (r >= 2 && currentBoard[r - 1][c] === color && currentBoard[r - 2][c] === color) {
+        return true;
+    }
+
+    return false;
+}
+
+function setupBoard(size) {
+    // NEW: คำนวณจำนวนสีตามด่าน
+    const colorCount = getColorCount(currentLevel);
+    const availableColors = GEM_COLORS_THAI.slice(0, colorCount);
+    board = Array(size).fill(0).map(() => Array(size).fill(0));
+
+    for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+            let newColor;
+            do {
+                newColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+                board[r][c] = newColor;
+            } while (checkMatchAt(r, c, board, true));
+        }
+    }
+}
+
+function renderBoard() {
+    const boardElement = document.getElementById('game-board');
+    boardElement.innerHTML = '';
+    boardElement.style.gridTemplateColumns = `repeat(${boardSize}, 1fr)`;
+    boardElement.style.width = boardElement.style.height = `min(90vw, 500px)`; 
+
+    for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+            const gem = document.createElement('div');
+            gem.id = `gem-${r}-${c}`;
+            gem.classList.add('gem', `gem-${board[r][c]}`);
+            
+            // ใช้รูปแบบ "แถว [R] คอลั่ม [C]"
+            gem.setAttribute('aria-label', `${board[r][c]} แถว ${r + 1} คอลั่ม ${c + 1}`);
+            
+            boardElement.appendChild(gem);
+        }
+    }
+}
+
+function updateStats() {
+    document.getElementById('level-value').textContent = currentLevel;
+    document.getElementById('target-value').textContent = levelTargetScore;
+    document.getElementById('total-score-value').textContent = totalScore + score; // Show running total
+    document.getElementById('score-value').textContent = score; // Current level score
+    document.getElementById('timer-value').textContent = timeLeft;
+    
+    // Highlight target score if close
+    const targetElement = document.getElementById('target-value');
+    if (score / levelTargetScore > 0.75) {
+        targetElement.classList.add('text-red-400');
+        targetElement.classList.remove('text-yellow-400');
+    } else {
+        targetElement.classList.remove('text-red-400');
+        targetElement.classList.add('text-yellow-400');
+    }
+}
+
+function startGameTimer() {
+    // NOTE: gameTimer is cleared in loadNextLevel, gameOver, and levelCleared
+    let hasPlayedWarning = false; // Track if warning sound has played
+    gameTimer = setInterval(() => {
+        if (timeLeft > 0) {
+            timeLeft--;
+            // NEW: รีเซ็ต hasPlayedWarning ถ้าเวลา > 10
+            if (timeLeft > 10) {
+                hasPlayedWarning = false;
+            }
+            // Play warning sound at 10 seconds, only once
+            if (timeLeft === 10 && !hasPlayedWarning) {
+                playSound('timerWarning');
+                hasPlayedWarning = true;
+            }
+            updateStats();
+        } else {
+            clearInterval(gameTimer);
+            // Time ran out, game over
+            gameOver(false); 
+        }
+    }, 1000);
+}
+
+/**
+ * ฟังก์ชันจบเกม (แพ้หมดเวลา หรือ ชนะด่านสุดท้าย)
+ * @param {boolean} isWin - true ถ้าชนะด่านสุดท้าย, false ถ้าระยะเวลาหมด
+ */
+function gameOver(isWin = false) {
+    if (gameTimer) clearInterval(gameTimer);
+    stopWarningSound(); // NEW: หยุดเสียงเตือน
+    // NOTE: ผู้ใช้ระบุว่าตอนจบไม่ต้องเล่น a6.mp3 (levelStart) จึงใช้ a4.mp3 (end) ตามปกติ
+    playSound('end');
+    
+    // Total score is calculated just before game over
+    const finalTotalScore = totalScore + score;
+    
+    // Deactivate application mode so screen reader goes back to browse mode for the summary
+    deactivateApplicationMode();
+    isPausedForAudio = false; // Ensure unpaused
+
+    document.getElementById('game-ui').classList.add('hidden');
+    document.getElementById('summary-ui').classList.remove('hidden');
+    
+    // Reset buttons
+    document.getElementById('next-level-button').style.display = 'none'; 
+    document.getElementById('new-game-button').style.display = 'inline-block';
+    document.getElementById('main-menu-button').style.display = 'inline-block';
+
+    // Get the heading element and clear colors
+    const summaryHeading = document.getElementById('summary-heading');
+    summaryHeading.classList.remove('text-red-400', 'text-green-400'); // Clear existing color
+
+    if (isWin) {
+        // Case: Level 10 Cleared (Game Win)
+        summaryHeading.textContent = `ยินดีด้วย คุณพิชิตเกมได้แล้ว! คะแนนรวมของคุณคือ ${finalTotalScore} คะแนน`;
+        summaryHeading.classList.add('text-green-400');
+    } else {
+        // Case: Time Out (Failure)
+        summaryHeading.textContent = `จอดแค่ด่าน ${currentLevel} ลองฝีมือกันใหม่ได้นะ? คะแนนรวม: ${finalTotalScore} คะแนน`;
+        summaryHeading.classList.add('text-red-400');
+    }
+    
+    // *** การตั้งค่า Focus ตามที่ผู้ใช้ต้องการ ***
+    focusSummaryHeading();
+}
+
+/**
+ * ฟังก์ชันผ่านด่าน (ระดับ 1 ถึง 9)
+ */
+function levelCleared() {
+    if (gameTimer) clearInterval(gameTimer);
+    stopWarningSound(); // NEW: หยุดเสียงเตือน
+    // NOTE: ผู้ใช้ระบุว่าตอนจบไม่ต้องเล่น a6.mp3 (levelStart) จึงใช้ a4.mp3 (end) ตามปกติ
+    playSound('end'); 
+
+    // Update total score with the score from the cleared level
+    totalScore += score;
+    const currentLevelScore = score;
+    const finalTotalScore = totalScore;
+    
+    // Deactivate application mode so screen reader goes back to browse mode for the summary
+    deactivateApplicationMode();
+    isPausedForAudio = false; // Ensure unpaused
+
+    document.getElementById('game-ui').classList.add('hidden');
+    document.getElementById('summary-ui').classList.remove('hidden');
+    document.getElementById('next-level-button').style.display = 'none'; 
+    document.getElementById('new-game-button').style.display = 'none';
+    document.getElementById('main-menu-button').style.display = 'none'; 
+
+    // Get the heading element and clear colors
+    const summaryHeading = document.getElementById('summary-heading');
+    summaryHeading.classList.remove('text-red-400', 'text-green-400');
+
+    if (currentLevel < MAX_LEVEL) {
+        // Case 1: Level 1 to 9 Cleared (Intermediate Summary)
+        const nextLevel = currentLevel + 1;
+        
+        let headingText;
+        let announcementMessage; 
+
+        if (currentLevel === 1) {
+            headingText = `ด่านที่ ${currentLevel} ผ่านแล้ว! คุณได้ ${currentLevelScore} คะแนน เตรียมตัวไปด่านต่อไป!`;
+            announcementMessage = `ด่านที่ ${currentLevel} ผ่านแล้ว! คุณได้ ${currentLevelScore} คะแนน`;
+        } else {
+            headingText = `ด่านที่ ${currentLevel} ผ่านแล้ว! คุณได้ ${currentLevelScore} คะแนน (รวม ${finalTotalScore} คะแนน) เตรียมตัวไปด่านต่อไป!`;
+            announcementMessage = `ด่านที่ ${currentLevel} ผ่านแล้ว! คุณได้ ${currentLevelScore} คะแนน รวม ${finalTotalScore} คะแนน`;
+        }
+        
+        summaryHeading.textContent = headingText;
+        summaryHeading.classList.add('text-green-400'); // Green for cleared levels
+        
+        // Show next level button for visual cue during countdown
+        const nextLevelButton = document.getElementById('next-level-button');
+        nextLevelButton.style.display = 'inline-block';
+        nextLevelButton.textContent = `ด่านที่ ${nextLevel} กำลังจะเริ่ม`;
+
+        // *** การตั้งค่า Focus ตามที่ผู้ใช้ต้องการ ***
+        focusSummaryHeading();
+        speakAnnouncement(announcementMessage + `. ${nextLevelButton.textContent}`); 
+        
+        currentLevel++; // Increment level for next load
+        
+        let countdown = 3;
+        const countdownInterval = setInterval(() => {
+            countdown--;
+            nextLevelButton.textContent = `ด่านที่ ${currentLevel} กำลังจะเริ่มใน ${countdown}...`;
+            if (countdown <= 0) {
+                clearInterval(countdownInterval);
+                loadNextLevel();
+            }
+        }, 1000);
+
+    } else {
+        // Case 2: Level 10 Cleared (Game Win) - Redirect to consolidated game over logic
+        gameOver(true);
+    }
+}
+
+/**
+ * Focus and Selection Logic (updated for f.mp3)
+ */
+function setFocus(r, c) {
+    const gameUI = document.getElementById('game-ui');
+    
+    // 1. Boundary check and update coordinates
+    focusedRow = Math.max(0, Math.min(r, boardSize - 1));
+    focusedCol = Math.max(0, Math.min(c, boardSize - 1));
+    const newGemId = `gem-${focusedRow}-${focusedCol}`;
+
+    // 2. Remove focus/tabindex from old gem
+    const oldGem = document.querySelector('.focused');
+    if (oldGem) {
+        oldGem.classList.remove('focused');
+        oldGem.removeAttribute('tabindex'); 
+    }
+
+    // 3. Add visual focus and tabindex to new gem
+    const newGem = document.getElementById(newGemId);
+    if (newGem) {
+        newGem.classList.add('focused');
+        newGem.setAttribute('tabindex', '0'); // กำหนด tabindex เพื่อให้ VoiceOver อ่านเมื่อมีการเปลี่ยนโฟกัส
+
+        // 4. Update aria-activedescendant on the application root
+        gameUI.setAttribute('aria-activedescendant', newGemId);
+
+        // 5. Re-assert focus on the game container to capture keyboard events (Arrow Keys/Swipes)
+        gameUI.focus(); 
+    }
+}
+
+function handleSelect(r, c) {
+    // UPDATED: เพิ่ม isPausedForAudio เพื่อป้องกันการรับอินพุตระหว่างที่เสียง a6.mp3 กำลังเล่น
+    if (isSwapping || isClearing || isPausedForAudio) return;
+
+    const currentGem = { r, c };
+    const gemElement = document.getElementById(`gem-${r}-${c}`);
+
+    if (!selectedGem) {
+        // First selection
+        selectedGem = currentGem;
+        gemElement.classList.add('selected');
+        playSound('select'); 
+    } else if (selectedGem.r === r && selectedGem.c === c) {
+        // Deselect
+        gemElement.classList.remove('selected');
+        selectedGem = null;
+    } else if (isAdjacent(selectedGem, currentGem)) {
+        // Second selection - attempt swap
+        attemptSwap(selectedGem, currentGem);
+    } else {
+        // NEW: กติกาใหม่ - ถ้าไม่ติดกัน deselect และไม่ select new (ต้องเริ่มเลือกใหม่)
+        document.getElementById(`gem-${selectedGem.r}-${selectedGem.c}`).classList.remove('selected');
+        selectedGem = null;
+        playSound('fail2'); // Play f.mp3 for non-adjacent selection
+    }
+}
+
+function isAdjacent(gem1, gem2) {
+    return (
+        Math.abs(gem1.r - gem2.r) + Math.abs(gem1.c - gem2.c) === 1
+    );
+}
+
+/**
+ * Game Logic (Swap, Match, Gravity) - Unchanged
+ */
+async function attemptSwap(gem1, gem2) {
+    isSwapping = true;
+    // Remove selection visuals before swap animation begins
+    if (selectedGem) {
+        document.getElementById(`gem-${selectedGem.r}-${selectedGem.c}`).classList.remove('selected');
+        selectedGem = null;
+    }
+
+    await visualSwap(gem1, gem2);
+    swapGems(gem1, gem2);
+
+    const matchedGems = findMatches(board);
+
+    if (matchedGems.length > 0) {
+        await handleClearing(matchedGems);
+    } else {
+        playSound('fail');
+        await visualSwap(gem1, gem2, true); 
+        swapGems(gem1, gem2); 
+    }
+
+    isSwapping = false;
+}
+
+function swapGems(gem1, gem2) {
+    const temp = board[gem1.r][gem1.c];
+    board[gem1.r][gem1.c] = board[gem2.r][gem2.c];
+    board[gem2.r][gem2.c] = temp;
+}
+
+async function visualSwap(gem1, gem2, swapBack = false) {
+    // Logic to swap colors visually and update aria-label
+    const gemElement1 = document.getElementById(`gem-${gem1.r}-${gem1.c}`);
+    const gemElement2 = document.getElementById(`gem-${gem2.r}-${gem2.c}`);
+
+    if (gemElement1 && gemElement2) {
+        // Determine the colors to swap to
+        const color1 = board[gem1.r][gem1.c];
+        const color2 = board[gem2.r][gem2.c];
+        
+        // If swapping back, the roles of color1 and color2 are reversed
+        const targetColor1 = swapBack ? color2 : color1;
+        const targetColor2 = swapBack ? color1 : color2;
+
+        // Apply visual and accessibility updates (Thai labels)
+        gemElement1.classList.remove(`gem-${color1}`);
+        gemElement1.classList.add(`gem-${targetColor2}`);
+        gemElement1.setAttribute('aria-label', `${targetColor2} แถว ${gem1.r + 1} คอลั่ม ${gem1.c + 1}`);
+
+        gemElement2.classList.remove(`gem-${color2}`);
+        gemElement2.classList.add(`gem-${targetColor1}`);
+        gemElement2.setAttribute('aria-label', `${targetColor1} แถว ${gem2.r + 1} คอลั่ม ${gem2.c + 1}`);
+    }
+
+    return new Promise(resolve => setTimeout(resolve, swapBack ? 200 : 100));
+}
+
+function findMatches(currentBoard) {
+    const matches = new Set();
+    const size = currentBoard.length;
+
+    // Check horizontal matches
+    for (let r = 0; r < size; r++) {
+        for (let c = 0; c <= size - 3; c++) {
+            const color = currentBoard[r][c];
+            if (color && color === currentBoard[r][c + 1] && color === currentBoard[r][c + 2]) {
+                let startC = c;
+                while(startC < size && currentBoard[r][startC] === color) {
+                    matches.add(`${r},${startC}`);
+                    startC++;
+                }
+                c = startC - 1; 
+            }
+        }
+    }
+
+    // Check vertical matches
+    for (let c = 0; c < size; c++) {
+        for (let r = 0; r <= size - 3; r++) {
+            const color = currentBoard[r][c];
+            if (color && color === currentBoard[r + 1][c] && color === currentBoard[r + 2][c]) {
+                let startR = r;
+                while(startR < size && currentBoard[startR][c] === color) {
+                    matches.add(`${startR},${c}`);
+                    startR++;
+                }
+                r = startR - 1;
+            }
+        }
+    }
+
+    return Array.from(matches).map(str => {
+        const [r, c] = str.split(',').map(Number);
+        return { r, c };
+    });
+}
+
+async function handleClearing(initialMatches) {
+    isClearing = true;
+    let currentMatches = initialMatches;
+    let newMatchesFound = false;
+    let comboCount = 0; // NEW: ตัวนับคอมโบสำหรับจัดการเสียง a2 และ a7
+
+    while (currentMatches.length > 0) {
+        newMatchesFound = true;
+        comboCount++; // นับคอมโบเพิ่มขึ้น
+
+        // 1. Update Score and Bonus Time
+        const matchCount = currentMatches.length;
+        
+        // Score multiplier
+        const scoreMultiplier = 15; 
+        score += matchCount * scoreMultiplier;
+        
+        // Bonus time: 3 seconds per match
+        timeLeft += 3; 
+        // NEW: ถ้าเวลาเพิ่มเกิน 10 หยุดเสียงเตือน
+        if (timeLeft > 10) {
+            stopWarningSound();
+        }
+        updateStats();
+        
+        // UPDATED AUDIO: เล่น a2.mp3 สำหรับคอมโบแรก และ a7.mp3 สำหรับคอมโบต่อเนื่อง
+        if (comboCount === 1) {
+            playSound('match'); // a2.mp3
+        } else {
+            playSound('combo'); // a7.mp3
+        }
+
+        // 2. Clear matched gems (set them to null/empty)
+        for (const { r, c } of currentMatches) {
+            board[r][c] = null;
+            const gemEl = document.getElementById(`gem-${r}-${c}`);
+            if (gemEl) {
+                gemEl.classList.remove(...gemEl.classList);
+                gemEl.classList.add('gem');
+                gemEl.setAttribute('aria-label', `ช่องว่าง`);
+                gemEl.removeAttribute('tabindex'); 
+            }
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 300)); 
+
+        // 3. Drop gems to fill empty spaces
+        applyGravity();
+
+        // 4. Fill empty top spaces with new random gems
+        fillNewGems();
+
+        // 5. Re-render the board after drops and refills
+        renderBoard();
+
+        // Re-apply focus 
+        setFocus(focusedRow, focusedCol); 
+
+        // 6. Check for new matches created by the drop
+        currentMatches = findMatches(board);
+    }
+
+    isClearing = false;
+    
+    // Check for level completion only after all chain reactions finish
+    if (newMatchesFound && score >= levelTargetScore) {
+        levelCleared();
+    }
+}
+
+function applyGravity() {
+    const size = boardSize;
+    for (let c = 0; c < size; c++) {
+        let writeRow = size - 1;
+        for (let r = size - 1; r >= 0; r--) {
+            if (board[r][c] !== null) {
+                if (r !== writeRow) {
+                    board[writeRow][c] = board[r][c];
+                    board[r][c] = null;
+                }
+                writeRow--;
+            }
+            // If board[r][c] is null, writeRow stays put, waiting for the next non-null gem.
+        }
+    }
+}
+
+function fillNewGems() {
+    const size = boardSize;
+    // NEW: ใช้จำนวนสีตามด่าน (เหมือน setupBoard)
+    const colorCount = getColorCount(currentLevel);
+    const availableColors = GEM_COLORS_THAI.slice(0, colorCount);
+
+    for (let c = 0; c < size; c++) {
+        for (let r = 0; r < size; r++) {
+            if (board[r][c] === null) {
+                board[r][c] = availableColors[Math.floor(Math.random() * availableColors.length)];
+            }
+        }
+    }
+}
+
+/**
+ * Keyboard Controls (Drives both physical keyboard and VoiceOver Swipes)
+ */
+document.addEventListener('keydown', (e) => {
+    // UPDATED: เพิ่ม isPausedForAudio เพื่อป้องกันการรับอินพุตระหว่างที่เสียง a6.mp3 กำลังเล่น
+    if (document.getElementById('game-ui').classList.contains('hidden') || isSwapping || isClearing || isPausedForAudio) {
+        return;
+    }
+
+    let newR = focusedRow;
+    let newC = focusedCol;
+    let isMovementKey = false;
+
+    switch (e.key) {
+        case 'ArrowUp':
+            e.preventDefault();
+            newR = focusedRow - 1;
+            isMovementKey = true;
+            break;
+        case 'ArrowDown':
+            e.preventDefault();
+            newR = focusedRow + 1;
+            isMovementKey = true;
+            break;
+        case 'ArrowLeft':
+            e.preventDefault();
+            newC = focusedCol - 1;
+            isMovementKey = true;
+            break;
+        case 'ArrowRight':
+            e.preventDefault();
+            newC = focusedCol + 1;
+            isMovementKey = true;
+            break;
+        case 'Enter':
+        case ' ':
+            // VoiceOver "Activate" gesture (แตะ 2 ครั้ง) ส่ง Enter/Space เข้ามา
+            e.preventDefault();
+            handleSelect(focusedRow, focusedCol);
+            return; 
+        default:
+            return;
+    }
+
+    // Check boundaries and move focus
+    if (newR >= 0 && newR < boardSize && newC >= 0 && newC < boardSize) {
+        // NEW: เล่น a5.mp3 (move) เมื่อมีการเคลื่อนที่จริง
+        if (isMovementKey && (newR !== focusedRow || newC !== focusedCol)) {
+            playSound('move');
+        }
+        setFocus(newR, newC);
+    }
+});
+
+// Initialize: Load audio files first and show main menu
+window.onload = () => {
+    showMainMenu();
+};
+
+</script>
+</body>
+</html>
