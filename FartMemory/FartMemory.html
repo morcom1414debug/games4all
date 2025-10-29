@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fart Memory Sounds</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .screen {
+            display: none;
+            margin: auto;
+            max-width: 600px;
+        }
+        #start-screen {
+            display: block;
+        }
+        .grid {
+            display: grid;
+            margin: 20px auto;
+            gap: 10px;
+        }
+        .grid-2x2 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .grid-3x3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .grid-4x4 {
+            grid-template-columns: repeat(4, 1fr);
+        }
+        button {
+            padding: 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.selected {
+            background-color: #2196F3;
+        }
+        button.matched {
+            background-color: #888;
+            cursor: not-allowed;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #game-info {
+            margin: 20px 0;
+        }
+        #timer {
+            font-size: 24px;
+            color: red;
+        }
+        #back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: #ff4444;
+            padding: 10px 15px;
+            font-size: 14px;
+        }
+        #back-button:hover {
+            background-color: #cc0000;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Start Screen -->
+    <div id="start-screen" class="screen">
+        <h1>Fart Memory Sounds</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>จับคู่เสียงตด ขออภัยท่านที่กำลังอร่อยอยู่?</p>
+        <button id="start-button">เริ่มเกม</button>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="screen">
+        <h1>กำลังโหลด</h1>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1>Fart Memory Sounds</h1>
+        <div id="game-info">
+            <p>Level: <span id="current-level"></span></p>
+            <p>เวลาที่เหลือ: <span id="timer"></span> วินาที</p>
+            <p>ผิดได้เหลือ: <span id="mistakes-left"></span> ครั้ง</p>
+        </div>
+        <div id="grid" class="grid"></div>
+    </div>
+
+    <!-- Level 3 Complete Screen -->
+    <div id="level3-complete-screen" class="screen">
+        <h1 tabindex="0">ยินดีด้วย คุณพร้อมเพิ่มความยากขึ้นไหม?</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>จากนี้ชปุ่มกดฟังเสียงตดจะเยอะขึ้น พร้อมแล้วก็...</p>
+        <button id="continue-button">ลุยกันต่อที่ level 4</button>
+    </div>
+
+    <!-- Level 7 Complete Screen -->
+    <div id="level7-complete-screen" class="screen">
+        <h1 tabindex="0">ยินดีด้วย คุณพร้อมเพิ่มความยากขึ้นไหม?</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>จากนี้ชปุ่มกดฟังเสียงตดจะเยอะขึ้น พร้อมแล้วก็...</p>
+        <button id="continue-level7-button">ลุยกันต่อใน Level 8</button>
+    </div>
+
+    <!-- Next Level Screen -->
+    <div id="next-level-screen" class="screen">
+        <h1 tabindex="0">ลุยกันต่อในด่าน <span id="next-level-number"></span> กันเลย</h1>
+        <p>กรุณารอสักครู่...</p>
+    </div>
+
+    <!-- Win Screen -->
+    <div id="win-screen" class="screen">
+        <h1 tabindex="0">สุดยอด คุณคือ แฟนพันธุ์แท้ Fart Memory Sounds.</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>คุณคือผู้เชี่ยวชาญด้านเสียงตดจริงๆ ข้าน้อย! ขอคารวะ...</p>
+        <button id="restart-win">เล่นใหม่อีกครั้ง</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameover-screen" class="screen">
+        <h1 tabindex="0">ลองใหม่อีกครั้งนะ!</h1>
+        <p>จะเล่นใหม่ก็กดด้านล่างนี้เลย</p>
+        <button id="restart-gameover">เล่นใหม่อีกครั้ง</button>
+    </div>
+
+    <script>
+        // Audio files
+        const soundFiles = [
+            's1.mp3', 's2.mp3', 's3.mp3', 's4.mp3', 's5.mp3', 's6.mp3', 's7.mp3',
+            's8.mp3', 's9.mp3', 's10.mp3', 's11.mp3', 's12.mp3', 's13.mp3'
+        ];
+        const effectFiles = {
+            true: 'true.mp3',
+            wrong: 'wrong.mp3',
+            new1: 'new1.mp3',
+            new4: 'new4.mp3',
+            a6: 'a6.mp3',
+            heart: 'heart.mp3',
+            a7: 'a7.mp3'
+        };
+        const audioPath = 'audio/';
+        let heartAudio = null;
+        let audios = {};
+        let effects = {};
+        let heartPlayed = false;
+
+        // Cheat code variables
+        let cheatInput = '';
+        let lastKeyTime = 0;
+        const cheatCode = 'skip';
+        const timeThreshold = 2000; // 2 seconds
+
+        // Game variables
+        let currentLevel = 1;
+        let timeLimit = 0;
+        let mistakesAllowed = 0;
+        let mistakesMade = 0;
+        let timerInterval;
+        let timeLeft;
+        let gridSize;
+        let numSounds;
+        let cards = [];
+        let firstCard = null;
+        let secondCard = null;
+        let lockBoard = false;
+        let matchedPairs = 0;
+        let totalPairs = 0;
+
+        // Screens
+        const screens = {
+            start: document.getElementById('start-screen'),
+            loading: document.getElementById('loading-screen'),
+            game: document.getElementById('game-screen'),
+            level3Complete: document.getElementById('level3-complete-screen'),
+            level7Complete: document.getElementById('level7-complete-screen'),
+            next: document.getElementById('next-level-screen'),
+            win: document.getElementById('win-screen'),
+            gameover: document.getElementById('gameover-screen')
+        };
+
+        // Elements
+        const startButton = document.getElementById('start-button');
+        const restartWin = document.getElementById('restart-win');
+        const restartGameover = document.getElementById('restart-gameover');
+        const backButton = document.getElementById('back-button');
+        const continueButton = document.getElementById('continue-button');
+        const continueLevel7Button = document.getElementById('continue-level7-button');
+        const grid = document.getElementById('grid');
+        const currentLevelEl = document.getElementById('current-level');
+        const timerEl = document.getElementById('timer');
+        const mistakesLeftEl = document.getElementById('mistakes-left');
+        const nextLevelNumberEl = document.getElementById('next-level-number');
+
+        // Back to main menu
+        backButton.addEventListener('click', () => {
+            window.location.href = '../index.html';
+        });
+
+        // Function to wait for all playing audios to finish
+        async function waitForPlayingAudios() {
+            const allAudios = [...Object.values(audios), ...Object.values(effects)];
+            const playingAudios = allAudios.filter(audio => !audio.paused && audio.currentTime > 0);
+            const promises = playingAudios.map(audio => {
+                return new Promise(resolve => {
+                    audio.onended = () => resolve();
+                    setTimeout(resolve, 5000); // 5-second timeout
+                });
+            });
+            await Promise.all(promises);
+        }
+
+        // Function to play sound
+        async function playSound(effectName) {
+            await waitForPlayingAudios();
+            if (effects[effectName]) {
+                return new Promise((resolve, reject) => {
+                    const audioClone = effects[effectName].cloneNode();
+                    audioClone.onended = () => resolve();
+                    audioClone.onerror = (e) => reject(e);
+                    audioClone.play().catch(e => {
+                        console.log(`Error playing ${effectName}:`, e);
+                        resolve();
+                    });
+                });
+            } else {
+                console.warn(`Sound ${effectName} not found`);
+                return Promise.resolve();
+            }
+        }
+
+        // Preload all audios
+        async function preloadAudios() {
+            console.log('Starting audio preload...');
+            const allFiles = [...soundFiles.map(f => audioPath + f), ...Object.values(effectFiles).map(f => audioPath + f)];
+            const promises = allFiles.map(file => {
+                return new Promise((resolve) => {
+                    const audio = new Audio(file);
+                    audio.preload = 'auto';
+                    audio.volume = 0.8;
+                    audio.oncanplaythrough = () => {
+                        console.log(`Loaded: ${file}`);
+                        resolve();
+                    };
+                    audio.onerror = (e) => {
+                        console.error(`Failed to load: ${file}`, e);
+                        resolve(); // Resolve even on error to avoid hanging
+                    };
+                    audio.load();
+                    const key = file.split('/').pop().replace('.mp3', '');
+                    if (soundFiles.includes(key + '.mp3')) {
+                        audios[key] = audio;
+                    } else {
+                        effects[key] = audio;
+                    }
+                    setTimeout(resolve, 5000); // 5-second timeout
+                });
+            });
+            try {
+                await Promise.all(promises);
+                console.log('All audios preloaded successfully');
+            } catch (error) {
+                console.error('Error during audio preload:', error);
+            }
+        }
+
+        // Shuffle array
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // Setup level
+        async function setupLevel() {
+            console.log('Setting up level:', currentLevel);
+            if (currentLevel <= 3) {
+                gridSize = 2;
+                numSounds = 2;
+                timeLimit = 30;
+                mistakesAllowed = 1;
+            } else if (currentLevel >= 4 && currentLevel <= 7) {
+                gridSize = 3;
+                numSounds = 4;
+                timeLimit = 60;
+                mistakesAllowed = 4;
+            } else {
+                gridSize = 4;
+                numSounds = 8;
+                timeLimit = 90 - (currentLevel - 4) * 7;
+                mistakesAllowed = 10;
+            }
+            totalPairs = numSounds;
+            matchedPairs = 0;
+            mistakesMade = 0;
+            cards = [];
+            firstCard = null;
+            secondCard = null;
+            lockBoard = true;
+
+            // Select random sounds
+            const selectedSounds = shuffle([...soundFiles]).slice(0, numSounds).map(f => f.replace('.mp3', ''));
+
+            // Create card data
+            let soundAssignments = [...selectedSounds, ...selectedSounds];
+            shuffle(soundAssignments);
+
+            if (currentLevel >= 4 && currentLevel <= 7) {
+                for (let i = 0; i < 8; i++) {
+                    cards.push({
+                        index: i,
+                        sound: soundAssignments[i],
+                        matched: false
+                    });
+                }
+                cards.push({
+                    index: 8,
+                    sound: null,
+                    matched: true
+                });
+            } else {
+                for (let i = 0; i < gridSize * gridSize; i++) {
+                    cards.push({
+                        index: i,
+                        sound: soundAssignments[i],
+                        matched: false
+                    });
+                }
+            }
+
+            // Render grid
+            grid.className = 'grid ' + (gridSize === 2 ? 'grid-2x2' : gridSize === 3 ? 'grid-3x3' : 'grid-4x4');
+            grid.innerHTML = '';
+            cards.forEach((card, index) => {
+                const button = document.createElement('button');
+                if (card.matched) {
+                    button.textContent = "หอมหวน";
+                    button.classList.add('matched');
+                    button.disabled = true;
+                } else {
+                    button.textContent = `ช่อง${index + 1}`;
+                    button.dataset.index = index;
+                    button.addEventListener('click', handleCardClick);
+                }
+                grid.appendChild(button);
+            });
+
+            currentLevelEl.textContent = currentLevel;
+            mistakesLeftEl.textContent = mistakesAllowed - mistakesMade;
+            timeLeft = timeLimit;
+            timerEl.textContent = timeLeft;
+
+            // Play a6.mp3 and unlock board
+            try {
+                await playSound('a6');
+                lockBoard = false;
+                startTimer();
+                const firstButton = grid.querySelector('button:not(.matched)');
+                if (firstButton) {
+                    firstButton.focus();
+                    console.log('Focused on first button');
+                } else {
+                    console.warn('No unmatched buttons found to focus');
+                }
+            } catch (error) {
+                console.error('Error playing a6 sound:', error);
+                lockBoard = false; // Unlock board even if sound fails
+                startTimer();
+            }
+        }
+
+        // Handle card click
+        function handleCardClick(event) {
+            if (lockBoard) return;
+            const button = event.target;
+            const index = parseInt(button.dataset.index);
+            const card = cards[index];
+
+            if (card.matched || button.disabled || button === firstCard) return;
+
+            button.classList.add('selected');
+            if (audios[card.sound]) {
+                audios[card.sound].cloneNode().play().catch(e => console.error(`Error playing ${card.sound}:`, e));
+            }
+
+            if (!firstCard) {
+                firstCard = button;
+            } else {
+                secondCard = button;
+                lockBoard = true;
+                checkForMatch();
+            }
+        }
+
+        // Find closest unmatched button
+        function findClosestUnmatchedButton(lastIndex) {
+            const unmatchedButtons = Array.from(grid.querySelectorAll('button:not(.matched):not(:disabled)'));
+            if (unmatchedButtons.length === 0) return null;
+            return unmatchedButtons.reduce((closest, button) => {
+                const index = parseInt(button.dataset.index);
+                const closestIndex = parseInt(closest.dataset.index);
+                return Math.abs(index - lastIndex) < Math.abs(closestIndex - lastIndex) ? button : closest;
+            }, unmatchedButtons[0]);
+        }
+
+        // Check for match
+        async function checkForMatch() {
+            const firstIndex = parseInt(firstCard.dataset.index);
+            const secondIndex = parseInt(secondCard.dataset.index);
+            const firstSound = cards[firstIndex].sound;
+            const secondSound = cards[secondIndex].sound;
+
+            if (firstSound === secondSound) {
+                await playSound('true');
+                cards[firstIndex].matched = true;
+                cards[secondIndex].matched = true;
+                firstCard.classList.add('matched');
+                secondCard.classList.add('matched');
+                firstCard.textContent = "หอมหวน";
+                secondCard.textContent = "หอมหวน";
+                firstCard.disabled = true;
+                secondCard.disabled = true;
+                firstCard.classList.remove('selected');
+                secondCard.classList.remove('selected');
+                matchedPairs++;
+
+                // Focus on closest unmatched button
+                const closestButton = findClosestUnmatchedButton(secondIndex);
+                resetBoard();
+
+                if (matchedPairs < totalPairs) {
+                    if (closestButton) closestButton.focus();
+                }
+
+                if (matchedPairs === totalPairs) {
+                    clearInterval(timerInterval);
+                    if (currentLevel === 10) {
+                        setTimeout(() => completeGame(), 1500);
+                    } else if (currentLevel === 3) {
+                        setTimeout(() => showLevel3Complete(), 1500);
+                    } else if (currentLevel === 7) {
+                        setTimeout(() => showLevel7Complete(), 1500);
+                    } else {
+                        setTimeout(() => nextLevel(), 1500);
+                    }
+                }
+            } else {
+                await playSound('wrong');
+                mistakesMade++;
+                mistakesLeftEl.textContent = mistakesAllowed - mistakesMade;
+                firstCard.classList.remove('selected');
+                secondCard.classList.remove('selected');
+                const lastButton = secondCard; // Focus on last clicked button
+                resetBoard();
+                if (lastButton) lastButton.focus();
+
+                if (mistakesMade > mistakesAllowed) {
+                    setTimeout(() => gameOver(), 500);
+                }
+            }
+        }
+
+        // Reset board
+        function resetBoard() {
+            firstCard = null;
+            secondCard = null;
+            lockBoard = false;
+        }
+
+        // Stop heart audio
+        function stopHeartAudio() {
+            if (heartAudio) {
+                heartAudio.pause();
+                heartAudio.currentTime = 0;
+                heartAudio = null;
+            }
+            heartPlayed = false;
+        }
+
+        // Start timer
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerEl.textContent = timeLeft;
+                if (timeLeft === 10 && !heartPlayed) {
+                    if (effects['heart']) {
+                        stopHeartAudio();
+                        heartAudio = effects['heart'].cloneNode();
+                        heartAudio.loop = true;
+                        heartAudio.play().catch(e => console.error('Error playing heart.mp3:', e));
+                    }
+                    heartPlayed = true;
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    stopHeartAudio();
+                    gameOver();
+                }
+            }, 1000);
+        }
+
+        // Cheat code handler
+        function handleCheatCode(event) {
+            const currentTime = Date.now();
+            if (currentTime - lastKeyTime > timeThreshold) {
+                cheatInput = '';
+            }
+            cheatInput += event.key.toLowerCase();
+            lastKeyTime = currentTime;
+
+            if (cheatInput.includes(cheatCode)) {
+                console.log('Cheat code activated!');
+                completeLevelCheat();
+                cheatInput = '';
+            }
+        }
+
+        // Complete level using cheat
+        async function completeLevelCheat() {
+            if (lockBoard || matchedPairs === totalPairs) return;
+            lockBoard = true;
+            await playSound('true');
+            cards.forEach(card => {
+                if (!card.matched) {
+                    card.matched = true;
+                    const button = grid.querySelector(`button[data-index="${card.index}"]`);
+                    if (button) {
+                        button.classList.add('matched');
+                        button.textContent = "หอมหวน";
+                        button.disabled = true;
+                    }
+                }
+            });
+            matchedPairs = totalPairs;
+            clearInterval(timerInterval);
+            if (currentLevel === 10) {
+                setTimeout(() => completeGame(), 1500);
+            } else if (currentLevel === 3) {
+                setTimeout(() => showLevel3Complete(), 1500);
+            } else if (currentLevel === 7) {
+                setTimeout(() => showLevel7Complete(), 1500);
+            } else {
+                setTimeout(() => nextLevel(), 1500);
+            }
+        }
+
+        // Show Level 3 Complete Screen
+        async function showLevel3Complete() {
+            screens.game.style.display = 'none';
+            screens.level3Complete.style.display = 'block';
+            screens.level3Complete.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new1');
+        }
+
+        // Show Level 7 Complete Screen
+        async function showLevel7Complete() {
+            screens.game.style.display = 'none';
+            screens.level7Complete.style.display = 'block';
+            screens.level7Complete.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new1');
+        }
+
+        // Next level
+        async function nextLevel() {
+            screens.game.style.display = 'none';
+            screens.next.style.display = 'block';
+            nextLevelNumberEl.textContent = currentLevel + 1;
+            screens.next.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new1');
+            screens.next.style.display = 'none';
+            currentLevel++;
+            await setupLevel();
+            screens.game.style.display = 'block';
+            setTimeout(() => {
+                const firstButton = grid.querySelector('button:not(.matched)');
+                if (firstButton) firstButton.focus();
+            }, 0);
+        }
+
+        // Complete game
+        async function completeGame() {
+            screens.game.style.display = 'none';
+            screens.win.style.display = 'block';
+            screens.win.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new4');
+        }
+
+        // Game over
+        async function gameOver() {
+            clearInterval(timerInterval);
+            stopHeartAudio();
+            Object.values(audios).forEach(a => {
+                a.pause();
+                a.currentTime = 0;
+            });
+            Object.values(effects).forEach(a => {
+                if (a !== effects['a7']) {
+                    a.pause();
+                    a.currentTime = 0;
+                }
+            });
+            screens.game.style.display = 'none';
+            screens.gameover.style.display = 'block';
+            screens.gameover.querySelector('h1').focus();
+            await playSound('a7');
+        }
+
+        // Start game
+        async function startGame() {
+            console.log('Start button clicked');
+            try {
+                screens.start.style.display = 'none';
+                screens.loading.style.display = 'block';
+                await preloadAudios();
+                screens.loading.style.display = 'none';
+                currentLevel = 1;
+                await setupLevel();
+                screens.game.style.display = 'block';
+                const firstButton = grid.querySelector('button:not(.matched)');
+                if (firstButton) {
+                    firstButton.focus();
+                    console.log('Game started, focused on first button');
+                } else {
+                    console.warn('No unmatched buttons found to focus');
+                }
+            } catch (error) {
+                console.error('Error starting game:', error);
+                screens.loading.style.display = 'none';
+                screens.start.style.display = 'block';
+                alert('เกิดข้อผิดพลาดในการเริ่มเกม กรุณาลองใหม่');
+            }
+        }
+
+        // Event listeners
+        startButton.addEventListener('click', () => {
+            console.log('Start button event triggered');
+            startGame();
+        });
+        restartWin.addEventListener('click', () => {
+            screens.win.style.display = 'none';
+            startGame();
+        });
+        restartGameover.addEventListener('click', () => {
+            screens.gameover.style.display = 'none';
+            startGame();
+        });
+        continueButton.addEventListener('click', () => {
+            screens.level3Complete.style.display = 'none';
+            currentLevel++;
+            setupLevel();
+            screens.game.style.display = 'block';
+        });
+        continueLevel7Button.addEventListener('click', () => {
+            screens.level7Complete.style.display = 'none';
+            currentLevel++;
+            setupLevel();
+            screens.game.style.display = 'block';
+        });
+
+        // Add cheat code listener
+        document.addEventListener('keydown', handleCheatCode);
+
+        // Ensure start button is focusable
+        window.addEventListener('load', () => {
+            startButton.focus();
+            console.log('Page loaded, start button focused');
+        });
+    </script>
+</body>
+</html>
