@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมทายเพลง 7 วิ : เพลงเพื่อชีวิต</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body{font-family:'Inter',sans-serif;background-color:#f0f4f8;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;padding:20px;box-sizing:border-box;}
+        .game-container{background:#fff;border-radius:20px;box-shadow:0 10px 20px rgba(0,0,0,.1);padding:30px;max-width:600px;width:100%;text-align:center;display:flex;flex-direction:column;gap:20px;position:relative;}
+        .btn{padding:12px 25px;border-radius:10px;font-weight:bold;transition:all .2s ease-in-out;box-shadow:0 4px 6px rgba(0,0,0,.1);}
+        .btn-primary{background-image:linear-gradient(to right,#6a11cb 0%,#20e2d7 100%);color:#fff;border:none;}
+        .btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 10px rgba(0,0,0,.15);opacity:.9;}
+        .btn-secondary{background:#edf2f7;color:#2d3748;border:1px solid #cbd5e0;}
+        .btn-secondary:hover:not(:disabled){background:#e2e8f0;transform:translateY(-2px);box-shadow:0 6px 10px rgba(0,0,0,.08);}
+        .btn-disabled{opacity:.6;cursor:not-allowed;}
+        .answer-button{width:100%;text-align:center;white-space:normal;word-wrap:break-word;}
+        .score-display{font-size:1.8em;font-weight:bold;color:#2d3748;margin-bottom:20px;}
+        #backToMainMenuButton{position:absolute;top:20px;left:20px;padding:8px 15px;font-size:.9em;background:#cbd5e0;color:#2d3748;border:none;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);transition:all .2s;z-index:10;}
+        #backToMainMenuButton:hover{background:#a0aec0;transform:translateY(-1px);box-shadow:0 4px 6px rgba(0,0,0,.15);}
+        h1,h2{outline:none;}
+        .input-box{width:100%;padding:12px 16px;font-size:1.1em;border:2px solid #cbd5e0;border-radius:10px;margin-bottom:16px;text-align:center;}
+        .input-box:focus{outline:none;border-color:#6a11cb;box-shadow:0 0 0 3px rgba(106,17,203,.2);}
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <button id="backToMainMenuButton" class="btn">กลับเมนูหลัก</button>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="screen">
+        <h1 class="text-4xl font-extrabold text-indigo-700 mb-6" tabindex="-1">เกมทายเพลง 7 วิ : เพลงเพื่อชีวิต</h1>
+        <p class="text-lg text-gray-700 mb-8 leading-relaxed">
+            มาประชันความรู้ด้านเสียงเพลงเพื่อชีวิตกัน จำได้ไหม ว่าเพลงอะไร<br>ตอบถูกครบ 10 ข้อ ไปพิชิตสุดยอดแฟนพันธุ์แท้กันได้เลย
+        </p>
+        <button id="startButton" class="btn btn-primary text-xl">เริ่มเกม</button>
+    </div>
+
+    <!-- Question Screen -->
+    <div id="question-screen" class="screen hidden">
+        <h2 id="question-heading" class="text-2xl font-bold text-gray-800 mb-4" tabindex="-1">ข้อที่ 1</h2>
+        <button id="playMusicButton" class="btn btn-primary text-xl mb-6">กดฟังซ้ำ</button>
+        <div id="answer-choices" class="grid grid-cols-1 gap-4"></div>
+    </div>
+
+    <!-- Result Screen -->
+    <div id="result-screen" class="screen hidden">
+        <h2 id="result-heading" class="text-3xl font-bold text-indigo-700 mb-4" tabindex="-1"></h2>
+        <p id="result-score" class="score-display mb-6"></p>
+        <button id="ultimate-button" class="btn btn-primary text-xl hidden">พิชิตสุดยอดแฟนพันธุ์แท้</button>
+    </div>
+
+    <!-- Ultimate Challenge Screen -->
+    <div id="ultimate-screen" class="screen hidden">
+        <h2 id="ultimate-heading" class="text-3xl font-bold text-indigo-700 mb-6" tabindex="-1">
+            ตอบถูก? คุณคือ "สุดยอดแฟนพันธุ์แท้ - เพลงเพื่อชีวิต"
+        </h2>
+        <input type="text" id="ultimate-input" class="input-box" placeholder="กรุณาพิมพ์ชื่อเพลงที่คุณทราบ" autocomplete="off">
+        <button id="ultimate-submit" class="btn btn-primary text-xl">ส่ง</button>
+    </div>
+
+    <!-- Final Summary Screen -->
+    <div id="final-summary-screen" class="screen hidden">
+        <h2 id="final-heading" class="text-3xl font-bold text-indigo-700 mb-6" tabindex="-1"></h2>
+        <p id="final-message" class="text-lg text-gray-700 leading-relaxed"></p>
+    </div>
+</div>
+
+<script>
+/* ==================== ข้อมูลเพลง ==================== */
+const questionSongsData = [
+    { file: 'q01.mp3', answer: 'หยั่งฟ้าถามทะเล' }, { file: 'q02.mp3', answer: 'ดอกไม้ให้คุณ' },
+    { file: 'q03.mp3', answer: 'คนกับควาย' }, { file: 'q04.mp3', answer: 'สุดใจ' },
+    { file: 'q05.mp3', answer: 'บินหลา' }, { file: 'q06.mp3', answer: 'บัวลอย' },
+    { file: 'q07.mp3', answer: 'บ่อสร้างกางจ้อง' }, { file: 'q08.mp3', answer: 'น้ำตาฟ้า' },
+    { file: 'q09.mp3', answer: 'ทานตะวัน' }, { file: 'q10.mp3', answer: 'ทะเลใจ' },
+    { file: 'q11.mp3', answer: 'ตังเก' }, { file: 'q12.mp3', answer: 'ตลอดเวลา' },
+    { file: 'q13.mp3', answer: 'ชีวิตสัมพันธ์' }, { file: 'q14.mp3', answer: 'จดหมายถึงพ่อ' },
+    { file: 'q15.mp3', answer: 'คืนรัง' }, { file: 'q16.mp3', answer: 'คนกับหมา' },
+    { file: 'q17.mp3', answer: 'คนเก็บฟืน' }, { file: 'q18.mp3', answer: 'ขอนไม้กับเรือ' },
+    { file: 'q19.mp3', answer: 'กำลังใจ' }, { file: 'q20.mp3', answer: 'โมรา' },
+    { file: 'q21.mp3', answer: 'ปักษ์ใต้บ้านเรา' }, { file: 'q22.mp3', answer: 'แสงจันทร์' },
+    { file: 'q23.mp3', answer: 'แม่สาย' }, { file: 'q24.mp3', answer: 'แม่' },
+    { file: 'q25.mp3', answer: 'เพื่อมวลชน' }, { file: 'q26.mp3', answer: 'เด็กปั๊ม' },
+    { file: 'q27.mp3', answer: 'มือปืน' }, { file: 'q28.mp3', answer: 'สหายสุรา' },
+    { file: 'q29.mp3', answer: 'Live and Learn' }, { file: 'q30.mp3', answer: 'หวังของพ่อแม่' },
+    { file: 'q31.mp3', answer: 'ลูกแก้ว' }, { file: 'q32.mp3', answer: 'ผีโรงเย็น' },
+    { file: 'q33.mp3', answer: 'ด.ญ. ปรางค์' }, { file: 'q34.mp3', answer: 'ปล่อย' },
+    { file: 'q35.mp3', answer: 'ถึกควายทุย ภาค2' }, { file: 'q36.mp3', answer: 'คิดถึงบ้าน' },
+    { file: 'q37.mp3', answer: 'ผู้เฒ่า' }
+];
+const additionalFakeAnswers = [
+    'ขี้เหล้า','ลูกอีสาน','คนล่าฝัน','รักแท้ในคืนหลอก','เพื่อนยาก','พ่อแห่งแผ่นดิน',
+    'คนจนผู้ยิ่งใหญ่','เพื่อนรัก','คนเดินทาง','เราคือเพื่อนกัน','รักเธอประเทศไทย',
+    'เพื่อนเอ๋ย','คนจนร้องไห้','ลูกทุ่งเพื่อชีวิต','คนบ้านเดียวกัน','สัญญาใจ',
+    'เพื่อนกันตลอดไป','คนจนมีสิทธิ์ไหม','คนจนร้องเพลง','เพื่อชีวิตเพื่อเธอ'
+];
+
+/* ==================== ตัวแปรเกม ==================== */
+let currentRoundSongs = [], currentQuestionIndex = 0, score = 0, incorrectAttempts = 0;
+const maxIncorrect = 1, totalQuestions = 10;
+let userAnswers = [], audioPlayer = new Audio(), audioTimeout, audioPlayCount = 0;
+let lastCorrectPosition = -1, previousChoices = [];
+let ultimateSong = null, isUltimateRound = false;
+let skipInput = '', skipTimeout = null;
+
+/* ==================== DOM ==================== */
+const startScreen = document.getElementById('start-screen');
+const questionScreen = document.getElementById('question-screen');
+const resultScreen = document.getElementById('result-screen');
+const ultimateScreen = document.getElementById('ultimate-screen');
+const finalSummaryScreen = document.getElementById('final-summary-screen');
+const startButton = document.getElementById('startButton');
+const playMusicButton = document.getElementById('playMusicButton');
+const questionHeading = document.getElementById('question-heading');
+const answerChoicesDiv = document.getElementById('answer-choices');
+const resultHeading = document.getElementById('result-heading');
+const resultScore = document.getElementById('result-score');
+const ultimateButton = document.getElementById('ultimate-button');
+const ultimateInput = document.getElementById('ultimate-input');
+const ultimateSubmit = document.getElementById('ultimate-submit');
+const finalHeading = document.getElementById('final-heading');
+const finalMessage = document.getElementById('final-message');
+const backToMainMenuButton = document.getElementById('backToMainMenuButton');
+
+/* ==================== Helper ==================== */
+function shuffleArray(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function playAudio(filename,duration=7000){
+    return new Promise(resolve=>{
+        if(audioTimeout) clearTimeout(audioTimeout);
+        if(!audioPlayer.paused){audioPlayer.pause();audioPlayer.currentTime=0;}
+        audioPlayer.src=`audio/${filename}`;
+        audioPlayer.play().catch(e=>console.error('Play error:',e));
+        const onEnded=()=>{audioPlayer.removeEventListener('ended',onEnded);resolve();};
+        audioPlayer.addEventListener('ended',onEnded);
+        if(duration>0){
+            audioTimeout=setTimeout(()=>{
+                audioPlayer.pause();audioPlayer.currentTime=0;
+                audioPlayer.removeEventListener('ended',onEnded);
+                resolve();
+            },duration);
+        }
+    });
+}
+function getUniqueIncorrectAnswers(correct,prev=[]){
+    const cand=new Set();
+    questionSongsData.forEach(s=>{if(s.answer!==correct && !prev.includes(s.answer)) cand.add(s.answer);});
+    additionalFakeAnswers.forEach(a=>{if(a!==correct && !prev.includes(a)) cand.add(a);});
+    return shuffleArray(Array.from(cand)).slice(0,2);
+}
+function getValidCorrectPosition(){
+    const avail=[0,1,2].filter(p=>p!==lastCorrectPosition);
+    const chosen=avail[Math.floor(Math.random()*avail.length)];
+    lastCorrectPosition=chosen;
+    return chosen;
+}
+function showScreen(s){
+    [startScreen,questionScreen,resultScreen,ultimateScreen,finalSummaryScreen].forEach(x=>x.classList.add('hidden'));
+    s.classList.remove('hidden');
+    setTimeout(()=>{const h=s.querySelector('h1,h2');if(h) h.focus();},0);
+}
+
+/* ==================== Game Logic ==================== */
+function initNewRound(){
+    currentRoundSongs = shuffleArray([...questionSongsData]).slice(0,totalQuestions);
+    currentQuestionIndex = 0; score = 0; incorrectAttempts = 0; userAnswers = [];
+    lastCorrectPosition = -1; previousChoices = []; isUltimateRound = false;
+    renderQuestion(); playCurrentSong();
+}
+function renderQuestion(){
+    showScreen(questionScreen);
+    questionHeading.textContent=`ข้อที่ ${currentQuestionIndex+1}`;
+    const song=currentRoundSongs[currentQuestionIndex];
+    audioPlayCount=0; playMusicButton.disabled=false; playMusicButton.classList.remove('btn-disabled');
+
+    const correct=song.answer, pos=getValidCorrectPosition();
+    const wrongs=getUniqueIncorrectAnswers(correct,previousChoices);
+    const choices=new Array(3); choices[pos]=correct;
+    let w=0; for(let i=0;i<3;i++) if(i!==pos) choices[i]=wrongs[w++];
+    previousChoices=[...choices];
+
+    answerChoicesDiv.innerHTML='';
+    choices.forEach(ch=>{
+        const b=document.createElement('button');
+        b.textContent=ch; b.className='btn btn-secondary answer-button';
+        b.onclick=()=>checkAnswer(ch);
+        answerChoicesDiv.appendChild(b);
+    });
+}
+function playCurrentSong(){
+    if(audioPlayCount<2){
+        playAudio(currentRoundSongs[currentQuestionIndex].file,7000);
+        audioPlayCount++;
+        if(audioPlayCount>=2){playMusicButton.disabled=true;playMusicButton.classList.add('btn-disabled');}
+    }
+}
+function checkAnswer(selected){
+    const song=currentRoundSongs[currentQuestionIndex];
+    const ok=selected===song.answer;
+    if(!ok){incorrectAttempts++;playAudio('qwrong.mp3',0);}else{score++;playAudio('qtrue.mp3',0);}
+    userAnswers.push({userAnswer:selected,correctAnswer:song.answer,isCorrect:ok});
+
+    Array.from(answerChoicesDiv.children).forEach(b=>{
+        b.disabled=true;b.classList.add('btn-disabled');
+        if(b.textContent===song.answer){b.classList.remove('btn-secondary');b.classList.add('bg-green-200','text-green-800');}
+        else if(b.textContent===selected && !ok){b.classList.remove('btn-secondary');b.classList.add('bg-red-200','text-red-800');}
+    });
+    playMusicButton.disabled=true;playMusicButton.classList.add('btn-disabled');
+
+    setTimeout(()=>{
+        if(incorrectAttempts>maxIncorrect||currentQuestionIndex===totalQuestions-1) endGame();
+        else{currentQuestionIndex++;renderQuestion();playCurrentSong();}
+    },2000);
+}
+function calculateFinalScore(){
+    if(incorrectAttempts===0 && score===10) return 1000;
+    if(incorrectAttempts===1 && score===9) return 700;
+    return score*50;
+}
+async function endGame(){
+    const final=calculateFinalScore(); showScreen(resultScreen);
+    if(incorrectAttempts>maxIncorrect){
+        await playAudio('qSad.mp3',0);
+        resultHeading.textContent='ไม่เป็นไร ลองอีกสักรอบได้นะ';
+    }else{
+        await playAudio('qend.mp3',0);
+        resultHeading.textContent='ยินดีด้วย คุณคือแฟนพันธุ์แท้ เพลงเพื่อชีวิต ยอดเยี่ยมมากๆ!';
+    }
+    resultScore.textContent=`คุณได้ ${final} คะแนน`;
+    if(score===10 && incorrectAttempts===0) ultimateButton.classList.remove('hidden');
+}
+async function startUltimateChallenge(){
+    const used=currentRoundSongs.map(s=>s.file);
+    const remain=questionSongsData.filter(s=>!used.includes(s.file));
+    ultimateSong=shuffleArray(remain)[0];
+    isUltimateRound=true; showScreen(ultimateScreen);
+    await playAudio('qstart.mp3',0);
+    await new Promise(r=>setTimeout(r,500));
+    await playAudio(ultimateSong.file,7000);
+    setTimeout(()=>ultimateInput.focus(),100);
+}
+async function submitUltimateAnswer(){
+    const ans=ultimateInput.value.trim();
+    const ok=ans===ultimateSong.answer;
+    ultimateSubmit.disabled=ultimateInput.disabled=true;
+    if(ok){
+        await playAudio('great.mp3',0);
+        showScreen(finalSummaryScreen);
+        finalHeading.textContent='คุณสุดยอดจริงๆ!';
+        finalMessage.textContent='ยินดีด้วย! คุณคือสุดยอดแฟนพันธุ์แท้ : เพลงเพื่อชีวิต';
+    }else{
+        await playAudio('iwrong.mp3',0);
+        showScreen(finalSummaryScreen);
+        finalHeading.textContent='อีกนิดเดียว ลองใหม่อีกรอบนะ!';
+        finalMessage.textContent='ยังไงก็ตาม คุณเก่งมากแล้วนะ ที่มาถึงรอบชิงได้ สู้ต่อไปนะ?';
+    }
+    setTimeout(()=>finalHeading.focus(),100);
+}
+function handleSkipInput(e){
+    if(isUltimateRound||!questionScreen.classList.contains('hidden')){
+        const k=e.key.toLowerCase();
+        if(/[a-z]/.test(k)){
+            skipInput+=k;
+            if(skipTimeout) clearTimeout(skipTimeout);
+            skipTimeout=setTimeout(()=>{skipInput='';},2000);
+            if(skipInput==='skip'){
+                skipInput=''; if(skipTimeout) clearTimeout(skipTimeout);
+                score=10; incorrectAttempts=0; currentQuestionIndex=totalQuestions-1;
+                endGame();
+            }
+        }
+    }
+}
+
+/* ==================== Events ==================== */
+startButton.addEventListener('click',initNewRound);               // <-- เริ่มทันที ไม่ preload
+playMusicButton.addEventListener('click',playCurrentSong);
+backToMainMenuButton.addEventListener('click',()=>{
+    if(!audioPlayer.paused){audioPlayer.pause();audioPlayer.currentTime=0;}
+    window.location.href='../index.html';
+});
+ultimateButton.addEventListener('click',startUltimateChallenge);
+ultimateSubmit.addEventListener('click',submitUltimateAnswer);
+ultimateInput.addEventListener('keypress',e=>{if(e.key==='Enter') submitUltimateAnswer();});
+document.addEventListener('keydown',handleSkipInput);
+
+window.onload=()=>showScreen(startScreen);
+</script>
+</body>
+</html>
