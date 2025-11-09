@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>ทายสิ๊ คำตอบคือ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body {
+  font-family: "Segoe UI", sans-serif;
+  background: #fafafa;
+  text-align: center;
+  padding: 20px;
+}
+#game, #lobby, #room, #quiz, #result { display: none; }
+button {
+  background: #4CAF50; color: white; border: none;
+  padding: 10px 20px; margin: 5px; border-radius: 6px; cursor: pointer;
+}
+button:hover { background: #45a049; }
+input { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+h2, h3, h1 { color: #333; }
+ul { list-style: none; padding: 0; }
+li { margin: 5px 0; }
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+<h1 id="mainTitle" tabindex="0">ทายสิ๊ คำตอบคือ</h1>
+
+<div id="game">
+  <div id="nameInput">
+    <p>ใส่ชื่อผู้เล่นก่อนนะ</p>
+    <input id="playerName" placeholder="ชื่อของคุณ"><br>
+    <button onclick="confirmName()">ยืนยัน</button>
+  </div>
+
+  <div id="lobby">
+    <h2 id="lobbyTitle" tabindex="0">ล็อบบี้</h2>
+    <button onclick="showCreateRoom()">สร้างห้องใหม่</button>
+    <h3>ห้องที่เปิดอยู่</h3>
+    <ul id="roomList"></ul>
+  </div>
+
+  <div id="room">
+    <h2 id="roomName" tabindex="0"></h2>
+    <p>ผู้เล่นในห้อง:</p>
+    <ul id="playerList"></ul>
+    <button id="startBtn" onclick="startGame()">เริ่มเกม</button>
+  </div>
+
+  <div id="quiz">
+    <h2 id="questionText" tabindex="0"></h2>
+    <div id="options"></div>
+    <p id="timer"></p>
+  </div>
+
+  <div id="result">
+    <h2 id="resultHeading" tabindex="0">สรุปผล</h2>
+    <ul id="scoreList"></ul>
+    <button onclick="requestBackToLobby()">กลับไปเลือกห้องใหม่</button>
+  </div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
+  authDomain: "xo-game-134ec.firebaseapp.com",
+  projectId: "xo-game-134ec",
+  storageBucket: "xo-game-134ec.firebasestorage.app",
+  messagingSenderId: "318375224157",
+  appId: "1:318375224157:web:3ae89d6c20452f1bb77eb4",
+  databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let playerName="", roomId="", playerId="", isHost=false;
+let questionIndex=0, timerInterval, timeLeft=20, localAnswered=false;
+let currentRoomListener=null;
+let waitAudio = null;
+let currentAudio = null;
+
+const questions = [
+  { q:"เมืองหลวงของไทยคืออะไร?", options:["กรุงเทพมหานคร","เชียงใหม่","สงขลา"], answer:0 },
+  { q:"เมืองหลวงของญี่ปุ่นคืออะไร?", options:["โตเกียว","โอซาก้า","เกียวโต"], answer:0 },
+  { q:"เมืองหลวงของฝรั่งเศสคืออะไร?", options:["ปารีส","มาร์กเซย์","ลียง"], answer:0 },
+  { q:"เมืองหลวงของจีนคืออะไร?", options:["ปักกิ่ง","เซี่ยงไฮ้","กวางโจว"], answer:0 },
+  { q:"เมืองหลวงของออสเตรเลียคืออะไร?", options:["แคนเบอร์รา","ซิดนีย์","เมลเบิร์น"], answer:0 },
+  { q:"เมืองหลวงของเกาหลีใต้คืออะไร?", options:["โซล","ปูซาน","แทกู"], answer:0 },
+  { q:"เมืองหลวงของมาเลเซียคืออะไร?", options:["กัวลาลัมเปอร์","ปีนัง","ยะโฮร์บาห์รู"], answer:0 },
+  { q:"เมืองหลวงของเวียดนามคืออะไร?", options:["ฮานอย","โฮจิมินห์ซิตี้","ดานัง"], answer:0 },
+  { q:"เมืองหลวงของอินโดนีเซียคืออะไร?", options:["จาการ์ตา","บาหลี","สุราบายา"], answer:0 },
+  { q:"เมืองหลวงของอินเดียคืออะไร?", options:["นิวเดลี","มุมไบ","กัลกัตตา"], answer:0 }
+];
+
+document.getElementById("game").style.display="block";
+
+// ===== Audio utilities =====
+function stopCurrentAudio(){
+  try{
+    if(currentAudio){
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      currentAudio = null;
+    }
+  }catch(e){}
+}
+function playSound(name){
+  stopCurrentAudio();
+  try{
+    const a = new Audio(`audio/${name}.mp3`);
+    a.play().catch(()=>{});
+    currentAudio = a;
+    return a;
+  }catch(e){
+    return null;
+  }
+}
+function playWaitSound(){
+  stopCurrentAudio();
+  try{
+    const a = new Audio(`audio/wait.mp3`);
+    a.loop = true;
+    a.play().catch(()=>{});
+    waitAudio = a;
+    return a;
+  }catch(e){
+    return null;
+  }
+}
+function stopWaitSound(){
+  try{
+    if(waitAudio){
+      waitAudio.pause();
+      waitAudio.currentTime = 0;
+      waitAudio = null;
+    }
+  }catch(e){}
+}
+
+// ===== UI / focus helpers (ปรับใหม่) =====
+function focusHeading(id){
+  setTimeout(()=>{
+    const el = document.getElementById(id);
+    if(el){
+      el.setAttribute('tabindex', '-1');
+      el.focus();
+      setTimeout(() => el.focus(), 100);
+    }
+  }, 100);
+}
+
+// ===== flow ของเกม =====
+function confirmName(){
+  playerName=document.getElementById("playerName").value.trim();
+  if(!playerName){ alert("กรุณาใส่ชื่อ"); return; }
+  playerId=Math.random().toString(36).substr(2,9);
+  document.getElementById("nameInput").style.display="none";
+  document.getElementById("lobby").style.display="block";
+  focusHeading("lobbyTitle");
+  loadRooms();
+}
+
+function loadRooms(){
+  const list=document.getElementById("roomList");
+  db.ref("guessGameRooms").on("value", snap=>{
+    list.innerHTML="";
+    snap.forEach(r=>{
+      const room = r.val();
+      if(room.status==="waiting"){
+        const li = document.createElement("li");
+        li.textContent = `${room.name} (${room.players?Object.keys(room.players).length:0} คน)`;
+        const btn = document.createElement("button");
+        btn.textContent="เข้าร่วม";
+        btn.onclick = ()=>joinRoom(r.key);
+        li.appendChild(btn);
+        list.appendChild(li);
+      }
+    });
+  });
+}
+
+function showCreateRoom(){
+  const name = prompt("ตั้งชื่อห้อง:");
+  if(!name) return;
+  const ref = db.ref("guessGameRooms").push();
+  roomId = ref.key; isHost = true;
+  ref.set({name, status:"waiting", host:playerId, created:Date.now(), players:{}});
+  joinRoom(roomId);
+}
+
+function joinRoom(id){
+  roomId = id;
+  const ref = db.ref(`guessGameRooms/${roomId}/players/${playerId}`);
+  ref.set({name:playerName, score:0, answered:false});
+  ref.onDisconnect().remove();
+  db.ref(`guessGameRooms/${roomId}/lastJoin`).set(Date.now());
+  showRoom();
+}
+
+function showRoom(){
+  document.getElementById("lobby").style.display="none";
+  document.getElementById("room").style.display="block";
+  focusHeading("roomName");
+
+  if(currentRoomListener) currentRoomListener.off();
+  currentRoomListener = db.ref(`guessGameRooms/${roomId}`);
+  currentRoomListener.on("value", snap=>{
+    const room = snap.val();
+    if(!room){ alert("ห้องถูกลบแล้ว"); backToLobby(); return; }
+
+    document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
+    const list = document.getElementById("playerList"); list.innerHTML="";
+    if(room.players){
+      for(let id in room.players){
+        const li = document.createElement("li");
+        li.textContent = `${room.players[id].name} (${room.players[id].score} คะแนน)`;
+        list.appendChild(li);
+      }
+    }
+
+    document.getElementById("startBtn").style.display = room.host===playerId ? "inline" : "none";
+
+    if(room.lastJoin && (!window._lastJoinTime || room.lastJoin !== window._lastJoinTime)){
+      window._lastJoinTime = room.lastJoin;
+      stopCurrentAudio();
+      playSound("friend");
+    }
+
+    if(room.lastBackToLobby && (!window._lastBackTime || room.lastBackToLobby !== window._lastBackTime)){
+      window._lastBackTime = room.lastBackToLobby;
+      stopCurrentAudio();
+      stopWaitSound();
+      playSound("door");
+    }
+
+    if(room.status==="playing") startQuiz();
+    else if(room.status==="finished") showResult(room);
+  });
+}
+
+function startGame(){
+  stopCurrentAudio();
+  stopWaitSound();
+  playSound("start");
+  db.ref(`guessGameRooms/${roomId}`).update({
+    status:"playing", current:0, questions:getRandomQuestions(7)
+  });
+}
+
+function getRandomQuestions(n){
+  const copy = [...questions];
+  const res = [];
+  for(let i=0;i<n;i++){
+    const idx = Math.floor(Math.random()*copy.length);
+    let q = copy.splice(idx,1)[0];
+    const opts = [...q.options];
+    const correctText = opts[q.answer];
+    shuffleArray(opts);
+    q.answer = opts.indexOf(correctText);
+    q.options = opts;
+    res.push(q);
+  }
+  return res;
+}
+function shuffleArray(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+}
+
+function startQuiz(){
+  document.getElementById("room").style.display="none";
+  document.getElementById("quiz").style.display="block";
+  document.getElementById("mainTitle").style.display="none";
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap=>{
+    const data = snap.val();
+    questionIndex = data.current || 0;
+    showQuestion(data.questions[questionIndex]);
+  });
+}
+
+function showQuestion(q){
+  if(!q){ if(isHost) endGameHost(); return; }
+  localAnswered=false;
+  timeLeft = Math.floor(Math.random()*11)+15;
+  document.getElementById("questionText").textContent = `ข้อที่ ${questionIndex+1}: ${q.q}`;
+  
+  // focus หัวข้อคำถามทันที (ทุกข้อ)
+  focusHeading("questionText");
+  
+  const opts=document.getElementById("options");
+  opts.innerHTML="";
+  q.options.forEach((opt,i)=>{
+    const b=document.createElement("button");
+    b.textContent = opt;
+    b.onclick = ()=>submitAnswer(i);
+    opts.appendChild(b);
+  });
+  document.getElementById("timer").textContent = `เวลา: ${timeLeft}`;
+  clearInterval(timerInterval);
+  timerInterval = setInterval(()=>{
+    timeLeft--;
+    document.getElementById("timer").textContent = `เวลา: ${timeLeft}`;
+    if(timeLeft<=0){ clearInterval(timerInterval); nextQuestion(); }
+  },1000);
+}
+
+function submitAnswer(index){
+  if(localAnswered) return;
+  localAnswered = true;
+  playSound("pop");
+
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap=>{
+    const data=snap.val();
+    const q=data.questions[data.current];
+    const correct = (index===q.answer);
+    if(correct){
+      db.ref(`guessGameRooms/${roomId}/players/${playerId}/score`).transaction(v=>(v||0)+1);
+    }
+    db.ref(`guessGameRooms/${roomId}/players/${playerId}/answered`).set(true);
+    checkAllAnswered();
+  });
+}
+
+function checkAllAnswered(){
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap=>{
+    const data = snap.val();
+    const players = data.players || {};
+    const allAnswered = Object.values(players).every(p=>p.answered);
+    if(allAnswered){
+      clearInterval(timerInterval);
+      if(data.current < data.questions.length - 1){
+        setTimeout(()=> {
+          stopCurrentAudio();
+          playSound("next");
+        }, 500);
+      }
+      nextQuestion();
+    }
+  });
+}
+
+function nextQuestion(){
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap=>{
+    const data=snap.val();
+    if(!data) return;
+    const players = data.players || {};
+    for(let id in players){
+      db.ref(`guessGameRooms/${roomId}/players/${id}/answered`).set(false);
+    }
+    const next = data.current + 1;
+
+    if(next < data.questions.length){
+      db.ref(`guessGameRooms/${roomId}`).update({current: next});
+      questionIndex = next;
+      showQuestion(data.questions[next]);
+    }else{
+      stopCurrentAudio();
+      playWaitSound();
+      if(isHost) endGameHost();
+    }
+  });
+}
+
+function endGameHost(){
+  clearInterval(timerInterval);
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap=>{
+    const room = snap.val();
+    if(!room || !room.players) return;
+    const players = Object.values(room.players);
+    players.sort((a,b)=>b.score-a.score);
+    const max = players[0].score;
+    const winners = players.filter(p=>p.score===max).map(p=>p.name);
+
+    db.ref(`guessGameRooms/${roomId}`).update({
+      status:"finished",
+      result:{winners, players}
+    });
+  });
+}
+
+function showResult(roomData){
+  clearInterval(timerInterval);
+  document.getElementById("quiz").style.display="none";
+  document.getElementById("result").style.display="block";
+  document.getElementById("mainTitle").style.display="none";
+
+  stopWaitSound();
+  stopCurrentAudio();
+  playSound("new4");
+
+  const list = document.getElementById("scoreList");
+  list.innerHTML = "";
+  const players = roomData.result?.players || [];
+  const winners = roomData.result?.winners || [];
+  document.getElementById("resultHeading").textContent =
+    `สรุปผล ผู้ชนะคือ ${winners.join(", ")}`;
+
+  players.forEach(p=>{
+    const li = document.createElement("li");
+    li.textContent = `${p.name}: ${p.score} คะแนน`;
+    list.appendChild(li);
+  });
+
+  // focus หัวข้อผลสรุปทันที
+  focusHeading("resultHeading");
+}
+
+function requestBackToLobby(){
+  db.ref(`guessGameRooms/${roomId}/lastBackToLobby`).set(Date.now());
+  backToLobby();
+}
+
+function backToLobby(){
+  if(currentRoomListener){ currentRoomListener.off(); currentRoomListener = null; }
+  db.ref(`guessGameRooms/${roomId}/players/${playerId}`).remove();
+  roomId = "";
+  questionIndex = 0;
+  document.getElementById("result").style.display="none";
+  document.getElementById("room").style.display="none";
+  document.getElementById("quiz").style.display="none";
+  document.getElementById("mainTitle").style.display="block";
+  document.getElementById("lobby").style.display="block";
+  focusHeading("lobbyTitle");
+  loadRooms();
+}
+
+setInterval(()=>{
+  db.ref("guessGameRooms").once("value").then(snap=>{
+    snap.forEach(r=>{
+      const data = r.val();
+      if(!data.players || Object.keys(data.players).length===0){
+        db.ref(`guessGameRooms/${r.key}`).remove();
+      }
+    });
+  });
+},300000);
+</script>
+</body>
+</html>

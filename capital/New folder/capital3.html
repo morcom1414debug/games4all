@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ทายสิ๊ คำตอบคือ (ออนไลน์) - Quiz Multiplayer</title>
+<style>
+  :root{--accent:#ff7a2d;--bg:#fffaf3}
+  body{font-family:Tahoma,Arial,sans-serif;background:var(--bg);margin:0;padding:18px;color:#222}
+  .wrap{max-width:900px;margin:0 auto;background:#fff;padding:18px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.06)}
+  h1{color:var(--accent);margin:0 0 6px}
+  p.lead{margin:0 0 14px;color:#555}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  input,button,select{padding:10px;border-radius:8px;border:1px solid #d6d6d6;font-size:16px}
+  button{background:var(--accent);color:#fff;border:none;cursor:pointer}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+  .rooms, .players, .question-area{margin-top:12px}
+  ul{padding-left:18px;}
+  .choice{display:block;padding:10px;border-radius:8px;border:1px solid #eee;margin:8px 0;cursor:pointer;background:#fff}
+  .disabled{opacity:.5;pointer-events:none}
+  .center{text-align:center}
+  .small{font-size:13px;color:#666}
+  .timer{font-weight:700;color:#d23}
+  .result-list{display:flex;flex-wrap:wrap;gap:8px}
+  .player-card{padding:8px;border-radius:8px;border:1px solid #eee;background:#f9f9f9}
+  .host-badge{font-size:12px;color:#fff;background:#3d7; padding:2px 6px;border-radius:6px;margin-left:8px}
+  footer{margin-top:14px;font-size:12px;color:#888}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ทายสิ๊ คำตอบคือ</h1>
+  <p class="lead">มาแข่งกันนะ ว่าคุณๆจะรู้ใจฉันไหม — เล่นตอบคำถามเมืองหลวง แข่งกันแบบเรียลไทม์</p>
+
+  <!-- หน้าใส่ชื่อ -->
+  <div id="page-name">
+    <div class="row">
+      <input id="inputName" placeholder="ใส่ชื่อผู้เล่น (บังคับ)" />
+      <button id="btnEnter">ยืนยัน</button>
+    </div>
+    <p class="small">ชื่อจะถูกใช้เป็นตัวระบุภายในห้อง (ไม่เก็บที่อื่น)</p>
+  </div>
+
+  <!-- หน้า Lobby -->
+  <div id="page-lobby" style="display:none">
+    <div class="row">
+      <div style="flex:1">
+        <button id="btnCreate">สร้างห้องใหม่</button>
+        <button id="btnRefresh" class="ghost">รีเฟรช</button>
+        <div class="rooms" id="roomsList"><p class="small">กำลังโหลดห้อง...</p></div>
+      </div>
+      <div style="width:260px">
+        <div class="small">ผู้เล่น:</div>
+        <div id="meName" class="small" style="font-weight:700;margin-top:6px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- หน้า Room -->
+  <div id="page-room" style="display:none">
+    <div class="row">
+      <div style="flex:1">
+        <h3>ห้อง: <span id="roomTitle"></span></h3>
+        <div class="small">สถานะ: <span id="roomStatus">รอเริ่ม</span></div>
+        <div class="players"><h4>ผู้เล่นในห้อง</h4><div id="playersList" class="small"></div></div>
+        <div style="margin-top:12px">
+          <button id="btnStart" class="disabled">เริ่มเกม (เฉพาะโฮสต์)</button>
+          <button id="btnLeave" class="ghost">ออกจากห้อง</button>
+        </div>
+      </div>
+      <div style="width:260px">
+        <div class="small">หมายเหตุ</div>
+        <ul class="small">
+          <li>ผู้เล่นคนแรกที่เข้าห้องคือโฮสต์</li>
+          <li>โฮสต์ควบคุมเวลา ถ้าโฮสต์หลุด ระบบจะโอนโฮสต์ให้คนถัดไป</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- หน้า Quiz -->
+  <div id="page-quiz" style="display:none">
+    <div class="small">ห้อง: <strong id="qRoom"></strong> | ข้อ <span id="qIndex"></span>/<span id="qTotal"></span></div>
+    <div class="question-area">
+      <h2 id="questionText"></h2>
+      <div id="choicesArea"></div>
+      <div class="center small">เวลาเหลือ: <span id="timeLeft" class="timer">--</span> วินาที</div>
+      <div class="small" style="margin-top:8px">สถานะ: <span id="roundStatus">กำลังตอบคำถาม</span></div>
+    </div>
+    <div style="margin-top:12px">
+      <button id="btnForceNext" class="ghost">(โฮสต์) ข้ามไปข้อถัดไป</button>
+    </div>
+  </div>
+
+  <!-- หน้า ผล -->
+  <div id="page-result" style="display:none">
+    <h3>สรุปคะแนน (รอบนี้)</h3>
+    <div id="scoreList" class="result-list"></div>
+    <div style="margin-top:12px" class="center">
+      <div class="small">ผู้ชนะ: <strong id="winnerNames"></strong></div>
+      <button id="btnBackToLobby">กลับหน้าแรก</button>
+    </div>
+  </div>
+
+  <footer>ใช้ Firebase Realtime Database เป็นตัวกลาง — ถ้าต้องการผมช่วยปรับ UI/เสียง/แพ็กเกจให้บอกได้เลย</footer>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<script>
+/* ====== CONFIG ของผู้ใช้ (เปลี่ยนได้จากข้อมูลที่ให้) ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
+  authDomain: "xo-game-134ec.firebaseapp.com",
+  projectId: "xo-game-134ec",
+  storageBucket: "xo-game-134ec.firebasestorage.app",
+  messagingSenderId: "318375224157",
+  appId: "1:318375224157:web:3ae89d6c20452f1bb77eb4",
+  databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ====== พารามิเตอร์เกม ====== */
+const ROOMS_PATH = 'quizRooms'; // แยก namespace
+const QUESTION_TIME = 20; // 20 วินาทีต่อข้อ
+const TOTAL_QUESTIONS = 7; // จำนวนข้อ/รอบ
+
+/* ====== คลังคำถาม (ตัวอย่าง) ======
+   คุณสามารถเพิ่มคำถามได้ที่นี้หรือดึงจากไฟล์/DB ได้ */
+const ALL_QUESTIONS = [
+  {country:'ไทย', q:'เมืองหลวงของ ไทย คือเมืองอะไร', a:'กรุงเทพ', choices:['กรุงเทพ','เชียงใหม่','สงขลา']},
+  {country:'ญี่ปุ่น', q:'เมืองหลวงของ ญี่ปุ่น คือเมืองอะไร', a:'โตเกียว', choices:['โตเกียว','โอซาก้า','นาโกย่า']},
+  {country:'ฝรั่งเศส', q:'เมืองหลวงของ ฝรั่งเศส คือเมืองอะไร', a:'ปารีส', choices:['ปารีส','มาร์แซย์','ลียง']},
+  {country:'อังกฤษ', q:'เมืองหลวงของ อังกฤษ คือเมืองอะไร', a:'ลอนดอน', choices:['ลอนดอน','แมนเชสเตอร์','ลิเวอร์พูล']},
+  {country:'จีน', q:'เมืองหลวงของ จีน คือเมืองอะไร', a:'ปักกิ่ง', choices:['ปักกิ่ง','เซี่ยงไฮ้','กวางโจว']},
+  {country:'อินเดีย', q:'เมืองหลวงของ อินเดีย คือเมืองอะไร', a:'นิวเดลี', choices:['นิวเดลี','มุมไบ','โกลกาตา']},
+  {country:'เกาหลีใต้', q:'เมืองหลวงของ เกาหลีใต้ คือเมืองอะไร', a:'โซล', choices:['โซล','ปูซาน','แทกู']},
+  {country:'ออสเตรเลีย', q:'เมืองหลวงของ ออสเตรเลีย คือเมืองอะไร', a:'แคนเบอร์รา', choices:['แคนเบอร์รา','ซิดนีย์','เมลเบิร์น']},
+  {country:'รัสเซีย', q:'เมืองหลวงของ รัสเซีย คือเมืองอะไร', a:'มอสโก', choices:['มอสโก','เซนต์ปีเตอร์สเบิร์ก','คาซาน']},
+  {country:'อียิปต์', q:'เมืองหลวงของ อียิปต์ คือเมืองอะไร', a:'ไคโร', choices:['ไคโร','อเล็กซานเดรีย','กิซา']}
+];
+
+/* ====== สถานะ client ====== */
+let me = { id: null, name: null };
+let currentRoom = null;
+let isHost = false;
+let localQuestions = []; // คำถามที่สุ่มสำหรับห้อง
+let localTimerInterval = null;
+
+/* ====== UI references ====== */
+const el = id => document.getElementById(id);
+const pageName = el('page-name'), pageLobby=el('page-lobby'), pageRoom=el('page-room'), pageQuiz=el('page-quiz'), pageResult=el('page-result');
+
+/* ====== ฟังก์ชันช่วยเหลือ ====== */
+function randId(prefix='p'){ return prefix + Math.random().toString(36).slice(2,9); }
+function shuffle(a){ return a.slice().sort(()=>Math.random()-0.5); }
+function nowTs(){ return Date.now(); }
+
+/* ====== กดยืนยันชื่อ ====== */
+el('btnEnter').addEventListener('click', ()=>{
+  const name = el('inputName').value.trim();
+  if(!name){ alert('กรุณาใส่ชื่อผู้เล่น'); return; }
+  me.id = randId('u');
+  me.name = name;
+  el('meName').textContent = name;
+  pageName.style.display='none';
+  pageLobby.style.display='block';
+  listenRooms();
+});
+
+/* ====== โหลดและฟังรายการห้อง ====== */
+let roomsListener = null;
+function listenRooms(){
+  const ref = db.ref(ROOMS_PATH);
+  if(roomsListener) ref.off('value', roomsListener);
+  roomsListener = ref.on('value', snap=>{
+    const rooms = snap.val() || {};
+    renderRoomsList(rooms);
+  });
+  renderRoomsList({}); // reset
+}
+function renderRoomsList(roomsObj){
+  const container = el('roomsList');
+  container.innerHTML = '';
+  const keys = Object.keys(roomsObj);
+  if(keys.length===0){ container.innerHTML = '<p class="small">ยังไม่มีห้องที่เปิดอยู่</p>'; return; }
+  keys.forEach(rn=>{
+    const r = roomsObj[rn];
+    // แสดงเฉพาะห้องที่ยังไม่เริ่มหรือถ้าต้องการให้เห็นห้องที่เริ่มแล้วก็ปรับได้
+    const playersCount = r.players ? Object.keys(r.players).length : 0;
+    const started = r.started ? true : false;
+    const div = document.createElement('div');
+    div.style.margin='8px 0';
+    div.innerHTML = `<strong>${rn}</strong> — ${playersCount} คน ${started?'(เริ่มแล้ว)':''}`;
+    // ถ้าเริ่มแล้วไม่ให้เข้าร่วม
+    if(!started && playersCount < 8){
+      const btn = document.createElement('button'); btn.textContent='เข้าร่วม'; btn.style.marginLeft='8px';
+      btn.onclick = ()=> joinRoom(rn);
+      div.appendChild(btn);
+    }
+    container.appendChild(div);
+  });
+}
+
+/* ====== สร้างห้อง ====== */
+el('btnCreate').addEventListener('click', ()=>{
+  const rn = prompt('ตั้งชื่อห้อง (ตัวอักษรห้ามซ้ำ):');
+  if(!rn) return;
+  const roomRef = db.ref(`${ROOMS_PATH}/${rn}`);
+  roomRef.once('value').then(snap=>{
+    if(snap.exists()){ alert('มีชื่อห้องนี้แล้ว ลองชื่ออื่น'); return; }
+    // สร้างห้องเบื้องต้น (host จะเป็นผู้ที่เข้าห้องคนแรก)
+    const base = {
+      createdAt: nowTs(),
+      started: false,
+      hostId: me.id,
+      hostName: me.name,
+      questionIndex: 0,
+      questionEnd: null,
+      lastActive: nowTs()
+    };
+    roomRef.set(base).then(()=> joinRoom(rn));
+  });
+});
+
+/* ====== เข้าห้อง ====== */
+let roomPlayersListener = null, roomMetaListener = null, roomAnswersListener = null;
+function joinRoom(rn){
+  currentRoom = rn;
+  // เขียนข้อมูลผู้เล่น
+  const pRef = db.ref(`${ROOMS_PATH}/${currentRoom}/players/${me.id}`);
+  pRef.set({ name: me.name, joinedAt: nowTs(), score: 0, answered: false, answer: null });
+  pRef.onDisconnect().remove(); // ลบเมื่อหลุด
+  // แสดงหน้า room
+  pageLobby.style.display='none';
+  pageRoom.style.display='block';
+  el('roomTitle').textContent = currentRoom;
+  // ฟังการเปลี่ยนแปลงผู้เล่น
+  watchRoomPlayers();
+  watchRoomMeta();
+  el('btnLeave').onclick = leaveRoom;
+  el('btnStart').onclick = startGameAsHost;
+}
+
+/* ====== ออกจากห้อง ====== */
+function leaveRoom(){
+  if(!currentRoom) return;
+  db.ref(`${ROOMS_PATH}/${currentRoom}/players/${me.id}`).remove();
+  cleanupRoomListeners();
+  // ถ้าอยากให้คนออกแล้วกลับ lobby
+  currentRoom = null;
+  pageRoom.style.display='none';
+  pageLobby.style.display='block';
+}
+
+/* ====== ฟังผู้เล่นในห้อง ====== */
+function watchRoomPlayers(){
+  const playersRef = db.ref(`${ROOMS_PATH}/${currentRoom}/players`);
+  if(roomPlayersListener) playersRef.off('value', roomPlayersListener);
+  roomPlayersListener = playersRef.on('value', snap=>{
+    const players = snap.val() || {};
+    renderPlayers(players);
+    // ถ้า host หาย ให้โอน host ให้คนแรกในรายการ
+    db.ref(`${ROOMS_PATH}/${currentRoom}/hostId`).once('value').then(hsnap=>{
+      const hostId = hsnap.val();
+      if(!hostId || !players[hostId]){
+        // pick first player by joinedAt
+        const pArr = Object.entries(players).map(([id,p])=>({id, name:p.name, joinedAt:p.joinedAt})).sort((a,b)=>a.joinedAt-b.joinedAt);
+        if(pArr.length>0){
+          const newHost = pArr[0].id;
+          db.ref(`${ROOMS_PATH}/${currentRoom}`).update({ hostId: newHost, hostName: players[newHost].name || 'host' });
+        }
+      }
+    });
+    // ถ้ามากกว่า 1 คน ให้ enable start ถ้าคนนี้คือ host
+    db.ref(`${ROOMS_PATH}/${currentRoom}/hostId`).once('value').then(hsnap=>{
+      const hostId = hsnap.val();
+      isHost = (hostId === me.id);
+      el('btnStart').classList.toggle('disabled', !(isHost && Object.keys(players).length >= 2));
+      el('btnStart').disabled = !(isHost && Object.keys(players).length >= 2);
+    });
+  });
+}
+
+/* ====== ฟัง meta ของห้อง (start, questions, questionIndex, questionEnd) ====== */
+function watchRoomMeta(){
+  const metaRef = db.ref(`${ROOMS_PATH}/${currentRoom}`);
+  if(roomMetaListener) metaRef.off('value', roomMetaListener);
+  roomMetaListener = metaRef.on('value', snap=>{
+    const room = snap.val();
+    if(!room){ // ห้องถูกลบ
+      alert('ห้องนี้ถูกปิด'); leaveRoom(); return;
+    }
+    // update UI
+    el('roomStatus').textContent = room.started ? 'กำลังแข่ง' : 'รอเริ่ม';
+    // ถาเริ่มแล้ว ให้เข้า quiz หน้าเดียวกัน
+    if(room.started){
+      // load questions (ถ้ายังไม่ถูกดึง)
+      if(room.questions && !localQuestions.length){
+        localQuestions = room.questions;
+      }
+      // ไปหน้า quiz
+      showQuizPage(room);
+    } else {
+      // ถ้าเปลี่ยนจาก started->false ให้กลับ room
+      if(pageQuiz.style.display === 'block'){
+        // เกิดเมื่อจบเกม host เอาห้องออกแล้ว
+        cleanupRoomListeners();
+        pageQuiz.style.display='none';
+        pageRoom.style.display='block';
+      }
+    }
+  });
+}
+
+/* ====== แสดงรายการผู้เล่นใน UI ====== */
+function renderPlayers(playersObj){
+  const wrap = el('playersList');
+  wrap.innerHTML = '';
+  const arr = Object.entries(playersObj || {}).map(([id,p])=>({id, ...p})).sort((a,b)=>a.joinedAt - b.joinedAt);
+  arr.forEach(p=>{
+    const div = document.createElement('div');
+    div.className='player-card';
+    const hostBadge = ''; // will show when host
+    div.innerHTML = `<span style="font-weight:700">${escapeHtml(p.name||p.id)}</span> <span class="small">(${p.score||0} คะแนน)</span>`;
+    wrap.appendChild(div);
+  });
+}
+
+/* ====== Host เริ่มเกม ======
+   Host ทำหน้าที่:
+   - สุ่มคำถาม 7 ข้อสำหรับห้อง แล้วเขียนลง db (room.questions)
+   - ตั้ง questionIndex = 0
+   - เริ่มรอบ (ตั้ง questionEnd timestamp)
+*/
+function startGameAsHost(){
+  if(!isHost) return alert('สิทธิ์เริ่มเป็นของโฮสต์เท่านั้น');
+  // สุ่มคำถามจาก ALL_QUESTIONS
+  const pool = shuffle(ALL_QUESTIONS);
+  const selected = pool.slice(0, TOTAL_QUESTIONS).map(q=>{
+    return { q: q.q, choices: shuffle(q.choices), a: q.a };
+  });
+  db.ref(`${ROOMS_PATH}/${currentRoom}`).update({
+    started: true,
+    questions: selected,
+    questionIndex: 0,
+    questionEnd: nowTs() + QUESTION_TIME*1000,
+    lastActive: nowTs()
+  }).then(()=> {
+    // reset player answered fields
+    db.ref(`${ROOMS_PATH}/${currentRoom}/players`).once('value').then(snap=>{
+      const players = snap.val()||{};
+      const updates = {};
+      Object.keys(players).forEach(pid=>{
+        updates[`${ROOMS_PATH}/${currentRoom}/players/${pid}/answered`] = false;
+        updates[`${ROOMS_PATH}/${currentRoom}/players/${pid}/answer`] = null;
+        updates[`${ROOMS_PATH}/${currentRoom}/players/${pid}/score`] = players[pid].score || 0;
+      });
+      db.ref().update(updates);
+    });
+  });
+}
+
+/* ====== หน้า Quiz (client) ====== */
+function showQuizPage(room){
+  // copy question list if not available locally
+  if(room.questions && localQuestions.length === 0) localQuestions = room.questions;
+  // show page
+  pageRoom.style.display='none';
+  pageLobby.style.display='none';
+  pageQuiz.style.display='block';
+  el('qRoom').textContent = currentRoom;
+  // render current question
+  renderCurrentQuestion(room);
+  // setup listeners: answers and players answered (to detect all-answered)
+  watchAnswersAndAnswersDone();
+}
+
+/* ====== ฟังคำตอบและสถานะ answered ของผู้เล่น เพื่อให้ host ตรวจว่า 'ตอบครบ' ====== */
+function watchAnswersAndAnswersDone(){
+  // answers list (players/*/answer) - but simpler: observe players to see answered flag
+  const playersRef = db.ref(`${ROOMS_PATH}/${currentRoom}/players`);
+  if(roomAnswersListener) playersRef.off('value', roomAnswersListener);
+  roomAnswersListener = playersRef.on('value', snap=>{
+    const players = snap.val() || {};
+    // if ALL players have answered=true -> host finalize early
+    const pIds = Object.keys(players);
+    if(pIds.length === 0) return; // guard
+    const allAnswered = pIds.every(pid => players[pid].answered === true);
+    if(allAnswered){
+      // ask host to finalize immediately
+      maybeHostFinalizeRound();
+    }
+    // update scoreboard UI small (score shown in player list already)
+  });
+}
+
+/* ====== แสดงคำถามปัจจุบันบน client ====== */
+function renderCurrentQuestion(room){
+  const qIndex = room.questionIndex || 0;
+  const total = (room.questions || []).length || TOTAL_QUESTIONS;
+  el('qIndex').textContent = (qIndex + 1);
+  el('qTotal').textContent = total;
+  const qObj = room.questions && room.questions[qIndex];
+  if(!qObj){
+    // อาจจบแล้ว
+    // ถ้ finished (no more questions) -> show final results
+    showFinalResults();
+    return;
+  }
+  el('questionText').textContent = qObj.q;
+  const choicesArea = el('choicesArea');
+  choicesArea.innerHTML = '';
+  qObj.choices.forEach(opt=>{
+    const btn = document.createElement('button');
+    btn.className = 'choice';
+    btn.textContent = opt;
+    btn.onclick = ()=> submitAnswer(opt);
+    choicesArea.appendChild(btn);
+  });
+  // start countdown display (client-side)
+  startLocalCountdown(room.questionEnd);
+  // allow host to force next (debug/override)
+  el('btnForceNext').style.display = isHost ? 'inline-block' : 'none';
+  el('btnForceNext').onclick = ()=> maybeHostFinalizeRound(true);
+}
+
+/* ====== จับเวลาแสดงบน client ====== */
+function startLocalCountdown(questionEndTs){
+  clearInterval(localTimerInterval);
+  function update(){
+    const left = Math.max(0, Math.ceil((questionEndTs - Date.now())/1000));
+    el('timeLeft').textContent = left;
+    if(left<=0){
+      clearInterval(localTimerInterval);
+      el('roundStatus').textContent = 'หมดเวลา รอผล...';
+      // if not host, just wait; host will finalize
+    } else {
+      el('roundStatus').textContent = 'กำลังตอบคำถาม';
+    }
+  }
+  update();
+  localTimerInterval = setInterval(update, 300);
+}
+
+/* ====== ผู้เล่นส่งคำตอบ ====== */
+function submitAnswer(choice){
+  if(!currentRoom) return;
+  // เขียน answer และ answered=true
+  const updates = {};
+  updates[`${ROOMS_PATH}/${currentRoom}/players/${me.id}/answer`] = choice;
+  updates[`${ROOMS_PATH}/${currentRoom}/players/${me.id}/answered`] = true;
+  updates[`${ROOMS_PATH}/${currentRoom}/players/${me.id}/lastAnswerAt`] = nowTs();
+  db.ref().update(updates);
+  // disableปุ่มเลือกบน client (prevent double click) - but we will rely on DB state
+  const btns = document.querySelectorAll('.choice'); btns.forEach(b=>b.classList.add('disabled'));
+  el('roundStatus').textContent = 'ตอบแล้ว รอผู้เล่นอื่น';
+}
+
+/* ====== Host: ถ้าเป็น host ให้ finalize รอบ เมื่อครบเวลา หรือทุกคนตอบแล้ว ====== */
+let hostFinalizeLock = false;
+function maybeHostFinalizeRound(force=false){
+  if(!isHost || !currentRoom) return;
+  if(hostFinalizeLock) return;
+  hostFinalizeLock = true;
+  // get room snapshot
+  db.ref(`${ROOMS_PATH}/${currentRoom}`).once('value').then(snap=>{
+    const room = snap.val();
+    if(!room) { hostFinalizeLock=false; return; }
+    const qIndex = room.questionIndex || 0;
+    const questions = room.questions || [];
+    if(qIndex >= questions.length){
+      // game finished
+      db.ref(`${ROOMS_PATH}/${currentRoom}`).update({ started: false, lastActive: nowTs() });
+      hostFinalizeLock=false;
+      return;
+    }
+    // If not force, ensure either time expired OR all answered
+    const now = nowTs();
+    const timeExpired = (room.questionEnd && now >= room.questionEnd);
+    // check players answered
+    const players = room.players || {};
+    const pIds = Object.keys(players);
+    const allAnswered = pIds.length>0 && pIds.every(pid => players[pid].answered === true);
+    if(!force && !timeExpired && !allAnswered){
+      hostFinalizeLock = false; return; // not yet
+    }
+    // compute scores for this question
+    const correct = questions[qIndex].a;
+    const updates = {};
+    Object.keys(players).forEach(pid=>{
+      const p = players[pid];
+      const hasAnswered = p.answered === true && p.answer !== null;
+      if(hasAnswered && p.answer === correct){
+        const newScore = (p.score || 0) + 1;
+        updates[`${ROOMS_PATH}/${currentRoom}/players/${pid}/score`] = newScore;
+      }
+      // ensure answered field remains (we'll reset in next round)
+    });
+    // set phase: store lastRoundResult to show to clients (optional)
+    const resultSummary = { questionIndex: qIndex, correct: correct, finishedAt: nowTs() };
+    updates[`${ROOMS_PATH}/${currentRoom}/lastRoundResult`] = resultSummary;
+    // apply score updates
+    db.ref().update(updates).then(()=>{
+      // short pause to let clients see scores/answer states, then advance to next question or finish
+      const nextIndex = qIndex + 1;
+      if(nextIndex >= questions.length){
+        // finish game: save finished flag and final scores snapshot
+        db.ref(`${ROOMS_PATH}/${currentRoom}/players`).once('value').then(ppSnap=>{
+          const playersFinal = ppSnap.val() || {};
+          const final = { finishedAt: nowTs(), players: playersFinal };
+          db.ref(`${ROOMS_PATH}/${currentRoom}`).update({
+            questionIndex: nextIndex,
+            started: false,
+            lastActive: nowTs(),
+            finalResult: final
+          }).then(()=>{
+            hostFinalizeLock = false;
+          });
+        });
+      } else {
+        // reset answered flags and move to next question with new questionEnd
+        const resetUpdates = {};
+        Object.keys(players).forEach(pid=>{
+          resetUpdates[`${ROOMS_PATH}/${currentRoom}/players/${pid}/answered`] = false;
+          resetUpdates[`${ROOMS_PATH}/${currentRoom}/players/${pid}/answer`] = null;
+        });
+        resetUpdates[`${ROOMS_PATH}/${currentRoom}/questionIndex`] = nextIndex;
+        resetUpdates[`${ROOMS_PATH}/${currentRoom}/questionEnd`] = nowTs() + QUESTION_TIME*1000;
+        resetUpdates[`${ROOMS_PATH}/${currentRoom}/lastActive`] = nowTs();
+        db.ref().update(resetUpdates).then(()=> {
+          hostFinalizeLock = false;
+        });
+      }
+    }).catch(err=>{
+      console.error(err);
+      hostFinalizeLock = false;
+    });
+  }).catch(err=>{
+    console.error(err);
+    hostFinalizeLock = false;
+  });
+}
+
+/* ====== เมื่อห้องเปลี่ยน meta (เช่น questionIndex, questionEnd, started) ให้ client อัปเดตหน้าจอ ====== */
+function renderCurrentFromRoomSnapshot(){
+  db.ref(`${ROOMS_PATH}/${currentRoom}`).once('value').then(snap=>{
+    const room = snap.val();
+    if(!room) return;
+    if(!room.started && room.finalResult){
+      // เกมจบ -> show final results
+      showFinalResultsFromRoom(room);
+      return;
+    }
+    // otherwise: render current question
+    if(room.started){
+      // ensure localQuestions is set
+      if(room.questions && localQuestions.length===0) localQuestions = room.questions;
+      renderCurrentQuestion(room);
+    }
+  });
+}
+// set watch to update clients when meta changes
+function attachMetaWatcherForQuiz(){
+  const ref = db.ref(`${ROOMS_PATH}/${currentRoom}`);
+  // meta listener already set in watchRoomMeta - but ensure we update UI when questionIndex changes
+  // watchRoomMeta already calls showQuizPage which will call renderCurrentQuestion
+}
+
+/* ====== ฟังเมื่อเกมจบ (finalResult ถูกเขียน) และแสดงผลให้ทุกคน ====== */
+function showFinalResultsFromRoom(room){
+  // show scores sorted
+  const players = room.finalResult && room.finalResult.players ? room.finalResult.players : (room.players || {});
+  showResultScreen(players);
+}
+
+/* ====== แสดงผล (client-side) ====== */
+function showResultScreen(playersObj){
+  pageQuiz.style.display='none';
+  pageRoom.style.display='none';
+  pageResult.style.display='block';
+  const wrap = el('scoreList'); wrap.innerHTML = '';
+  const arr = Object.entries(playersObj || {}).map(([id,p])=>({id, name:p.name||id, score:p.score||0}));
+  arr.sort((a,b)=>b.score-a.score);
+  arr.forEach(p=>{
+    const d = document.createElement('div'); d.className='player-card';
+    d.innerHTML = `<div style="font-weight:700">${escapeHtml(p.name)}</div><div class="small">${p.score} คะแนน</div>`;
+    wrap.appendChild(d);
+  });
+  // winners
+  const best = arr.length ? arr[0].score : 0;
+  const winners = arr.filter(x=>x.score===best).map(x=>escapeHtml(x.name));
+  el('winnerNames').textContent = winners.join(', ');
+  el('btnBackToLobby').onclick = ()=>{
+    // remove room if empty? We will let periodic cleaner remove empty rooms
+    cleanupRoomListeners();
+    pageResult.style.display='none';
+    pageLobby.style.display='block';
+    currentRoom = null;
+    localQuestions = [];
+    // optionally remove the room entirely if host wants; here we leave DB as-is
+  };
+}
+
+/* ====== เมื่อห้องถูกปิด/ไม่มีผู้เล่น ให้ล้าง listener ====== */
+function cleanupRoomListeners(){
+  if(roomPlayersListener) {
+    db.ref(`${ROOMS_PATH}/${currentRoom}/players`).off('value', roomPlayersListener);
+    roomPlayersListener = null;
+  }
+  if(roomMetaListener){
+    db.ref(`${ROOMS_PATH}/${currentRoom}`).off('value', roomMetaListener);
+    roomMetaListener = null;
+  }
+  if(roomAnswersListener){
+    db.ref(`${ROOMS_PATH}/${currentRoom}/players`).off('value', roomAnswersListener);
+    roomAnswersListener = null;
+  }
+  clearInterval(localTimerInterval);
+}
+
+/* ====== ลบห้องที่ว่างหรือหมดอายุก่อน (รันทุก 5 นาที) ====== */
+setInterval(()=>{
+  db.ref(ROOMS_PATH).once('value').then(snap=>{
+    const rooms = snap.val()||{};
+    const now = nowTs();
+    Object.keys(rooms).forEach(rn=>{
+      const r = rooms[rn];
+      const playersCount = r.players ? Object.keys(r.players).length : 0;
+      // ถ้าไม่มีผู้เล่น หรือ lastActive เกิน 2 ชั่วโมง -> ลบ
+      if(playersCount === 0 || (r.lastActive && (now - r.lastActive) > 1000*60*60*2)){
+        db.ref(`${ROOMS_PATH}/${rn}`).remove().catch(()=>{});
+      }
+    });
+  });
+}, 1000 * 60 * 5);
+
+/* ====== ฟังการเปลี่ยนแปลงหลักของห้อง เพื่ออัพเดตหน้า quiz เมื่อเปลี่ยนข้อ ====== */
+/* เรา reuse watchRoomMeta (เรียก showQuizPage เมื่อ started) แต่ต้องให้ clients update เมื่อ questionIndex หรือ questionEnd เปลี่ยน */
+let metaOnValue = null;
+function ensureRoomMetaUpdates(){
+  if(!currentRoom) return;
+  const ref = db.ref(`${ROOMS_PATH}/${currentRoom}`);
+  if(metaOnValue) ref.off('value', metaOnValue);
+  metaOnValue = ref.on('value', snap=>{
+    const room = snap.val();
+    if(!room) return;
+    // if room.started -> render question
+    if(room.started){
+      // if questionIndex changed or questionEnd changed -> update UI
+      renderCurrentQuestion(room);
+      // if finalResult exists -> show final
+      if(room.finalResult){
+        showFinalResultsFromRoom(room);
+      }
+    } else {
+      // if not started and pageQuiz showing -> show results or return to room
+      if(pageQuiz.style.display==='block'){
+        // game ended
+        if(room.finalResult){
+          showFinalResultsFromRoom(room);
+        } else {
+          // go back to room
+          cleanupRoomListeners();
+          pageQuiz.style.display='none';
+          pageRoom.style.display='block';
+        }
+      }
+    }
+  });
+}
+
+/* ====== helper: escape html ====== */
+function escapeHtml(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+/* ====== เมื่อ client เข้าห้องแล้ว ให้แน่ใจว่า meta watcher ติด ====== */
+(function attachGlobalHandlers(){
+  // รีเฟรชห้อง
+  el('btnRefresh').addEventListener('click', ()=>{ listenRooms(); });
+  // เมื่อหน้า room เปลี่ยนเป็น quiz ให้แน่ใจว่า meta watch ทำงาน
+  // observe DOM changes: when currentRoom set, call ensureRoomMetaUpdates
+  const origJoin = joinRoom;
+  joinRoom = function(rn){ origJoin(rn); ensureRoomMetaUpdates(); };
+})();
+
+/* ====== Auto render periodically (safe) ====== */
+setInterval(()=>{
+  if(currentRoom) renderCurrentFromRoomSnapshot();
+}, 1000);
+
+/* ====== สิ้นสุดสคริปต์ ====== */
+</script>
+</body>
+</html>
