@@ -72,8 +72,8 @@
             </div>
         </div>
     </div>
+	<div id="soundReadyAnnounce" aria-live="polite" style="position:absolute;left:-9999px"></div>
     <script>
-// ----------------- Config & State -----------------
 const firebaseConfig = {
   apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
   authDomain: "xo-game-134ec.firebaseapp.com",
@@ -117,29 +117,87 @@ const backToMenuBtn = document.getElementById('backToMenuBtn');
 // handler สำหรับปุ่มนี้
 backToMenuBtn.addEventListener('click', showMainMenu);
 
-// ----------------- Sound -----------------
+// ----------------- Buffered Sound -----------------
+
+// -- preload sound files to buffer --
+const audioBuffers = {};
+const soundFiles = [
+  "x1.mp3","x2.mp3","x3.mp3","x4.mp3","x5.mp3","x6.mp3","x7.mp3","x8.mp3","x9.mp3",
+  "o1.mp3","o2.mp3","o3.mp3","o4.mp3","o5.mp3","o6.mp3","o7.mp3","o8.mp3","o9.mp3",
+  "xwin.mp3","owin.mp3","xodraw.mp3","endx.mp3","endo.mp3","enddraw.mp3","bell.mp3"
+];
+soundFiles.forEach(file => {
+  const audio = new Audio(file);
+  audio.preload = "auto";
+  audio.load();
+  audioBuffers[file] = audio;
+});
+
+// -- play sound from buffer --
 const audioQueue = [];
 let isAudioPlaying = false;
+
 function playAudio(soundFile) {
-    audioQueue.push(soundFile); processAudioQueue();
+  audioQueue.push(soundFile); 
+  processAudioQueue();
 }
 function processAudioQueue() {
-    if (audioQueue.length === 0 || isAudioPlaying) return;
-    isAudioPlaying = true;
-    const soundFile = audioQueue.shift();
-    const audio = new Audio(soundFile);
-    audio.addEventListener('ended', () => {
-        isAudioPlaying = false;
-        processAudioQueue();
-    });
-    const audioPromise = audio.play();
-    if (audioPromise !== undefined) audioPromise.catch(() => {
-        isAudioPlaying = false; processAudioQueue();
+  if (audioQueue.length === 0 || isAudioPlaying) return;
+  isAudioPlaying = true;
+  const soundFile = audioQueue.shift();
+
+  // play from buffered audio
+  let audio = audioBuffers[soundFile];
+  if (!audio) {
+    // fallback - preload if missing
+    audio = new Audio(soundFile);
+    audio.preload = "auto";
+    audio.load();
+    audioBuffers[soundFile] = audio;
+  }
+  // clone node to prevent overlapping play issues
+  const cloneAudio = audio.cloneNode();
+  cloneAudio.currentTime = 0;
+  cloneAudio.volume = 1;
+  cloneAudio.addEventListener('ended', () => {
+    isAudioPlaying = false;
+    processAudioQueue();
+  });
+  const audioPromise = cloneAudio.play();
+  if (audioPromise !== undefined) 
+    audioPromise.catch(() => {
+      isAudioPlaying = false; processAudioQueue();
     });
 }
 function playMoveSound(player, idx) { playAudio(`${player.toLowerCase()}${idx + 1}.mp3`); }
 function playRoundResultSound(result) { playAudio(`${result}.mp3`); }
 function playFinalResultSound(result) { playAudio(`${result}.mp3`); }
+
+// -------- ปลดล็อก audio context ให้ใช้ใน Safari/iOS --------
+function unlockIOSAudio() {
+  // ใช้ไฟล์ bell.mp3 ที่ถูก preload
+  const audio = audioBuffers["bell.mp3"];
+  if (audio) {
+    const unlock = audio.cloneNode();
+    unlock.volume = 0;
+    unlock.play().catch(()=>{});
+  }
+}
+singlePlayerBtn.addEventListener('click', () => {
+  unlockIOSAudio();
+  handleModeSelection('singlePlayer');
+});
+twoPlayersBtn.addEventListener('click', () => {
+  unlockIOSAudio();
+  handleModeSelection('twoPlayers');
+});
+onlineBtn.addEventListener('click', () => {
+  unlockIOSAudio();
+  showOnlineLobby();
+});
+createOnlineGameBtn.addEventListener('click', () => {
+  unlockIOSAudio();
+});
 
 // ----------------- Board Rendering -----------------
 function initializeBoard() {
@@ -176,7 +234,6 @@ function startRoomListListener() {
         const now = Date.now();
         Object.keys(rooms).forEach(roomCode => {
             const room = rooms[roomCode];
-            // ถ้า lastActive ไม่มี หรือเกิน 5 นาที ลบทิ้ง
             if (!room.lastActive || (now - room.lastActive > 5 * 60 * 1000)) {
                 rtdb.ref('xomultiplayer/' + roomCode).remove();
                 return;
@@ -212,7 +269,6 @@ async function leaveRoomCleanup(removeRoom = false) {
     try {
         const playersRef = rtdb.ref('xomultiplayer/' + onlineRoomId + '/players');
         await rtdb.ref('xomultiplayer/' + onlineRoomId + '/players/' + onlinePlayer).set(null);
-        // อัปเดตเวลา
         await rtdb.ref('xomultiplayer/' + onlineRoomId).update({lastActive: Date.now()});
         playersRef.once('value', snap => {
             const val = snap.val();
@@ -254,7 +310,6 @@ function listenOnlineRoom() {
         const newRound = data && typeof data.round === 'number' ? data.round : 0;
         const players = data.players || { X: null, O: null };
 
-        // ---- bell.mp3: ฝั่งผู้สร้างห้อง (X) ได้ยินเมื่อผู้เล่น O เข้ามา ----
         if (
             prevPlayersOnline &&
             prevPlayersOnline.X === true &&
@@ -265,8 +320,6 @@ function listenOnlineRoom() {
                 playAudio('bell.mp3');
             }
         }
-
-        // ---- bell.mp3: เล่นทั้งสองฝั่งเมื่อกดเริ่มเกมใหม่ (รอบเป็น 0, state เป็น playing และรอบก่อนหน้า != 0) ----
         if (
             prevRoundOnline !== null &&
             newRound === 0 &&
@@ -275,8 +328,6 @@ function listenOnlineRoom() {
         ) {
             playAudio('bell.mp3');
         }
-
-        // ---- playMoveSound: เมื่อช่อง XO ถูกเติมใหม่ ----
         if (prevBoardOnline) {
             for (let i = 0; i < 9; i++) {
                 if (prevBoardOnline[i] !== newBoard[i] && newBoard[i] !== '') {
@@ -284,8 +335,6 @@ function listenOnlineRoom() {
                 }
             }
         }
-
-        // ---- playRoundResultSound: Win/Draw เฉพาะรอบใหม่เท่านั้น ----
         if (
             prevRoundOnline !== null &&
             newRound > prevRoundOnline
@@ -300,8 +349,6 @@ function listenOnlineRoom() {
                 playRoundResultSound('owin');
             }
         }
-
-        // ---- playFinalResultSound: จบเกม ----
         if (prevStateOnline && prevStateOnline !== "ended" && newState === "ended") {
             if (newScores.X > newScores.O) playFinalResultSound('endx');
             else if (newScores.O > newScores.X) playFinalResultSound('endo');
@@ -336,7 +383,6 @@ function listenOnlineRoom() {
             updateGameInfo(msg);
             return;
         }
-        // แสดงผล draw ใน UI
         if (data.roundResult === 'draw') {
             updateGameInfo('เสมอ! ไม่มีผู้ชนะในยกนี้ 🤝');
         } else if (!board.includes('')) {
@@ -477,10 +523,6 @@ function handleCellClick(event) {
 }
 
 // ------------- Mode selection/flow -------------
-singlePlayerBtn.addEventListener('click', () => { handleModeSelection('singlePlayer'); });
-twoPlayersBtn.addEventListener('click', () => { handleModeSelection('twoPlayers'); });
-onlineBtn.addEventListener('click', showOnlineLobby);
-
 function handleModeSelection(mode) {
     playAudio('bell.mp3');
     startNewGame(mode);
@@ -494,7 +536,7 @@ function startNewGame(mode) {
     initializeBoard();
     resetRound();
     exitRoomBtn.classList.add('hidden');
-	if (mode === 'online') {
+    if (mode === 'online') {
         backToMenuBtn.classList.add('hidden');
     } else {
         backToMenuBtn.classList.remove('hidden');
@@ -513,9 +555,9 @@ function showMainMenu() {
     lobbyStatus.textContent = '';
     initializeBoard();
     exitRoomBtn.classList.add('hidden');
-	backToMenuBtn.classList.add('hidden');
+    backToMenuBtn.classList.add('hidden');
 }
-window.showOnlineLobby = showOnlineLobby; // Ensure available for onclick/global
+window.showOnlineLobby = showOnlineLobby;
 
 function showOnlineLobby() {
     modeSelectionScreen.classList.add('hidden');
@@ -542,12 +584,11 @@ async function createOnlineRoomWithInput() {
     const snap = await ref.get();
     const now = Date.now();
     if (snap.exists()) {
-        // ถ้ามีห้องเดิม ตรวจ lastActive และสถานะผู้เล่น
         const data = snap.val();
         const noPlayers = !data.players || (!data.players.X && !data.players.O);
         const oldRoom = !data.lastActive || (now - data.lastActive > 5*60*1000);
         if (noPlayers || oldRoom) {
-            await ref.remove(); // ลบทิ้ง
+            await ref.remove();
         } else {
             lobbyStatus.textContent = 'ชื่อห้องนี้ถูกใช้แล้ว เลือกชื่ออื่น';
             createOnlineGameBtn.disabled = false;
@@ -595,9 +636,8 @@ async function joinOnlineRoom(code) {
     return player;
 }
 
-// สร้างห้องใหม่
 createOnlineGameBtn.addEventListener('click', async () => {
-	playAudio('bell.mp3'); // <--- เพิ่มตรงนี้
+    playAudio('bell.mp3');
     createOnlineGameBtn.disabled = true;
     try {
         await createOnlineRoomWithInput();
@@ -654,7 +694,6 @@ async function publishOnlineMove(idx, player) {
         }
     }
 
-    // ตรวจผลเสมอ
     let isDraw = !roundWon && !newBoard.includes('');
     let nextScores = data && data.scores ? { ...data.scores } : { X: 0, O: 0 };
     let nextRound = data && typeof data.round === "number" ? data.round : 0;
@@ -676,14 +715,14 @@ async function publishOnlineMove(idx, player) {
             firstPlayer: newFirst,
             state: (nextRound >= maxRounds ? 'ended' : 'playing'),
             lastActive: Date.now(),
-            roundResult // ส่งค่า draw/win
+            roundResult
         });
     } else {
         await ref.update({
             board: newBoard,
             currentPlayer: player === 'X' ? 'O' : 'X',
             lastActive: Date.now(),
-            roundResult: null // ยังไม่มีผลรอบ
+            roundResult: null
         });
     }
 }
@@ -692,7 +731,7 @@ async function publishOnlineGameEnd() {
     if (!onlineRoomId) return;
     await rtdb.ref('xomultiplayer/' + onlineRoomId).update({state: 'ended'});
 }
-function resetOnlineRound() {} // dummy
+function resetOnlineRound() {}
 
 // --------- เริ่มเกมใหม่ (ทุกโหมด) -----------
 newGameBtn.addEventListener('click', async () => {
@@ -723,8 +762,6 @@ exitRoomBtn.addEventListener('click', async () => {
         showMainMenu();
     }
 });
-
-// อย่าลืมวางไฟล์เสียง .mp3 (x1-x9.mp3, o1-o9.mp3, xwin.mp3, owin.mp3, xodraw.mp3, endx.mp3, endo.mp3, enddraw.mp3, bell.mp3) ใน path เดียวกับไฟล์นี้ -->
     </script>
 </body>
 </html>
