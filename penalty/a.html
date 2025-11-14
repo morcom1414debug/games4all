@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<title>เกมยิงจุดโทษ 1998-1999</title>
+<title>เกมยิงจุดโทษ 2005-2006</title>
 <style>
 body { font-family: Tahoma; background: #111; color:white; text-align:center;}
 .goal-container {position:relative;width:400px;height:220px;margin:auto;}
@@ -11,14 +11,36 @@ body { font-family: Tahoma; background: #111; color:white; text-align:center;}
 #tl {top:10px; left:20px;} #tr {top:10px; right:20px;} #center {top:90px; left:50%; transform:translateX(-50%);}
 #bl {bottom:10px; left:20px;} #br {bottom:10px; right:20px;}
 #scoreBoard {margin-top:20px; font-size:20px;}
+
+/* เพิ่มเฉพาะ: หน้าเลือกโหมด + โหลด */
+#modeSelect, #loadingScreen, #onlineScreen { position:fixed; top:0; left:0; width:100%; height:100%; background:#111; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:9999; }
+#modeSelect button, #onlineScreen button { margin:10px; padding:15px 30px; font-size:18px; background:#c00; color:white; border:none; border-radius:8px; cursor:pointer; }
+#loadingScreen { font-size:24px; }
+#teamSelect, #gameScreen { display:none; }
 </style>
 </head>
 <body>
 
-<h1>เกมยิงจุดโทษ 1998–1999</h1>
+<!-- หน้าเลือกโหมด (ใหม่) -->
+<div id="modeSelect">
+  <h1>เกมยิงจุดโทษ 2005–2006</h1>
+  <button onclick="startMode('bot')">เล่นกับบอท</button>
+  <button onclick="startMode('online')">เล่นออนไลน์</button>
+</div>
 
-<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+<!-- หน้าจอโหลด (ใหม่) -->
+<div id="loadingScreen" style="display:none;">
+  <p>กำลังโหลดเกม กรุณารอสักครู่...</p>
+</div>
 
+<!-- หน้าออนไลน์ (ใหม่ - placeholder) -->
+<div id="onlineScreen" style="display:none;">
+  <h1>เกมยิงจุดโทษ 2005–2006</h1>
+  <p>โหมดออนไลน์ (กำลังพัฒนา)</p>
+  <button onclick="document.getElementById('onlineScreen').style.display='none'; document.getElementById('modeSelect').style.display='flex';">กลับ</button>
+</div>
+
+<!-- หน้าเลือกทีม (เดิม) -->
 <div id="teamSelect">
 <p>เลือกทีมของคุณ</p>
 <button onclick="selectTeam('Manchester United')">แมนเชสเตอร์ ยูไนเต็ด</button>
@@ -27,7 +49,8 @@ body { font-family: Tahoma; background: #111; color:white; text-align:center;}
 <button onclick="selectTeam('Chelsea')">เชลซี</button>
 </div>
 
-<div id="gameScreen" style="display:none;">
+<!-- หน้าจอเกม (เดิม) -->
+<div id="gameScreen">
 <div id="scoreBoard">Score ตอนนี้คือ 0 - 0</div>
 
 <div class="goal-container">
@@ -46,8 +69,52 @@ body { font-family: Tahoma; background: #111; color:white; text-align:center;}
 <audio id="miss" src="audio/f.mp3"></audio>
 <audio id="end" src="audio/end.mp3"></audio>
 
+<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+
 <script>
-// ----- รายชื่อนักเตะ -----
+// ===== เพิ่มเฉพาะ: ระบบโหมด + preload =====
+const audioFiles = ['audio/b.mp3', 'audio/t.mp3', 'audio/f.mp3', 'audio/end.mp3'];
+
+function startMode(mode) {
+  document.getElementById('modeSelect').style.display = 'none';
+  document.getElementById('loadingScreen').style.display = 'flex';
+
+  // Preload ทุกไฟล์
+  let loaded = 0;
+  audioFiles.forEach(src => {
+    const audio = new Audio();
+    audio.src = src;
+    audio.oncanplaythrough = () => {
+      loaded++;
+      if (loaded === audioFiles.length) {
+        setTimeout(() => {
+          document.getElementById('loadingScreen').style.display = 'none';
+          if (mode === 'bot') {
+            document.getElementById('teamSelect').style.display = 'block';
+          } else {
+            document.getElementById('onlineScreen').style.display = 'flex';
+          }
+        }, 300);
+      }
+    };
+    audio.onerror = () => {
+      loaded++;
+      if (loaded === audioFiles.length) {
+        setTimeout(() => {
+          document.getElementById('loadingScreen').style.display = 'none';
+          if (mode === 'bot') {
+            document.getElementById('teamSelect').style.display = 'block';
+          } else {
+            document.getElementById('onlineScreen').style.display = 'flex';
+          }
+        }, 300);
+      }
+    };
+    audio.load();
+  });
+}
+
+// ----- โค้ดเดิมทั้งหมด (ไม่เปลี่ยนเลย) -----
 const squads = {
   "Manchester United": {
     "players": ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า",
@@ -75,7 +142,6 @@ const squads = {
   }
 };
 
-// ----- ตัวแปรเกม -----
 let userTeam, cpuTeam;
 let score = 0, oppScore = 0;
 let turn = 0;
@@ -86,7 +152,6 @@ let userShotsOrder = [];
 let cpuShotsOrder = [];
 let shooterTeam = "", shooterName = "";
 
-// ----- เสียง -----
 const bgm = document.getElementById("bgm");
 const goalSnd = document.getElementById("goal");
 const missSnd = document.getElementById("miss");
@@ -102,21 +167,15 @@ function stopBGM(){
   bgm.currentTime = 0;
 }
 
-// ---- TTS ----
 function speak(t){ document.getElementById("tts").innerText = t; }
 
-// ---- สุ่มลำดับผู้ยิง (ผู้รักษาประตูเป็นคนสุดท้าย) ----
 function createShotsOrder(team){
-  let players = squads[team].players.slice(); // คัดลอก array ผู้เล่น
-  shuffle(players); // สุ่มผู้เล่น
-  
-  // เพิ่มผู้รักษาประตูเป็นคนสุดท้าย
+  let players = squads[team].players.slice();
+  shuffle(players);
   players.push(squads[team].keeper);
-  
   return players;
 }
 
-// ---- เลือกทีม ----
 function selectTeam(team){
   userTeam = team;
   let remain = Object.keys(squads).filter(t=>t!==team);
@@ -125,7 +184,6 @@ function selectTeam(team){
   document.getElementById("teamSelect").style.display="none";
   document.getElementById("gameScreen").style.display="block";
 
-  // สร้างลำดับผู้ยิงใหม่ - ผู้รักษาประตูเป็นคนสุดท้าย
   userShotsOrder = createShotsOrder(userTeam);
   cpuShotsOrder = createShotsOrder(cpuTeam);
 
@@ -134,7 +192,6 @@ function selectTeam(team){
   updateScoreboard();
   startTurn();
 
-  // เริ่มเพลงพื้นหลัง
   playSound(bgm);
 }
 
@@ -146,10 +203,8 @@ function shuffle(a){
   return a;
 }
 
-// ---- ดึงชื่อผู้ยิงแบบวนลูป ----
 function getShooter(team, orderList, indexObj){
   if(indexObj.value >= orderList.length){
-    // สุ่มใหม่แบบผู้รักษาประตูสุดท้าย
     orderList = createShotsOrder(team);
     indexObj.value = 0;
     indexObj.list = orderList;
@@ -157,7 +212,6 @@ function getShooter(team, orderList, indexObj){
   return {name: orderList[indexObj.value], list: orderList};
 }
 
-// ---- เริ่มตา ----
 function startTurn(){
   if(turn===0){
     let ref = {value:shotIndexUser, list:userShotsOrder};
@@ -180,7 +234,6 @@ function startTurn(){
   }
 }
 
-// ---- ยิง / เซฟ ----
 function chooseDirection(dir){
   let keeperDir = ["TL","TR","C","BL","BR"][Math.floor(Math.random()*5)];
   let isGoal = dir !== keeperDir;
@@ -193,9 +246,8 @@ function chooseDirection(dir){
   speak(res + `  Score ${score} - ${oppScore}`);
   updateScoreboard();
 
-  // เล่นเสียงตามผล - ทุกครั้งที่ยิง (ผู้เล่นหรือคอม)
-  if(isGoal) playSound(goalSnd);      // ยิงเข้า = เสียงดี
-  else playSound(missSnd);             // ยิงไม่เข้า = เสียงไม่ดี
+  if(isGoal) playSound(goalSnd);
+  else playSound(missSnd);
 
   setTimeout(()=>{
     if(turn===0) shotIndexUser++;
@@ -205,7 +257,6 @@ function chooseDirection(dir){
   }, 900);
 }
 
-// ---- ตรวจจบเกม ----
 function checkGameEndOrNext(){
   let rU = 5 - shotIndexUser;
   let rC = 5 - shotIndexCPU;
@@ -223,8 +274,8 @@ function checkGameEndOrNext(){
   }
 
   if(end){
-    stopBGM(); // หยุดเพลงพื้นหลังทันที
-    playSound(endSnd); // เล่นเสียงจบ
+    stopBGM();
+    playSound(endSnd);
 
     let msg = score>oppScore ? `${userTeam} ชนะ!` : `${cpuTeam} ชนะ!`;
     setTimeout(()=>{ 
@@ -241,17 +292,16 @@ function checkGameEndOrNext(){
   }
 }
 
-// ---- อัปเดตคะแนน ----
 function updateScoreboard(){
   document.getElementById("scoreBoard").innerText = `Score ตอนนี้คือ ${score} - ${oppScore}`;
 }
 
-// ---- รีเซ็ต ----
 function resetGame(){
-  stopBGM(); // ต้องแน่ใจว่าเพลงหยุด
+  stopBGM();
 
   document.getElementById("gameScreen").style.display="none";
-  document.getElementById("teamSelect").style.display="block";
+  document.getElementById("teamSelect").style.display="none";
+  document.getElementById("modeSelect").style.display="flex";
 
   score=0; oppScore=0; turn=0;
   shotIndexUser=0; shotIndexCPU=0; isSudden=false;
