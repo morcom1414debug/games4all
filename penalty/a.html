@@ -2,14 +2,17 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<title>เกมยิงจุดโทษ 1998-1999</title>
+<title>เกมยิงจุดโทษ 1998–1999</title>
 <style>
-body { font-family: Tahoma; background: #111; color:white; text-align:center;}
+body { font-family: Tahoma; background:#111; color:white; text-align:center; }
 .goal-container {position:relative;width:400px;height:220px;margin:auto;}
 .goal-img {width:100%;height:100%;border:2px solid #fff;border-radius:10px;}
 .shot-btn {position:absolute;background:rgba(255,255,255,0.85);border-radius:7px;padding:7px;font-weight:bold;cursor:pointer;border:none;}
-#tl {top:10px; left:20px;} #tr {top:10px; right:20px;} #center {top:90px; left:50%; transform:translateX(-50%);}
-#bl {bottom:10px; left:20px;} #br {bottom:10px; right:20px;}
+#tl {top:10px; left:20px;} 
+#tr {top:10px; right:20px;} 
+#center {top:90px; left:50%; transform:translateX(-50%);} 
+#bl {bottom:10px; left:20px;} 
+#br {bottom:10px; right:20px;}
 #scoreBoard {margin-top:20px; font-size:20px;}
 </style>
 </head>
@@ -17,6 +20,7 @@ body { font-family: Tahoma; background: #111; color:white; text-align:center;}
 
 <h1>เกมยิงจุดโทษ 1998–1999</h1>
 
+<!-- aria-live สำหรับ iOS ต้องแบบ assertive -->
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
 <div id="teamSelect">
@@ -47,66 +51,50 @@ body { font-family: Tahoma; background: #111; color:white; text-align:center;}
 <audio id="end" src="audio/end.mp3"></audio>
 
 <script>
-/* --------------------------------------------------
-   Sound Manager – เวอร์ชันใหม่ แก้ให้ bgm เล่นได้
--------------------------------------------------- */
-const SoundManager = {
-  unlocked: false,
-  sounds: {},
+/* ===============================
+   ระบบ TTS Queue สำหรับ iOS
+   =============================== */
+let ttsQueue = [];
+let isSpeaking = false;
 
-  init() {
-    const ids = ["bgm", "goal", "miss", "end"];
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      el.load();
-      this.sounds[id] = el;
-    });
+function speak(text){
+  ttsQueue.push(text);
+  processTTS();
+}
 
-    // unlock audio เฉพาะเสียงสั้น ๆ เพื่อให้ iOS ไม่บล็อก
-    document.body.addEventListener("touchstart", () => this.unlock(), {once:true});
-    document.body.addEventListener("click", () => this.unlock(), {once:true});
-  },
+function processTTS(){
+  if(isSpeaking || ttsQueue.length === 0) return;
 
-  unlock() {
-    if (this.unlocked) return;
-    this.unlocked = true;
+  isSpeaking = true;
+  const msg = ttsQueue.shift();
 
-    // ปลุกเฉพาะเสียงเอฟเฟกต์ (ไม่ปลุก bgm)
-    ["goal","miss","end"].forEach(id=>{
-      let s = this.sounds[id];
-      s.play().then(()=>s.pause()).catch(()=>{});
-    });
-  },
+  // เพิ่ม delay กันโดน Safari ตัดข้อความ
+  setTimeout(()=>{
+    document.getElementById("tts").innerText = "";
+    setTimeout(()=>{
+      document.getElementById("tts").innerText = msg;
+      // รอให้ข้อความอ่าน ~0.8–1.2 วินาที ตามความยาว
+      setTimeout(()=>{
+        isSpeaking = false;
+        processTTS();
+      }, Math.max(900, msg.length * 55));
+    }, 50);
+  }, 100);
+}
 
-  play(id) {
-    let el = this.sounds[id];
-    if (!el) return;
+/* ===============================
+   ฟังก์ชันรอให้เสียงเล่นจนจบ
+   =============================== */
+function waitForSound(audioEl){
+  return new Promise(resolve => {
+    audioEl.onended = ()=>resolve();
+    audioEl.play().catch(()=> resolve());
+  });
+}
 
-    el.pause();
-    el.currentTime = 0;
-
-    let p = el.play();
-    if (p) {
-      p.catch(() => {
-        setTimeout(()=> el.play().catch(()=>{}), 120);
-      });
-    }
-  },
-
-  stop(id) {
-    const el = this.sounds[id];
-    if (!el) return;
-    el.pause();
-    el.currentTime = 0;
-  }
-};
-
-SoundManager.init();
-
-/* --------------------------------------------------
-   ตัวเกม (เหมือนเดิมทุกอย่าง)
--------------------------------------------------- */
-
+/* ===============================
+   ข้อมูลทีม
+   =============================== */
 const squads = {
   "Manchester United": {
     "players": ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า",
@@ -121,7 +109,7 @@ const squads = {
     "keeper": "เปเป้ เรน่า"
   },
   "Arsenal": {
-    "players": ["เอ็มมานเด้วย ลุงเบิร์ก","โคโล ตูเร่","โซล แคมเบล","แอชลีย์ โคล",
+    "players": ["เอ็มมานูเอล เอบูเอ้","โคโล ตูเร่","โซล แคมเบล","แอชลีย์ โคล",
                 "อเล็กซานเดอร์ เคล็บ","ฌิลแบร์โต้ ซิลวา","เชส ฟาเบรกัส","โรแบร์ ปิแรส",
                 "เฟรดริก ลุงเบิร์ก","เธียร์รี่ อองรี"],
     "keeper": "เยนส์ เลห์มันน์"
@@ -134,6 +122,9 @@ const squads = {
   }
 };
 
+/* ===============================
+   ตัวแปรเกม
+   =============================== */
 let userTeam, cpuTeam;
 let score = 0, oppScore = 0;
 let turn = 0;
@@ -142,13 +133,34 @@ let shotIndexUser = 0, shotIndexCPU = 0;
 
 let userShotsOrder = [];
 let cpuShotsOrder = [];
-let shooterTeam = "", shooterName = "";
 
-function speak(t){ document.getElementById("tts").innerText = t; }
+let shooterTeam = "";
+let shooterName = "";
 
+/* ===============================
+   เสียง
+   =============================== */
+const bgm = document.getElementById("bgm");
+const goalSnd = document.getElementById("goal");
+const missSnd = document.getElementById("miss");
+const endSnd = document.getElementById("end");
+
+function playSound(el){
+  el.currentTime = 0;
+  el.play().catch(()=>{});
+}
+
+function stopBGM(){
+  bgm.pause();
+  bgm.currentTime = 0;
+}
+
+/* ===============================
+   Utility
+   =============================== */
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
+    const j = Math.floor(Math.random()*(i+1));
     [a[i],a[j]]=[a[j],a[i]];
   }
   return a;
@@ -157,10 +169,13 @@ function shuffle(a){
 function createShotsOrder(team){
   let players = squads[team].players.slice();
   shuffle(players);
-  players.push(squads[team].keeper);
+  players.push(squads[team].keeper); // keeper last
   return players;
 }
 
+/* ===============================
+   เลือกทีม
+   =============================== */
 function selectTeam(team){
   userTeam = team;
   let remain = Object.keys(squads).filter(t=>t!==team);
@@ -172,68 +187,64 @@ function selectTeam(team){
   userShotsOrder = createShotsOrder(userTeam);
   cpuShotsOrder = createShotsOrder(cpuTeam);
 
-  score=0; oppScore=0; turn=0; shotIndexUser=0; shotIndexCPU=0; isSudden=false;
+  score=0; oppScore=0; turn=0;
+  shotIndexUser=0; shotIndexCPU=0;
+  isSudden=false;
 
   updateScoreboard();
   startTurn();
 
-  // bgm เล่นได้แน่นอน (เพราะนี่คือ user gesture)
-  SoundManager.play("bgm");
+  playSound(bgm);
 }
 
-function getShooter(team, orderList, idx){
-  if(idx.value >= orderList.length){
-    orderList = createShotsOrder(team);
-    idx.value = 0;
-    idx.list = orderList;
-  }
-  return {name: orderList[idx.value], list: orderList};
-}
-
+/* ===============================
+   เริ่มตา
+   =============================== */
 function startTurn(){
   if(turn===0){
-    let ref = {value:shotIndexUser, list:userShotsOrder};
-    let d = getShooter(userTeam, userShotsOrder, ref);
     shooterTeam = userTeam;
-    shooterName = d.name;
-    userShotsOrder = d.list;
+    shooterName = userShotsOrder[shotIndexUser];
 
     speak(`ลูกที่ ${shotIndexUser+1} ${shooterTeam}: ${shooterName} เตรียมยิง`);
-
   } else {
-    let ref = {value:shotIndexCPU, list:cpuShotsOrder};
-    let d = getShooter(cpuTeam, cpuShotsOrder, ref);
     shooterTeam = cpuTeam;
-    shooterName = d.name;
-    cpuShotsOrder = d.list;
+    shooterName = cpuShotsOrder[shotIndexCPU];
 
     let keeper = squads[userTeam].keeper;
-    speak(`ลูกที่ ${shotIndexCPU+1} ${shooterTeam}: ${shooterName} กำลังยิง ${keeper} ของคุณ พร้อมเซฟ`);
+    speak(`ลูกที่ ${shotIndexCPU+1} ${shooterTeam}: ${shooterName} เตรียมยิง ${keeper} ของคุณพร้อมเซฟ`);
   }
 }
 
-function chooseDirection(dir){
+/* ===============================
+   ยิง
+   =============================== */
+async function chooseDirection(dir){
   let keeperDir = ["TL","TR","C","BL","BR"][Math.floor(Math.random()*5)];
   let isGoal = dir !== keeperDir;
-
-  let res = `${shooterName}  ${shooterTeam} ยิง${isGoal?"เข้า":"ไม่เข้า"}!`;
 
   if(turn===0) score += isGoal?1:0;
   else oppScore += isGoal?1:0;
 
-  speak(res + `  Score ${score} - ${oppScore}`);
   updateScoreboard();
 
-  if(isGoal) SoundManager.play("goal");
-  else SoundManager.play("miss");
+  const finalMsg = `${shooterName}  ${shooterTeam} ยิง${isGoal?"เข้า":"ไม่เข้า"}!  Score ${score} - ${oppScore}`;
 
-  setTimeout(()=>{
-    if(turn===0) shotIndexUser++;
-    else shotIndexCPU++;
-    checkGameEndOrNext();
-  }, 900);
+  // 🎧 รอให้เสียงจบก่อนพูดผล
+  if(isGoal) await waitForSound(goalSnd);
+  else await waitForSound(missSnd);
+
+  // แล้วค่อยพูดผล (iOS จะไม่ตัด)
+  speak(finalMsg);
+
+  if(turn===0) shotIndexUser++;
+  else shotIndexCPU++;
+
+  setTimeout(checkGameEndOrNext, 1000);
 }
 
+/* ===============================
+   ตรวจจบเกม
+   =============================== */
 function checkGameEndOrNext(){
   let rU = 5 - shotIndexUser;
   let rC = 5 - shotIndexCPU;
@@ -251,40 +262,41 @@ function checkGameEndOrNext(){
   }
 
   if(end){
-    SoundManager.stop("bgm");
-    SoundManager.play("end");
-
-    let msg = score>oppScore ? `${userTeam} ชนะ!` : `${cpuTeam} ชนะ!`;
-
-    setTimeout(()=>{ 
-      speak(msg); 
-      setTimeout(()=>{ 
-        alert(msg); 
-        resetGame(); 
-      },700); 
-    },600);
-
+    stopBGM();
+    waitForSound(endSnd).then(()=>{
+      let msg = score>oppScore ? `${userTeam} ชนะ!` : `${cpuTeam} ชนะ!`;
+      speak(msg);
+      setTimeout(()=> alert(msg), 800);
+      setTimeout(resetGame, 1200);
+    });
   } else {
     turn = 1 - turn;
-    setTimeout(startTurn, 1000);
+    setTimeout(startTurn, 800);
   }
 }
 
+/* ===============================
+   อัปเดตคะแนน
+   =============================== */
 function updateScoreboard(){
-  document.getElementById("scoreBoard").innerText = `Score ตอนนี้คือ ${score} - ${oppScore}`;
+  document.getElementById("scoreBoard").innerText = 
+      `Score ตอนนี้คือ ${score} - ${oppScore}`;
 }
 
+/* ===============================
+   รีเซ็ตเกม
+   =============================== */
 function resetGame(){
-  SoundManager.stop("bgm");
+  stopBGM();
+  score=0; oppScore=0;
+  turn=0; shotIndexUser=0; shotIndexCPU=0;
+  isSudden=false;
+
+  userShotsOrder=[]; 
+  cpuShotsOrder=[];
 
   document.getElementById("gameScreen").style.display="none";
   document.getElementById("teamSelect").style.display="block";
-
-  score=0; oppScore=0; turn=0;
-  shotIndexUser=0; shotIndexCPU=0; isSudden=false;
-  userShotsOrder=[]; cpuShotsOrder=[];
-
-  document.getElementById("scoreBoard").innerText = "Score ตอนนี้คือ 0 - 0";
 }
 </script>
 </body>
