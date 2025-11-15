@@ -53,7 +53,6 @@
     border:2px solid #fff;
   }
 
-  /* หน้าแรก: ตั้งชื่อ */
   #nameInput {
     display:flex;
     flex-direction:column;
@@ -84,12 +83,10 @@
     cursor:pointer;
   }
 
-  /* ล็อบบี้ */
   #lobby, #room { display:none; }
   ul { list-style:none; padding:0; margin:0; }
   li { margin:8px 0; background:rgba(255,255,255,0.1); padding:12px; border-radius:10px; }
 
-  /* เลือกทีม */
   #teamSelectInRoom {
     display:none;
     flex-direction:column;
@@ -136,7 +133,6 @@
     cursor:pointer;
   }
 
-  /* TTS */
   #ttsDisplay {
     position:fixed;
     bottom:20px;
@@ -279,12 +275,13 @@
 <audio id="goal" src="audio/t.mp3"></audio>
 <audio id="miss" src="audio/f.mp3"></audio>
 <audio id="end" src="audio/end.mp3"></audio>
+<audio id="friend" src="audio/friend.mp3"></audio>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-// === เริ่มต้น Firebase ===
+// === Firebase Config (ตรวจสอบให้ถูกต้อง) ===
 const firebaseConfig = {
   apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
   authDomain: "xo-game-134ec.firebaseapp.com",
@@ -294,144 +291,62 @@ const firebaseConfig = {
   messagingSenderId: "318375224157",
   appId: "1:318375224157:web:348a410dfd625359b77eb4"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // === ตัวแปรหลัก ===
 let playerName = "", roomId = "", playerId = "", isHost = false;
-let currentRoomListener = null, soundListener = null, lobbyRoomsListener = null;
-let preloadedAudios = {};
+let currentRoomListener = null, lobbyRoomsListener = null;
 let isButtonLocked = false;
-let currentSoundTrigger = null;
-let bgmAudio = null;
 let gameStarted = false;
 let isMyTurn = false;
-
-// === TTS ===
 let spokenTurns = new Set();
 let shotOrderP1 = [], shotOrderP2 = [];
 
-// === ป้องกัน double play ===
-let lastProcessedTurn = -1;
-let currentTurnFromShot = -1;
+// === เสียง (เหมือน a.html) ===
+const bgm = document.getElementById("bgm");
+const goalSnd = document.getElementById("goal");
+const missSnd = document.getElementById("miss");
+const endSnd = document.getElementById("end");
+const friendSnd = document.getElementById("friend");
 
-// === Audio Context Unlock (สำคัญมากสำหรับ Windows) ===
-let audioContextUnlocked = false;
-let unlockAudioPromise = null;
-
-function unlockAudioContext() {
-  if (audioContextUnlocked) return Promise.resolve();
-  if (unlockAudioPromise) return unlockAudioPromise;
-
-  unlockAudioPromise = new Promise((resolve) => {
-    const unlock = () => {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = ctx.createBufferSource();
-      source.buffer = ctx.createBuffer(1, 1, 22050);
-      source.connect(ctx.destination);
-      source.start(0);
-      if (ctx.state === 'running') {
-        audioContextUnlocked = true;
-        document.removeEventListener('click', unlock);
-        document.removeEventListener('touchstart', unlock);
-        resolve();
-      }
-    };
-    document.addEventListener('click', unlock, { once: true });
-    document.addEventListener('touchstart', unlock, { once: true });
-  });
-  return unlockAudioPromise;
-}
-
-// === โหลดเสียง ===
-function preloadAllSounds() {
-  const files = ["friend.mp3", "b.mp3", "t.mp3", "f.mp3", "end.mp3"];
-  files.forEach(name => {
-    const audio = new Audio(`audio/${name}`);
-    audio.preload = "auto";
-    audio.load();
-    preloadedAudios[name] = audio;
-  });
-  bgmAudio = preloadedAudios["b.mp3"];
-}
-
-function startBGM() {
-  if (bgmAudio) {
-    bgmAudio.currentTime = 0;
-    bgmAudio.volume = 0.3;
-    bgmAudio.loop = true;
-    bgmAudio.play().catch(() => {});
-  }
+function playSound(el) {
+  el.currentTime = 0;
+  el.play().catch(() => {});  
 }
 
 function stopBGM() {
-  if (bgmAudio) {
-    bgmAudio.pause();
-    bgmAudio.currentTime = 0;
-  }
+  bgm.pause();
+  bgm.currentTime = 0;
 }
 
-// === ฟังก์ชันเล่นเสียงที่ปลดล็อกแล้ว ===
-async function safePlay(audio) {
-  await unlockAudioContext();
-  audio.currentTime = 0;
-  return audio.play().catch(() => {});
-}
-
-function playSound(name) {
-  if (name === "b.mp3") return;
-
-  if ((name === "t.mp3" || name === "f.mp3") && lastProcessedTurn === currentTurnFromShot) {
-    return;
-  }
-
-  const audio = preloadedAudios[name];
-  if (audio) {
-    safePlay(audio);
-  }
-}
-
-// === Trigger เสียงผ่าน Firebase (แต่ไม่เล่นทันที) ===
-function triggerSound(name) {
-  if (!roomId) return;
-  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
-    name: name,
-    time: Date.now(),
-    playerId: playerId
+function waitForSound(audioEl) {
+  return new Promise(resolve => {
+    audioEl.onended = () => resolve();
+    audioEl.play().catch(() => resolve());
   });
 }
 
-// === ฟัง Firebase แล้วเล่นเมื่อพร้อม ===
-function startSoundListener() {
-  if (soundListener) soundListener.off();
-  if (!roomId) return;
-  soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
-  soundListener.on("value", s => {
-    const data = s.val();
-    if (data && data.time && Date.now() - data.time < 1500) {
-      playSound(data.name);
-    }
-  });
-}
-
-/* === TTS === */
+// === TTS ===
 let ttsQueue = [];
 let isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
 
-function speak(text){
+function speak(text) {
   ttsQueue.push(text);
   processTTS();
 }
-function processTTS(){
-  if(isSpeaking || ttsQueue.length === 0) return;
+
+function processTTS() {
+  if (isSpeaking || ttsQueue.length === 0) return;
   isSpeaking = true;
   const msg = ttsQueue.shift();
   ttsDisplay.textContent = msg;
   ttsDisplay.classList.add('show');
-  setTimeout(()=>{
+  setTimeout(() => {
     document.getElementById("tts").innerText = msg;
-    setTimeout(()=>{
+    setTimeout(() => {
       isSpeaking = false;
       document.getElementById("tts").innerText = "";
       ttsDisplay.classList.remove('show');
@@ -440,18 +355,7 @@ function processTTS(){
   }, 50);
 }
 
-function waitForSound(audioEl){
-  return new Promise(resolve => {
-    const onEnd = () => {
-      audioEl.removeEventListener('ended', onEnd);
-      resolve();
-    };
-    audioEl.addEventListener('ended', onEnd);
-    safePlay(audioEl).catch(() => resolve());
-  });
-}
-
-/* === ข้อมูลทีม === */
+// === ข้อมูลทีม ===
 const squads = {
   "Manchester United": {
     "players": ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า",
@@ -479,15 +383,15 @@ const squads = {
   }
 };
 
-function shuffle(a){
-  for(let i=a.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i],a[j]]=[a[j],a[i]];
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
-function createShotsOrder(team){
+function createShotsOrder(team) {
   let players = squads[team].players.slice();
   shuffle(players);
   players.push(squads[team].keeper);
@@ -495,16 +399,12 @@ function createShotsOrder(team){
 }
 
 // === Debounce ===
-function debounceClick(dir){
-  if(isButtonLocked || !isMyTurn) return;
+function debounceClick(dir) {
+  if (isButtonLocked || !isMyTurn) return;
   isButtonLocked = true;
   chooseDirection(dir);
-  setTimeout(()=>{ isButtonLocked = false; }, 300);
+  setTimeout(() => { isButtonLocked = false; }, 300);
 }
-
-const goalSnd = document.getElementById("goal");
-const missSnd = document.getElementById("miss");
-const endSnd = document.getElementById("end");
 
 /* === เริ่มต้นแอป === */
 document.addEventListener("DOMContentLoaded", () => {
@@ -522,9 +422,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".team-btn").forEach(btn => {
     btn.onclick = () => chooseTeam(btn.getAttribute("data-team"));
   });
-
-  // ปลดล็อกเสียงทันทีเมื่อกดปุ่มใด ๆ
-  document.body.addEventListener('click', unlockAudioContext, { once: true });
 });
 
 /* === ยืนยันชื่อ === */
@@ -538,11 +435,10 @@ function confirmName() {
   playerId = Math.random().toString(36).substr(2,9);
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
-  preloadAllSounds();
   loadRooms();
 }
 
-/* === สร้างห้องใหม่ === */
+/* === สร้างห้องใหม่ (แก้ error ชัดเจน) === */
 async function showCreateRoom() {
   const name = prompt("ตั้งชื่อห้อง:");
   if (!name || name.trim() === "") return;
@@ -569,7 +465,7 @@ async function showCreateRoom() {
     showRoom();
   } catch (err) {
     console.error("สร้างห้องล้มเหลว:", err);
-    alert("สร้างห้องล้มเหลว กรุณาลองใหม่");
+    alert(`สร้างห้องล้มเหลว: ${err.message}\nกรุณาตรวจสอบ Firebase Rules`);
   }
 }
 
@@ -602,7 +498,7 @@ async function joinRoom(id) {
     showRoom();
   } catch (err) {
     console.error(err);
-    alert("เข้าร่วมห้องล้มเหลว");
+    alert(`เข้าร่วมห้องล้มเหลว: ${err.message}`);
     loadRooms();
   }
 }
@@ -645,12 +541,13 @@ function loadRooms() {
   });
 }
 
-/* === แสดงห้อง === */
+/* === showRoom, updateTeamButtons, chooseTeam, startGame, startGameplay, processShot, checkGameEndOrNext, chooseDirection, showResult, backToLobby === */
+/* ... เหมือนไฟล์ก่อนหน้า ... (ไม่เปลี่ยน) */
+
 function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
   document.getElementById("backBtn").style.display = "block";
-  startSoundListener();
 
   if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`penaltyRooms/${roomId}`);
@@ -712,11 +609,10 @@ function updateTeamButtons(room) {
 
 function chooseTeam(team) {
   db.ref(`penaltyRooms/${roomId}/players/${playerId}/team`).set(team);
-  triggerSound("friend.mp3");
+  playSound(friendSnd);
   speak(`${playerName} เลือกทีม ${team}`);
 }
 
-/* === เริ่มเกม === */
 function startGame() {
   if (gameStarted) return;
   gameStarted = true;
@@ -758,12 +654,11 @@ function startGame() {
   });
 }
 
-/* === เกมเพลย์ === */
 function startGameplay(room, players) {
   document.getElementById("room").style.display = "none";
   document.getElementById("gameScreen").style.display = "block";
   document.getElementById("currentTurn").style.display = "block";
-  startBGM();
+  playSound(bgm);
 
   shotOrderP1 = room.shotOrderP1 || [];
   shotOrderP2 = room.shotOrderP2 || [];
@@ -780,22 +675,14 @@ function startGameplay(room, players) {
 
   gameRef.on("value", snap => {
     const data = snap.val();
-    if (!data || data.status !== "playing") {
-      document.querySelectorAll('.shot-btn').forEach(btn => {
-        btn.style.display = 'none';
-      });
-      document.getElementById("currentTurn").style.display = "none";
-      return;
-    }
+    if (!data || data.status !== "playing") return;
 
     const scoreP1 = data.scoreP1 || 0;
     const scoreP2 = data.scoreP2 || 0;
-    document.getElementById("scoreBoard").innerText = 
-      `Score: ${scoreP1} - ${scoreP2}`;
+    document.getElementById("scoreBoard").innerText = `Score: ${scoreP1} - ${scoreP2}`;
 
     const p1Id = data.p1Id;
     const p2Id = data.p2Id;
-    
     const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === p1Id ? p2Id : p1Id);
     const currentKeeperId = currentShooterId === p1Id ? p2Id : p1Id;
     isMyTurn = (playerId === currentShooterId || playerId === currentKeeperId);
@@ -852,14 +739,12 @@ function startGameplay(room, players) {
   });
 }
 
-/* === processShot: ผู้ยิงเป็นคน trigger เสียงจริง ๆ === */
 async function processShot(data, players, gameRef) {
   const processedRef = gameRef.child('processed');
   const transactionResult = await processedRef.transaction(current => {
     if (current) return;
     return true;
   });
-
   if (!transactionResult.committed) return;
 
   const p1Id = data.p1Id;
@@ -870,13 +755,10 @@ async function processShot(data, players, gameRef) {
   const shooterOrder = currentShooterId === p1Id ? shotOrderP1 : shotOrderP2;
   const shooterIndex = currentShooterId === p1Id ? data.shotIndexP1 : data.shotIndexP2;
   const shooterName = shooterOrder[shooterIndex];
-  const keeperTeam = players[currentKeeperId].team;
-  const keeperName = squads[keeperTeam].keeper;
   const shooterTeam = players[currentShooterId].team;
 
   const isGoal = data.shooterDir !== data.keeperDir;
 
-  // เล่นเสียงจากฝั่งผู้ยิงก่อน
   if (isGoal) await waitForSound(goalSnd);
   else await waitForSound(missSnd);
 
@@ -890,14 +772,6 @@ async function processShot(data, players, gameRef) {
     spokenTurns.add(`result_${data.turn}`);
     const finalMsg = `${shooterName} ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! Score ${scoreP1} - ${scoreP2}`;
     speak(finalMsg);
-  }
-
-  // ผู้ยิงเป็นคน trigger เสียงผ่าน Firebase
-  if (playerId === currentShooterId) {
-    const soundName = isGoal ? "t.mp3" : "f.mp3";
-    triggerSound(soundName);
-    currentTurnFromShot = data.turn;
-    lastProcessedTurn = data.turn;
   }
 
   const updates = {
@@ -920,7 +794,6 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
-// กฎ FIFA
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) {
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
@@ -960,7 +833,7 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) 
   }
 
   if (end) {
-    triggerSound("end.mp3");
+    playSound(endSnd);
     stopBGM();
 
     if (scoreP1 > scoreP2) {
@@ -1021,13 +894,8 @@ function backToLobby() {
   stopBGM();
   spokenTurns.clear();
   shotOrderP1 = []; shotOrderP2 = [];
-  lastProcessedTurn = -1;
-  currentTurnFromShot = -1;
-  audioContextUnlocked = false;
-  unlockAudioPromise = null;
   
   if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
-  if (soundListener) { soundListener.off(); soundListener = null; }
   if (lobbyRoomsListener) { lobbyRoomsListener.off(); lobbyRoomsListener = null; }
   if (roomId && playerId) db.ref(`penaltyRooms/${roomId}/players/${playerId}`).remove();
   
