@@ -302,14 +302,13 @@ let playerName = "", roomId = "", playerId = "", isHost = false;
 let currentRoomListener = null, soundListener = null, lobbyRoomsListener = null;
 let preloadedAudios = {};
 let isButtonLocked = false;
-let currentSoundTrigger = null;
-let bgmAudio = null;
 let gameStarted = false;
 let isMyTurn = false;
 
-// === TTS ===
+// === TTS & ARIA LIVE ===
 let spokenTurns = new Set();
 let shotOrderP1 = [], shotOrderP2 = [];
+let lastProcessedTurn = -1;   // ป้องกันการเล่นซ้ำ
 
 // === โหลดเสียง ===
 function preloadAllSounds() {
@@ -319,52 +318,62 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
-  bgmAudio = preloadedAudios["b.mp3"];
+  // ใช้ preloaded เท่านั้น ไม่ใช้ <audio> DOM
 }
 
 function startBGM() {
-  if (bgmAudio) {
-    bgmAudio.currentTime = 0;
-    bgmAudio.volume = 0.3;
-    bgmAudio.loop = true;
-    bgmAudio.play().catch(() => {});
+  const bgm = preloadedAudios["b.mp3"];
+  if (bgm) {
+    bgm.currentTime = 0;
+    bgm.volume = 0.3;
+    bgm.loop = true;
+    bgm.play().catch(() => {});
   }
 }
 function stopBGM() {
-  if (bgmAudio) {
-    bgmAudio.pause();
-    bgmAudio.currentTime = 0;
-  }
+  const bgm = preloadedAudios["b.mp3"];
+  if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
-function playSound(name) {
-  if (name === "b.mp3") return;
-  if (currentSoundTrigger) clearTimeout(currentSoundTrigger);
-  const audio = preloadedAudios[name];
-  if (audio) {
-    audio.currentTime = 0;
-    audio.volume = 1;
-    audio.play().catch(() => {});
-    currentSoundTrigger = setTimeout(() => {
-      audio.pause();
-      audio.currentTime = 0;
-    }, 2000);
-  }
-}
+// ใช้ trigger จาก server เพื่อซิงค์ทั้ง 2 ฝ่าย
 function triggerSound(name) {
   if (!roomId) return;
   db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
-    name: name, time: Date.now(), playerId: playerId
+    name: name,
+    time: Date.now(),
+    playerId: playerId
   });
 }
+
+// ฟังจาก server แล้วเล่นเสียง + TTS + aria-live
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
   soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => {
     const data = s.val();
-    if (data && data.time && Date.now() - data.time < 1000) {
-      playSound(data.name);
+    if (!data || Date.now() - data.time > 1000) return;
+
+    const name = data.name;
+    const audio = preloadedAudios[name];
+    if (audio) {
+      audio.currentTime = 0;
+      audio.volume = 1;
+      audio.play().catch(() => {});
+    }
+
+    // สร้างข้อความ aria-live และ TTS
+    let msg = "";
+    if (name === "t.mp3") msg = "ยิงเข้า!";
+    else if (name === "f.mp3") msg = "ยิงไม่เข้า!";
+    else if (name === "end.mp3") msg = "จบเกม!";
+    else if (name === "friend.mp3") msg = `${playerName} เลือกทีมแล้ว`;
+
+    if (msg) {
+      speak(msg);
+      const live = document.getElementById("tts");
+      live.textContent = msg;
+      setTimeout(() => live.textContent = "", 3000);
     }
   });
 }
@@ -393,13 +402,6 @@ function processTTS(){
       processTTS();
     }, Math.max(800, msg.length * 50));
   }, 50);
-}
-
-function waitForSound(audioEl){
-  return new Promise(resolve => {
-    audioEl.onended = ()=>resolve();
-    audioEl.play().catch(()=> resolve());
-  });
 }
 
 /* === ข้อมูลทีม === */
@@ -453,10 +455,6 @@ function debounceClick(dir){
   setTimeout(()=>{ isButtonLocked = false; }, 100);
 }
 
-const goalSnd = document.getElementById("goal");
-const missSnd = document.getElementById("miss");
-const endSnd = document.getElementById("end");
-
 /* === เริ่มต้นแอป === */
 document.addEventListener("DOMContentLoaded", () => {
   const playerNameInput = document.getElementById("playerName");
@@ -490,7 +488,7 @@ function confirmName() {
   loadRooms();
 }
 
-/* === สร้างห้องใหม่ (แก้บั๊กแล้ว) === */
+/* === สร้างห้องใหม่ === */
 async function showCreateRoom() {
   const name = prompt("ตั้งชื่อห้อง:");
   if (!name || name.trim() === "") return;
@@ -729,7 +727,6 @@ function startGameplay(room, players) {
   gameRef.on("value", snap => {
     const data = snap.val();
     if (!data || data.status !== "playing") {
-      // ซ่อนปุ่มทันทีเมื่อจบเกม
       document.querySelectorAll('.shot-btn').forEach(btn => {
         btn.style.display = 'none';
       });
@@ -776,12 +773,12 @@ function startGameplay(room, players) {
       const keeperName = squads[keeperTeam].keeper;
       const shooterTeam = players[currentShooterId].team;
 
-      if (playerId === currentShooterId && !spokenTurns.has(`turn_${data.turn}_shooter`)) {
+      if (!spokenTurns.has(`turn_${data.turn}_shooter`)) {
         spokenTurns.add(`turn_${data.turn}_shooter`);
         speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง`);
       }
 
-      if (playerId === currentKeeperId && !spokenTurns.has(`turn_${data.turn}_keeper`)) {
+      if (!spokenTurns.has(`turn_${data.turn}_keeper`)) {
         spokenTurns.add(`turn_${data.turn}_keeper`);
         speak(`${shooterTeam} กำลังยิง ${keeperName} ของคุณเตรียมเซฟ`);
       }
@@ -795,7 +792,9 @@ function startGameplay(room, players) {
     }
     lastIsSudden = data.isSudden;
 
-    if (data.shooterDir && data.keeperDir && !data.processed) {
+    // ตรวจสอบผลลัพธ์หลังยิง
+    if (data.shooterDir && data.keeperDir && !data.processed && data.turn > lastProcessedTurn) {
+      lastProcessedTurn = data.turn;
       processShot(data, players, gameRef);
     }
   });
@@ -824,8 +823,9 @@ async function processShot(data, players, gameRef) {
 
   const isGoal = data.shooterDir !== data.keeperDir;
 
-  if (isGoal) await waitForSound(goalSnd);
-  else await waitForSound(missSnd);
+  // ส่ง trigger ไปยังทั้ง 2 ฝ่าย
+  const soundName = isGoal ? "t.mp3" : "f.mp3";
+  triggerSound(soundName);
 
   let scoreP1 = data.scoreP1 || 0;
   let scoreP2 = data.scoreP2 || 0;
@@ -833,12 +833,12 @@ async function processShot(data, players, gameRef) {
     currentShooterId === p1Id ? scoreP1++ : scoreP2++;
   }
 
-  if (!spokenTurns.has(`result_${data.turn}`)) {
-    spokenTurns.add(`result_${data.turn}`);
-    const finalMsg = `${shooterName} ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! Score ${scoreP1} - ${scoreP2}`;
-    speak(finalMsg);
-  }
-  triggerSound(isGoal ? "t.mp3" : "f.mp3");
+  // ข้อความสำหรับ TTS + aria-live (ทั้ง 2 ฝ่ายได้ยินเหมือนกัน)
+  const resultMsg = `${shooterName} จากทีม ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! คะแนน ${scoreP1} - ${scoreP2}`;
+  speak(resultMsg);
+  const live = document.getElementById("tts");
+  live.textContent = resultMsg;
+  setTimeout(() => live.textContent = "", 5000);
 
   const updates = {
     turn: data.turn + 1,
@@ -856,11 +856,12 @@ async function processShot(data, players, gameRef) {
 
   setTimeout(() => {
     gameRef.update(updates);
-    setTimeout(() => checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, updates.shotIndexP1 || data.shotIndexP1, updates.shotIndexP2 || data.shotIndexP2), 1000);
+    setTimeout(() => checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, 
+      updates.shotIndexP1 || data.shotIndexP1, updates.shotIndexP2 || data.shotIndexP2), 1000);
   }, 1000);
 }
 
-// ปรับกฎตาม FIFA: ยิง 5 คู่ก่อน → ถ้าเสมอ → ซัดเดนเดธ
+// ปรับกฎตาม FIFA
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) {
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
@@ -875,9 +876,7 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) 
   let winnerId = null;
 
   if (!data.isSudden) {
-    // ยังไม่ครบ 5 คู่
     if (shotsP1 < 5 || shotsP2 < 5) {
-      // ตรวจสอบว่ามีฝ่ายใดชนะแน่นอนก่อนครบ 5 คู่หรือไม่
       if (shotsP1 >= 3 && shotsP2 >= 3) {
         const maxPossibleP1 = scoreP1 + remainingP1;
         const maxPossibleP2 = scoreP2 + remainingP2;
@@ -887,7 +886,6 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) 
       }
     }
 
-    // ครบ 5 คู่แล้ว
     if (shotsP1 >= 5 && shotsP2 >= 5) {
       if (scoreP1 !== scoreP2) {
         end = true;
@@ -897,7 +895,6 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) 
       }
     }
   } else {
-    // ซัดเดนเดธ: ใครยิงได้ก่อนในรอบที่ต่างกัน → ชนะทันที
     if (shotsP1 !== shotsP2) {
       end = true;
     }
@@ -955,7 +952,10 @@ function showResult(room) {
   document.getElementById("resultScore").textContent = `${room.finalScoreP1} - ${room.finalScoreP2}`;
   document.getElementById("resultScreen").style.display = "flex";
 
-  speak(`${winnerTeam} ชนะด้วย score ${room.finalScoreP1} ต่อ ${room.finalScoreP2}`);
+  const finalMsg = `${winnerTeam} ชนะด้วยคะแนน ${room.finalScoreP1} ต่อ ${room.finalScoreP2}`;
+  speak(finalMsg);
+  document.getElementById("tts").textContent = finalMsg;
+  setTimeout(() => document.getElementById("tts").textContent = "", 8000);
 }
 
 function backToLobby() {
@@ -965,6 +965,7 @@ function backToLobby() {
   stopBGM();
   spokenTurns.clear();
   shotOrderP1 = []; shotOrderP2 = [];
+  lastProcessedTurn = -1;
   
   if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
   if (soundListener) { soundListener.off(); soundListener = null; }
