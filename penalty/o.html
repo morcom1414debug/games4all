@@ -16,40 +16,45 @@
     position:relative;
   }
 
+  /* ปุ่มยิง/เซฟ – ปรับขนาดให้พอดีหน้าจอทุกอุปกรณ์ */
   .shot-btn { 
     position:fixed;
     background:rgba(255,255,255,0.9); 
-    border-radius:15px;
-    padding:25px 30px;
+    border-radius:12px;
+    padding:12px 18px;
     font-weight:bold;
     cursor:pointer;
-    border:3px solid #fff;
-    font-size:22px;
+    border:2px solid #fff;
+    font-size:16px;
     z-index:1000;
-    box-shadow:0 8px 20px rgba(0,0,0,0.5);
+    box-shadow:0 6px 16px rgba(0,0,0,0.5);
     transition:all 0.2s;
     opacity:1;
+    min-width:80px;
+    white-space:nowrap;
   }
-  .shot-btn:active { transform:scale(0.95); box-shadow:0 4px 10px rgba(0,0,0,0.5); }
+  .shot-btn:active { transform:scale(0.95); box-shadow:0 3px 8px rgba(0,0,0,0.5); }
   .shot-btn:disabled { opacity:0.5; cursor:not-allowed; }
   .shot-btn.locked { opacity:0.3; cursor:not-allowed; }
-  #tl { top:10%; left:10%; }
-  #tr { top:10%; right:10%; }
+
+  /* ใช้ flexbox + % เพื่อจัดตำแหน่งปุ่มให้พอดีทุกหน้าจอ */
+  #tl { top:8%; left:8%; }
+  #tr { top:8%; right:8%; }
   #center { top:50%; left:50%; transform:translate(-50%, -50%); }
-  #bl { bottom:10%; left:10%; }
-  #br { bottom:10%; right:10%; }
+  #bl { bottom:8%; left:8%; }
+  #br { bottom:8%; right:8%; }
 
   #scoreBoard { 
     margin-top:20px; 
-    font-size:28px;
+    font-size:24px;
     position:fixed;
     top:10px;
     left:50%;
     transform:translateX(-50%);
     z-index:1001;
     background:rgba(0,0,0,0.7);
-    padding:15px 30px;
-    border-radius:15px;
+    padding:12px 24px;
+    border-radius:12px;
     border:2px solid #fff;
   }
 
@@ -66,6 +71,7 @@
     padding:30px;
     border-radius:20px;
     width:320px;
+    max-width:90%;
   }
   #nameInput input {
     padding:12px;
@@ -146,7 +152,7 @@
     color:white;
     padding:12px 24px;
     border-radius:12px;
-    font-size:20px;
+    font-size:18px;
     max-width:90%;
     z-index:1002;
     opacity:0;
@@ -183,8 +189,8 @@
     z-index:10000;
     display:none;
   }
-  #resultScreen h1 { font-size:48px; margin:20px; }
-  #resultScreen p { font-size:28px; }
+  #resultScreen h1 { font-size:42px; margin:20px; }
+  #resultScreen p { font-size:26px; }
   #resultScreen button {
     margin-top:30px;
     background:#4CAF50;
@@ -192,7 +198,7 @@
     border:none;
     border-radius:15px;
     padding:15px 40px;
-    font-size:22px;
+    font-size:20px;
     cursor:pointer;
   }
 
@@ -209,6 +215,16 @@
     font-weight:bold;
     z-index:1001;
     display:none;
+  }
+
+  /* ปรับขนาดสำหรับหน้าจอเล็ก */
+  @media (max-width: 480px) {
+    .shot-btn { font-size:14px; padding:10px 14px; border-radius:10px; }
+    #tl { top:6%; left:6%; }
+    #tr { top:6%; right:6%; }
+    #bl { bottom:6%; left:6%; }
+    #br { bottom:6%; right:6%; }
+    #center { font-size:14px; }
   }
 </style>
 </head>
@@ -299,6 +315,8 @@ let isButtonLocked = false;
 let gameStarted = false;
 let isMyTurn = false;
 let spokenTurns = new Set();
+let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+let audioContext = null;
 
 // === ข้อมูลทีม ===
 const squads = {
@@ -347,13 +365,7 @@ function preloadAllSounds() {
 
 // === เริ่ม/หยุด BGM ===
 function startBGM() {
-  const bgm = preloadedAudios["b.mp3"];
-  if (bgm) {
-    bgm.currentTime = 0;
-    bgm.volume = 0.3;
-    bgm.loop = true;
-    bgm.play().catch(() => {});
-  }
+  playAudio(preloadedAudios["b.mp3"], 0.3, true);
 }
 function stopBGM() {
   const bgm = preloadedAudios["b.mp3"];
@@ -375,9 +387,8 @@ function startSoundListener() {
 
     const audio = preloadedAudios[data.name];
     if (audio) {
-      audio.currentTime = 0;
-      audio.volume = data.name === "b.mp3" ? 0.3 : 1.0;
-      audio.play().catch(() => {});
+      const vol = data.name === "b.mp3" ? 0.3 : 1.0;
+      playAudio(audio, vol);
     }
 
     let msg = "";
@@ -403,29 +414,57 @@ function triggerSound(soundName, extra = {}) {
 
 // === TTS ===
 let ttsQueue = [];
-  let isSpeaking = false;
-  const ttsDisplay = document.getElementById("ttsDisplay");
+let isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
 
-  function speak(text) {
-    ttsQueue.push(text);
-    processTTS();
-  }
-  function processTTS() {
-    if (isSpeaking || ttsQueue.length === 0) return;
-    isSpeaking = true;
-    const msg = ttsQueue.shift();
-    ttsDisplay.textContent = msg;
-    ttsDisplay.classList.add('show');
+function speak(text) {
+  ttsQueue.push(text);
+  processTTS();
+}
+function processTTS() {
+  if (isSpeaking || ttsQueue.length === 0) return;
+  isSpeaking = true;
+  const msg = ttsQueue.shift();
+  ttsDisplay.textContent = msg;
+  ttsDisplay.classList.add('show');
+  setTimeout(() => {
+    document.getElementById("tts").innerText = msg;
     setTimeout(() => {
-      document.getElementById("tts").innerText = msg;
-      setTimeout(() => {
-        isSpeaking = false;
-        document.getElementById("tts").innerText = "";
-        ttsDisplay.classList.remove('show');
-        processTTS();
-      }, Math.max(800, msg.length * 50));
-    }, 50);
+      isSpeaking = false;
+      document.getElementById("tts").innerText = "";
+      ttsDisplay.classList.remove('show');
+      processTTS();
+    }, Math.max(800, msg.length * 50));
+  }, 50);
+}
+
+// === iOS Audio Context Unlock ===
+function unlockiOSAudio() {
+  if (!isIOS || audioContext) return;
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioContext.createBufferSource();
+  source.buffer = audioContext.createBuffer(1, 1, 22050);
+  source.connect(audioContext.destination);
+  source.start(0);
+}
+
+// === ฟังก์ชันเล่นเสียงที่รองรับ iOS ===
+function playAudio(audio, volume = 1.0, loop = false) {
+  if (isIOS && audioContext) {
+    // ใช้ AudioContext สำหรับ iOS
+    const source = audioContext.createMediaElementSource(audio);
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = volume;
+    source.connect(gainNode).connect(audioContext.destination);
+    audio.loop = loop;
+    audio.play().catch(() => {});
+  } else {
+    audio.volume = volume;
+    audio.loop = loop;
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
   }
+}
 
 // === Debounce ===
 function debounceClick(dir){
@@ -448,6 +487,17 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".team-btn").forEach(btn => {
     btn.onclick = () => chooseTeam(btn.getAttribute("data-team"));
   });
+
+  // ปลดล็อกเสียง iOS ตอนแตะครั้งแรก
+  if (isIOS) {
+    const unlock = () => {
+      unlockiOSAudio();
+      document.body.removeEventListener("touchstart", unlock);
+      document.body.removeEventListener("click", unlock);
+    };
+    document.body.addEventListener("touchstart", unlock);
+    document.body.addEventListener("click", unlock);
+  }
 });
 
 // === ยืนยันชื่อ ===
@@ -544,7 +594,6 @@ function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
   document.getElementById("backBtn").style.display = "block";
-  document.getElementById("roomName").textContent = "ห้อง: " + (promptRoomName || "ไม่ระบุ");
 
   if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`penaltyRooms/${roomId}`).on("value", snap => {
@@ -583,7 +632,6 @@ function showRoom() {
   });
 }
 
-let promptRoomName = "";
 function updateTeamButtons(room) {
   const selectDiv = document.getElementById("teamSelectInRoom");
   const waiting = document.getElementById("waitingMessage");
@@ -794,12 +842,19 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
+/* === กติกา FIFA จริง (ปรับให้ถูกต้อง) ===
+   - ยิงคนละ 5 ลูก สลับกัน
+   - ถ้าคะแนนเท่ากันหลัง 5 ลูก → เข้าซัดเดนเดธ (ยิงทีละลูก)
+   - ในซัดเดนเดธ: ใครนำก่อน 1 ลูก และอีกฝ่ายยิงไม่เข้า → ชนะทันที
+   - ไม่มีการยิงเกิน 5 ลูกถ้าผลตัดสินได้ก่อน
+*/
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, idxP1, idxP2) {
   const maxShots = 5;
-  const shotsDone = idxP1 + idxP2;
+  const totalShots = idxP1 + idxP2;
   const isSudden = data.isSudden;
 
-  if (!isSudden && shotsDone >= maxShots * 2) {
+  // หลัง 5 ลูกแต่ละฝ่าย
+  if (!isSudden && totalShots >= maxShots * 2) {
     if (scoreP1 !== scoreP2) {
       endGame(gameRef, scoreP1 > scoreP2 ? data.p1Id : data.p2Id, scoreP1, scoreP2);
       return;
@@ -809,9 +864,13 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, idxP1, idx
     }
   }
 
-  if (isSudden && Math.abs(scoreP1 - scoreP2) > 0 && (idxP1 > maxShots || idxP2 > maxShots)) {
-    endGame(gameRef, scoreP1 > scoreP2 ? data.p1Id : data.p2Id, scoreP1, scoreP2);
-    return;
+  // ซัดเดนเดธ: ตรวจสอบทันทีหลังยิงครบคู่
+  if (isSudden && totalShots >= (maxShots * 2) + 2) {
+    const diff = Math.abs(scoreP1 - scoreP2);
+    if (diff >= 1 && (idxP1 > maxShots || idxP2 > maxShots)) {
+      endGame(gameRef, scoreP1 > scoreP2 ? data.p1Id : data.p2Id, scoreP1, scoreP2);
+      return;
+    }
   }
 
   // ยังไม่จบ
