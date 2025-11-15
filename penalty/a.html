@@ -104,16 +104,110 @@ body {
   width:100vw;
   height:100vh;
 }
+
+/* ===== หน้าแรก ===== */
+#homeScreen {
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  gap:40px;
+}
+
+#homeScreen h1 {
+  font-size:48px;
+  margin:0;
+  text-shadow:2px 2px 4px rgba(0,0,0,0.8);
+}
+
+#modeSelect {
+  display:flex;
+  flex-direction:column;
+  gap:30px;
+}
+
+.mode-btn {
+  background:rgba(255,255,255,0.95);
+  border-radius:20px;
+  padding:30px 50px;
+  font-weight:bold;
+  cursor:pointer;
+  border:4px solid #fff;
+  font-size:28px;
+  transition:all 0.3s;
+  box-shadow:0 10px 25px rgba(0,0,0,0.5);
+  color:#333;
+}
+
+.mode-btn:hover {
+  background:#fff;
+  transform:translateY(-5px);
+  box-shadow:0 15px 35px rgba(0,0,0,0.7);
+}
+
+.mode-btn:active {
+  transform:scale(0.98) translateY(-2px);
+}
+
+#onlineScreen {
+  display:none;
+  flex-direction:column;
+  gap:30px;
+  position:fixed;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+}
+
+#onlineScreen p {
+  font-size:24px;
+}
+
+/* เพิ่ม: แสดงข้อความ TTS บนหน้าจอ */
+#ttsDisplay {
+  position:fixed;
+  bottom:20px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.7);
+  color:white;
+  padding:12px 24px;
+  border-radius:12px;
+  font-size:20px;
+  max-width:90%;
+  z-index:1002;
+  opacity:0;
+  transition:opacity 0.3s;
+  pointer-events:none;
+}
+#ttsDisplay.show { opacity:1; }
+
+/* เพิ่ม: ซ่อน h1 เมื่อเข้าหน้าเกม */
+#gameScreen h1 { display:none; }
 </style>
 </head>
 <body>
 
 <h1 style="margin-bottom:40px;">เกมยิงจุดโทษ 2005/2006</h1>
 
-<!-- aria-live สำหรับ iOS ต้องแบบ assertive -->
-<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+<!-- ===== หน้าแรก ===== -->
+<p>เกมจำลองการยิงจุดโทษแบบเสียง เพื่อความสนุกสนานสำหรับคนชอบฟุตบอล<p/>
+<div id="homeScreen">
+  <div id="modeSelect">
+    <button class="mode-btn" onclick="selectMode('bot')" aria-label="เล่นกับบอท" tabindex="0">เล่นกับบอท</button>
+  </div>
+</div>
 
-<div id="teamSelect">
+<!-- ===== หน้าจอออนไลน์ (ว่างไว้) ===== -->
+<div id="onlineScreen">
+  <p style="font-size:28px;">โหมดเล่นออนไลน์</p>
+  <p>กำลังพัฒนา...</p>
+  <button class="mode-btn" onclick="backToHome()" style="font-size:20px; padding:20px 40px;">กลับเมนูหลัก</button>
+</div>
+
+<!-- ===== หน้าจอเลือกทีม (เดิม) ===== -->
+<div id="teamSelect" style="display:none;">
 <p style="font-size:28px;">เลือกทีมของคุณ</p>
 <button onclick="selectTeam('Manchester United')" aria-label="แมนเชสเตอร์ ยูไนเต็ด" tabindex="0">แมนเชสเตอร์ ยูไนเต็ด</button>
 <button onclick="selectTeam('Liverpool')" aria-label="ลิเวอร์พูล" tabindex="0">ลิเวอร์พูล</button>
@@ -121,6 +215,7 @@ body {
 <button onclick="selectTeam('Chelsea')" aria-label="เชลซี" tabindex="0">เชลซี</button>
 </div>
 
+<!-- ===== หน้าจอเกม (เดิม) ===== -->
 <div id="gameScreen" style="display:none;">
 <div id="scoreBoard">Score ตอนนี้คือ 0 - 0</div>
 
@@ -131,6 +226,12 @@ body {
 <button id="br" class="shot-btn" onclick="debounceClick('BR')" aria-label="มุมขวาล่าง" tabindex="0">มุมขวาล่าง</button>
 </div>
 
+<!-- แสดงข้อความ TTS บนหน้าจอ -->
+<div id="ttsDisplay"></div>
+
+<!-- aria-live สำหรับ iOS -->
+<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+
 <!-- เสียง -->
 <audio id="bgm" loop src="audio/b.mp3"></audio>
 <audio id="goal" src="audio/t.mp3"></audio>
@@ -138,11 +239,35 @@ body {
 <audio id="end" src="audio/end.mp3"></audio>
 
 <script>
-/* ===============================
-   ระบบ TTS Queue สำหรับ iOS
+/* =============================== 
+   ระบบหน้าแรก
+   =============================== */
+function selectMode(mode) {
+  if(mode === 'bot') {
+    document.getElementById("homeScreen").style.display = "none";
+    document.getElementById("teamSelect").style.display = "flex";
+    // Focus ไปที่ปุ่มแรกของหน้าเลือกทีม
+    setTimeout(() => {
+      const firstBtn = document.querySelector('#teamSelect button');
+      if(firstBtn) firstBtn.focus();
+    }, 100);
+  } else if(mode === 'online') {
+    // เปลี่ยนแปลงตรงนี้: เปิดไฟล์ o.html แทนการแสดง onlineScreen
+    window.location.href = "o.html";
+  }
+}
+
+function backToHome() {
+  document.getElementById("onlineScreen").style.display = "none";
+  document.getElementById("homeScreen").style.display = "flex";
+}
+
+/* =============================== 
+   ระบบ TTS Queue + แสดงบนหน้าจอ
    =============================== */
 let ttsQueue = [];
 let isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
 
 function speak(text){
   ttsQueue.push(text);
@@ -155,19 +280,22 @@ function processTTS(){
   isSpeaking = true;
   const msg = ttsQueue.shift();
 
-  // เพิ่ม delay กันโดน Safari ตัดข้อความ
+  // แสดงข้อความบนหน้าจอ
+  ttsDisplay.textContent = msg;
+  ttsDisplay.classList.add('show');
+
   setTimeout(()=>{
     document.getElementById("tts").innerText = msg;
-    // ลดเวลาให้กระชับขึ้น
     setTimeout(()=>{
       isSpeaking = false;
-      document.getElementById("tts").innerText = ""; // ล้างหลังพูด
+      document.getElementById("tts").innerText = "";
+      ttsDisplay.classList.remove('show');
       processTTS();
     }, Math.max(600, msg.length * 40));
   }, 50);
 }
 
-/* ===============================
+/* =============================== 
    ฟังก์ชันรอให้เสียงเล่นจนจบ
    =============================== */
 function waitForSound(audioEl){
@@ -177,7 +305,7 @@ function waitForSound(audioEl){
   });
 }
 
-/* ===============================
+/* =============================== 
    ข้อมูลทีม
    =============================== */
 const squads = {
@@ -207,7 +335,7 @@ const squads = {
   }
 };
 
-/* ===============================
+/* =============================== 
    ตัวแปรเกม
    =============================== */
 let userTeam, cpuTeam;
@@ -222,7 +350,7 @@ let cpuShotsOrder = [];
 let shooterTeam = "";
 let shooterName = "";
 
-/* ===============================
+/* =28 
    Debounce สำหรับ VoiceOver
    =============================== */
 let isButtonLocked = false;
@@ -234,7 +362,7 @@ function debounceClick(dir){
   setTimeout(()=>{ isButtonLocked = false; }, 100);
 }
 
-/* ===============================
+/* =============================== 
    เสียง
    =============================== */
 const bgm = document.getElementById("bgm");
@@ -244,7 +372,7 @@ const endSnd = document.getElementById("end");
 
 function playSound(el){
   el.currentTime = 0;
-  el.play().catch(()=>{});
+  el.play().catch(()=>{});  
 }
 
 function stopBGM(){
@@ -252,7 +380,7 @@ function stopBGM(){
   bgm.currentTime = 0;
 }
 
-/* ===============================
+/* =============================== 
    Utility
    =============================== */
 function shuffle(a){
@@ -266,11 +394,11 @@ function shuffle(a){
 function createShotsOrder(team){
   let players = squads[team].players.slice();
   shuffle(players);
-  players.push(squads[team].keeper); // keeper last
+  players.push(squads[team].keeper);
   return players;
 }
 
-/* ===============================
+/* =============================== 
    เลือกทีม
    =============================== */
 function selectTeam(team){
@@ -280,6 +408,9 @@ function selectTeam(team){
 
   document.getElementById("teamSelect").style.display="none";
   document.getElementById("gameScreen").style.display="block";
+
+  // ซ่อน h1 ชื่อเกมเมื่อเข้าหน้าเกม
+  document.querySelector('h1').style.display = 'none';
 
   userShotsOrder = createShotsOrder(userTeam);
   cpuShotsOrder = createShotsOrder(cpuTeam);
@@ -294,7 +425,7 @@ function selectTeam(team){
   playSound(bgm);
 }
 
-/* ===============================
+/* =============================== 
    เริ่มตา
    =============================== */
 function startTurn(){
@@ -310,7 +441,7 @@ function startTurn(){
   }
 }
 
-/* ===============================
+/* =============================== 
    ยิง
    =============================== */
 async function chooseDirection(dir){
@@ -324,11 +455,9 @@ async function chooseDirection(dir){
 
   const finalMsg = `${shooterName} ${shooterTeam} ยิง${isGoal?"เข้า":"ไม่เข้า"}! Score ${score} - ${oppScore}`;
 
-  // 🎧 รอให้เสียงจบก่อนพูดผล
   if(isGoal) await waitForSound(goalSnd);
   else await waitForSound(missSnd);
 
-  // แล้วค่อยพูดผล (iOS จะไม่ตัด)
   speak(finalMsg);
 
   if(turn===0) shotIndexUser++;
@@ -337,48 +466,41 @@ async function chooseDirection(dir){
   setTimeout(checkGameEndOrNext, 1000);
 }
 
-/* ===============================
-   ตรวจจบเกม (ปรับตาม FIFA)
+/* =============================== 
+   ตรวจจบเกม
    =============================== */
 function checkGameEndOrNext(){
-  let rU = 5 - shotIndexUser; // เหลือยิงของ user
-  let rC = 5 - shotIndexCPU; // เหลือยิงของ CPU
+  let rU = 5 - shotIndexUser;
+  let rC = 5 - shotIndexCPU;
   let end = false;
 
   if(!isSudden){
-    // ตรวจสอบการชนะก่อนครบ 5 ลูก
     if(shotIndexUser > shotIndexCPU){
-      // User เพิ่งยิง
       if(score - oppScore > rC){
-        end = true; // User ชนะ เพราะ CPU ตามไม่ทัน
+        end = true;
       }
     } else if(shotIndexCPU >= shotIndexUser){
-      // CPU เพิ่งยิง
       if(oppScore - score > rU){
-        end = true; // CPU ชนะ เพราะ User ตามไม่ทัน
+        end = true;
       }
     }
 
-    // ถ้าครบ 5 ลูกทั้งคู่
     if(shotIndexUser >= 5 && shotIndexCPU >= 5){
       if(score !== oppScore){
-        end = true; // มีผู้ชนะ
+        end = true;
       } else {
         isSudden = true;
         speak("เข้าสู่ซัดเดนเดธ!");
       }
     }
   } else {
-    // ซัดเดนเดธ: ต้องยิงครบคู่ในรอบเดียวกัน
     if(shotIndexUser > shotIndexCPU){
-      // รอ CPU ยิง
       turn = 1;
       setTimeout(startTurn, 800);
       return;
     } else if(shotIndexCPU >= shotIndexUser){
-      // ทั้งคู่ยิงครบรอบนี้
       if(score !== oppScore){
-        end = true; // มีผู้ชนะ
+        end = true;
       }
     }
   }
@@ -397,7 +519,7 @@ function checkGameEndOrNext(){
   }
 }
 
-/* ===============================
+/* =============================== 
    อัปเดตคะแนน
    =============================== */
 function updateScoreboard(){
@@ -405,7 +527,7 @@ function updateScoreboard(){
       `Score ตอนนี้คือ ${score} - ${oppScore}`;
 }
 
-/* ===============================
+/* =============================== 
    รีเซ็ตเกม
    =============================== */
 function resetGame(){
@@ -418,7 +540,10 @@ function resetGame(){
   cpuShotsOrder=[];
 
   document.getElementById("gameScreen").style.display="none";
-  document.getElementById("teamSelect").style.display="block";
+  document.getElementById("teamSelect").style.display="flex";
+
+  // แสดง h1 กลับเมื่อกลับไปเลือกทีม
+  document.querySelector('h1').style.display = 'block';
 }
 </script>
 </body>
