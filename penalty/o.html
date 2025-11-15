@@ -311,9 +311,37 @@ let isMyTurn = false;
 let spokenTurns = new Set();
 let shotOrderP1 = [], shotOrderP2 = [];
 
-// === ตัวแปรใหม่: ป้องกัน double play ของ t.mp3 / f.mp3 ===
+// === ป้องกัน double play ===
 let lastProcessedTurn = -1;
 let currentTurnFromShot = -1;
+
+// === Audio Context Unlock (สำคัญมากสำหรับ Windows) ===
+let audioContextUnlocked = false;
+let unlockAudioPromise = null;
+
+function unlockAudioContext() {
+  if (audioContextUnlocked) return Promise.resolve();
+  if (unlockAudioPromise) return unlockAudioPromise;
+
+  unlockAudioPromise = new Promise((resolve) => {
+    const unlock = () => {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createBufferSource();
+      source.buffer = ctx.createBuffer(1, 1, 22050);
+      source.connect(ctx.destination);
+      source.start(0);
+      if (ctx.state === 'running') {
+        audioContextUnlocked = true;
+        document.removeEventListener('click', unlock);
+        document.removeEventListener('touchstart', unlock);
+        resolve();
+      }
+    };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('touchstart', unlock, { once: true });
+  });
+  return unlockAudioPromise;
+}
 
 // === โหลดเสียง ===
 function preloadAllSounds() {
@@ -321,6 +349,7 @@ function preloadAllSounds() {
   files.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
+    audio.load();
     preloadedAudios[name] = audio;
   });
   bgmAudio = preloadedAudios["b.mp3"];
@@ -334,6 +363,7 @@ function startBGM() {
     bgmAudio.play().catch(() => {});
   }
 }
+
 function stopBGM() {
   if (bgmAudio) {
     bgmAudio.pause();
@@ -341,36 +371,44 @@ function stopBGM() {
   }
 }
 
-/* === แก้ playSound() ป้องกัน double play จากหลายคน === */
+// === ฟังก์ชันเล่นเสียงที่ปลดล็อกแล้ว ===
+async function safePlay(audio) {
+  await unlockAudioContext();
+  audio.currentTime = 0;
+  return audio.play().catch(() => {});
+}
+
 function playSound(name) {
   if (name === "b.mp3") return;
 
-  // ป้องกัน t.mp3 / f.mp3 เล่นซ้ำจากหลายคน
   if ((name === "t.mp3" || name === "f.mp3") && lastProcessedTurn === currentTurnFromShot) {
     return;
   }
 
   const audio = preloadedAudios[name];
   if (audio) {
-    audio.currentTime = 0;
-    audio.volume = 1;
-    audio.play().catch(() => {});
+    safePlay(audio);
   }
 }
 
+// === Trigger เสียงผ่าน Firebase (แต่ไม่เล่นทันที) ===
 function triggerSound(name) {
   if (!roomId) return;
   db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
-    name: name, time: Date.now(), playerId: playerId
+    name: name,
+    time: Date.now(),
+    playerId: playerId
   });
 }
+
+// === ฟัง Firebase แล้วเล่นเมื่อพร้อม ===
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
   soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => {
     const data = s.val();
-    if (data && data.time && Date.now() - data.time < 1000) {
+    if (data && data.time && Date.now() - data.time < 1500) {
       playSound(data.name);
     }
   });
@@ -404,8 +442,12 @@ function processTTS(){
 
 function waitForSound(audioEl){
   return new Promise(resolve => {
-    audioEl.onended = ()=>resolve();
-    audioEl.play().catch(()=> resolve());
+    const onEnd = () => {
+      audioEl.removeEventListener('ended', onEnd);
+      resolve();
+    };
+    audioEl.addEventListener('ended', onEnd);
+    safePlay(audioEl).catch(() => resolve());
   });
 }
 
@@ -457,7 +499,7 @@ function debounceClick(dir){
   if(isButtonLocked || !isMyTurn) return;
   isButtonLocked = true;
   chooseDirection(dir);
-  setTimeout(()=>{ isButtonLocked = false; }, 100);
+  setTimeout(()=>{ isButtonLocked = false; }, 300);
 }
 
 const goalSnd = document.getElementById("goal");
@@ -480,6 +522,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".team-btn").forEach(btn => {
     btn.onclick = () => chooseTeam(btn.getAttribute("data-team"));
   });
+
+  // ปลดล็อกเสียงทันทีเมื่อกดปุ่มใด ๆ
+  document.body.addEventListener('click', unlockAudioContext, { once: true });
 });
 
 /* === ยืนยันชื่อ === */
@@ -497,7 +542,7 @@ function confirmName() {
   loadRooms();
 }
 
-/* === สร้างห้องใหม่ (แก้บั๊กแล้ว) === */
+/* === สร้างห้องใหม่ === */
 async function showCreateRoom() {
   const name = prompt("ตั้งชื่อห้อง:");
   if (!name || name.trim() === "") return;
@@ -807,7 +852,7 @@ function startGameplay(room, players) {
   });
 }
 
-/* === แก้ processShot: ให้เฉพาะผู้ยิง trigger เสียง === */
+/* === processShot: ผู้ยิงเป็นคน trigger เสียงจริง ๆ === */
 async function processShot(data, players, gameRef) {
   const processedRef = gameRef.child('processed');
   const transactionResult = await processedRef.transaction(current => {
@@ -831,6 +876,7 @@ async function processShot(data, players, gameRef) {
 
   const isGoal = data.shooterDir !== data.keeperDir;
 
+  // เล่นเสียงจากฝั่งผู้ยิงก่อน
   if (isGoal) await waitForSound(goalSnd);
   else await waitForSound(missSnd);
 
@@ -846,12 +892,12 @@ async function processShot(data, players, gameRef) {
     speak(finalMsg);
   }
 
-  // ให้เฉพาะผู้ยิง trigger เสียง
+  // ผู้ยิงเป็นคน trigger เสียงผ่าน Firebase
   if (playerId === currentShooterId) {
     const soundName = isGoal ? "t.mp3" : "f.mp3";
     triggerSound(soundName);
-    currentTurnFromShot = data.turn;  // อัปเดต turn ที่ trigger
-    lastProcessedTurn = data.turn;    // ป้องกันเล่นซ้ำ
+    currentTurnFromShot = data.turn;
+    lastProcessedTurn = data.turn;
   }
 
   const updates = {
@@ -874,7 +920,7 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
-// ปรับกฎตาม FIFA: ยิง 5 คู่ก่อน → ถ้าเสมอ → ซัดเดนเดธ
+// กฎ FIFA
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) {
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
@@ -977,6 +1023,8 @@ function backToLobby() {
   shotOrderP1 = []; shotOrderP2 = [];
   lastProcessedTurn = -1;
   currentTurnFromShot = -1;
+  audioContextUnlocked = false;
+  unlockAudioPromise = null;
   
   if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
   if (soundListener) { soundListener.off(); soundListener = null; }
