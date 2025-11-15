@@ -16,7 +16,6 @@
     position:relative;
   }
 
-  /* ปุ่มยิง/เซฟ – ปรับขนาดให้พอดีหน้าจอทุกอุปกรณ์ */
   .shot-btn { 
     position:fixed;
     background:rgba(255,255,255,0.9); 
@@ -37,7 +36,6 @@
   .shot-btn:disabled { opacity:0.5; cursor:not-allowed; }
   .shot-btn.locked { opacity:0.3; cursor:not-allowed; }
 
-  /* ใช้ flexbox + % เพื่อจัดตำแหน่งปุ่มให้พอดีทุกหน้าจอ */
   #tl { top:8%; left:8%; }
   #tr { top:8%; right:8%; }
   #center { top:50%; left:50%; transform:translate(-50%, -50%); }
@@ -58,7 +56,6 @@
     border:2px solid #fff;
   }
 
-  /* หน้าแรก: ตั้งชื่อ */
   #nameInput {
     display:flex;
     flex-direction:column;
@@ -90,12 +87,10 @@
     cursor:pointer;
   }
 
-  /* ล็อบบี้ */
   #lobby, #room { display:none; }
   ul { list-style:none; padding:0; margin:0; }
   li { margin:8px 0; background:rgba(255,255,255,0.1); padding:12px; border-radius:10px; }
 
-  /* เลือกทีม */
   #teamSelectInRoom {
     display:none;
     flex-direction:column;
@@ -142,7 +137,6 @@
     cursor:pointer;
   }
 
-  /* TTS */
   #ttsDisplay {
     position:fixed;
     bottom:20px;
@@ -217,7 +211,6 @@
     display:none;
   }
 
-  /* ปรับขนาดสำหรับหน้าจอเล็ก */
   @media (max-width: 480px) {
     .shot-btn { font-size:14px; padding:10px 14px; border-radius:10px; }
     #tl { top:6%; left:6%; }
@@ -290,11 +283,18 @@
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
+<!-- เสียง (ใช้ <audio> เหมือน a.html) -->
+<audio id="bgm" loop preload="auto"></audio>
+<audio id="goal" preload="auto"></audio>
+<audio id="miss" preload="auto"></audio>
+<audio id="end" preload="auto"></audio>
+<audio id="friend" preload="auto"></audio>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-// === เริ่มต้น Firebase ===
+// === Firebase ===
 const firebaseConfig = {
   apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
   authDomain: "xo-game-134ec.firebaseapp.com",
@@ -310,7 +310,6 @@ const db = firebase.database();
 // === ตัวแปรหลัก ===
 let playerName = "", roomId = "", playerId = "", isHost = false;
 let currentRoomListener = null, soundListener = null, lobbyRoomsListener = null;
-let preloadedAudios = {};
 let isButtonLocked = false;
 let gameStarted = false;
 let isMyTurn = false;
@@ -352,27 +351,64 @@ function createShotsOrder(team) {
   return players;
 }
 
-// === โหลดเสียงทั้งหมดล่วงหน้า ===
-function preloadAllSounds() {
-  const files = ["b.mp3", "t.mp3", "f.mp3", "end.mp3", "friend.mp3"];
-  files.forEach(name => {
-    const audio = new Audio(`audio/${name}`);
-    audio.preload = "auto";
-    audio.load();
-    preloadedAudios[name] = audio;
+// === เสียง (ใช้ <audio> + unlock iOS เหมือน a.html) ===
+const bgm = document.getElementById("bgm");
+const goalSnd = document.getElementById("goal");
+const missSnd = document.getElementById("miss");
+const endSnd = document.getElementById("end");
+const friendSnd = document.getElementById("friend");
+
+// โหลดไฟล์เสียงล่วงหน้า
+function preloadSounds() {
+  bgm.src = "audio/b.mp3";
+  goalSnd.src = "audio/t.mp3";
+  missSnd.src = "audio/f.mp3";
+  endSnd.src = "audio/end.mp3";
+  friendSnd.src = "audio/friend.mp3";
+  console.log("Preload sounds completed.");
+}
+
+// ฟังก์ชันรอเสียงจบ (เหมือน a.html)
+function waitForSound(audioEl){
+  return new Promise(resolve => {
+    audioEl.onended = () => resolve();
+    audioEl.play().catch(() => resolve());
   });
 }
 
-// === เริ่ม/หยุด BGM ===
-function startBGM() {
-  playAudio(preloadedAudios["b.mp3"], 0.3, true);
-}
-function stopBGM() {
-  const bgm = preloadedAudios["b.mp3"];
-  if (bgm) { bgm.pause(); bgm.currentTime = 0; }
+// เล่นเสียง (รองรับ iOS)
+function playSound(el, volume = 1.0, loop = false) {
+  if (isIOS && audioContext) {
+    const source = audioContext.createMediaElementSource(el);
+    const gain = audioContext.createGain();
+    gain.gain.value = volume;
+    source.connect(gain).connect(audioContext.destination);
+    el.loop = loop;
+    el.play().catch(() => {});
+  } else {
+    el.volume = volume;
+    el.loop = loop;
+    el.currentTime = 0;
+    el.play().catch(() => {});
+  }
 }
 
-// === ฟังก์ชันเล่นเสียงจาก server (ทุกฝ่าย) ===
+// Unlock iOS Audio Context
+function unlockiOSAudio() {
+  if (!isIOS || audioContext) return;
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const buffer = audioContext.createBuffer(1, 1, 22050);
+  const source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioContext.destination);
+  source.start(0);
+}
+
+// เริ่ม/หยุด BGM
+function startBGM() { playSound(bgm, 0.3, true); }
+function stopBGM() { bgm.pause(); bgm.currentTime = 0; }
+
+// ฟังก์ชัน trigger เสียงจาก server
 let lastSoundId = null;
 function startSoundListener() {
   if (soundListener) soundListener.off();
@@ -385,11 +421,15 @@ function startSoundListener() {
     if (lastSoundId === data.id) return;
     lastSoundId = data.id;
 
-    const audio = preloadedAudios[data.name];
-    if (audio) {
-      const vol = data.name === "b.mp3" ? 0.3 : 1.0;
-      playAudio(audio, vol);
+    let audio = null, vol = 1.0;
+    switch(data.name) {
+      case "b.mp3": audio = bgm; vol = 0.3; break;
+      case "t.mp3": audio = goalSnd; break;
+      case "f.mp3": audio = missSnd; break;
+      case "end.mp3": audio = endSnd; break;
+      case "friend.mp3": audio = friendSnd; break;
     }
+    if (audio) playSound(audio, vol);
 
     let msg = "";
     if (data.name === "t.mp3") msg = "ยิงเข้า!";
@@ -400,10 +440,9 @@ function startSoundListener() {
   });
 }
 
-// === ส่งคำสั่งเล่นเสียง ===
 function triggerSound(soundName, extra = {}) {
   if (!roomId) return;
-  const id = Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+  const id = Date.now() + "_" + Math.random().toString(36).substr(2,9);
   db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
     name: soundName,
     id: id,
@@ -413,8 +452,7 @@ function triggerSound(soundName, extra = {}) {
 }
 
 // === TTS ===
-let ttsQueue = [];
-let isSpeaking = false;
+let ttsQueue = [], isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
 
 function speak(text) {
@@ -438,34 +476,6 @@ function processTTS() {
   }, 50);
 }
 
-// === iOS Audio Context Unlock ===
-function unlockiOSAudio() {
-  if (!isIOS || audioContext) return;
-  audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const source = audioContext.createBufferSource();
-  source.buffer = audioContext.createBuffer(1, 1, 22050);
-  source.connect(audioContext.destination);
-  source.start(0);
-}
-
-// === ฟังก์ชันเล่นเสียงที่รองรับ iOS ===
-function playAudio(audio, volume = 1.0, loop = false) {
-  if (isIOS && audioContext) {
-    // ใช้ AudioContext สำหรับ iOS
-    const source = audioContext.createMediaElementSource(audio);
-    const gainNode = audioContext.createGain();
-    gainNode.gain.value = volume;
-    source.connect(gainNode).connect(audioContext.destination);
-    audio.loop = loop;
-    audio.play().catch(() => {});
-  } else {
-    audio.volume = volume;
-    audio.loop = loop;
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-  }
-}
-
 // === Debounce ===
 function debounceClick(dir){
   if(isButtonLocked || !isMyTurn) return;
@@ -476,9 +486,11 @@ function debounceClick(dir){
 
 // === เริ่มต้นแอป ===
 document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOM loaded, preloading sounds...");
+  preloadSounds();
+
   const playerNameInput = document.getElementById("playerName");
   const confirmBtn = document.getElementById("confirmNameBtn");
-
   playerNameInput.focus();
   confirmBtn.addEventListener("click", confirmName);
   playerNameInput.addEventListener("keydown", e => { if (e.key === "Enter") confirmName(); });
@@ -488,7 +500,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.onclick = () => chooseTeam(btn.getAttribute("data-team"));
   });
 
-  // ปลดล็อกเสียง iOS ตอนแตะครั้งแรก
+  // Unlock iOS audio บน touch/click ครั้งแรก
   if (isIOS) {
     const unlock = () => {
       unlockiOSAudio();
@@ -498,18 +510,26 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.addEventListener("touchstart", unlock);
     document.body.addEventListener("click", unlock);
   }
+  console.log("Event listeners set up.");
 });
 
 // === ยืนยันชื่อ ===
 function confirmName() {
+  console.log("confirmName called.");
   const input = document.getElementById("playerName");
   playerName = input.value.trim();
-  if (!playerName) { alert("กรุณาใส่ชื่อ"); return; }
+  if (!playerName) { 
+    alert("กรุณาใส่ชื่อ"); 
+    return; 
+  }
   playerId = Math.random().toString(36).substr(2,9);
+  console.log("Player ID generated:", playerId);
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
-  preloadAllSounds();
+  // แก้ไข: เรียก preloadSounds() ที่ถูกต้อง (ไม่ใช่ preloadAllSounds)
+  preloadSounds();  // ย้ายมาที่นี่เพื่อ preload เสียงหลังจาก Firebase load
   loadRooms();
+  console.log("Switched to lobby, sounds preloaded.");
 }
 
 // === สร้างห้องใหม่ ===
