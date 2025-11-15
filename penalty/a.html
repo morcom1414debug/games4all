@@ -6,14 +6,7 @@
 <style>
 body { font-family: Tahoma; background:#111; color:white; text-align:center; }
 .goal-container {position:relative;width:400px;height:220px;margin:auto;}
-.goal-img {width:100%;height:100%;border:2px solid #fff;border-radius:10px;}
-.shot-btn {position:absolute;background:rgba(255,255,255,0.85);border-radius:7px;padding:7px;font-weight:bold;cursor:pointer;border:none;}
-#tl {top:10px; left:20px;} 
-#tr {top:10px; right:20px;} 
-#center {top:90px; left:50%; transform:translateX(-50%);} 
-#bl {bottom:10px; left:20px;} 
-#br {bottom:10px; right:20px;}
-#scoreBoard {margin-top:20px; font-size:20px;}
+.goal-img {width:100%;height:100%;border:2px solid #fff;border-radius:10  {margin-top:20px; font-size:20px;}
 </style>
 </head>
 <body>
@@ -25,10 +18,10 @@ body { font-family: Tahoma; background:#111; color:white; text-align:center; }
 
 <div id="teamSelect">
 <p>เลือกทีมของคุณ</p>
-<button onclick="selectTeam('Manchester United')">แมนเชสเตอร์ ยูไนเต็ด</button>
-<button onclick="selectTeam('Liverpool')">ลิเวอร์พูล</button>
-<button onclick="selectTeam('Arsenal')">อาร์เซนอล</button>
-<button onclick="selectTeam('Chelsea')">เชลซี</button>
+<button onclick="selectTeam('Manchester United')" aria-label="เลือกทีมแมนเชสเตอร์ ยูไนเต็ด" tabindex="0">แมนเชสเตอร์ ยูไนเต็ด</button>
+<button onclick="selectTeam('Liverpool')" aria-label="เลือกทีมลิเวอร์พูล" tabindex="0">ลิเวอร์พูล</button>
+<button onclick="selectTeam('Arsenal')" aria-label="เลือกทีมอาร์เซนอล" tabindex="0">อาร์เซนอล</button>
+<button onclick="selectTeam('Chelsea')" aria-label="เลือกทีมเชลซี" tabindex="0">เชลซี</button>
 </div>
 
 <div id="gameScreen" style="display:none;">
@@ -36,11 +29,11 @@ body { font-family: Tahoma; background:#111; color:white; text-align:center; }
 
 <div class="goal-container">
 <img src="https://i.imgur.com/v8hF1P8.png" class="goal-img">
-<button id="tl" class="shot-btn" onclick="chooseDirection('TL')">มุมซ้ายบน</button>
-<button id="tr" class="shot-btn" onclick="chooseDirection('TR')">มุมขวาบน</button>
-<button id="center" class="shot-btn" onclick="chooseDirection('C')">ตรงกลาง</button>
-<button id="bl" class="shot-btn" onclick="chooseDirection('BL')">มุมซ้ายล่าง</button>
-<button id="br" class="shot-btn" onclick="chooseDirection('BR')">มุมขวาล่าง</button>
+<button id="tl" class="shot-btn" onclick="debounceClick('TL')" aria-label="ยิงมุมซ้ายบน" tabindex="0">มุมซ้ายบน</button>
+<button id="tr" class="shot-btn" onclick="debounceClick('TR')" aria-label="ยิงมุมขวาบน" tabindex="0">มุมขวาบน</button>
+<button id="center" class="shot-btn" onclick="debounceClick('C')" aria-label="ยิงตรงกลาง" tabindex="0">ตรงกลาง</button>
+<button id="bl" class="shot-btn" onclick="debounceClick('BL')" aria-label="ยิงมุมซ้ายล่าง" tabindex="0">มุมซ้ายล่าง</button>
+<button id="br" class="shot-btn" onclick="debounceClick('BR')" aria-label="ยิงมุมขวาล่าง" tabindex="0">มุมขวาล่าง</button>
 </div>
 </div>
 
@@ -70,16 +63,14 @@ function processTTS(){
 
   // เพิ่ม delay กันโดน Safari ตัดข้อความ
   setTimeout(()=>{
-    document.getElementById("tts").innerText = "";
+    document.getElementById("tts").innerText = msg;
+    // ลดเวลาให้กระชับขึ้น
     setTimeout(()=>{
-      document.getElementById("tts").innerText = msg;
-      // รอให้ข้อความอ่าน ~0.8–1.2 วินาที ตามความยาว
-      setTimeout(()=>{
-        isSpeaking = false;
-        processTTS();
-      }, Math.max(900, msg.length * 55));
-    }, 50);
-  }, 100);
+      isSpeaking = false;
+      document.getElementById("tts").innerText = ""; // ล้างหลังพูด
+      processTTS();
+    }, Math.max(600, msg.length * 40));
+  }, 50);
 }
 
 /* ===============================
@@ -136,6 +127,18 @@ let cpuShotsOrder = [];
 
 let shooterTeam = "";
 let shooterName = "";
+
+/* ===============================
+   Debounce สำหรับ VoiceOver
+   =============================== */
+let isButtonLocked = false;
+
+function debounceClick(dir){
+  if(isButtonLocked) return;
+  isButtonLocked = true;
+  chooseDirection(dir);
+  setTimeout(()=>{ isButtonLocked = false; }, 100);
+}
 
 /* ===============================
    เสียง
@@ -204,12 +207,10 @@ function startTurn(){
   if(turn===0){
     shooterTeam = userTeam;
     shooterName = userShotsOrder[shotIndexUser];
-
     speak(`ลูกที่ ${shotIndexUser+1} ${shooterTeam}: ${shooterName} เตรียมยิง`);
   } else {
     shooterTeam = cpuTeam;
     shooterName = cpuShotsOrder[shotIndexCPU];
-
     let keeper = squads[userTeam].keeper;
     speak(`ลูกที่ ${shotIndexCPU+1} ${shooterTeam}: ${shooterName} เตรียมยิง ${keeper} ของคุณพร้อมเซฟ`);
   }
@@ -227,7 +228,7 @@ async function chooseDirection(dir){
 
   updateScoreboard();
 
-  const finalMsg = `${shooterName}  ${shooterTeam} ยิง${isGoal?"เข้า":"ไม่เข้า"}!  Score ${score} - ${oppScore}`;
+  const finalMsg = `${shooterName} ${shooterTeam} ยิง${isGoal?"เข้า":"ไม่เข้า"}! Score ${score} - ${oppScore}`;
 
   // 🎧 รอให้เสียงจบก่อนพูดผล
   if(isGoal) await waitForSound(goalSnd);
@@ -243,28 +244,55 @@ async function chooseDirection(dir){
 }
 
 /* ===============================
-   ตรวจจบเกม
+   ตรวจจบเกม (ปรับตาม FIFA)
    =============================== */
 function checkGameEndOrNext(){
-  let rU = 5 - shotIndexUser;
-  let rC = 5 - shotIndexCPU;
+  let rU = 5 - shotIndexUser; // เหลือยิงของ user
+  let rC = 5 - shotIndexCPU; // เหลือยิงของ CPU
   let end = false;
 
   if(!isSudden){
-    if(score - oppScore > rC) end = true;
-    else if(oppScore - score > rU) end = true;
-    else if(shotIndexUser>=5 && shotIndexCPU>=5 && score===oppScore){
-      isSudden = true;
-      speak("เข้าสู่ซัดเดนเดธ!");
+    // ตรวจสอบการชนะก่อนครบ 5 ลูก
+    if(shotIndexUser > shotIndexCPU){
+      // User เพิ่งยิง
+      if(score - oppScore > rC){
+        end = true; // User ชนะ เพราะ CPU ตามไม่ทัน
+      }
+    } else if(shotIndexCPU >= shotIndexUser){
+      // CPU เพิ่งยิง
+      if(oppScore - score > rU){
+        end = true; // CPU ชนะ เพราะ User ตามไม่ทัน
+      }
+    }
+
+    // ถ้าครบ 5 ลูกทั้งคู่
+    if(shotIndexUser >= 5 && shotIndexCPU >= 5){
+      if(score !== oppScore){
+        end = true; // มีผู้ชนะ
+      } else {
+        isSudden = true;
+        speak("เข้าสู่ซัดเดนเดธ!");
+      }
     }
   } else {
-    if(turn===1 && score !== oppScore) end = true;
+    // ซัดเดนเดธ: ต้องยิงครบคู่ในรอบเดียวกัน
+    if(shotIndexUser > shotIndexCPU){
+      // รอ CPU ยิง
+      turn = 1;
+      setTimeout(startTurn, 800);
+      return;
+    } else if(shotIndexCPU >= shotIndexUser){
+      // ทั้งคู่ยิงครบรอบนี้
+      if(score !== oppScore){
+        end = true; // มีผู้ชนะ
+      }
+    }
   }
 
   if(end){
     stopBGM();
     waitForSound(endSnd).then(()=>{
-      let msg = score>oppScore ? `${userTeam} ชนะ!` : `${cpuTeam} ชนะ!`;
+      let msg = score > oppScore ? `${userTeam} ชนะ!` : score < oppScore ? `${cpuTeam} ชนะ!` : "เสมอ!"; // เผื่อกรณีเสมอ
       speak(msg);
       setTimeout(()=> alert(msg), 800);
       setTimeout(resetGame, 1200);
