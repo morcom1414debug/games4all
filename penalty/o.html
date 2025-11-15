@@ -274,12 +274,6 @@
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
-<!-- เสียง -->
-<audio id="bgm" loop src="audio/b.mp3"></audio>
-<audio id="goal" src="audio/t.mp3"></audio>
-<audio id="miss" src="audio/f.mp3"></audio>
-<audio id="end" src="audio/end.mp3"></audio>
-
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
@@ -304,23 +298,54 @@ let preloadedAudios = {};
 let isButtonLocked = false;
 let gameStarted = false;
 let isMyTurn = false;
-
-// === TTS & ARIA LIVE ===
 let spokenTurns = new Set();
-let shotOrderP1 = [], shotOrderP2 = [];
-let lastProcessedTurn = -1;   // ป้องกันการเล่นซ้ำ
 
-// === โหลดเสียง ===
+// === ข้อมูลทีม ===
+const squads = {
+  "Manchester United": {
+    keeper: "ฟาน เดอร์ ซาร์",
+    players: ["รูนี่ย์", "ฟาน นิสเตลรอย", "กิกส์", "สโคลส์", "เฟอร์ดินานด์"]
+  },
+  "Liverpool": {
+    keeper: "เรน่า",
+    players: ["เจอร์ราร์ด", "ซิสโก้", "อัลonso", "การ์เซีย", "คราวช์"]
+  },
+  "Arsenal": {
+    keeper: "เลห์มันน์",
+    players: ["เฮนรี่", "ปิแรส", "ลุงเบิร์ก", "ฟาเบรกาส", "วิเอร่า"]
+  },
+  "Chelsea": {
+    keeper: "เช็ก",
+    players: ["แลมพาร์ด", "ดร็อกบา", "ร็อบเบน", "โจ โคล", "มาเคเลเล่"]
+  }
+};
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function createShotsOrder(team) {
+  const players = [...squads[team].players];
+  shuffle(players);
+  return players;
+}
+
+// === โหลดเสียงทั้งหมดล่วงหน้า ===
 function preloadAllSounds() {
-  const files = ["friend.mp3", "b.mp3", "t.mp3", "f.mp3", "end.mp3"];
+  const files = ["b.mp3", "t.mp3", "f.mp3", "end.mp3", "friend.mp3"];
   files.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
+    audio.load();
     preloadedAudios[name] = audio;
   });
-  // ใช้ preloaded เท่านั้น ไม่ใช้ <audio> DOM
 }
 
+// === เริ่ม/หยุด BGM ===
 function startBGM() {
   const bgm = preloadedAudios["b.mp3"];
   if (bgm) {
@@ -335,117 +360,72 @@ function stopBGM() {
   if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
-// ใช้ trigger จาก server เพื่อซิงค์ทั้ง 2 ฝ่าย
-function triggerSound(name) {
-  if (!roomId) return;
-  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
-    name: name,
-    time: Date.now(),
-    playerId: playerId
-  });
-}
-
-// ฟังจาก server แล้วเล่นเสียง + TTS + aria-live
+// === ฟังก์ชันเล่นเสียงจาก server (ทุกฝ่าย) ===
+let lastSoundId = null;
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
-  soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
-  soundListener.on("value", s => {
-    const data = s.val();
-    if (!data || Date.now() - data.time > 1000) return;
 
-    const name = data.name;
-    const audio = preloadedAudios[name];
+  soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
+  soundListener.on("value", snap => {
+    const data = snap.val();
+    if (!data || !data.name || !data.id) return;
+    if (lastSoundId === data.id) return;
+    lastSoundId = data.id;
+
+    const audio = preloadedAudios[data.name];
     if (audio) {
       audio.currentTime = 0;
-      audio.volume = 1;
+      audio.volume = data.name === "b.mp3" ? 0.3 : 1.0;
       audio.play().catch(() => {});
     }
 
-    // สร้างข้อความ aria-live และ TTS
     let msg = "";
-    if (name === "t.mp3") msg = "ยิงเข้า!";
-    else if (name === "f.mp3") msg = "ยิงไม่เข้า!";
-    else if (name === "end.mp3") msg = "จบเกม!";
-    else if (name === "friend.mp3") msg = `${playerName} เลือกทีมแล้ว`;
-
-    if (msg) {
-      speak(msg);
-      const live = document.getElementById("tts");
-      live.textContent = msg;
-      setTimeout(() => live.textContent = "", 3000);
-    }
+    if (data.name === "t.mp3") msg = "ยิงเข้า!";
+    else if (data.name === "f.mp3") msg = "ยิงไม่เข้า!";
+    else if (data.name === "end.mp3") msg = "จบเกม!";
+    else if (data.name === "friend.mp3") msg = `${data.playerName || ''} เลือกทีมแล้ว`;
+    if (msg) speak(msg);
   });
 }
 
-/* === TTS === */
+// === ส่งคำสั่งเล่นเสียง ===
+function triggerSound(soundName, extra = {}) {
+  if (!roomId) return;
+  const id = Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
+    name: soundName,
+    id: id,
+    playerName: playerName,
+    ...extra
+  });
+}
+
+// === TTS ===
 let ttsQueue = [];
-let isSpeaking = false;
-const ttsDisplay = document.getElementById("ttsDisplay");
+  let isSpeaking = false;
+  const ttsDisplay = document.getElementById("ttsDisplay");
 
-function speak(text){
-  ttsQueue.push(text);
-  processTTS();
-}
-function processTTS(){
-  if(isSpeaking || ttsQueue.length === 0) return;
-  isSpeaking = true;
-  const msg = ttsQueue.shift();
-  ttsDisplay.textContent = msg;
-  ttsDisplay.classList.add('show');
-  setTimeout(()=>{
-    document.getElementById("tts").innerText = msg;
-    setTimeout(()=>{
-      isSpeaking = false;
-      document.getElementById("tts").innerText = "";
-      ttsDisplay.classList.remove('show');
-      processTTS();
-    }, Math.max(800, msg.length * 50));
-  }, 50);
-}
-
-/* === ข้อมูลทีม === */
-const squads = {
-  "Manchester United": {
-    "players": ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า",
-                "คริสเตียโน่ โรนัลโด้","พอล สโคลส์","จอห์น โอเช","ไรอัน กิ๊กส์",
-                "เวย์น รูนี่ย์","รุด ฟาน นิสเทลรอย"],
-    "keeper": "เอ็ดวิน ฟาน เดอร์ ซาร์"
-  },
-  "Liverpool": {
-    "players": ["สตีฟ ฟินแนน","เจมี่ คาร์ราเกอร์","ซามี่ ฮูเปีย","จอห์น อาร์เน่ รีเซ่",
-                "ซาบี อลอนโซ่","โมฮาเหม็ด ซิสโซโก้","สตีเว่น เจอร์ราร์ด","หลุยส์ การ์เซีย",
-                "ปีเตอร์ เคร้าช์","ฌิบริล ซิสเซ่"],
-    "keeper": "เปเป้ เรน่า"
-  },
-  "Arsenal": {
-    "players": ["เอ็มมานูเอล เอบูเอ้","โคโล ตูเร่","โซล แคมเบล","แอชลีย์ โคล",
-                "อเล็กซานเดอร์ เคล็บ","ฌิลแบร์โต้ ซิลวา","เชส ฟาเบรกัส","โรแบร์ ปิแรส",
-                "เฟรดริก ลุงเบิร์ก","เธียร์รี่ อองรี"],
-    "keeper": "เยนส์ เลห์มันน์"
-  },
-  "Chelsea": {
-    "players": ["เปาโล เฟร์เรร่า","ริคาร์โด้ คาร์วัลโญ่","จอห์น เทอร์รี่","วิลเลียม กัลลาส",
-                "โคล้ด มาเกเลเล่","มิคาเอล เอสเซียง","แฟรงก์ แลมพาร์ด","โจ โคล",
-                "อาร์เยน ร็อบเบน","เฮอร์นัน เครสโป"],
-    "keeper": "ปีเตอร์ เช็ก"
+  function speak(text) {
+    ttsQueue.push(text);
+    processTTS();
   }
-};
-
-function shuffle(a){
-  for(let i=a.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i],a[j]]=[a[j],a[i]];
+  function processTTS() {
+    if (isSpeaking || ttsQueue.length === 0) return;
+    isSpeaking = true;
+    const msg = ttsQueue.shift();
+    ttsDisplay.textContent = msg;
+    ttsDisplay.classList.add('show');
+    setTimeout(() => {
+      document.getElementById("tts").innerText = msg;
+      setTimeout(() => {
+        isSpeaking = false;
+        document.getElementById("tts").innerText = "";
+        ttsDisplay.classList.remove('show');
+        processTTS();
+      }, Math.max(800, msg.length * 50));
+    }, 50);
   }
-  return a;
-}
-
-function createShotsOrder(team){
-  let players = squads[team].players.slice();
-  shuffle(players);
-  players.push(squads[team].keeper);
-  return players;
-}
 
 // === Debounce ===
 function debounceClick(dir){
@@ -455,17 +435,14 @@ function debounceClick(dir){
   setTimeout(()=>{ isButtonLocked = false; }, 100);
 }
 
-/* === เริ่มต้นแอป === */
+// === เริ่มต้นแอป ===
 document.addEventListener("DOMContentLoaded", () => {
   const playerNameInput = document.getElementById("playerName");
   const confirmBtn = document.getElementById("confirmNameBtn");
 
   playerNameInput.focus();
-
   confirmBtn.addEventListener("click", confirmName);
-  playerNameInput.addEventListener("keydown", e => {
-    if (e.key === "Enter") confirmName();
-  });
+  playerNameInput.addEventListener("keydown", e => { if (e.key === "Enter") confirmName(); });
 
   document.getElementById("createRoomBtn").onclick = showCreateRoom;
   document.querySelectorAll(".team-btn").forEach(btn => {
@@ -473,14 +450,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-/* === ยืนยันชื่อ === */
+// === ยืนยันชื่อ ===
 function confirmName() {
   const input = document.getElementById("playerName");
   playerName = input.value.trim();
-  if (!playerName) {
-    alert("กรุณาใส่ชื่อ");
-    return;
-  }
+  if (!playerName) { alert("กรุณาใส่ชื่อ"); return; }
   playerId = Math.random().toString(36).substr(2,9);
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
@@ -488,7 +462,7 @@ function confirmName() {
   loadRooms();
 }
 
-/* === สร้างห้องใหม่ === */
+// === สร้างห้องใหม่ ===
 async function showCreateRoom() {
   const name = prompt("ตั้งชื่อห้อง:");
   if (!name || name.trim() === "") return;
@@ -502,9 +476,7 @@ async function showCreateRoom() {
       status: "waiting",
       host: playerId,
       created: Date.now(),
-      players: {
-        [playerId]: { name: playerName, team: null }
-      }
+      players: { [playerId]: { name: playerName, team: null } }
     });
 
     const playerRef = db.ref(`penaltyRooms/${newRoomId}/players/${playerId}`);
@@ -519,134 +491,118 @@ async function showCreateRoom() {
   }
 }
 
-/* === เข้าร่วมห้อง === */
+// === เข้าร่วมห้อง ===
 async function joinRoom(id) {
-  if (lobbyRoomsListener) lobbyRoomsListener.off();
-  
-  try {
-    const snap = await db.ref(`penaltyRooms/${id}`).once("value");
-    const room = snap.val();
-    if (!room || room.status !== "waiting") {
-      alert("ห้องนี้ไม่สามารถเข้าร่วมได้แล้ว");
-      loadRooms(); 
-      return;
-    }
-
-    const players = room.players || {};
-    const activePlayers = Object.values(players).filter(p => p && p.name);
-    if (activePlayers.length >= 2) {
-      alert("ห้องเต็มแล้ว");
-      loadRooms(); 
-      return;
-    }
-
-    roomId = id;
-    const playerRef = db.ref(`penaltyRooms/${roomId}/players/${playerId}`);
-    await playerRef.set({ name: playerName, team: null });
-    playerRef.onDisconnect().remove();
-
-    showRoom();
-  } catch (err) {
-    console.error(err);
-    alert("เข้าร่วมห้องล้มเหลว");
-    loadRooms();
+  const roomRef = db.ref(`penaltyRooms/${id}`);
+  const snap = await roomRef.once("value");
+  const room = snap.val();
+  if (!room || room.status !== "waiting" || Object.keys(room.players || {}).length >= 2) {
+    alert("ไม่สามารถเข้าร่วมห้องนี้ได้");
+    return;
   }
+
+  await db.ref(`penaltyRooms/${id}/players/${playerId}`).set({ name: playerName, team: null });
+  const playerRef = db.ref(`penaltyRooms/${id}/players/${playerId}`);
+  playerRef.onDisconnect().remove();
+
+  roomId = id;
+  isHost = (room.host === playerId);
+  showRoom();
 }
 
-/* === โหลดห้องในล็อบบี้ === */
+// === โหลดห้องในล็อบบี้ ===
 function loadRooms() {
-  const list = document.getElementById("roomList");
   if (lobbyRoomsListener) lobbyRoomsListener.off();
-  
-  lobbyRoomsListener = db.ref("penaltyRooms").orderByChild("status").equalTo("waiting");
-  lobbyRoomsListener.on("value", snap => {
+  const roomsRef = db.ref("penaltyRooms").orderByChild("created").limitToLast(20);
+  lobbyRoomsListener = roomsRef.on("value", snap => {
+    const rooms = snap.val() || {};
+    const list = document.getElementById("roomList");
     list.innerHTML = "";
-    const now = Date.now();
-
-    snap.forEach(r => {
-      const room = r.val();
-      const key = r.key;
-      if (!room) return;
-
-      const players = room.players || {};
-      const activePlayers = Object.values(players).filter(p => p && p.name);
-      const count = activePlayers.length;
-
-      if (count === 0 || (room.created && now - room.created > 300000)) {
-        db.ref(`penaltyRooms/${key}`).remove();
-        return;
-      }
-
-      if (count < 2) {
-        const li = document.createElement("li");
-        li.innerHTML = `<strong>${room.name}</strong> (${count}/2)`;
-        const btn = document.createElement("button");
-        btn.textContent = "เข้าร่วม";
-        btn.style.cssText = "margin-left:10px;padding:5px 15px;background:#4CAF50;color:white;border:none;border-radius:5px;cursor:pointer;";
-        btn.onclick = () => joinRoom(key);
-        li.appendChild(btn);
-        list.appendChild(li);
-      }
+    Object.keys(rooms).reverse().forEach(id => {
+      const r = rooms[id];
+      if (r.status !== "waiting") return;
+      const li = document.createElement("li");
+      li.innerHTML = `<strong>${r.name}</strong> (${Object.keys(r.players || {}).length}/2)`;
+      const btn = document.createElement("button");
+      btn.textContent = "เข้าร่วม";
+      btn.onclick = () => joinRoom(id);
+      btn.style.marginLeft = "10px";
+      btn.style.padding = "5px 15px";
+      btn.style.background = "#4CAF50";
+      btn.style.color = "white";
+      btn.style.border = "none";
+      btn.style.borderRadius = "8px";
+      btn.style.cursor = "pointer";
+      li.appendChild(btn);
+      list.appendChild(li);
     });
   });
 }
 
-/* === แสดงห้อง === */
+// === แสดงห้อง ===
 function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
   document.getElementById("backBtn").style.display = "block";
-  startSoundListener();
+  document.getElementById("roomName").textContent = "ห้อง: " + (promptRoomName || "ไม่ระบุ");
 
   if (currentRoomListener) currentRoomListener.off();
-  currentRoomListener = db.ref(`penaltyRooms/${roomId}`);
-  currentRoomListener.on("value", snap => {
+  currentRoomListener = db.ref(`penaltyRooms/${roomId}`).on("value", snap => {
     const room = snap.val();
-    if (!room) { alert("ห้องถูกลบ"); backToLobby(); return; }
-    document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
-    
+    if (!room) return backToLobby();
+
+    document.getElementById("roomName").textContent = room.name;
+
+    const playerList = document.getElementById("playerList");
+    playerList.innerHTML = "";
     const players = room.players || {};
-    const list = document.getElementById("playerList");
-    list.innerHTML = "";
-    for (let id in players) {
-      const p = players[id];
-      if (p && p.name) {
-        list.innerHTML += `<li>${p.name}${p.team ? ` - ${p.team}` : ""}</li>`;
+    Object.values(players).forEach(p => {
+      const li = document.createElement("li");
+      li.textContent = p.name + (p.team ? ` (${p.team})` : "");
+      playerList.appendChild(li);
+    });
+
+    updateTeamButtons(room);
+    startSoundListener();
+
+    if (room.status === "playing") {
+      startGameplay(room, players);
+    } else {
+      document.getElementById("gameScreen").style.display = "none";
+      document.getElementById("resultScreen").style.display = "none";
+      const startBtn = document.getElementById("startBtn");
+      if (isHost && Object.keys(players).length === 2 && 
+          Object.values(players).every(p => p.team)) {
+        startBtn.style.display = "block";
+      } else {
+        startBtn.style.display = "none";
       }
     }
-    updateTeamButtons(room);
 
-    const takenTeams = Object.values(players).filter(p => p && p.team).map(p => p.team);
-    const teamDiv = document.getElementById("teamSelectInRoom");
-    const waitMsg = document.getElementById("waitingMessage");
-    const startBtn = document.getElementById("startBtn");
-
-    if (players[playerId]?.team) {
-      teamDiv.style.display = "none";
-      waitMsg.style.display = "block";
-      waitMsg.innerHTML = takenTeams.length === 1 ? "เลือกทีมแล้ว รอผู้เล่นที่เหลือ..." : "เลือกทีมแล้ว รอเจ้าของห้องกดเริ่มเกม…";
-    } else {
-      teamDiv.style.display = "flex";
-      waitMsg.style.display = "none";
-    }
-
-    if (room.host === playerId && takenTeams.length === 2) {
-      startBtn.style.display = "inline-block";
-      startBtn.disabled = false;
-    } else {
-      startBtn.style.display = "none";
-    }
-
-    if (room.status === "playing") startGameplay(room, players);
-    if (room.status === "finished") showResult(room);
+    if (room.winner) showResult(room);
   });
 }
 
+let promptRoomName = "";
 function updateTeamButtons(room) {
-  const taken = Object.values(room.players || {}).filter(p => p && p.team).map(p => p.team);
+  const selectDiv = document.getElementById("teamSelectInRoom");
+  const waiting = document.getElementById("waitingMessage");
+  const players = room.players || {};
+  const takenTeams = Object.values(players).map(p => p.team).filter(t => t);
+
+  if (room.players[playerId].team) {
+    selectDiv.style.display = "none";
+    waiting.style.display = "block";
+    waiting.textContent = "รออีกฝ่ายเลือกทีม...";
+    return;
+  }
+
+  selectDiv.style.display = "flex";
+  waiting.style.display = "none";
+
   document.querySelectorAll(".team-btn").forEach(btn => {
     const team = btn.getAttribute("data-team");
-    if (taken.includes(team)) {
+    if (takenTeams.includes(team)) {
       btn.classList.add("unavailable");
       btn.disabled = true;
     } else {
@@ -662,7 +618,7 @@ function chooseTeam(team) {
   speak(`${playerName} เลือกทีม ${team}`);
 }
 
-/* === เริ่มเกม === */
+// === เริ่มเกม ===
 function startGame() {
   if (gameStarted) return;
   gameStarted = true;
@@ -688,13 +644,10 @@ function startGame() {
       status: "playing", 
       firstShooter: firstShooter,
       turn: 0,
-      scoreP1: 0, 
-      scoreP2: 0, 
-      shotIndexP1: 0, 
-      shotIndexP2: 0,
+      scoreP1: 0, scoreP2: 0, 
+      shotIndexP1: 0, shotIndexP2: 0,
       isSudden: false, 
-      shooterDir: null, 
-      keeperDir: null,
+      shooterDir: null, keeperDir: null,
       processed: false,
       shotOrderP1: orderP1,
       shotOrderP2: orderP2,
@@ -704,7 +657,10 @@ function startGame() {
   });
 }
 
-/* === เกมเพลย์ === */
+// === เกมเพลย์ ===
+let shotOrderP1 = [], shotOrderP2 = [];
+let lastProcessedTurn = -1;
+
 function startGameplay(room, players) {
   document.getElementById("room").style.display = "none";
   document.getElementById("gameScreen").style.display = "block";
@@ -727,21 +683,17 @@ function startGameplay(room, players) {
   gameRef.on("value", snap => {
     const data = snap.val();
     if (!data || data.status !== "playing") {
-      document.querySelectorAll('.shot-btn').forEach(btn => {
-        btn.style.display = 'none';
-      });
+      document.querySelectorAll('.shot-btn').forEach(btn => { btn.style.display = 'none'; });
       document.getElementById("currentTurn").style.display = "none";
       return;
     }
 
     const scoreP1 = data.scoreP1 || 0;
     const scoreP2 = data.scoreP2 || 0;
-    document.getElementById("scoreBoard").innerText = 
-      `Score: ${scoreP1} - ${scoreP2}`;
+    document.getElementById("scoreBoard").innerText = `Score: ${scoreP1} - ${scoreP2}`;
 
     const p1Id = data.p1Id;
     const p2Id = data.p2Id;
-    
     const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === p1Id ? p2Id : p1Id);
     const currentKeeperId = currentShooterId === p1Id ? p2Id : p1Id;
     isMyTurn = (playerId === currentShooterId || playerId === currentKeeperId);
@@ -765,7 +717,6 @@ function startGameplay(room, players) {
 
     if (data.turn !== lastTurn) {
       lastTurn = data.turn;
-
       const shooterOrder = currentShooterId === p1Id ? shotOrderP1 : shotOrderP2;
       const shooterIndex = currentShooterId === p1Id ? data.shotIndexP1 : data.shotIndexP2;
       const shooterName = shooterOrder[shooterIndex];
@@ -792,7 +743,6 @@ function startGameplay(room, players) {
     }
     lastIsSudden = data.isSudden;
 
-    // ตรวจสอบผลลัพธ์หลังยิง
     if (data.shooterDir && data.keeperDir && !data.processed && data.turn > lastProcessedTurn) {
       lastProcessedTurn = data.turn;
       processShot(data, players, gameRef);
@@ -802,11 +752,7 @@ function startGameplay(room, players) {
 
 async function processShot(data, players, gameRef) {
   const processedRef = gameRef.child('processed');
-  const transactionResult = await processedRef.transaction(current => {
-    if (current) return;
-    return true;
-  });
-
+  const transactionResult = await processedRef.transaction(current => current ? undefined : true);
   if (!transactionResult.committed) return;
 
   const p1Id = data.p1Id;
@@ -823,36 +769,23 @@ async function processShot(data, players, gameRef) {
 
   const isGoal = data.shooterDir !== data.keeperDir;
 
-  // ส่ง trigger ไปยังทั้ง 2 ฝ่าย
-  const soundName = isGoal ? "t.mp3" : "f.mp3";
-  triggerSound(soundName);
+  triggerSound(isGoal ? "t.mp3" : "f.mp3");
 
   let scoreP1 = data.scoreP1 || 0;
   let scoreP2 = data.scoreP2 || 0;
-  if (isGoal) {
-    currentShooterId === p1Id ? scoreP1++ : scoreP2++;
-  }
+  if (isGoal) currentShooterId === p1Id ? scoreP1++ : scoreP2++;
 
-  // ข้อความสำหรับ TTS + aria-live (ทั้ง 2 ฝ่ายได้ยินเหมือนกัน)
   const resultMsg = `${shooterName} จากทีม ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! คะแนน ${scoreP1} - ${scoreP2}`;
   speak(resultMsg);
-  const live = document.getElementById("tts");
-  live.textContent = resultMsg;
-  setTimeout(() => live.textContent = "", 5000);
 
   const updates = {
     turn: data.turn + 1,
-    shooterDir: null, 
-    keeperDir: null, 
-    processed: false,
+    shooterDir: null, keeperDir: null, processed: false,
     scoreP1, scoreP2
   };
 
-  if (currentShooterId === p1Id) {
-    updates.shotIndexP1 = data.shotIndexP1 + 1;
-  } else {
-    updates.shotIndexP2 = data.shotIndexP2 + 1;
-  }
+  if (currentShooterId === p1Id) updates.shotIndexP1 = data.shotIndexP1 + 1;
+  else updates.shotIndexP2 = data.shotIndexP2 + 1;
 
   setTimeout(() => {
     gameRef.update(updates);
@@ -861,64 +794,36 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
-// ปรับกฎตาม FIFA
-function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) {
-  const p1Id = data.p1Id;
-  const p2Id = data.p2Id;
-  const isP1First = data.firstShooter === p1Id;
+function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, idxP1, idxP2) {
+  const maxShots = 5;
+  const shotsDone = idxP1 + idxP2;
+  const isSudden = data.isSudden;
 
-  const shotsP1 = sp1;
-  const shotsP2 = sp2;
-  const remainingP1 = 5 - shotsP1;
-  const remainingP2 = 5 - shotsP2;
-
-  let end = false;
-  let winnerId = null;
-
-  if (!data.isSudden) {
-    if (shotsP1 < 5 || shotsP2 < 5) {
-      if (shotsP1 >= 3 && shotsP2 >= 3) {
-        const maxPossibleP1 = scoreP1 + remainingP1;
-        const maxPossibleP2 = scoreP2 + remainingP2;
-        if (maxPossibleP1 < scoreP2 || maxPossibleP2 < scoreP1) {
-          end = true;
-        }
-      }
-    }
-
-    if (shotsP1 >= 5 && shotsP2 >= 5) {
-      if (scoreP1 !== scoreP2) {
-        end = true;
-      } else {
-        gameRef.update({ isSudden: true });
-        return;
-      }
-    }
-  } else {
-    if (shotsP1 !== shotsP2) {
-      end = true;
-    }
-  }
-
-  if (end) {
-    triggerSound("end.mp3");
-    stopBGM();
-
-    if (scoreP1 > scoreP2) {
-      winnerId = isP1First ? p1Id : p2Id;
+  if (!isSudden && shotsDone >= maxShots * 2) {
+    if (scoreP1 !== scoreP2) {
+      endGame(gameRef, scoreP1 > scoreP2 ? data.p1Id : data.p2Id, scoreP1, scoreP2);
+      return;
     } else {
-      winnerId = isP1First ? p2Id : p1Id;
+      gameRef.update({ isSudden: true });
+      return;
     }
-
-    setTimeout(() => {
-      gameRef.update({
-        status: "finished",
-        winner: winnerId,
-        finalScoreP1: scoreP1,
-        finalScoreP2: scoreP2
-      });
-    }, 800);
   }
+
+  if (isSudden && Math.abs(scoreP1 - scoreP2) > 0 && (idxP1 > maxShots || idxP2 > maxShots)) {
+    endGame(gameRef, scoreP1 > scoreP2 ? data.p1Id : data.p2Id, scoreP1, scoreP2);
+    return;
+  }
+
+  // ยังไม่จบ
+}
+
+function endGame(gameRef, winnerId, finalP1, finalP2) {
+  gameRef.update({
+    status: "finished",
+    winner: winnerId,
+    finalScoreP1: finalP1,
+    finalScoreP2: finalP2
+  });
 }
 
 async function chooseDirection(dir) {
@@ -938,11 +843,10 @@ async function chooseDirection(dir) {
 
 function showResult(room) {
   stopBGM();
+  triggerSound("end.mp3");
   document.getElementById("gameScreen").style.display = "none";
   document.getElementById("currentTurn").style.display = "none";
-  document.querySelectorAll('.shot-btn').forEach(btn => {
-    btn.style.display = 'none';
-  });
+  document.querySelectorAll('.shot-btn').forEach(btn => { btn.style.display = 'none'; });
 
   const p1Team = room.players[room.p1Id].team;
   const p2Team = room.players[room.p2Id].team;
@@ -954,8 +858,6 @@ function showResult(room) {
 
   const finalMsg = `${winnerTeam} ชนะด้วยคะแนน ${room.finalScoreP1} ต่อ ${room.finalScoreP2}`;
   speak(finalMsg);
-  document.getElementById("tts").textContent = finalMsg;
-  setTimeout(() => document.getElementById("tts").textContent = "", 8000);
 }
 
 function backToLobby() {
@@ -966,6 +868,7 @@ function backToLobby() {
   spokenTurns.clear();
   shotOrderP1 = []; shotOrderP2 = [];
   lastProcessedTurn = -1;
+  lastSoundId = null;
   
   if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
   if (soundListener) { soundListener.off(); soundListener = null; }
@@ -978,9 +881,7 @@ function backToLobby() {
   document.getElementById("resultScreen").style.display = "none";
   document.getElementById("backBtn").style.display = "none";
   document.getElementById("currentTurn").style.display = "none";
-  document.querySelectorAll('.shot-btn').forEach(btn => {
-    btn.style.display = 'block';
-  });
+  document.querySelectorAll('.shot-btn').forEach(btn => { btn.style.display = 'block'; });
   document.getElementById("lobby").style.display = "block";
   loadRooms();
 }
