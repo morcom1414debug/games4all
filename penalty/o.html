@@ -378,7 +378,6 @@ function startSoundListener() {
       audio.play().catch(() => {});
     }
 
-    // สร้างข้อความ aria-live และ TTS
     let msg = "";
     if (name === "t.mp3") msg = "ยิงเข้า!";
     else if (name === "f.mp3") msg = "ยิงไม่เข้า!";
@@ -488,7 +487,6 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.onclick = () => chooseTeam(btn.getAttribute("data-team"));
   });
 
-  // แสดงปุ่มกลับเมนูหลักเฉพาะหน้าแรก
   document.getElementById("mainMenuBtn").style.display = "block";
 });
 
@@ -503,7 +501,7 @@ function confirmName() {
   playerId = Math.random().toString(36).substr(2,9);
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
-  document.getElementById("mainMenuBtn").style.display = "none"; // ซ่อนเมื่อออกจากหน้าแรก
+  document.getElementById("mainMenuBtn").style.display = "none";
   preloadAllSounds();
   loadRooms();
 }
@@ -782,7 +780,6 @@ function startGameplay(room, players) {
     currentTurnEl.style.background = playerId === currentShooterId ? "rgba(76,175,80,0.9)" : "rgba(255,152,0,0.9)";
     currentTurnEl.style.color = "white";
 
-    // === เปลี่ยนตรงนี้: ใช้ข้อความจาก o1.html ===
     if (data.turn !== lastTurn) {
       lastTurn = data.turn;
 
@@ -793,13 +790,11 @@ function startGameplay(room, players) {
       const keeperName = squads[keeperTeam].keeper;
       const shooterTeam = players[currentShooterId].team;
 
-      // ฝ่ายยิง: พูดแบบนี้
       if (playerId === currentShooterId && !spokenTurns.has(`turn_${data.turn}_shooter`)) {
         spokenTurns.add(`turn_${data.turn}_shooter`);
         speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง`);
       }
 
-      // ฝ่ายเซฟ: พูดแบบนี้
       if (playerId === currentKeeperId && !spokenTurns.has(`turn_${data.turn}_keeper`)) {
         spokenTurns.add(`turn_${data.turn}_keeper`);
         speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง ${keeperName} ของคุณพร้อมเซฟ`);
@@ -814,7 +809,6 @@ function startGameplay(room, players) {
     }
     lastIsSudden = data.isSudden;
 
-    // ตรวจสอบผลลัพธ์หลังยิง
     if (data.shooterDir && data.keeperDir && !data.processed && data.turn > lastProcessedTurn) {
       lastProcessedTurn = data.turn;
       processShot(data, players, gameRef);
@@ -881,43 +875,53 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
-// ปรับกฎตาม FIFA
-function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, sp1, sp2) {
+// === ตรวจสอบจบเกมตามกฎ FIFA จริง ===
+function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP1, shotIndexP2) {
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
   const isP1First = data.firstShooter === p1Id;
 
-  const shotsP1 = sp1;
-  const shotsP2 = sp2;
+  const shotsP1 = shotIndexP1;
+  const shotsP2 = shotIndexP2;
   const remainingP1 = 5 - shotsP1;
   const remainingP2 = 5 - shotsP2;
 
   let end = false;
   let winnerId = null;
 
-  if (!data.isSudden) {
-    if (shotsP1 < 5 || shotsP2 < 5) {
-      if (shotsP1 >= 3 && shotsP2 >= 3) {
-        const maxPossibleP1 = scoreP1 + remainingP1;
-        const maxPossibleP2 = scoreP2 + remainingP2;
-        if (maxPossibleP1 < scoreP2 || maxPossibleP2 < scoreP1) {
-          end = true;
-        }
-      }
-    }
+  // 1. ยังไม่ครบ 5 ลูก แต่ฝ่ายหนึ่งชนะแน่นอนแล้ว
+  if (!data.isSudden && (shotsP1 < 5 || shotsP2 < 5)) {
+    const maxPossibleP1 = scoreP1 + remainingP1;
+    const maxPossibleP2 = scoreP2 + remainingP2;
 
-    if (shotsP1 >= 5 && shotsP2 >= 5) {
-      if (scoreP1 !== scoreP2) {
-        end = true;
-      } else {
-        gameRef.update({ isSudden: true });
-        return;
-      }
-    }
-  } else {
-    if (shotsP1 !== shotsP2) {
+    if (maxPossibleP1 < scoreP2 || maxPossibleP2 < scoreP1) {
       end = true;
     }
+  }
+
+  // 2. ครบ 5 ลูกแล้ว
+  if (!data.isSudden && shotsP1 >= 5 && shotsP2 >= 5) {
+    if (scoreP1 !== scoreP2) {
+      end = true;
+    } else {
+      // เข้าสู่ซัดเดนเดธ
+      gameRef.update({ isSudden: true });
+      return;
+    }
+  }
+
+  // 3. ซัดเดนเดธ: ยิงสลับทีละคน
+  if (data.isSudden) {
+    const diff = Math.abs(shotsP1 - shotsP2);
+    if (diff >= 1) {
+      // ต้องยิงให้ครบคู่ก่อนตัดสิน
+      if (shotsP1 > shotsP2) {
+        if (scoreP1 > scoreP2) end = true;
+      } else if (shotsP2 > shotsP1) {
+        if (scoreP2 > scoreP1) end = true;
+      }
+    }
+    // ถ้ายิงครบคู่แล้วยังเสมอ → ไปต่อ
   }
 
   if (end) {
@@ -971,9 +975,8 @@ function showResult(room) {
   document.getElementById("resultTitle").textContent = `${winnerTeam} เป็นฝ่ายชนะ`;
   document.getElementById("resultMessage").textContent = "ยินดีด้วย!";
   document.getElementById("resultScreen").style.display = "flex";
-  document.getElementById("mainMenuBtn").style.display = "block"; // แสดงปุ่มกลับเมนูหลัก
+  document.getElementById("mainMenuBtn").style.display = "block";
 
-  // พูดผลลัพธ์เพียงครั้งเดียว
   if (!finalResultSpoken) {
     finalResultSpoken = true;
     const finalMsg = `${winnerTeam} เป็นฝ่ายชนะ ยินดีด้วย!`;
