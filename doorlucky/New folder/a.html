@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>วางกับดัก</title>
+<style>
+body { 
+  font-family: Tahoma; 
+  background:#111; 
+  color:white; 
+  text-align:center; 
+  margin:0;
+  padding:20px;
+  height:100vh;
+  overflow:hidden;
+  position:relative;
+}
+
+.trap-btn { 
+  position:fixed;
+  background:rgba(255,255,255,0.9); 
+  border-radius:15px;
+  padding:25px 30px;
+  font-weight:bold;
+  cursor:pointer;
+  border:3px solid #fff;
+  font-size:22px;
+  z-index:1000;
+  box-shadow:0 8px 20px rgba(0,0,0,0.5);
+  transition:all 0.2s;
+  width: 200px;
+  height: 80px;
+}
+
+.trap-btn:active {
+  transform:scale(0.95);
+  box-shadow:0 4px 10px rgba(0,0,0,0.5);
+}
+
+#btn1 { top:25%; left:50%; transform:translateX(-50%); }
+#btn2 { top:50%; left:50%; transform:translate(-50%, -50%); }
+#btn3 { top:75%; left:50%; transform:translateX(-50%); }
+
+#lifeBoard { 
+  margin-top:20px; 
+  font-size:28px;
+  position:fixed;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:1001;
+  background:rgba(0,0,0,0.7);
+  padding:15px 30px;
+  border-radius:15px;
+  border:2px solid #fff;
+}
+
+#playerSelect {
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  position:fixed;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+}
+
+#playerSelect button {
+  background:rgba(255,255,255,0.9);
+  border-radius:15px;
+  padding:25px 40px;
+  font-weight:bold;
+  cursor:pointer;
+  border:3px solid #fff;
+  font-size:24px;
+  transition:all 0.2s;
+}
+
+#playerSelect button:active {
+  transform:scale(0.95);
+}
+
+#gameScreen {
+  width:100vw;
+  height:100vh;
+}
+
+/* ===== หน้าแรก ===== */
+#homeScreen {
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+  gap:40px;
+}
+
+#homeScreen h1 {
+  font-size:48px;
+  margin:0;
+  text-shadow:2px 2px 4px rgba(0,0,0,0.8);
+}
+
+#modeSelect {
+  display:flex;
+  flex-direction:column;
+  gap:30px;
+}
+
+.mode-btn {
+  background:rgba(255,255,255,0.95);
+  border-radius:20px;
+  padding:30px 50px;
+  font-weight:bold;
+  cursor:pointer;
+  border:4px solid #fff;
+  font-size:28px;
+  transition:all 0.3s;
+  box-shadow:0 10px 25px rgba(0,0,0,0.5);
+  color:#333;
+}
+
+.mode-btn:hover {
+  background:#fff;
+  transform:translateY(-5px);
+  box-shadow:0 15px 35px rgba(0,0,0,0.7);
+}
+
+.mode-btn:active {
+  transform:scale(0.98) translateY(-2px);
+}
+
+#onlineScreen {
+  display:none;
+  flex-direction:column;
+  gap:30px;
+  position:fixed;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+}
+
+#onlineScreen p {
+  font-size:24px;
+}
+
+/* ปุ่มกลับเมนูหลัก */
+#backToMainMenu {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+  border: 3px solid #fff;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 1002;
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s;
+}
+
+#backToMainMenu:hover {
+  background: #fff;
+  transform: translateY(-2px);
+}
+
+#backToMainMenu:active {
+  transform: scale(0.95);
+}
+
+/* แสดงข้อความ TTS บนหน้าจอ */
+#ttsDisplay {
+  position:fixed;
+  bottom:20px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.7);
+  color:white;
+  padding:12px 24px;
+  border-radius:12px;
+  font-size:20px;
+  max-width:90%;
+  z-index:1002;
+  opacity:0;
+  transition:opacity 0.3s;
+  pointer-events:none;
+}
+#ttsDisplay.show { opacity:1; }
+
+/* ซ่อน h1 เมื่อเข้าหน้าเกม */
+#gameScreen h1 { display:none; }
+</style>
+</head>
+<body>
+
+<!-- ปุ่มกลับเมนูหลัก (แสดงเฉพาะหน้าแรกและเลือกผู้เล่น) -->
+<button id="backToMainMenu" onclick="window.location.href='../index.html'" aria-label="กลับเมนูหลัก">กลับเมนูหลัก</button>
+
+<h1 style="margin-bottom:40px;">วางกับดัก</h1>
+
+<!-- ===== หน้าแรก ===== -->
+<div id="homeScreen">
+  <div id="modeSelect">
+    <button class="mode-btn" onclick="selectMode('bot')" aria-label="เล่นกับบอท" tabindex="0">เล่นกับบอท</button>
+    <button class="mode-btn" onclick="selectMode('online')" aria-label="เล่นออนไลน์" tabindex="0">เล่นออนไลน์</button>
+    <p>คำอธิบายเบื้องต้น เกมจำลองการวางกับดักแบบเสียง เพื่อความสนุกสนาน<br>มีตำแหน่งให้เลือกวางกับดักและหลบทั้งหมด 3 จุด<br>จุดที่ 1 = บน, จุดที่ 2 = กลาง, จุดที่ 3 = ล่าง<br>ผลัดกันวางกับดักและหลบกับดัก ฝ่ายไหนชีวิตเหลือ 0 แพ้</p>
+  </div>
+</div>
+
+<!-- ===== หน้าจอออนไลน์ (ว่างไว้) ===== -->
+<div id="onlineScreen">
+  <p style="font-size:28px;">โหมดเล่นออนไลน์</p>
+  <p>กำลังพัฒนา...</p>
+  <button class="mode-btn" onclick="backToHome()" style="font-size:20px; padding:20px 40px;">กลับเมนูหลัก</button>
+</div>
+
+<!-- ===== หน้าจอเลือกผู้เล่น ===== -->
+<div id="playerSelect" style="display:none;">
+  <p style="font-size:28px;">เลือกตัวละครของคุณ</p>
+  <button onclick="selectPlayer('นารูโตะ')" aria-label="นารูโตะ" tabindex="0">นารูโตะ</button>
+  <button onclick="selectPlayer('โดราเอม่อน')" aria-label="โดราเอม่อน" tabindex="0">โดราเอม่อน</button>
+  <button onclick="selectPlayer('ชินจัง')" aria-label="ชินจัง" tabindex="0">ชินจัง</button>
+  <button onclick="selectPlayer('คิตตี้')" aria-label="คิตตี้" tabindex="0">คิตตี้</button>
+</div>
+
+<!-- ===== หน้าจอเกม ===== -->
+<div id="gameScreen" style="display:none;">
+  <div id="lifeBoard">ชีวิต ตอนนี้คือ 3 - 3</div>
+
+  <button id="btn1" class="trap-btn" onclick="debounceClick('1')" aria-label="กับดักจุดที่ 1" tabindex="0">กับดักจุดที่ 1</button>
+  <button id="btn2" class="trap-btn" onclick="debounceClick('2')" aria-label="กับดักจุดที่ 2" tabindex="0">กับดักจุดที่ 2</button>
+  <button id="btn3" class="trap-btn" onclick="debounceClick('3')" aria-label="กับดักจุดที่ 3" tabindex="0">กับดักจุดที่ 3</button>
+</div>
+
+<!-- แสดงข้อความ TTS บนหน้าจอ -->
+<div id="ttsDisplay"></div>
+
+<!-- aria-live สำหรับ iOS -->
+<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+
+<!-- เสียง -->
+<audio id="bgm" loop src="audio/b.mp3"></audio>
+<audio id="hit" src="audio/t.mp3"></audio>
+<audio id="miss" src="audio/f.mp3"></audio>
+<audio id="end" src="audio/end.mp3"></audio>
+
+<script>
+/* =============================== 
+   ระบบหน้าแรก
+   =============================== */
+function selectMode(mode) {
+  const backBtn = document.getElementById("backToMainMenu");
+  if(mode === 'bot') {
+    document.getElementById("homeScreen").style.display = "none";
+    document.getElementById("playerSelect").style.display = "flex";
+    backBtn.style.display = "block";
+    setTimeout(() => {
+      const firstBtn = document.querySelector('#playerSelect button');
+      if(firstBtn) firstBtn.focus();
+    }, 100);
+  } else if(mode === 'online') {
+    window.location.href = "o.html";
+  }
+}
+
+function backToHome() {
+  document.getElementById("onlineScreen").style.display = "none";
+  document.getElementById("homeScreen").style.display = "flex";
+}
+
+/* =============================== 
+   ระบบ TTS Queue + แสดงบนหน้าจอ
+   =============================== */
+let ttsQueue = [];
+let isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
+
+function speak(text){
+  ttsQueue.push(text);
+  processTTS();
+}
+
+function processTTS(){
+  if(isSpeaking || ttsQueue.length === 0) return;
+
+  isSpeaking = true;
+  const msg = ttsQueue.shift();
+
+  ttsDisplay.textContent = msg;
+  ttsDisplay.classList.add('show');
+
+  setTimeout(()=>{
+    document.getElementById("tts").innerText = msg;
+    setTimeout(()=>{
+      isSpeaking = false;
+      document.getElementById("tts").innerText = "";
+      ttsDisplay.classList.remove('show');
+      processTTS();
+    }, Math.max(600, msg.length * 40));
+  }, 50);
+}
+
+/* =============================== 
+   รอให้เสียงเล่นจนจบ
+   =============================== */
+function waitForSound(audioEl){
+  return new Promise(resolve => {
+    audioEl.onended = ()=>resolve();
+    audioEl.play().catch(()=> resolve());
+  });
+}
+
+/* =============================== 
+   ตัวแปรเกม
+   =============================== */
+let userPlayer, cpuPlayer;
+let userLife = 3, cpuLife = 3;
+let turn = 0; // 0 = ผู้เล่นวางกับดัก, 1 = CPU วางกับดัก
+let isPlayerTurnTrap = true; // true = ผู้เล่นวางกับดัก, false = ผู้เล่นหลบกับดัก
+
+/* =============================== 
+   Debounce สำหรับ VoiceOver
+   =============================== */
+let isButtonLocked = false;
+
+function debounceClick(dir){
+  if(isButtonLocked) return;
+  isButtonLocked = true;
+  chooseDirection(dir);
+  setTimeout(()=>{ isButtonLocked = false; }, 100);
+}
+
+/* =============================== 
+   เสียง
+   =============================== */
+const bgm = document.getElementById("bgm");
+const hitSnd = document.getElementById("hit");
+const missSnd = document.getElementById("miss");
+const endSnd = document.getElementById("end");
+
+function playSound(el){
+  el.currentTime = 0;
+  el.play().catch(()=>{});
+}
+
+function stopBGM(){
+  bgm.pause();
+  bgm.currentTime = 0;
+}
+
+/* =============================== 
+   เลือกตัวละคร
+   =============================== */
+function selectPlayer(player){
+  userPlayer = player;
+  const remain = ["นารูโตะ", "โดราเอม่อน", "ชินจัง", "คิตตี้"].filter(p=>p!==player);
+  cpuPlayer = remain[Math.floor(Math.random()*remain.length)];
+
+  document.getElementById("playerSelect").style.display="none";
+  document.getElementById("gameScreen").style.display="block";
+  document.getElementById("backToMainMenu").style.display = "none";
+
+  document.querySelector('h1').style.display = 'none';
+
+  userLife=3; cpuLife=3; turn=0; isPlayerTurnTrap=true;
+
+  updateLifeBoard();
+  startTurn();
+
+  playSound(bgm);
+}
+
+/* =============================== 
+   เริ่มตา
+   =============================== */
+function startTurn(){
+  if(turn === 0) {
+    // ผู้เล่นตา
+    if(isPlayerTurnTrap) {
+      speak(`รอบของ ${userPlayer} เลือกจุดวางกับดักได้เลย`);
+    } else {
+      speak(`รอบของ ${userPlayer} เลือกจุดหลบกับดักได้เลย`);
+    }
+  } else {
+    // CPU ตา
+    if(isPlayerTurnTrap) {
+      speak(`${cpuPlayer} กำลังวางกับดัก ${userPlayer} ของคุณเตรียมหลบ`);
+    } else {
+      speak(`${cpuPlayer} กำลังวางกับดัก ${userPlayer} เตรียมหลบ`);
+    }
+  }
+}
+
+/* =============================== 
+   วางกับดัก / หลบ
+   =============================== */
+async function chooseDirection(dir){
+  let cpuDir = ["1","2","3"][Math.floor(Math.random()*3)];
+  
+  let isHit;
+  let loseLifePlayer = false;
+  let loseLifeCPU = false;
+
+  if(turn === 0) {
+    // ผู้เล่นตา
+    if(isPlayerTurnTrap) {
+      // ผู้เล่นวางกับดัก → CPU หลบ
+      isHit = dir === cpuDir;
+      if(isHit) cpuLife--;
+    } else {
+      // ผู้เล่นหลบ → CPU วางกับดัก
+      isHit = dir === cpuDir;
+      if(isHit) userLife--;
+    }
+  } else {
+    // CPU ตา
+    if(isPlayerTurnTrap) {
+      // CPU วางกับดัก → ผู้เล่นหลบ
+      isHit = dir === cpuDir;
+      if(isHit) userLife--;
+    } else {
+      // CPU หลบ → ผู้เล่นวางกับดัก
+      isHit = dir === cpuDir;
+      if(isHit) cpuLife--;
+    }
+  }
+
+  updateLifeBoard();
+
+  const finalMsg = isHit ? 
+    (userLife < cpuLife ? `${userPlayer} โดนกับดัก! ชีวิต ${userLife} - ${cpuLife}` : 
+     `${cpuPlayer} โดนกับดัก! ชีวิต ${userLife} - ${cpuLife}`) :
+    `หลบสำเร็จ! ชีวิต ${userLife} - ${cpuLife}`;
+
+  if(isHit) await waitForSound(hitSnd);
+  else await waitForSound(missSnd);
+
+  speak(finalMsg);
+
+  // สลับสถานะรอบถัดไป
+  isPlayerTurnTrap = !isPlayerTurnTrap;
+  turn = 1 - turn;
+
+  setTimeout(checkGameEnd, 1000);
+}
+
+/* =============================== 
+   ตรวจจบเกม
+   =============================== */
+function checkGameEnd(){
+  if(userLife <= 0) {
+    endGame(false); // CPU ชนะ
+    return;
+  }
+  if(cpuLife <= 0) {
+    endGame(true); // ผู้เล่นชนะ
+    return;
+  }
+  
+  // ยังไม่จบ → เริ่มตาถัดไป
+  startTurn();
+}
+
+function endGame(userWins) {
+  stopBGM();
+  waitForSound(endSnd).then(()=>{
+    const msg = userWins ? `${userPlayer} ชนะ!` : `${cpuPlayer} ชนะ!`;
+    speak(msg);
+    setTimeout(()=> alert(msg), 800);
+    setTimeout(resetGame, 1200);
+  });
+}
+
+/* =============================== 
+   อัปเดตชีวิต
+   =============================== */
+function updateLifeBoard(){
+  document.getElementById("lifeBoard").innerText = 
+      `ชีวิต ตอนนี้คือ ${userLife} - ${cpuLife}`;
+}
+
+/* =============================== 
+   รีเซ็ตเกม
+   =============================== */
+function resetGame(){
+  stopBGM();
+  userLife=3; cpuLife=3;
+  turn=0; isPlayerTurnTrap=true;
+
+  document.getElementById("gameScreen").style.display="none";
+  document.getElementById("playerSelect").style.display="flex";
+  document.getElementById("backToMainMenu").style.display = "block";
+
+  document.querySelector('h1').style.display = 'block';
+}
+
+// ตั้งค่าเริ่มต้น
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("backToMainMenu").style.display = "block";
+});
+</script>
+</body>
+</html>
