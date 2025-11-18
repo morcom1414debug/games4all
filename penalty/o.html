@@ -20,11 +20,11 @@
     position:fixed;
     background:rgba(255,255,255,0.9); 
     border-radius:15px;
-    padding:25px 30px;
+    padding:28px 32px;
     font-weight:bold;
     cursor:pointer;
     border:3px solid #fff;
-    font-size:22px;
+    font-size:23px;
     z-index:1000;
     box-shadow:0 8px 20px rgba(0,0,0,0.5);
     transition:all 0.2s;
@@ -33,11 +33,13 @@
   .shot-btn:active { transform:scale(0.95); box-shadow:0 4px 10px rgba(0,0,0,0.5); }
   .shot-btn:disabled { opacity:0.5; cursor:not-allowed; }
   .shot-btn.locked { opacity:0.3; cursor:not-allowed; }
-  #tl { top:10%; left:10%; }
-  #tr { top:10%; right:10%; }
+
+  /* ปรับตำแหน่งปุ่มให้กดง่ายและสวยขึ้น */
+  #tl { top:18%; left:12%; }
+  #tr { top:18%; right:12%; }
   #center { top:50%; left:50%; transform:translate(-50%, -50%); }
-  #bl { bottom:10%; left:10%; }
-  #br { bottom:10%; right:10%; }
+  #bl { bottom:18%; left:12%; }
+  #br { bottom:18%; right:12%; }
 
   #scoreBoard { 
     margin-top:20px; 
@@ -211,7 +213,6 @@
     display:none;
   }
 
-  /* ปุ่มกลับเมนูหลัก */
   #mainMenuBtn {
     position:fixed;
     top:15px;
@@ -232,17 +233,14 @@
 </head>
 <body>
 
-<!-- ปุ่มกลับเมนูหลัก (แสดงเฉพาะหน้าแรกและหน้าผลลัพธ์) -->
 <button id="mainMenuBtn" onclick="location.href='../index.html'">กลับเมนูหลัก</button>
 
-<!-- หน้าแรก: ตั้งชื่อ -->
 <div id="nameInput">
   <p style="font-size:24px;">กรอกชื่อของคุณ</p>
   <input id="playerName" placeholder="ชื่อของคุณ" autofocus>
   <button id="confirmNameBtn">ยืนยัน</button>
 </div>
 
-<!-- ล็อบบี้ -->
 <div id="lobby">
   <h2>ล็อบบี้</h2>
   <button id="createRoomBtn" style="background:#fff;color:#333;padding:15px 30px;border-radius:15px;font-weight:bold;">สร้างห้องใหม่</button>
@@ -250,7 +248,6 @@
   <ul id="roomList"></ul>
 </div>
 
-<!-- ห้อง -->
 <div id="room">
   <h2 id="roomName"></h2>
   <p>ผู้เล่นในห้อง:</p>
@@ -269,7 +266,6 @@
   <button id="startBtn" onclick="startGame()">เริ่มเกม</button>
 </div>
 
-<!-- หน้าจอเกม -->
 <div id="gameScreen" style="display:none;">
   <div id="scoreBoard">Score ตอนนี้คือ 0 - 0</div>
   <div id="currentTurn"></div>
@@ -280,17 +276,14 @@
   <button id="br" class="shot-btn" onclick="debounceClick('BR')">มุมขวาล่าง</button>
 </div>
 
-<!-- ผลลัพธ์ -->
 <div id="resultScreen">
   <h1 id="resultTitle">ทีมชนะ</h1>
   <p id="resultMessage">ยินดีด้วย!</p>
 </div>
 
-<!-- TTS -->
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
-<!-- เสียง -->
 <audio id="bgm" loop src="audio/b.mp3"></audio>
 <audio id="goal" src="audio/t.mp3"></audio>
 <audio id="miss" src="audio/f.mp3"></audio>
@@ -327,9 +320,17 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// === โหลดเสียง ===
+// === เสียงยิงเข้า/ไม่เข้า แบบสุ่ม ===
+const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
+const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
+
+function getRandomSound(array) {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
+// === โหลดเสียงทั้งหมด ===
 function preloadAllSounds() {
-  const files = ["friend.mp3", "b.mp3", "t.mp3", "f.mp3", "end.mp3"];
+  const files = ["friend.mp3", "b.mp3", "end.mp3", ...goalSounds, ...missSounds];
   files.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
@@ -351,17 +352,28 @@ function stopBGM() {
   if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
-// ใช้ trigger จาก server เพื่อซิงค์ทั้ง 2 ฝ่าย
-function triggerSound(name) {
+// ฟังก์ชัน triggerSound หลัก (สำหรับเสียงยิงเข้า/ไม่เข้า เท่านั้น)
+function triggerGoalOrMiss(isGoal) {
   if (!roomId) return;
+  const soundFile = isGoal ? getRandomSound(goalSounds) : getRandomSound(missSounds);
   db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
-    name: name,
+    name: soundFile,
     time: Date.now(),
     playerId: playerId
   });
 }
 
-// ฟังจาก server แล้วเล่นเสียง + TTS + aria-live
+// ฟังก์ชันแยกสำหรับเสียงเลือกทีม (คงเดิม 100% - เล่น friend.mp3 เท่านั้น)
+function triggerFriendSound() {
+  if (!roomId) return;
+  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
+    name: "friend.mp3",
+    time: Date.now(),
+    playerId: playerId
+  });
+}
+
+// ฟังจาก server แล้วเล่นเสียง
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
@@ -379,8 +391,8 @@ function startSoundListener() {
     }
 
     let msg = "";
-    if (name === "t.mp3") msg = "ยิงเข้า!";
-    else if (name === "f.mp3") msg = "ยิงไม่เข้า!";
+    if (goalSounds.includes(name)) msg = "ยิงเข้า!";
+    else if (missSounds.includes(name)) msg = "ยิงไม่เข้า!";
     else if (name === "end.mp3") msg = "จบเกม!";
     else if (name === "friend.mp3") msg = `${playerName} เลือกทีมแล้ว`;
 
@@ -462,14 +474,12 @@ function createShotsOrder(team){
   return players;
 }
 
-// === ฟังก์ชันใหม่: ดึงรายชื่อนักเตะแบบวนลูป ===
 function getShooterName(order, shotIndex) {
   const length = order.length;
   if (length === 0) return "นักเตะ";
   return order[shotIndex % length];
 }
 
-// === Debounce ===
 function debounceClick(dir){
   if(isButtonLocked || !isMyTurn) return;
   isButtonLocked = true;
@@ -680,9 +690,10 @@ function updateTeamButtons(room) {
   });
 }
 
+// แก้ตรงนี้: ใช้ triggerFriendSound() แทน เพื่อเล่น friend.mp3 เท่านั้น
 function chooseTeam(team) {
   db.ref(`penaltyRooms/${roomId}/players/${playerId}/team`).set(team);
-  triggerSound("friend.mp3");
+  triggerFriendSound();  // ← แก้ตรงนี้
   speak(`${playerName} เลือกทีม ${team}`);
 }
 
@@ -846,8 +857,8 @@ async function processShot(data, players, gameRef) {
 
   const isGoal = data.shooterDir !== data.keeperDir;
 
-  const soundName = isGoal ? "t.mp3" : "f.mp3";
-  triggerSound(soundName);
+  // ใช้ฟังก์ชันเฉพาะเสียงยิงเข้า/ไม่เข้า (สุ่ม)
+  triggerGoalOrMiss(isGoal);
 
   let scoreP1 = data.scoreP1 || 0;
   let scoreP2 = data.scoreP2 || 0;
@@ -882,7 +893,7 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
-/* === ตรวจสอบจบเกมตามกฎ FIFA จริง (ปรับใหม่ให้ถูกต้อง 100%) === */
+/* === ตรวจสอบจบเกมตามกฎ FIFA จริง === */
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP1, shotIndexP2) {
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
@@ -894,14 +905,12 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP
   let end = false;
   let winnerId = null;
 
-  // === ระยะ 5 ลูกแรก ===
   if (!data.isSudden) {
     const shotsDoneP1 = Math.min(totalShotsP1, 5);
     const shotsDoneP2 = Math.min(totalShotsP2, 5);
     const remainingP1 = 5 - shotsDoneP1;
     const remainingP2 = 5 - shotsDoneP2;
 
-    // 1. ยังไม่ครบ 5 ลูก แต่ฝ่ายหนึ่งชนะแน่นอน
     if (totalShotsP1 < 5 || totalShotsP2 < 5) {
       const maxP1 = scoreP1 + remainingP1;
       const maxP2 = scoreP2 + remainingP2;
@@ -911,36 +920,35 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP
       }
     }
 
-    // 2. ครบ 5 ลูกแล้ว
     if (totalShotsP1 >= 5 && totalShotsP2 >= 5) {
       if (scoreP1 !== scoreP2) {
         end = true;
         winnerId = scoreP1 > scoreP2 ? (isP1First ? p1Id : p2Id) : (isP1First ? p2Id : p1Id);
       } else {
-        // เข้าสู่ซัดเดนเดธ
         gameRef.update({ isSudden: true });
         return;
       }
     }
   }
-
-  // === ซัดเดนเดธ (Sudden Death) ===
   else {
     const suddenShotsP1 = totalShotsP1 - 5;
     const suddenShotsP2 = totalShotsP2 - 5;
 
-    // ต้องรอให้ทั้งสองฝ่ายยิงครบคู่ (เช่น P1 ยิงลูกที่ 6, P2 ยิงลูกที่ 6)
     if (suddenShotsP1 === suddenShotsP2 && suddenShotsP1 > 0) {
       if (scoreP1 !== scoreP2) {
         end = true;
         winnerId = scoreP1 > scoreP2 ? (isP1First ? p1Id : p2Id) : (isP1First ? p2Id : p1Id);
       }
     }
-    // ถ้ายังไม่ครบคู่ → รอต่อ
   }
 
   if (end) {
-    triggerSound("end.mp3");
+    // เสียงจบเกมยังคงใช้ end.mp3 ตามเดิม
+    db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
+      name: "end.mp3",
+      time: Date.now(),
+      playerId: playerId
+    });
     stopBGM();
 
     setTimeout(() => {
@@ -997,7 +1005,6 @@ function showResult(room) {
 }
 
 function backToLobby() {
-  // ลบฟังก์ชันนี้ทั้งหมด ตามคำขอ
 }
 </script>
 </body>

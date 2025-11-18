@@ -196,7 +196,7 @@ body {
 </head>
 <body>
 
-<!-- ปุ่มกลับเมนูหลัก (แสดงเฉพาะหน้าแรกและเลือกทีม) -->
+<!-- ปุ่มกลับเมนูหลัก -->
 <button id="backToMainMenu" onclick="window.location.href='../index.html'" aria-label="กลับเมนูหลัก">กลับเมนูหลัก</button>
 
 <h1 style="margin-bottom:40px;">เกมยิงจุดโทษ 2005/2006</h1>
@@ -210,7 +210,7 @@ body {
   </div>
 </div>
 
-<!-- ===== หน้าจอออนไลน์ (ว่างไว้) ===== -->
+<!-- ===== หน้าจอออนไลน์ ===== -->
 <div id="onlineScreen">
   <p style="font-size:28px;">โหมดเล่นออนไลน์</p>
   <p>กำลังพัฒนา...</p>
@@ -245,9 +245,21 @@ body {
 
 <!-- เสียง -->
 <audio id="bgm" loop src="audio/b.mp3"></audio>
-<audio id="goal" src="audio/t.mp3"></audio>
-<audio id="miss" src="audio/f.mp3"></audio>
 <audio id="end" src="audio/end.mp3"></audio>
+
+<!-- เสียงยิงเข้า (goal) หลายไฟล์ -->
+<audio id="goal0" src="audio/t.mp3"></audio>
+<audio id="goal1" src="audio/t1.mp3"></audio>
+<audio id="goal2" src="audio/t2.mp3"></audio>
+<audio id="goal3" src="audio/t3.mp3"></audio>
+<audio id="goal4" src="audio/t4.mp3"></audio>
+
+<!-- เสียงยิงไม่เข้า (miss) หลายไฟล์ -->
+<audio id="miss0" src="audio/f.mp3"></audio>
+<audio id="miss1" src="audio/f1.mp3"></audio>
+<audio id="miss2" src="audio/f2.mp3"></audio>
+<audio id="miss3" src="audio/f3.mp3"></audio>
+<audio id="miss4" src="audio/f4.mp3"></audio>
 
 <script>
 /* =============================== 
@@ -369,11 +381,9 @@ function debounceClick(dir){
 }
 
 /* =============================== 
-   เสียง
+   เสียงพื้นหลังและจบเกม
    =============================== */
 const bgm = document.getElementById("bgm");
-const goalSnd = document.getElementById("goal");
-const missSnd = document.getElementById("miss");
 const endSnd = document.getElementById("end");
 
 function playSound(el){
@@ -384,6 +394,37 @@ function playSound(el){
 function stopBGM(){
   bgm.pause();
   bgm.currentTime = 0;
+}
+
+/* =============================== 
+   ระบบสุ่มเสียงยิงเข้า/ไม่เข้า
+   =============================== */
+const goalSounds = [
+  document.getElementById("goal0"),
+  document.getElementById("goal1"),
+  document.getElementById("goal2"),
+  document.getElementById("goal3"),
+  document.getElementById("goal4")
+];
+
+const missSounds = [
+  document.getElementById("miss0"),
+  document.getElementById("miss1"),
+  document.getElementById("miss2"),
+  document.getElementById("miss3"),
+  document.getElementById("miss4")
+];
+
+function playRandomGoal() {
+  const snd = goalSounds[Math.floor(Math.random() * goalSounds.length)];
+  playSound(snd);
+  return waitForSound(snd);
+}
+
+function playRandomMiss() {
+  const snd = missSounds[Math.floor(Math.random() * missSounds.length)];
+  playSound(snd);
+  return waitForSound(snd);
 }
 
 /* =============================== 
@@ -472,8 +513,8 @@ async function chooseDirection(dir){
   const shooterName = (turn===0) ? getShooterName(userTeam, shotIndexUser) : getShooterName(cpuTeam, shotIndexCPU);
   const finalMsg = `${shooterName} ${turn===0?userTeam:cpuTeam} ยิง${isGoal?"เข้า":"ไม่เข้า"}! Score ${score} - ${oppScore}`;
 
-  if(isGoal) await waitForSound(goalSnd);
-  else await waitForSound(missSnd);
+  if(isGoal) await playRandomGoal();
+  else await playRandomMiss();
 
   speak(finalMsg);
 
@@ -484,22 +525,19 @@ async function chooseDirection(dir){
 }
 
 /* =============================== 
-   ตรวจจบเกม (แก้ไขตามกฎ FIFA)
+   ตรวจจบเกม (ตามกฎ FIFA)
    =============================== */
 function checkGameEndOrNext(){
   const totalShots = shotIndexUser + shotIndexCPU;
   const isAfter5 = shotIndexUser >= 5 && shotIndexCPU >= 5;
 
-  // ถ้ายังไม่ครบ 5 ลูกต่อทีม → ยังไม่ตัดสิน
   if (!isAfter5) {
     turn = 1 - turn;
     setTimeout(startTurn, 800);
     return;
   }
 
-  // หลังครบ 5 ลูก
   if (!isSuddenDeath) {
-    // ตรวจสอบว่ามีทีมใดนำห่างเกินโอกาสที่เหลือหรือไม่
     const remainingUser = 5 - shotIndexUser;
     const remainingCPU = 5 - shotIndexCPU;
 
@@ -512,41 +550,34 @@ function checkGameEndOrNext(){
       return;
     }
 
-    // ถ้าคะแนนเท่ากัน → เข้าซัดเดนเดธ
     if (score === oppScore) {
       isSuddenDeath = true;
       speak("เข้าสู่ซัดเดนเดธ!");
-      turn = 1 - turn; // ผลัดกันต่อ
+      turn = 1 - turn;
       setTimeout(startTurn, 800);
       return;
     }
 
-    // ถ้าคะแนนไม่เท่า → ทีมที่นำชนะ
     endGame(score > oppScore);
     return;
   }
 
-  // === อยู่ในซัดเดนเดธ ===
-  // ต้องยิงครบคู่ (ทั้งสองทีมยิงแล้ว) จึงจะตัดสินได้
+  // ซัดเดนเดธ
   if (shotIndexUser > shotIndexCPU) {
-    // ผู้เล่นยิงก่อน → รอ CPU ยิง
     turn = 1;
     setTimeout(startTurn, 800);
     return;
   }
 
   if (shotIndexCPU > shotIndexUser) {
-    // CPU ยิงก่อน → รอผู้เล่นยิง
     turn = 0;
     setTimeout(startTurn, 800);
     return;
   }
 
-  // ตอนนี้ทั้งสองทีมยิงครบคู่ในซัดเดนเดธ
   if (score !== oppScore) {
     endGame(score > oppScore);
   } else {
-    // เสมอ → ยิงต่อ
     turn = 1 - turn;
     setTimeout(startTurn, 800);
   }
