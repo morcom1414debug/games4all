@@ -285,6 +285,9 @@
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
 <audio id="bgm" loop src="audio/b.mp3"></audio>
+<audio id="goal" src="audio/t.mp3"></audio>
+<audio id="miss" src="audio/f.mp3"></audio>
+<audio id="end" src="audio/end.mp3"></audio>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -317,27 +320,12 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// === ระบบสุ่มเสียงเข้า/ไม่เข้า แบบไม่ซ้ำติดกัน + วนลูปได้ตลอดไป ===
-let goalQueue = [], missQueue = [];
+// === เสียงยิงเข้า/ไม่เข้า แบบสุ่ม ===
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
 
-function refillQueue(array, queue) {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  queue.push(...copy);
-}
-
-function getNextGoalSound() {
-  if (goalQueue.length === 0) refillQueue(goalSounds, goalQueue);
-  return goalQueue.shift();
-}
-function getNextMissSound() {
-  if (missQueue.length === 0) refillQueue(missSounds, missQueue);
-  return missQueue.shift();
+function getRandomSound(array) {
+  return array[Math.floor(Math.random() * array.length)];
 }
 
 // === โหลดเสียงทั้งหมด ===
@@ -348,8 +336,6 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
-  refillQueue(goalSounds, goalQueue);
-  refillQueue(missSounds, missQueue);
 }
 
 function startBGM() {
@@ -366,16 +352,28 @@ function stopBGM() {
   if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
-// === ระบบเสียงแบบ d.html (trigger ผ่าน Firebase) ===
-function triggerSound(name) {
+// ฟังก์ชัน triggerSound หลัก (สำหรับเสียงยิงเข้า/ไม่เข้า เท่านั้น)
+function triggerGoalOrMiss(isGoal) {
   if (!roomId) return;
+  const soundFile = isGoal ? getRandomSound(goalSounds) : getRandomSound(missSounds);
   db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
-    name: name,
+    name: soundFile,
     time: Date.now(),
     playerId: playerId
   });
 }
 
+// ฟังก์ชันแยกสำหรับเสียงเลือกทีม (คงเดิม 100% - เล่น friend.mp3 เท่านั้น)
+function triggerFriendSound() {
+  if (!roomId) return;
+  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
+    name: "friend.mp3",
+    time: Date.now(),
+    playerId: playerId
+  });
+}
+
+// ฟังจาก server แล้วเล่นเสียง
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
@@ -692,9 +690,10 @@ function updateTeamButtons(room) {
   });
 }
 
+// แก้ตรงนี้: ใช้ triggerFriendSound() แทน เพื่อเล่น friend.mp3 เท่านั้น
 function chooseTeam(team) {
   db.ref(`penaltyRooms/${roomId}/players/${playerId}/team`).set(team);
-  triggerSound("friend.mp3");
+  triggerFriendSound();  // ← แก้ตรงนี้
   speak(`${playerName} เลือกทีม ${team}`);
 }
 
@@ -858,9 +857,8 @@ async function processShot(data, players, gameRef) {
 
   const isGoal = data.shooterDir !== data.keeperDir;
 
-  // ใช้ระบบ triggerSound + สุ่มไม่ซ้ำแบบใหม่
-  const soundName = isGoal ? getNextGoalSound() : getNextMissSound();
-  triggerSound(soundName);
+  // ใช้ฟังก์ชันเฉพาะเสียงยิงเข้า/ไม่เข้า (สุ่ม)
+  triggerGoalOrMiss(isGoal);
 
   let scoreP1 = data.scoreP1 || 0;
   let scoreP2 = data.scoreP2 || 0;
@@ -945,7 +943,12 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP
   }
 
   if (end) {
-    triggerSound("end.mp3");
+    // เสียงจบเกมยังคงใช้ end.mp3 ตามเดิม
+    db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
+      name: "end.mp3",
+      time: Date.now(),
+      playerId: playerId
+    });
     stopBGM();
 
     setTimeout(() => {
