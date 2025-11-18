@@ -281,43 +281,6 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// สำคัญมากสำหรับ iOS
-let audioUnlocked = false;
-let unlockAudioPromise = null;
-
-// ==================== ปลดล็อก Audio Context สำหรับ iOS ====================
-function unlockAudioContext() {
-  if (audioUnlocked) return Promise.resolve();
-  if (unlockAudioPromise) return unlockAudioPromise;
-
-  unlockAudioPromise = new Promise(resolve => {
-    const unlock = () => {
-      const silent = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAAA");
-      silent.play().then(() => {
-        audioUnlocked = true;
-        document.removeEventListener("touchstart", unlock);
-        document.removeEventListener("click", unlock);
-        console.log("Audio unlocked สำหรับ iOS/Android");
-        resolve();
-      }).catch(() => {});
-    };
-    document.addEventListener("touchstart", unlock, { once: true });
-    document.addEventListener("click", unlock, { once: true });
-  });
-  return unlockAudioPromise;
-}
-
-function safePlay(audio) {
-  if (audioUnlocked) {
-    audio.play().catch(() => {});
-  } else {
-    unlockAudioContext().then(() => {
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    });
-  }
-}
-
 // ==================== ระบบคิวสุ่มเสียง ====================
 let goalQueue = [], missQueue = [];
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
@@ -354,14 +317,14 @@ function preloadAllSounds() {
 
 function startBGM() {
   const bgm = preloadedAudios["b.mp3"];
-  if (bgm) { bgm.currentTime = 0; bgm.volume = 0.3; bgm.loop = true; safePlay(bgm); }
+  if (bgm) { bgm.currentTime = 0; bgm.volume = 0.3; bgm.loop = true; bgm.play().catch(() => {}); }
 }
 function stopBGM() {
   const bgm = preloadedAudios["b.mp3"];
   if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
-// ==================== ระบบเสียงผ่าน Firebase ====================
+// ==================== ระบบเสียงผ่าน Firebase (เหมือน d.html) ====================
 function triggerSound(name) {
   if (!roomId) return;
   db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({ name, time: Date.now(), playerId });
@@ -373,14 +336,9 @@ function startSoundListener() {
   soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => {
     const data = s.val();
-    if (!data || Date.now() - data.time > 1500) return;
-
+    if (!data || Date.now() - data.time > 1000) return;
     const audio = preloadedAudios[data.name];
-    if (audio) {
-      audio.currentTime = 0;
-      audio.volume = (data.name === "b.mp3") ? 0.3 : 1.0;
-      safePlay(audio);
-    }
+    if (audio) { audio.currentTime = 0; audio.volume = 1; audio.play().catch(() => {}); }
 
     let msg = "";
     if (goalSounds.includes(data.name)) msg = "ยิงเข้า!";
@@ -429,23 +387,14 @@ function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.rand
 function createShotsOrder(t){ let p=squads[t].players.slice(); shuffle(p); p.push(squads[t].keeper); return p; }
 function getShooterName(o,i){ return o[i % o.length] || "นักเตะ"; }
 
-function debounceClick(dir){
-  unlockAudioContext(); // ปลดล็อกเสียงทันทีที่แตะปุ่มยิง
-  if(isButtonLocked || !isMyTurn) return;
-  isButtonLocked=true;
-  chooseDirection(dir);
-  setTimeout(()=>{isButtonLocked=false;},100);
-}
+function debounceClick(dir){ if(isButtonLocked || !isMyTurn) return; isButtonLocked=true; chooseDirection(dir); setTimeout(()=>{isButtonLocked=false;},100); }
 
 // ==================== เริ่มต้นแอป ====================
 document.addEventListener("DOMContentLoaded", () => {
-  preloadAllSounds();
+  preloadAllSounds(); // สำคัญมาก ต้อง preload ก่อน
 
   document.getElementById("confirmNameBtn").onclick = confirmName;
-  document.getElementById("confirmNameBtn").addEventListener("click", unlockAudioContext);
-  document.getElementById("playerName").addEventListener("keydown", e => { 
-    if(e.key==="Enter"){ confirmName(); unlockAudioContext(); }
-  });
+  document.getElementById("playerName").addEventListener("keydown", e => { if(e.key==="Enter") confirmName(); });
   document.getElementById("createRoomBtn").onclick = showCreateRoom;
   document.querySelectorAll(".team-btn").forEach(b => b.onclick = () => chooseTeam(b.dataset.team));
 
@@ -453,7 +402,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("playerName").focus();
 });
 
-// ==================== ฟังก์ชันทั้งหมด ====================
+// ==================== ฟังก์ชันทั้งหมด (ครบทุกบรรทัด) ====================
 function confirmName() {
   playerName = document.getElementById("playerName").value.trim();
   if (!playerName) { alert("กรุณาใส่ชื่อ"); return; }
@@ -562,7 +511,6 @@ function updateTeamButtons(room) {
 }
 
 function chooseTeam(team) {
-  unlockAudioContext();
   db.ref(`penaltyRooms/${roomId}/players/${playerId}/team`).set(team);
   triggerSound("friend.mp3");
   speak(`${playerName} เลือกทีม ${team}`);
