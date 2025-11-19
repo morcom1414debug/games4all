@@ -149,13 +149,19 @@ body {
   pointer-events:none;
 }
 #ttsDisplay.show { opacity:1; }
+
+/* เพิ่ม aria-live สำหรับประกาศผลผู้ชนะ */
+#gameResult {
+  position: absolute;
+  left: -9999px;
+}
 </style>
 </head>
 <body>
 
 <button id="backToMainMenu" onclick="window.location.href='../index.html'">กลับเมนูหลัก</button>
 
-<h1 style="margin-bottom:40px;">เกมยิงจุดโทษ 2005/2006</h1>
+<h1 id="gameTitle" tabindex="-1" style="margin-bottom:40px;">เกมยิงจุดโทษ 2005/2006</h1>
 
 <div id="homeScreen">
   <div id="modeSelect">
@@ -184,6 +190,7 @@ body {
 
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+<div id="gameResult" aria-live="assertive"></div>
 
 <audio id="bgm" loop src="audio/b.mp3"></audio>
 <audio id="end" src="audio/end.mp3"></audio>
@@ -275,7 +282,7 @@ function selectMode(m){
   if(m==='bot'){ 
     document.getElementById("homeScreen").style.display="none"; 
     document.getElementById("teamSelect").style.display="flex";
-    setTimeout(() => document.getElementById("teamManU").focus(), 100); // focus ปุ่มแรก
+    setTimeout(() => document.getElementById("teamManU").focus(), 100);
   } else window.location.href="o.html"; 
 }
 
@@ -298,6 +305,10 @@ function selectTeam(t){
   
   updateScoreboard();
   playSound(bgm);
+
+  // Focus ไปที่ปุ่มมุมซ้ายบนทันทีที่เข้าหน้าเล่น
+  setTimeout(() => document.getElementById("tl").focus(), 300);
+
   setTimeout(startTurn, 800);
 }
 
@@ -337,19 +348,17 @@ async function chooseDirection(dir){
   setTimeout(() => checkGameEndOrNext(), 1200);
 }
 
-// === กฎการตัดสินแพ้-ชนะ แบบเดียวกับ o.html (FIFA จริง) ===
+// === กฎการตัดสินแพ้-ชนะ ===
 function checkGameEndOrNext(){
   const totalShotsP1 = shotIndexP1;
   const totalShotsP2 = shotIndexP2;
 
-  // ยังไม่ซัดเดนเดธ
   if (!isSudden) {
     const shotsDoneP1 = Math.min(totalShotsP1, 5);
     const shotsDoneP2 = Math.min(totalShotsP2, 5);
     const remainingP1 = 5 - shotsDoneP1;
     const remainingP2 = 5 - shotsDoneP2;
 
-    // ตัดสินก่อนครบ 5 ลูก
     if (totalShotsP1 < 5 || totalShotsP2 < 5) {
       if (scoreP1 + remainingP1 < scoreP2 || scoreP2 + remainingP2 < scoreP1) {
         endGame(scoreP1 > scoreP2);
@@ -357,7 +366,6 @@ function checkGameEndOrNext(){
       }
     }
 
-    // ครบ 5 ลูกทั้งคู่
     if (totalShotsP1 >= 5 && totalShotsP2 >= 5) {
       if (scoreP1 !== scoreP2) {
         endGame(scoreP1 > scoreP2);
@@ -371,7 +379,6 @@ function checkGameEndOrNext(){
       }
     }
   }
-  // ซัดเดนเดธ
   else {
     const suddenP1 = totalShotsP1 - 5;
     const suddenP2 = totalShotsP2 - 5;
@@ -390,8 +397,13 @@ function checkGameEndOrNext(){
 function endGame(userWins){
   stopBGM();
   playSound(endSnd);
-  const msg = userWins ? `${userTeam} ชนะ!` : `${cpuTeam} ชนะ!`;
+  const winner = userWins ? userTeam : cpuTeam;
+  const msg = `${winner} ชนะ!`;
   speak(msg);
+
+  // ประกาศผลด้วย aria-live
+  document.getElementById("gameResult").textContent = msg;
+
   setTimeout(()=>alert(msg), 800);
   setTimeout(resetGame, 2000);
 }
@@ -406,11 +418,18 @@ function resetGame(){
   document.getElementById("teamSelect").style.display="flex";
   document.getElementById("backToMainMenu").style.display="block";
   document.querySelector('h1').style.display='block';
-  setTimeout(() => document.getElementById("teamManU").focus(), 200);
+
+  // เคลียร์ผลเดิม
+  document.getElementById("gameResult").textContent = "";
+
+  // Focus กลับไปที่ปุ่มเลือกทีมแมนยู (ปุ่มแรก)
+  setTimeout(() => document.getElementById("teamManU").focus(), 300);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("backToMainMenu").style.display = "block";
+  // Focus ไปที่หัวข้อเกมตั้งแต่เริ่มเปิดหน้า
+  document.getElementById("gameTitle").focus();
 });
 </script>
 </body>
