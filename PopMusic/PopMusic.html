@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมทายเพลง 7 วิ : เพลงยุค 90++</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .game-container {
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+        }
+        .btn {
+            padding: 12px 25px;
+            border-radius: 10px;
+            font-weight: bold;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary {
+            background-image: linear-gradient(to right, #6a11cb 0%, #20e2d7 100%);
+            color: white;
+            border: none;
+        }
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+            opacity: 0.9;
+        }
+        .btn-secondary {
+            background-color: #f0f4f8;
+            color: #2d3748;
+            border: 1px solid #cbd5e0;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #e2e8f0;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.08);
+        }
+        .btn-disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .answer-button {
+            width: 100%;
+            text-align: center;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        .score-display {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 20px;
+        }
+        #backToMainMenuButton {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 8px 15px;
+            font-size: 0.9em;
+            background-color: #cbd5e0;
+            color: #2d3748;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s ease-in-out;
+            z-index: 10;
+        }
+        #backToMainMenuButton:hover {
+            background-color: #a0aec0;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+        }
+        .input-box {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 1.1em;
+            border: 2px solid #cbd5e0;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .input-box:focus {
+            outline: none;
+            border-color: #6a11cb;
+            box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- ปุ่ม กลับเมนูหลัก -->
+        <button id="backToMainMenuButton" class="btn">กลับเมนูหลัก</button>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen">
+            <h1 class="text-4xl font-extrabold text-indigo-700 mb-6" tabindex="-1">เกมทายเพลง 7 วิ : เพลงยุค 90++</h1>
+            <p class="text-lg text-gray-700 mb-8 leading-relaxed">
+                มาประชันความรู้ด้านเสียงเพลงยุค 90++ กัน จำได้ไหม ว่าเพลงอะไร<br>ตอบถูกครบ 10 ข้อ ไปพิชิตสุดยอดแฟนพันธุ์แท้กันได้เลย
+            </p>
+            <button id="startButton" class="btn btn-primary text-xl">เริ่มเกม</button>
+        </div>
+
+        <!-- Question Screen -->
+        <div id="question-screen" class="screen hidden">
+            <h2 id="question-heading" class="text-2xl font-bold text-gray-800 mb-4" tabindex="-1">ข้อที่ 1</h2>
+            <button id="playMusicButton" class="btn btn-primary text-xl mb-6">กดฟังซ้ำ</button>
+            <div id="answer-choices" class="grid grid-cols-1 gap-4">
+                <!-- Answer buttons will be injected here -->
+            </div>
+        </div>
+
+        <!-- Game Over / Result Screen -->
+        <div id="result-screen" class="screen hidden">
+            <h2 id="result-heading" class="text-3xl font-bold text-indigo-700 mb-4" tabindex="-1"></h2>
+            <p id="result-score" class="score-display mb-6"></p>
+            <button id="ultimate-button" class="btn btn-primary text-xl hidden">พิชิตสุดยอดแฟนพันธุ์แท้</button>
+        </div>
+
+        <!-- Ultimate Challenge Screen -->
+        <div id="ultimate-screen" class="screen hidden">
+            <h2 id="ultimate-heading" class="text-3xl font-bold text-indigo-700 mb-6" tabindex="-1">
+                ตอบถูก? คุณคือ "สุดยอดแฟนพันธุ์แท้ - เพลงยุค 90++"
+            </h2>
+            <input type="text" id="ultimate-input" class="input-box" placeholder="กรุณาพิมพ์ชื่อเพลงที่คุณทราบ" autocomplete="off">
+            <button id="ultimate-submit" class="btn btn-primary text-xl">ส่ง</button>
+        </div>
+
+        <!-- Final Summary Screen -->
+        <div id="final-summary-screen" class="screen hidden">
+            <h2 id="final-heading" class="text-3xl font-bold text-indigo-700 mb-6" tabindex="-1"></h2>
+            <p id="final-message" class="text-lg text-gray-700 leading-relaxed"></p>
+        </div>
+    </div>
+
+    <script>
+        // --- ข้อมูลเพลงคำถาม (50 เพลง) ---
+        const questionSongsData = [
+            { file: 'q01.mp3', answer: 'อยากได้ยินว่ารักกัน' },
+            { file: 'q02.mp3', answer: 'คู่กัด' },
+            { file: 'q03.mp3', answer: 'ขอให้เหมือนเดิม' },
+            { file: 'q04.mp3', answer: 'หมวยนี่คะ' },
+            { file: 'q05.mp3', answer: 'พลิกล็อค' },
+            { file: 'q06.mp3', answer: 'ภาพลวงตา' },
+            { file: 'q07.mp3', answer: '704' },
+            { file: 'q08.mp3', answer: 'บิน' },
+            { file: 'q09.mp3', answer: 'ร้อยคน' },
+            { file: 'q10.mp3', answer: 'ลอยทะเล' },
+            { file: 'q11.mp3', answer: 'รักเธอสุดหัวใจ' },
+            { file: 'q12.mp3', answer: 'เจ้าช่อมาลี' },
+            { file: 'q13.mp3', answer: 'ทำอะไรสักอย่าง' },
+            { file: 'q14.mp3', answer: 'รักไม่ช่วยอะไร' },
+            { file: 'q15.mp3', answer: 'บุษบา' },
+            { file: 'q16.mp3', answer: 'รักนิรันดร์' },
+            { file: 'q17.mp3', answer: 'อยากร้องดังๆ' },
+            { file: 'q18.mp3', answer: 'ฤดูร้อน' },
+            { file: 'q19.mp3', answer: 'หญิงร้ายชายเลว' },
+            { file: 'q20.mp3', answer: 'เหลวไหล' },
+            { file: 'q21.mp3', answer: 'ที่ว่าง' },
+            { file: 'q22.mp3', answer: 'ไม่มีเหตุผล' },
+            { file: 'q23.mp3', answer: 'รักแท้ดูแลไม่ได้' },
+            { file: 'q24.mp3', answer: 'แจกัน' },
+            { file: 'q25.mp3', answer: 'ลมหนาว' },
+            { file: 'q26.mp3', answer: 'เก็บไว้ให้เธอ' },
+            { file: 'q27.mp3', answer: 'ความเดิมตอนที่แล้ว' },
+            { file: 'q28.mp3', answer: 'คาใจ' },
+            { file: 'q29.mp3', answer: 'เที่ยวละไม' },
+            { file: 'q30.mp3', answer: 'ชัดเจน' },
+            { file: 'q31.mp3', answer: 'เรียนไม่เก่ง' },
+            { file: 'q32.mp3', answer: 'แอบเหงา' },
+            { file: 'q33.mp3', answer: 'โลกทั้งใบให้นายคนเดียว' },
+            { file: 'q34.mp3', answer: 'กระจกร้าว' },
+            { file: 'q35.mp3', answer: 'ก่อน' },
+            { file: 'q36.mp3', answer: 'ซ่าส์...สั่นๆ' },
+            { file: 'q37.mp3', answer: 'เท้าไฟ' },
+            { file: 'q38.mp3', answer: 'นางแมว' },
+            { file: 'q39.mp3', answer: 'ฟ้ายังฟ้าอยู่' },
+            { file: 'q40.mp3', answer: 'ยังไงก็รัก' },
+            { file: 'q41.mp3', answer: 'รักเธอ' },
+            { file: 'q42.mp3', answer: 'ลมหายใจ' },
+            { file: 'q43.mp3', answer: 'ดูมั้ย' },
+            { file: 'q44.mp3', answer: 'ความลับในใจ' },
+            { file: 'q45.mp3', answer: 'หวาน' },
+            { file: 'q46.mp3', answer: 'หัวใจกระดาษ' },
+            { file: 'q47.mp3', answer: 'อะไรก็ยอม' },
+            { file: 'q48.mp3', answer: 'รัก' },
+            { file: 'q49.mp3', answer: 'ลอยกระทงวันสงกรานต์' },
+            { file: 'q50.mp3', answer: 'แด่เธอ' }
+        ];
+
+        // --- เพลงตัวเลือกปลอม ---
+        const additionalFakeAnswers = [
+            'ไม่อาจเปลี่ยนใจ','โอ๊ย','ซักกะนิด','ผ้าเช็ดหน้า','เกรงใจ','ผิดไปแล้ว','ประวัติศาสตร์','รักคงยังไม่พอ','คู่แท้','ซมซาน',
+            'ใจสั่งมา','สิทธิ์ของเธอ','รักไม่ยอมเปลี่ยนแปลง','คืนข้ามปี','การเดินทางที่แสนพิเศษ','เพื่อนสนิท','ความจริงของผู้หญิงเอาแต่ใจ',
+            'นรกในใจ','ขอเลวแค่นี้','พรุ่งนี้ไม่มีจริง','มือที่สาม','แค่ดิน','เฮงเฮงเฮง','เก็บมันเอาไว้','สวนทาง','นิ้วก้อย',
+            'ต่อหน้าฉันเธอทำอย่างนั้นได้อย่างไร','อยากเป็นคนนั้นในใจเธอ','หวาดระแวง','พลังรัก','เพื่อเธอตลอดไป','ยอม','หลงกล',
+            'กว่าจะรู้สึก','ทำไมไม่ทำให้ตาย','พันธุ์ร็อก','คลื่นหัวใจ','คนสุดท้าย','ลาก่อน','หัวใจสะออน','คนหลายใจ','ก็เคยสัญญา','ยินดีไม่มีปัญหา'
+        ];
+
+        const allCorrectAnswers = questionSongsData.map(s => s.answer);
+
+        // --- ตัวแปรเกม ---
+        let currentRoundSongs = [];
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let incorrectAttempts = 0;
+        const maxIncorrect = 1;
+        const totalQuestions = 10;
+        let userAnswers = [];
+        let audioPlayer = new Audio();
+        let audioTimeout;
+        let audioPlayCount = 0;
+        let lastCorrectPosition = -1;
+        let previousChoices = [];
+        let ultimateSong = null;
+        let isUltimateRound = false;
+
+        // --- ตัวแปรสูตรลับ ---
+        let skipInput = '';
+        let skipTimeout = null;
+
+        // --- DOM Elements ---
+        const startScreen = document.getElementById('start-screen');
+        const questionScreen = document.getElementById('question-screen');
+        const resultScreen = document.getElementById('result-screen');
+        const ultimateScreen = document.getElementById('ultimate-screen');
+        const finalSummaryScreen = document.getElementById('final-summary-screen');
+        const startButton = document.getElementById('startButton');
+        const playMusicButton = document.getElementById('playMusicButton');
+        const questionHeading = document.getElementById('question-heading');
+        const answerChoicesDiv = document.getElementById('answer-choices');
+        const resultHeading = document.getElementById('result-heading');
+        const resultScore = document.getElementById('result-score');
+        const ultimateButton = document.getElementById('ultimate-button');
+        const ultimateHeading = document.getElementById('ultimate-heading');
+        const ultimateInput = document.getElementById('ultimate-input');
+        const ultimateSubmit = document.getElementById('ultimate-submit');
+        const finalHeading = document.getElementById('final-heading');
+        const finalMessage = document.getElementById('final-message');
+        const backToMainMenuButton = document.getElementById('backToMainMenuButton');
+
+        // --- Helper Functions ---
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function playAudio(filename, duration = 7000) {
+            return new Promise((resolve) => {
+                if (audioTimeout) clearTimeout(audioTimeout);
+                if (!audioPlayer.paused) {
+                    audioPlayer.pause();
+                    audioPlayer.currentTime = 0;
+                }
+                audioPlayer.src = `audio/${filename}`;
+                audioPlayer.play().catch(e => console.error("Error playing audio:", e));
+
+                const onEnded = () => {
+                    audioPlayer.removeEventListener('ended', onEnded);
+                    resolve();
+                };
+                audioPlayer.addEventListener('ended', onEnded);
+
+                if (duration > 0) {
+                    audioTimeout = setTimeout(() => {
+                        audioPlayer.pause();
+                        audioPlayer.currentTime = 0;
+                        audioPlayer.removeEventListener('ended', onEnded);
+                        resolve();
+                    }, duration);
+                }
+            });
+        }
+
+        function getUniqueIncorrectAnswers(correctAnswer, previousChoices = []) {
+            const candidates = new Set();
+            questionSongsData.forEach(s => {
+                if (s.answer !== correctAnswer && !previousChoices.includes(s.answer)) {
+                    candidates.add(s.answer);
+                }
+            });
+            additionalFakeAnswers.forEach(ans => {
+                if (ans !== correctAnswer && !previousChoices.includes(ans)) {
+                    candidates.add(ans);
+                }
+            });
+
+            let arr = Array.from(candidates);
+            shuffleArray(arr);
+            return arr.slice(0, 2);
+        }
+
+        function getValidCorrectPosition() {
+            const positions = [0, 1, 2];
+            const available = positions.filter(pos => pos !== lastCorrectPosition);
+            const chosen = available[Math.floor(Math.random() * available.length)] || 0;
+            lastCorrectPosition = chosen;
+            return chosen;
+        }
+
+        function showScreen(screen) {
+            [startScreen, questionScreen, resultScreen, ultimateScreen, finalSummaryScreen].forEach(s => s.classList.add('hidden'));
+            screen.classList.remove('hidden');
+            setTimeout(() => {
+                const heading = screen.querySelector('h1, h2');
+                if (heading) heading.focus();
+            }, 0);
+        }
+
+        // --- Game Logic ---
+        async function startGame() {
+            try {
+                await playAudio('qstart.mp3', 0);
+            } catch (err) {
+                console.warn("qstart.mp3 not found or failed to play.");
+            }
+            initNewRound();
+        }
+
+        function initNewRound() {
+            currentRoundSongs = shuffleArray([...questionSongsData]).slice(0, totalQuestions);
+            currentQuestionIndex = 0;
+            score = 0;
+            incorrectAttempts = 0;
+            userAnswers = [];
+            lastCorrectPosition = -1;
+            previousChoices = [];
+            isUltimateRound = false;
+            renderQuestion();
+            playCurrentSong();
+        }
+
+        function renderQuestion() {
+            showScreen(questionScreen);
+            questionHeading.textContent = `ข้อที่ ${currentQuestionIndex + 1}`;
+
+            const currentSong = currentRoundSongs[currentQuestionIndex];
+            audioPlayCount = 0;
+            playMusicButton.disabled = false;
+            playMusicButton.classList.remove('btn-disabled');
+
+            const correct = currentSong.answer;
+            const correctPos = getValidCorrectPosition();
+            const incorrects = getUniqueIncorrectAnswers(correct, previousChoices);
+            const choices = new Array(3);
+            choices[correctPos] = correct;
+
+            let wrongIdx = 0;
+            for (let i = 0; i < 3; i++) {
+                if (i !== correctPos) {
+                    choices[i] = incorrects[wrongIdx++];
+                }
+            }
+
+            previousChoices = [...choices];
+
+            answerChoicesDiv.innerHTML = '';
+            choices.forEach(choice => {
+                const btn = document.createElement('button');
+                btn.textContent = choice;
+                btn.classList.add('btn', 'btn-secondary', 'answer-button');
+                btn.onclick = () => checkAnswer(choice);
+                answerChoicesDiv.appendChild(btn);
+            });
+        }
+
+        function playCurrentSong() {
+            if (audioPlayCount < 2) {
+                const file = currentRoundSongs[currentQuestionIndex].file;
+                playAudio(file, 7000);
+                audioPlayCount++;
+                if (audioPlayCount >= 2) {
+                    playMusicButton.disabled = true;
+                    playMusicButton.classList.add('btn-disabled');
+                }
+            }
+        }
+
+        function checkAnswer(selected) {
+            const song = currentRoundSongs[currentQuestionIndex];
+            const isCorrect = selected === song.answer;
+
+            if (!isCorrect) {
+                incorrectAttempts++;
+                playAudio('qwrong.mp3', 0);
+            } else {
+                score++;
+                playAudio('qtrue.mp3', 0);
+            }
+
+            userAnswers.push({ userAnswer: selected, correctAnswer: song.answer, isCorrect });
+
+            Array.from(answerChoicesDiv.children).forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('btn-disabled');
+                if (btn.textContent === song.answer) {
+                    btn.classList.remove('btn-secondary');
+                    btn.classList.add('bg-green-200', 'text-green-800');
+                } else if (btn.textContent === selected && !isCorrect) {
+                    btn.classList.remove('btn-secondary');
+                    btn.classList.add('bg-red-200', 'text-red-800');
+                }
+            });
+            playMusicButton.disabled = true;
+            playMusicButton.classList.add('btn-disabled');
+
+            setTimeout(() => {
+                if (incorrectAttempts > maxIncorrect || currentQuestionIndex === totalQuestions - 1) {
+                    endGame();
+                } else {
+                    currentQuestionIndex++;
+                    renderQuestion();
+                    playCurrentSong();
+                }
+            }, 2000);
+        }
+
+        function calculateFinalScore() {
+            if (incorrectAttempts === 0 && score === 10) return 1000;
+            if (incorrectAttempts === 1 && score === 9) return 700;
+            return score * 50;
+        }
+
+        async function endGame() {
+            const finalScore = calculateFinalScore();
+            showScreen(resultScreen);
+
+            if (incorrectAttempts > maxIncorrect) {
+                await playAudio('qSad.mp3', 0).catch(() => {});
+                resultHeading.textContent = 'ไม่เป็นไร ลองอีกสักรอบได้นะ';
+            } else {
+                await playAudio('qend.mp3', 0).catch(() => {});
+                resultHeading.textContent = 'ยินดีด้วย คุณคือแฟนพันธุ์แท้ เพลงยุค 90++ ยอดเยี่ยมมากๆ!';
+            }
+
+            resultScore.textContent = `คุณได้ ${finalScore} คะแนน`;
+
+            if (score === 10 && incorrectAttempts === 0) {
+                ultimateButton.classList.remove('hidden');
+            }
+        }
+
+        async function startUltimateChallenge() {
+            const usedFiles = currentRoundSongs.map(s => s.file);
+            const remainingSongs = questionSongsData.filter(s => !usedFiles.includes(s.file));
+            const shuffled = shuffleArray(remainingSongs);
+            ultimateSong = shuffled[0];
+
+            isUltimateRound = true;
+            showScreen(ultimateScreen);
+
+            await playAudio('qstart.mp3', 0).catch(() => {});
+            await new Promise(r => setTimeout(r, 500));
+            await playAudio(ultimateSong.file, 7000);
+
+            setTimeout(() => {
+                ultimateInput.focus();
+            }, 100);
+        }
+
+        async function submitUltimateAnswer() {
+            const userAnswer = ultimateInput.value.trim();
+            const isCorrect = userAnswer === ultimateSong.answer;
+
+            ultimateSubmit.disabled = true;
+            ultimateInput.disabled = true;
+
+            if (isCorrect) {
+                await playAudio('great.mp3', 0).catch(() => {});
+                showScreen(finalSummaryScreen);
+                finalHeading.textContent = 'คุณสุดยอดจริงๆ!';
+                finalMessage.textContent = 'ยินดีด้วย! คุณคือสุดยอดแฟนพันธุ์แท้ : เพลงยุค 90++';
+            } else {
+                await playAudio('iwrong.mp3', 0).catch(() => {});
+                showScreen(finalSummaryScreen);
+                finalHeading.textContent = 'อีกนิดเดียว ลองใหม่อีกรอบนะ!';
+                finalMessage.textContent = 'ยังไงก็ตาม คุณเก่งมากแล้วนะ ที่มาถึงรอบชิงได้ สู้ต่อไปนะ?';
+            }
+
+            setTimeout(() => {
+                finalHeading.focus();
+            }, 100);
+        }
+
+        // --- สูตรลับ: พิมพ์ "skip" เพื่อข้ามไปจบเกมทันที ---
+        function handleSkipInput(e) {
+            if (isUltimateRound || !questionScreen.classList.contains('hidden')) {
+                const key = e.key.toLowerCase();
+                if (/[a-z]/.test(key)) {
+                    skipInput += key;
+                    if (skipTimeout) clearTimeout(skipTimeout);
+                    skipTimeout = setTimeout(() => {
+                        skipInput = '';
+                    }, 2000);
+
+                    if (skipInput === 'skip') {
+                        skipInput = '';
+                        if (skipTimeout) clearTimeout(skipTimeout);
+                        score = 10;
+                        incorrectAttempts = 0;
+                        currentQuestionIndex = totalQuestions - 1;
+                        endGame();
+                    }
+                }
+            }
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', startGame);
+        playMusicButton.addEventListener('click', playCurrentSong);
+        backToMainMenuButton.addEventListener('click', () => {
+            if (!audioPlayer.paused) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+            }
+            window.location.href = '../index.html';
+        });
+
+        ultimateButton.addEventListener('click', startUltimateChallenge);
+        ultimateSubmit.addEventListener('click', submitUltimateAnswer);
+        ultimateInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                submitUltimateAnswer();
+            }
+        });
+
+        document.addEventListener('keydown', handleSkipInput);
+
+        // เริ่มต้น
+        window.onload = () => {
+            showScreen(startScreen);
+        };
+    </script>
+</body>
+</html>
