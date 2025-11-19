@@ -296,13 +296,11 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// ===== เพิ่มตรงนี้: รายชื่อไฟล์เสียงทั้งหมด =====
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
-const popSound = "pop.mp3";   // <--- เสียงใหม่ที่เพิ่มมา
 
 function preloadAllSounds() {
-  const files = ["friend.mp3", "b.mp3", "end.mp3"];
+  const files = ["friend.mp3", "b.mp3", "end.mp3", "pop.mp3"]; // เพิ่ม pop.mp3
   files.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
@@ -318,11 +316,6 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
-
-  // <<< เพิ่มเสียง pop.mp3 >>>
-  const popAudio = new Audio(`audio/${popSound}`);
-  popAudio.preload = "auto";
-  preloadedAudios[popSound] = popAudio;
 }
 
 function startBGM() {
@@ -947,7 +940,6 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP
   }
 }
 
-// <<<<<<<<<<<<<<<<<<<<<<<< ส่วนที่แก้ไขสำคัญที่สุด >>>>>>>>>>>>>>>>>>>>>>>>
 async function chooseDirection(dir) {
   const snap = await db.ref(`penaltyRooms/${roomId}`).once("value");
   const data = snap.val();
@@ -956,15 +948,18 @@ async function chooseDirection(dir) {
   const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
   const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
 
-  // ถ้าเป็นคนยิง และยังไม่มีคนเลือกทิศทางยิง → กดเป็นคนแรก
+  const wasNobodyChosenYet = !data.shooterDir && !data.keeperDir;
+
   if (playerId === currentShooterId && !data.shooterDir) {
     await db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
-    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
-  }
-  // ถ้าเป็นคนเซฟ และยังไม่มีคนเลือกทิศทางเซฟ → กดเป็นคนแรก
-  else if (playerId === currentKeeperId && !data.keeperDir) {
+    if (wasNobodyChosenYet) {
+      triggerSound("pop.mp3");
+    }
+  } else if (playerId === currentKeeperId && !data.keeperDir) {
     await db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
-    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
+    if (wasNobodyChosenYet) {
+      triggerSound("pop.mp3");
+    }
   }
 }
 
