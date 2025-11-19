@@ -24,7 +24,7 @@
     font-weight:bold;
     cursor:pointer;
     border:3px solid #fff;
-    font-size:23px;
+    font-size:22px;
     z-index:1000;
     box-shadow:0 8px 20px rgba(0,0,0,0.5);
     transition:all 0.2s;
@@ -34,13 +34,16 @@
   .shot-btn:disabled { opacity:0.5; cursor:not-allowed; }
   .shot-btn.locked { opacity:0.3; cursor:not-allowed; }
 
+  /* ปรับตำแหน่งปุ่มให้กดง่ายและสวยขึ้น */
   #tl { top:18%; left:12%; }
   #tr { top:18%; right:12%; }
   #center { top:50%; left:50%; transform:translate(-50%, -50%); }
-  #bl { bottom:18%; left:12%; }
-  #br { bottom:18%; right:12%; }
+  #bl { bottom:15%; left:12%; }
+  #br { bottom:15%; right:12%; }
 
   #scoreBoard { 
+    margin-top:20px; 
+    font-size:28px;
     position:fixed;
     top:10px;
     left:50%;
@@ -50,9 +53,9 @@
     padding:15px 30px;
     border-radius:15px;
     border:2px solid #fff;
-    font-size:28px;
   }
 
+  /* หน้าแรก: ตั้งชื่อ */
   #nameInput {
     display:flex;
     flex-direction:column;
@@ -65,7 +68,6 @@
     padding:30px;
     border-radius:20px;
     width:320px;
-    z-index:100;
   }
   #nameInput input {
     padding:12px;
@@ -84,10 +86,12 @@
     cursor:pointer;
   }
 
+  /* ล็อบบี้ */
   #lobby, #room { display:none; }
   ul { list-style:none; padding:0; margin:0; }
   li { margin:8px 0; background:rgba(255,255,255,0.1); padding:12px; border-radius:10px; }
 
+  /* เลือกทีม */
   #teamSelectInRoom {
     display:none;
     flex-direction:column;
@@ -118,7 +122,7 @@
     padding:20px;
     background:rgba(255,255,255,0.1);
     border-radius:15px;
-    font-size:18px;
+    font size:18px;
   }
 
   #startBtn {
@@ -134,6 +138,7 @@
     cursor:pointer;
   }
 
+  /* TTS */
   #ttsDisplay {
     position:fixed;
     bottom:20px;
@@ -152,6 +157,23 @@
   }
   #ttsDisplay.show { opacity:1; }
 
+  #backBtn {
+    position:fixed;
+    top:15px;
+    left:15px;
+    z-index:9999;
+  }
+  #backBtn button {
+    background:#f44336;
+    color:white;
+    border:none;
+    border-radius:50px;
+    padding:12px 26px;
+    font-weight:bold;
+    box-shadow:0 4px 12px rgba(244,67,54,0.4);
+    transition:all 0.3s;
+  }
+
   #resultScreen {
     position:fixed;
     top:0; left:0; width:100%; height:100%;
@@ -165,6 +187,16 @@
   }
   #resultScreen h1 { font-size:48px; margin:20px; }
   #resultScreen p { font-size:28px; }
+  #resultScreen button {
+    margin-top:30px;
+    background:#4CAF50;
+    color:white;
+    border:none;
+    border-radius:15px;
+    padding:15px 40px;
+    font-size:22px;
+    cursor:pointer;
+  }
 
   #currentTurn {
     position:fixed;
@@ -235,7 +267,7 @@
 </div>
 
 <div id="gameScreen" style="display:none;">
-  <div id="scoreBoard">Score: 0 - 0</div>
+  <div id="scoreBoard">Score ตอนนี้คือ 0 - 0</div>
   <div id="currentTurn"></div>
   <button id="tl" class="shot-btn" onclick="debounceClick('TL')">มุมซ้ายบน</button>
   <button id="tr" class="shot-btn" onclick="debounceClick('TR')">มุมขวาบน</button>
@@ -250,13 +282,18 @@
 </div>
 
 <div id="ttsDisplay"></div>
-<div id="tts" aria-live="assertive" style="position:absolute; left:-9999px;"></div>
+<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+
+<audio id="bgm" loop src="audio/b.mp3"></audio>
+<audio id="goal" src="audio/t.mp3"></audio>
+<audio id="miss" src="audio/f.mp3"></audio>
+<audio id="end" src="audio/end.mp3"></audio>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-// ==================== Firebase ====================
+// === เริ่มต้น Firebase ===
 const firebaseConfig = {
   apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
   authDomain: "xo-game-134ec.firebaseapp.com",
@@ -269,137 +306,110 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// ==================== ตัวแปรหลัก ====================
+// === ตัวแปรหลัก ===
 let playerName = "", roomId = "", playerId = "", isHost = false;
 let currentRoomListener = null, soundListener = null, lobbyRoomsListener = null;
 let preloadedAudios = {};
 let isButtonLocked = false;
 let gameStarted = false;
 let isMyTurn = false;
+
+// === TTS & ARIA LIVE ===
 let spokenTurns = new Set();
 let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// สำคัญมากสำหรับ iOS
-let audioUnlocked = false;
-let unlockAudioPromise = null;
-
-// ==================== ปลดล็อก Audio Context สำหรับ iOS ====================
-function unlockAudioContext() {
-  if (audioUnlocked) return Promise.resolve();
-  if (unlockAudioPromise) return unlockAudioPromise;
-
-  unlockAudioPromise = new Promise(resolve => {
-    const unlock = () => {
-      const silent = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAAA");
-      silent.play().then(() => {
-        audioUnlocked = true;
-        document.removeEventListener("touchstart", unlock);
-        document.removeEventListener("click", unlock);
-        console.log("Audio unlocked สำหรับ iOS/Android");
-        resolve();
-      }).catch(() => {});
-    };
-    document.addEventListener("touchstart", unlock, { once: true });
-    document.addEventListener("click", unlock, { once: true });
-  });
-  return unlockAudioPromise;
-}
-
-function safePlay(audio) {
-  if (audioUnlocked) {
-    audio.play().catch(() => {});
-  } else {
-    unlockAudioContext().then(() => {
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    });
-  }
-}
-
-// ==================== ระบบคิวสุ่มเสียง ====================
-let goalQueue = [], missQueue = [];
+// === รายการไฟล์เสียงที่สุ่มได้ ===
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
 
-function refillQueue(array, queue) {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  queue.push(...copy);
-}
-function getNextGoalSound() {
-  if (goalQueue.length === 0) refillQueue(goalSounds, goalQueue);
-  return goalQueue.shift();
-}
-function getNextMissSound() {
-  if (missQueue.length === 0) refillQueue(missSounds, missQueue);
-  return missQueue.shift();
-}
-
-// ==================== Preload เสียง ====================
+// === โหลดเสียง ===
 function preloadAllSounds() {
-  const files = ["friend.mp3", "b.mp3", "end.mp3", ...goalSounds, ...missSounds];
+  const files = ["friend.mp3", "b.mp3", "end.mp3"];
   files.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
-  refillQueue(goalSounds, goalQueue);
-  refillQueue(missSounds, missQueue);
+  // โหลดเสียง goal/miss ทุกไฟล์ไว้ก่อน
+  goalSounds.forEach(name => {
+    const audio = new Audio(`audio/${name}`);
+    audio.preload = "auto";
+    preloadedAudios[name] = audio;
+  });
+  missSounds.forEach(name => {
+    const audio = new Audio(`audio/${name}`);
+    audio.preload = "auto";
+    preloadedAudios[name] = audio;
+  });
 }
 
 function startBGM() {
   const bgm = preloadedAudios["b.mp3"];
-  if (bgm) { bgm.currentTime = 0; bgm.volume = 0.3; bgm.loop = true; safePlay(bgm); }
+  if (bgm) {
+    bgm.currentTime = 0;
+    bgm.volume = 0.3;
+    bgm.loop = true;
+    bgm.play().catch(() => {});
+  }
 }
 function stopBGM() {
   const bgm = preloadedAudios["b.mp3"];
   if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
-// ==================== ระบบเสียงผ่าน Firebase ====================
+// ใช้ trigger จาก server เพื่อซิงค์ทั้ง 2 ฝ่าย
 function triggerSound(name) {
   if (!roomId) return;
-  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({ name, time: Date.now(), playerId });
+  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
+    name: name,
+    time: Date.now(),
+    playerId: playerId
+  });
 }
 
+// ฟังจาก server แล้วเล่นเสียง + TTS + aria-live
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
   soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => {
     const data = s.val();
-    if (!data || Date.now() - data.time > 1500) return;
+    if (!data || Date.now() - data.time > 1000) return;
 
-    const audio = preloadedAudios[data.name];
+    const name = data.name;
+    const audio = preloadedAudios[name];
     if (audio) {
       audio.currentTime = 0;
-      audio.volume = (data.name === "b.mp3") ? 0.3 : 1.0;
-      safePlay(audio);
+      audio.volume = 1;
+      audio.play().catch(() => {});
     }
 
     let msg = "";
-    if (goalSounds.includes(data.name)) msg = "ยิงเข้า!";
-    else if (missSounds.includes(data.name)) msg = "ยิงไม่เข้า!";
-    else if (data.name === "end.mp3") msg = "จบเกม!";
-    else if (data.name === "friend.mp3") msg = `${playerName} เลือกทีมแล้ว`;
+    if (goalSounds.includes(name)) msg = "ยิงเข้า!";
+    else if (missSounds.includes(name)) msg = "ยิงไม่เข้า!";
+    else if (name === "end.mp3") msg = "จบเกม!";
+    else if (name === "friend.mp3") msg = `${playerName} เลือกทีมแล้ว`;
 
     if (msg) {
       speak(msg);
-      document.getElementById("tts").textContent = msg;
-      setTimeout(() => document.getElementById("tts").textContent = "", 3000);
+      const live = document.getElementById("tts");
+      live.textContent = msg;
+      setTimeout(() => live.textContent = "", 3000);
     }
   });
 }
 
-// ==================== TTS ====================
-let ttsQueue = [], isSpeaking = false;
+/* === TTS === */
+let ttsQueue = [];
+let isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
-function speak(text){ ttsQueue.push(text); processTTS(); }
+
+function speak(text){
+  ttsQueue.push(text);
+  processTTS();
+}
 function processTTS(){
   if(isSpeaking || ttsQueue.length === 0) return;
   isSpeaking = true;
@@ -417,88 +427,188 @@ function processTTS(){
   }, 50);
 }
 
-// ==================== ข้อมูลทีม ====================
+/* === ข้อมูลทีม === */
 const squads = {
-  "Manchester United": { players: ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า","คริสเตียโน่ โรนัลโด้","พอล สโคลส์","จอห์น โอเช","ไรอัน กิ๊กส์","เวย์น รูนี่ย์","รุด ฟาน นิสเทลรอย"], keeper: "เอ็ดวิน ฟาน เดอร์ ซาร์" },
-  "Liverpool": { players: ["สตีฟ ฟินแนน","เจมี่ คาร์ราเกอร์","ซามี่ ฮูเปีย","จอห์น อาร์เน่ รีเซ่","ซาบี อลอนโซ่","โมฮาเหม็ด ซิสโซโก้","สตีเว่น เจอร์ราร์ด","หลุยส์ การ์เซีย","ปีเตอร์ เคร้าช์","ฌิบริล ซิสเซ่"], keeper: "เปเป้ เรน่า" },
-  "Arsenal": { players: ["เอ็มมานูเอล เอบูเอ้","โคโล ตูเร่","โซล แคมเบล","แอชลีย์ โคล","อเล็กซานเดอร์ เคล็บ","ฌิลแบร์โต้ ซิลวา","เชส ฟาเบรกัส","โรแบร์ ปิแรส","เฟรดริก ลุงเบิร์ก","เธียร์รี่ อองรี"], keeper: "เยนส์ เลห์มันน์" },
-  "Chelsea": { players: ["เปาโล เฟร์เรร่า","ริคาร์โด้ คาร์วัลโญ่","จอห์น เทอร์รี่","วิลเลียม กัลลาส","โคล้ด มาเกเลเล่","มิคาเอล เอสเซียง","แฟรงก์ แลมพาร์ด","โจ โคล","อาร์เยน ร็อบเบน","เฮอร์นัน เครสโป"], keeper: "ปีเตอร์ เช็ก" }
+  "Manchester United": {
+    "players": ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า",
+                "คริสเตียโน่ โรนัลโด้","พอล สโคลส์","จอห์น โอเช","ไรอัน กิ๊กส์",
+                "เวย์น รูนี่ย์","รุด ฟาน นิสเทลรอย"],
+    "keeper": "เอ็ดวิน ฟาน เดอร์ ซาร์"
+  },
+  "Liverpool": {
+    "players": ["สตีฟ ฟินแนน","เจมี่ คาร์ราเกอร์","ซามี่ ฮูเปีย","จอห์น อาร์เน่ รีเซ่",
+                "ซาบี อลอนโซ่","โมฮาเหม็ด ซิสโซโก้","สตีเว่น เจอร์ราร์ด","หลุยส์ การ์เซีย",
+                "ปีเตอร์ เคร้าช์","ฌิบริล ซิสเซ่"],
+    "keeper": "เปเป้ เรน่า"
+  },
+  "Arsenal": {
+    "players": ["เอ็มมานูเอล เอบูเอ้","โคโล ตูเร่","โซล แคมเบล","แอชลีย์ โคล",
+                "อเล็กซานเดอร์ เคล็บ","ฌิลแบร์โต้ ซิลวา","เชส ฟาเบรกัส","โรแบร์ ปิแรส",
+                "เฟรดริก ลุงเบิร์ก","เธียร์รี่ อองรี"],
+    "keeper": "เยนส์ เลห์มันน์"
+  },
+  "Chelsea": {
+    "players": ["เปาโล เฟร์เรร่า","ริคาร์โด้ คาร์วัลโญ่","จอห์น เทอร์รี่","วิลเลียม กัลลาส",
+                "โคล้ด มาเกเลเล่","มิคาเอล เอสเซียง","แฟรงก์ แลมพาร์ด","โจ โคล",
+                "อาร์เยน ร็อบเบน","เฮอร์นัน เครสโป"],
+    "keeper": "ปีเตอร์ เช็ก"
+  }
 };
 
-function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
-function createShotsOrder(t){ let p=squads[t].players.slice(); shuffle(p); p.push(squads[t].keeper); return p; }
-function getShooterName(o,i){ return o[i % o.length] || "นักเตะ"; }
-
-function debounceClick(dir){
-  unlockAudioContext(); // ปลดล็อกเสียงทันทีที่แตะปุ่มยิง
-  if(isButtonLocked || !isMyTurn) return;
-  isButtonLocked=true;
-  chooseDirection(dir);
-  setTimeout(()=>{isButtonLocked=false;},100);
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
 }
 
-// ==================== เริ่มต้นแอป ====================
-document.addEventListener("DOMContentLoaded", () => {
-  preloadAllSounds();
+function createShotsOrder(team){
+  let players = squads[team].players.slice();
+  shuffle(players);
+  players.push(squads[team].keeper);
+  return players;
+}
 
-  document.getElementById("confirmNameBtn").onclick = confirmName;
-  document.getElementById("confirmNameBtn").addEventListener("click", unlockAudioContext);
-  document.getElementById("playerName").addEventListener("keydown", e => { 
-    if(e.key==="Enter"){ confirmName(); unlockAudioContext(); }
+function getShooterName(order, shotIndex) {
+  const length = order.length;
+  if (length === 0) return "นักเตะ";
+  return order[shotIndex % length];
+}
+
+function debounceClick(dir){
+  if(isButtonLocked || !isMyTurn) return;
+  isButtonLocked = true;
+  chooseDirection(dir);
+  setTimeout(()=>{ isButtonLocked = false; }, 100);
+}
+
+/* === เริ่มต้นแอป === */
+document.addEventListener("DOMContentLoaded", () => {
+  const playerNameInput = document.getElementById("playerName");
+  const confirmBtn = document.getElementById("confirmNameBtn");
+
+  playerNameInput.focus();
+
+  confirmBtn.addEventListener("click", confirmName);
+  playerNameInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") confirmName();
   });
+
   document.getElementById("createRoomBtn").onclick = showCreateRoom;
-  document.querySelectorAll(".team-btn").forEach(b => b.onclick = () => chooseTeam(b.dataset.team));
+  document.querySelectorAll(".team-btn").forEach(btn => {
+    btn.onclick = () => chooseTeam(btn.getAttribute("data-team"));
+  });
 
   document.getElementById("mainMenuBtn").style.display = "block";
-  document.getElementById("playerName").focus();
 });
 
-// ==================== ฟังก์ชันทั้งหมด ====================
+/* === ยืนยันชื่อ === */
 function confirmName() {
-  playerName = document.getElementById("playerName").value.trim();
-  if (!playerName) { alert("กรุณาใส่ชื่อ"); return; }
+  const input = document.getElementById("playerName");
+  playerName = input.value.trim();
+  if (!playerName) {
+    alert("กรุณาใส่ชื่อ");
+    return;
+  }
   playerId = Math.random().toString(36).substr(2,9);
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
   document.getElementById("mainMenuBtn").style.display = "none";
+  preloadAllSounds();
   loadRooms();
 }
 
+/* === สร้างห้องใหม่ === */
 async function showCreateRoom() {
   const name = prompt("ตั้งชื่อห้อง:");
   if (!name || name.trim() === "") return;
+
   const roomRef = db.ref("penaltyRooms").push();
   const newRoomId = roomRef.key;
-  await roomRef.set({ name: name.trim(), status: "waiting", host: playerId, created: Date.now(), players: { [playerId]: { name: playerName, team: null } } });
-  db.ref(`penaltyRooms/${newRoomId}/players/${playerId}`).onDisconnect().remove();
-  roomId = newRoomId; isHost = true; showRoom();
+
+  try {
+    await roomRef.set({
+      name: name.trim(),
+      status: "waiting",
+      host: playerId,
+      created: Date.now(),
+      players: {
+        [playerId]: { name: playerName, team: null }
+      }
+    });
+
+    const playerRef = db.ref(`penaltyRooms/${newRoomId}/players/${playerId}`);
+    playerRef.onDisconnect().remove();
+
+    roomId = newRoomId;
+    isHost = true;
+    showRoom();
+  } catch (err) {
+    console.error("สร้างห้องล้มเหลว:", err);
+    alert("สร้างห้องล้มเหลว กรุณาลองใหม่");
+  }
 }
 
+/* === เข้าร่วมห้อง === */
 async function joinRoom(id) {
   if (lobbyRoomsListener) lobbyRoomsListener.off();
-  const snap = await db.ref(`penaltyRooms/${id}`).once("value");
-  const room = snap.val();
-  if (!room || room.status !== "waiting" || Object.values(room.players || {}).filter(p => p && p.name).length >= 2) {
-    alert("ไม่สามารถเข้าร่วมห้องนี้ได้"); loadRooms(); return;
+  
+  try {
+    const snap = await db.ref(`penaltyRooms/${id}`).once("value");
+    const room = snap.val();
+    if (!room || room.status !== "waiting") {
+      alert("ห้องนี้ไม่สามารถเข้าร่วมได้แล้ว");
+      loadRooms(); 
+      return;
+    }
+
+    const players = room.players || {};
+    const activePlayers = Object.values(players).filter(p => p && p.name);
+    if (activePlayers.length >= 2) {
+      alert("ห้องเต็มแล้ว");
+      loadRooms(); 
+      return;
+    }
+
+    roomId = id;
+    const playerRef = db.ref(`penaltyRooms/${roomId}/players/${playerId}`);
+    await playerRef.set({ name: playerName, team: null });
+    playerRef.onDisconnect().remove();
+
+    showRoom();
+  } catch (err) {
+    console.error(err);
+    alert("เข้าร่วมห้องล้มเหลว");
+    loadRooms();
   }
-  roomId = id;
-  const playerRef = db.ref(`penaltyRooms/${roomId}/players/${playerId}`);
-  await playerRef.set({ name: playerName, team: null });
-  playerRef.onDisconnect().remove();
-  showRoom();
 }
 
+/* === โหลดห้องในล็อบบี้ === */
 function loadRooms() {
   const list = document.getElementById("roomList");
   if (lobbyRoomsListener) lobbyRoomsListener.off();
+  
   lobbyRoomsListener = db.ref("penaltyRooms").orderByChild("status").equalTo("waiting");
   lobbyRoomsListener.on("value", snap => {
     list.innerHTML = "";
+    const now = Date.now();
+
     snap.forEach(r => {
-      const room = r.val(); const key = r.key;
+      const room = r.val();
+      const key = r.key;
       if (!room) return;
-      const count = Object.values(room.players || {}).filter(p => p && p.name).length;
-      if (count > 0 && count < 2) {
+
+      const players = room.players || {};
+      const activePlayers = Object.values(players).filter(p => p && p.name);
+      const count = activePlayers.length;
+
+      if (count === 0 || (room.created && now - room.created > 300000)) {
+        db.ref(`penaltyRooms/${key}`).remove();
+        return;
+      }
+
+      if (count < 2) {
         const li = document.createElement("li");
         li.innerHTML = `<strong>${room.name}</strong> (${count}/2)`;
         const btn = document.createElement("button");
@@ -512,6 +622,7 @@ function loadRooms() {
   });
 }
 
+/* === แสดงห้อง === */
 function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
@@ -523,13 +634,19 @@ function showRoom() {
     const room = snap.val();
     if (!room) { alert("ห้องถูกลบ"); backToLobby(); return; }
     document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
+    
     const players = room.players || {};
-    const list = document.getElementById("playerList"); list.innerHTML = "";
-    for (let id in players) if (players[id]?.name) list.innerHTML += `<li>${players[id].name}${players[id].team ? ` - ${players[id].team}` : ""}</li>`;
-
+    const list = document.getElementById("playerList");
+    list.innerHTML = "";
+    for (let id in players) {
+      const p = players[id];
+      if (p && p.name) {
+        list.innerHTML += `<li>${p.name}${p.team ? ` - ${p.team}` : ""}</li>`;
+      }
+    }
     updateTeamButtons(room);
 
-    const takenTeams = Object.values(players).filter(p => p?.team).map(p => p.team);
+    const takenTeams = Object.values(players).filter(p => p && p.team).map(p => p.team);
     const teamDiv = document.getElementById("teamSelectInRoom");
     const waitMsg = document.getElementById("waitingMessage");
     const startBtn = document.getElementById("startBtn");
@@ -546,7 +663,9 @@ function showRoom() {
     if (room.host === playerId && takenTeams.length === 2) {
       startBtn.style.display = "inline-block";
       startBtn.disabled = false;
-    } else startBtn.style.display = "none";
+    } else {
+      startBtn.style.display = "none";
+    }
 
     if (room.status === "playing") startGameplay(room, players);
     if (room.status === "finished") showResult(room);
@@ -554,20 +673,26 @@ function showRoom() {
 }
 
 function updateTeamButtons(room) {
-  const taken = Object.values(room.players || {}).filter(p => p?.team).map(p => p.team);
+  const taken = Object.values(room.players || {}).filter(p => p && p.team).map(p => p.team);
   document.querySelectorAll(".team-btn").forEach(btn => {
-    if (taken.includes(btn.dataset.team)) { btn.classList.add("unavailable"); btn.disabled = true; }
-    else { btn.classList.remove("unavailable"); btn.disabled = false; }
+    const team = btn.getAttribute("data-team");
+    if (taken.includes(team)) {
+      btn.classList.add("unavailable");
+      btn.disabled = true;
+    } else {
+      btn.classList.remove("unavailable");
+      btn.disabled = false;
+    }
   });
 }
 
 function chooseTeam(team) {
-  unlockAudioContext();
   db.ref(`penaltyRooms/${roomId}/players/${playerId}/team`).set(team);
   triggerSound("friend.mp3");
   speak(`${playerName} เลือกทีม ${team}`);
 }
 
+/* === เริ่มเกม === */
 function startGame() {
   if (gameStarted) return;
   gameStarted = true;
@@ -580,21 +705,36 @@ function startGame() {
     const p1Id = keys[0], p2Id = keys[1];
     const p1Team = players[p1Id].team;
     const p2Team = players[p2Id].team;
+    
     const orderP1 = createShotsOrder(p1Team);
     const orderP2 = createShotsOrder(p2Team);
+    
     const firstShooter = Math.random() < 0.5 ? p1Id : p2Id;
-
+    
     speak(`ทีม ${p1Team} ปะทะ ${p2Team}`);
     speak(`${players[firstShooter].name} จากทีม ${players[firstShooter].team} จะยิงลูกแรก`);
-
+    
     db.ref(`penaltyRooms/${roomId}`).update({
-      status: "playing", firstShooter, turn: 0, scoreP1: 0, scoreP2: 0, shotIndexP1: 0, shotIndexP2: 0,
-      isSudden: false, shooterDir: null, keeperDir: null, processed: false,
-      shotOrderP1: orderP1, shotOrderP2: orderP2, p1Id, p2Id
+      status: "playing", 
+      firstShooter: firstShooter,
+      turn: 0,
+      scoreP1: 0, 
+      scoreP2: 0, 
+      shotIndexP1: 0, 
+      shotIndexP2: 0,
+      isSudden: false, 
+      shooterDir: null, 
+      keeperDir: null,
+      processed: false,
+      shotOrderP1: orderP1,
+      shotOrderP2: orderP2,
+      p1Id: p1Id,
+      p2Id: p2Id
     });
   });
 }
 
+/* === เกมเพลย์ === */
 function startGameplay(room, players) {
   document.getElementById("room").style.display = "none";
   document.getElementById("gameScreen").style.display = "block";
@@ -605,49 +745,80 @@ function startGameplay(room, players) {
   shotOrderP2 = room.shotOrderP2 || [];
 
   const gameRef = db.ref(`penaltyRooms/${roomId}`);
-  document.querySelectorAll('.shot-btn').forEach(btn => { btn.classList.remove('locked'); btn.disabled = false; });
+  
+  document.querySelectorAll('.shot-btn').forEach(btn => {
+    btn.classList.remove('locked');
+    btn.disabled = false;
+  });
 
-  let lastTurn = -1, lastIsSudden = false;
+  let lastTurn = -1;
+  let lastIsSudden = false;
 
   gameRef.on("value", snap => {
     const data = snap.val();
-    if (!data || data.status !== "playing") return;
+    if (!data || data.status !== "playing") {
+      document.querySelectorAll('.shot-btn').forEach(btn => {
+        btn.style.display = 'none';
+      });
+      document.getElementById("currentTurn").style.display = "none";
+      return;
+    }
 
-    document.getElementById("scoreBoard").innerText = `Score: ${data.scoreP1||0} - ${data.scoreP2||0}`;
+    const scoreP1 = data.scoreP1 || 0;
+    const scoreP2 = data.scoreP2 || 0;
+    document.getElementById("scoreBoard").innerText = 
+      `Score: ${scoreP1} - ${scoreP2}`;
 
-    const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
-    const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
+    const p1Id = data.p1Id;
+    const p2Id = data.p2Id;
+    
+    const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === p1Id ? p2Id : p1Id);
+    const currentKeeperId = currentShooterId === p1Id ? p2Id : p1Id;
     isMyTurn = (playerId === currentShooterId || playerId === currentKeeperId);
 
     document.querySelectorAll('.shot-btn').forEach(btn => {
-      if (isMyTurn) { btn.classList.remove('locked'); btn.disabled = false; }
-      else { btn.classList.add('locked'); btn.disabled = true; }
+      if (isMyTurn) {
+        btn.classList.remove('locked');
+        btn.disabled = false;
+        btn.style.display = 'block';
+      } else {
+        btn.classList.add('locked');
+        btn.disabled = true;
+      }
     });
 
-    document.getElementById("currentTurn").textContent = `ถึงตาคุณ${playerId === currentShooterId ? "ยิง!" : "เซฟ!"}`;
-    document.getElementById("currentTurn").style.background = playerId === currentShooterId ? "rgba(76,175,80,0.9)" : "rgba(255,152,0,0.9)";
+    const currentTurnEl = document.getElementById("currentTurn");
+    const action = playerId === currentShooterId ? "ยิง!" : "เซฟ!";
+    currentTurnEl.textContent = `ถึงตาคุณ${action}`;
+    currentTurnEl.style.background = playerId === currentShooterId ? "rgba(76,175,80,0.9)" : "rgba(255,152,0,0.9)";
+    currentTurnEl.style.color = "white";
 
     if (data.turn !== lastTurn) {
       lastTurn = data.turn;
-      const shooterOrder = currentShooterId === data.p1Id ? shotOrderP1 : shotOrderP2;
-      const shooterIndex = currentShooterId === data.p1Id ? data.shotIndexP1 : data.shotIndexP2;
+
+      const shooterOrder = currentShooterId === p1Id ? shotOrderP1 : shotOrderP2;
+      const shooterIndex = currentShooterId === p1Id ? data.shotIndexP1 : data.shotIndexP2;
       const shooterName = getShooterName(shooterOrder, shooterIndex);
+      const keeperTeam = players[currentKeeperId].team;
+      const keeperName = squads[keeperTeam].keeper;
       const shooterTeam = players[currentShooterId].team;
-      const keeperName = squads[players[currentKeeperId].team].keeper;
 
       if (playerId === currentShooterId && !spokenTurns.has(`turn_${data.turn}_shooter`)) {
         spokenTurns.add(`turn_${data.turn}_shooter`);
         speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง`);
       }
+
       if (playerId === currentKeeperId && !spokenTurns.has(`turn_${data.turn}_keeper`)) {
         spokenTurns.add(`turn_${data.turn}_keeper`);
         speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง ${keeperName} ของคุณพร้อมเซฟ`);
       }
     }
 
-    if (data.isSudden && !lastIsSudden && !spokenTurns.has("sudden")) {
-      spokenTurns.add("sudden");
-      speak("เข้าสู่ซัดเดนเดธ!");
+    if (data.isSudden && !lastIsSudden) {
+      if (!spokenTurns.has("sudden")) {
+        spokenTurns.add("sudden");
+        speak("เข้าสู่ซัดเดนเดธ!");
+      }
     }
     lastIsSudden = data.isSudden;
 
@@ -660,73 +831,128 @@ function startGameplay(room, players) {
 
 async function processShot(data, players, gameRef) {
   const processedRef = gameRef.child('processed');
-  const tx = await processedRef.transaction(c => c ? undefined : true);
-  if (!tx.committed) return;
+  const transactionResult = await processedRef.transaction(current => {
+    if (current) return;
+    return true;
+  });
 
-  const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
-  const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
-  const shooterOrder = currentShooterId === data.p1Id ? shotOrderP1 : shotOrderP2;
-  const shooterIndex = currentShooterId === data.p1Id ? data.shotIndexP1 : data.shotIndexP2;
+  if (!transactionResult.committed) return;
+
+  const p1Id = data.p1Id;
+  const p2Id = data.p2Id;
+  const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === p1Id ? p2Id : p1Id);
+  const currentKeeperId = currentShooterId === p1Id ? p2Id : p1Id;
+  
+  const shooterOrder = currentShooterId === p1Id ? shotOrderP1 : shotOrderP2;
+  const shooterIndex = currentShooterId === p1Id ? data.shotIndexP1 : data.shotIndexP2;
   const shooterName = getShooterName(shooterOrder, shooterIndex);
+  const keeperTeam = players[currentKeeperId].team;
+  const keeperName = squads[keeperTeam].keeper;
   const shooterTeam = players[currentShooterId].team;
+
   const isGoal = data.shooterDir !== data.keeperDir;
 
-  const soundName = isGoal ? getNextGoalSound() : getNextMissSound();
+  // สุ่มไฟล์เสียง (ฝ่ายไหน trigger ก็ได้ เพราะส่งชื่อไฟล์ไปที่ server แล้วทั้งสองฝ่ายจะเล่นไฟล์เดียวกัน)
+  const soundName = isGoal 
+    ? goalSounds[Math.floor(Math.random() * goalSounds.length)]
+    : missSounds[Math.floor(Math.random() * missSounds.length)];
+
   triggerSound(soundName);
 
   let scoreP1 = data.scoreP1 || 0;
   let scoreP2 = data.scoreP2 || 0;
-  if (isGoal) currentShooterId === data.p1Id ? scoreP1++ : scoreP2++;
+  if (isGoal) {
+    currentShooterId === p1Id ? scoreP1++ : scoreP2++;
+  }
 
-  speak(`${shooterName} จากทีม ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! คะแนน ${scoreP1} - ${scoreP2}`);
+  const resultMsg = `${shooterName} จากทีม ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! คะแนน ${scoreP1} - ${scoreP2}`;
+  speak(resultMsg);
+  const live = document.getElementById("tts");
+  live.textContent = resultMsg;
+  setTimeout(() => live.textContent = "", 5000);
 
-  const updates = { turn: data.turn + 1, shooterDir: null, keeperDir: null, processed: false, scoreP1, scoreP2 };
-  if (currentShooterId === data.p1Id) updates.shotIndexP1 = data.shotIndexP1 + 1;
-  else updates.shotIndexP2 = data.shotIndexP2 + 1;
+  const updates = {
+    turn: data.turn + 1,
+    shooterDir: null, 
+    keeperDir: null, 
+    processed: false,
+    scoreP1, scoreP2
+  };
 
-  setTimeout(() => gameRef.update(updates), 1000);
-  setTimeout(() => checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, updates.shotIndexP1 ?? data.shotIndexP1, updates.shotIndexP2 ?? data.shotIndexP2), 2000);
+  if (currentShooterId === p1Id) {
+    updates.shotIndexP1 = data.shotIndexP1 + 1;
+  } else {
+    updates.shotIndexP2 = data.shotIndexP2 + 1;
+  }
+
+  setTimeout(() => {
+    gameRef.update(updates);
+    setTimeout(() => checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, 
+      updates.shotIndexP1 || data.shotIndexP1, updates.shotIndexP2 || data.shotIndexP2), 1000);
+  }, 1000);
 }
 
+/* === ตรวจสอบจบเกมตามกฎ FIFA จริง (ปรับใหม่ให้ถูกต้อง 100%) === */
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP1, shotIndexP2) {
-  const isP1First = data.firstShooter === data.p1Id;
-  let end = false, winnerId = null;
+  const p1Id = data.p1Id;
+  const p2Id = data.p2Id;
+  const isP1First = data.firstShooter === p1Id;
+
+  const totalShotsP1 = shotIndexP1;
+  const totalShotsP2 = shotIndexP2;
+
+  let end = false;
+  let winnerId = null;
 
   if (!data.isSudden) {
-    const shotsDoneP1 = Math.min(shotIndexP1, 5);
-    const shotsDoneP2 = Math.min(shotIndexP2, 5);
+    const shotsDoneP1 = Math.min(totalShotsP1, 5);
+    const shotsDoneP2 = Math.min(totalShotsP2, 5);
     const remainingP1 = 5 - shotsDoneP1;
     const remainingP2 = 5 - shotsDoneP2;
 
-    if (shotIndexP1 < 5 || shotIndexP2 < 5) {
-      if (scoreP1 + remainingP1 < scoreP2 || scoreP2 + remainingP2 < scoreP1) {
+    if (totalShotsP1 < 5 || totalShotsP2 < 5) {
+      const maxP1 = scoreP1 + remainingP1;
+      const maxP2 = scoreP2 + remainingP2;
+      if (maxP1 < scoreP2 || maxP2 < scoreP1) {
         end = true;
-        winnerId = (scoreP1 + remainingP1 < scoreP2) ? (isP1First ? data.p2Id : data.p1Id) : (isP1First ? data.p1Id : data.p2Id);
+        winnerId = maxP1 < scoreP2 ? (isP1First ? p2Id : p1Id) : (isP1First ? p1Id : p2Id);
       }
     }
 
-    if (shotIndexP1 >= 5 && shotIndexP2 >= 5) {
+    if (totalShotsP1 >= 5 && totalShotsP2 >= 5) {
       if (scoreP1 !== scoreP2) {
         end = true;
-        winnerId = scoreP1 > scoreP2 ? (isP1First ? data.p1Id : data.p2Id) : (isP1First ? data.p2Id : data.p1Id);
+        winnerId = scoreP1 > scoreP2 ? (isP1First ? p1Id : p2Id) : (isP1First ? p2Id : p1Id);
       } else {
         gameRef.update({ isSudden: true });
         return;
       }
     }
-  } else {
-    const suddenP1 = shotIndexP1 - 5;
-    const suddenP2 = shotIndexP2 - 5;
-    if (suddenP1 === suddenP2 && suddenP1 > 0 && scoreP1 !== scoreP2) {
-      end = true;
-      winnerId = scoreP1 > scoreP2 ? (isP1First ? data.p1Id : data.p2Id) : (isP1First ? data.p2Id : data.p1Id);
+  }
+  else {
+    const suddenShotsP1 = totalShotsP1 - 5;
+    const suddenShotsP2 = totalShotsP2 - 5;
+
+    if (suddenShotsP1 === suddenShotsP2 && suddenShotsP1 > 0) {
+      if (scoreP1 !== scoreP2) {
+        end = true;
+        winnerId = scoreP1 > scoreP2 ? (isP1First ? p1Id : p2Id) : (isP1First ? p2Id : p1Id);
+      }
     }
   }
 
   if (end) {
     triggerSound("end.mp3");
     stopBGM();
-    setTimeout(() => gameRef.update({ status: "finished", winner: winnerId, finalScoreP1: scoreP1, finalScoreP2: scoreP2 }), 800);
+
+    setTimeout(() => {
+      gameRef.update({
+        status: "finished",
+        winner: winnerId,
+        finalScoreP1: scoreP1,
+        finalScoreP2: scoreP2
+      });
+    }, 800);
   }
 }
 
@@ -734,37 +960,45 @@ async function chooseDirection(dir) {
   const snap = await db.ref(`penaltyRooms/${roomId}`).once("value");
   const data = snap.val();
   if (data.status !== "playing") return;
+  
   const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
   const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
-  if (playerId === currentShooterId && !data.shooterDir) db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
-  else if (playerId === currentKeeperId && !data.keeperDir) db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
+
+  if (playerId === currentShooterId && !data.shooterDir) {
+    await db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
+  } else if (playerId === currentKeeperId && !data.keeperDir) {
+    await db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
+  }
 }
 
 function showResult(room) {
   stopBGM();
   document.getElementById("gameScreen").style.display = "none";
   document.getElementById("currentTurn").style.display = "none";
-  document.querySelectorAll('.shot-btn').forEach(b => b.style.display = 'none');
+  document.querySelectorAll('.shot-btn').forEach(btn => {
+    btn.style.display = 'none';
+  });
 
-  const winnerTeam = room.winner === room.p1Id ? room.players[room.p1Id].team : room.players[room.p2Id].team;
+  const p1Team = room.players[room.p1Id].team;
+  const p2Team = room.players[room.p2Id].team;
+  const winnerTeam = room.winner === room.p1Id ? p1Team : p2Team;
+
   document.getElementById("resultTitle").textContent = `${winnerTeam} เป็นฝ่ายชนะ`;
+  document.getElementById("resultMessage").textContent = "ยินดีด้วย!";
   document.getElementById("resultScreen").style.display = "flex";
   document.getElementById("mainMenuBtn").style.display = "block";
 
   if (!finalResultSpoken) {
     finalResultSpoken = true;
-    speak(`${winnerTeam} เป็นฝ่ายชนะ ยินดีด้วย!`);
+    const finalMsg = `${winnerTeam} เป็นฝ่ายชนะ ยินดีด้วย!`;
+    speak(finalMsg);
+    const live = document.getElementById("tts");
+    live.textContent = finalMsg;
+    setTimeout(() => live.textContent = "", 8000);
   }
 }
 
 function backToLobby() {
-  if (currentRoomListener) currentRoomListener.off();
-  if (soundListener) soundListener.off();
-  if (lobbyRoomsListener) lobbyRoomsListener.off();
-  roomId = "";
-  document.getElementById("room").style.display = "none";
-  document.getElementById("lobby").style.display = "block";
-  loadRooms();
 }
 </script>
 </body>
