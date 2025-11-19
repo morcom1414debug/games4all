@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -34,7 +35,6 @@
   .shot-btn:disabled { opacity:0.5; cursor:not-allowed; }
   .shot-btn.locked { opacity:0.3; cursor:not-allowed; }
 
-  /* ปรับตำแหน่งปุ่มให้กดง่ายและสวยขึ้น */
   #tl { top:18%; left:12%; }
   #tr { top:18%; right:12%; }
   #center { top:50%; left:50%; transform:translate(-50%, -50%); }
@@ -55,11 +55,9 @@
     border:2px solid #fff;
   }
 
-  /* หน้าแรก: ตั้งชื่อ */
   #nameInput {
-    display:flex;
-    flex-direction:column;
-    gap:20px;
+    margin-top:20px; 
+    font-size:28px;
     position:fixed;
     top:50%;
     left:50%;
@@ -86,12 +84,10 @@
     cursor:pointer;
   }
 
-  /* ล็อบบี้ */
   #lobby, #room { display:none; }
   ul { list-style:none; padding:0; margin:0; }
   li { margin:8px 0; background:rgba(255,255,255,0.1); padding:12px; border-radius:10px; }
 
-  /* เลือกทีม */
   #teamSelectInRoom {
     display:none;
     flex-direction:column;
@@ -122,7 +118,7 @@
     padding:20px;
     background:rgba(255,255,255,0.1);
     border-radius:15px;
-    font size:18px;
+    font-size:18px;
   }
 
   #startBtn {
@@ -138,7 +134,6 @@
     cursor:pointer;
   }
 
-  /* TTS */
   #ttsDisplay {
     position:fixed;
     bottom:20px;
@@ -157,13 +152,11 @@
   }
   #ttsDisplay.show { opacity:1; }
 
-  #backBtn {
+  #mainMenuBtn {
     position:fixed;
     top:15px;
     left:15px;
     z-index:9999;
-  }
-  #backBtn button {
     background:#f44336;
     color:white;
     border:none;
@@ -172,6 +165,23 @@
     font-weight:bold;
     box-shadow:0 4px 12px rgba(244,67,54,0.4);
     transition:all 0.3s;
+    cursor:pointer;
+    display:none;
+  }
+
+  #currentTurn {
+    position:fixed;
+    top:70px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(255,255,255,0.9);
+    color:#333;
+    padding:10px 20px;
+    border-radius:10px;
+    font-size:18px;
+    font-weight:bold;
+    z-index:1001;
+    display:none;
   }
 
   #resultScreen {
@@ -196,38 +206,6 @@
     padding:15px 40px;
     font-size:22px;
     cursor:pointer;
-  }
-
-  #currentTurn {
-    position:fixed;
-    top:70px;
-    left:50%;
-    transform:translateX(-50%);
-    background:rgba(255,255,255,0.9);
-    color:#333;
-    padding:10px 20px;
-    border-radius:10px;
-    font-size:18px;
-    font-weight:bold;
-    z-index:1001;
-    display:none;
-  }
-
-  #mainMenuBtn {
-    position:fixed;
-    top:15px;
-    left:15px;
-    z-index:9999;
-    background:#f44336;
-    color:white;
-    border:none;
-    border-radius:50px;
-    padding:12px 26px;
-    font-weight:bold;
-    box-shadow:0 4px 12px rgba(244,67,54,0.4);
-    transition:all 0.3s;
-    cursor:pointer;
-    display:none;
   }
 </style>
 </head>
@@ -293,7 +271,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-// === เริ่มต้น Firebase ===
+// === Firebase ===
 const firebaseConfig = {
   apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
   authDomain: "xo-game-134ec.firebaseapp.com",
@@ -314,17 +292,14 @@ let isButtonLocked = false;
 let gameStarted = false;
 let isMyTurn = false;
 
-// === TTS & ARIA LIVE ===
 let spokenTurns = new Set();
 let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// === รายการไฟล์เสียงที่สุ่มได้ ===
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
 
-// === โหลดเสียง ===
 function preloadAllSounds() {
   const files = ["friend.mp3", "b.mp3", "end.mp3"];
   files.forEach(name => {
@@ -332,7 +307,6 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
-  // โหลดเสียง goal/miss ทุกไฟล์ไว้ก่อน
   goalSounds.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
@@ -359,7 +333,6 @@ function stopBGM() {
   if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
-// ใช้ trigger จาก server เพื่อซิงค์ทั้ง 2 ฝ่าย
 function triggerSound(name) {
   if (!roomId) return;
   db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
@@ -369,7 +342,6 @@ function triggerSound(name) {
   });
 }
 
-// ฟังจาก server แล้วเล่นเสียง + TTS + aria-live
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
@@ -401,7 +373,6 @@ function startSoundListener() {
   });
 }
 
-/* === TTS === */
 let ttsQueue = [];
 let isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
@@ -427,7 +398,6 @@ function processTTS(){
   }, 50);
 }
 
-/* === ข้อมูลทีม === */
 const squads = {
   "Manchester United": {
     "players": ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า",
@@ -483,7 +453,6 @@ function debounceClick(dir){
   setTimeout(()=>{ isButtonLocked = false; }, 100);
 }
 
-/* === เริ่มต้นแอป === */
 document.addEventListener("DOMContentLoaded", () => {
   const playerNameInput = document.getElementById("playerName");
   const confirmBtn = document.getElementById("confirmNameBtn");
@@ -503,7 +472,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("mainMenuBtn").style.display = "block";
 });
 
-/* === ยืนยันชื่อ === */
 function confirmName() {
   const input = document.getElementById("playerName");
   playerName = input.value.trim();
@@ -517,9 +485,12 @@ function confirmName() {
   document.getElementById("mainMenuBtn").style.display = "none";
   preloadAllSounds();
   loadRooms();
+
+  setTimeout(() => {
+    document.getElementById("createRoomBtn").focus();
+  }, 100);
 }
 
-/* === สร้างห้องใหม่ === */
 async function showCreateRoom() {
   const name = prompt("ตั้งชื่อห้อง:");
   if (!name || name.trim() === "") return;
@@ -544,13 +515,17 @@ async function showCreateRoom() {
     roomId = newRoomId;
     isHost = true;
     showRoom();
+
+    setTimeout(() => {
+      const firstTeamBtn = document.querySelector("#teamSelectInRoom button");
+      if (firstTeamBtn) firstTeamBtn.focus();
+    }, 300);
   } catch (err) {
     console.error("สร้างห้องล้มเหลว:", err);
     alert("สร้างห้องล้มเหลว กรุณาลองใหม่");
   }
 }
 
-/* === เข้าร่วมห้อง === */
 async function joinRoom(id) {
   if (lobbyRoomsListener) lobbyRoomsListener.off();
   
@@ -577,6 +552,19 @@ async function joinRoom(id) {
     playerRef.onDisconnect().remove();
 
     showRoom();
+
+    /* ==== เพิ่มตรงนี้เท่านั้น: โฟกัสไปที่ปุ่มแมนยูทันทีหลังเข้าร่วมห้อง ==== */
+    setTimeout(() => {
+      const manUButton = document.querySelector('#teamSelectInRoom button[data-team="Manchester United"]');
+      if (manUButton && !manUButton.disabled) {
+        manUButton.focus();
+      } else {
+        const firstAvailable = document.querySelector('#teamSelectInRoom button:not(.unavailable):not(:disabled)');
+        if (firstAvailable) firstAvailable.focus();
+      }
+    }, 400);
+    /* ===================================================================== */
+
   } catch (err) {
     console.error(err);
     alert("เข้าร่วมห้องล้มเหลว");
@@ -584,7 +572,6 @@ async function joinRoom(id) {
   }
 }
 
-/* === โหลดห้องในล็อบบี้ === */
 function loadRooms() {
   const list = document.getElementById("roomList");
   if (lobbyRoomsListener) lobbyRoomsListener.off();
@@ -622,7 +609,6 @@ function loadRooms() {
   });
 }
 
-/* === แสดงห้อง === */
 function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
@@ -632,7 +618,7 @@ function showRoom() {
   currentRoomListener = db.ref(`penaltyRooms/${roomId}`);
   currentRoomListener.on("value", snap => {
     const room = snap.val();
-    if (!room) { alert("ห้องถูกลบ"); backToLobby(); return; }
+    if (!room) { alert("ห้องถูกลบ"); location.reload(); return; }
     document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
     
     const players = room.players || {};
@@ -692,7 +678,6 @@ function chooseTeam(team) {
   speak(`${playerName} เลือกทีม ${team}`);
 }
 
-/* === เริ่มเกม === */
 function startGame() {
   if (gameStarted) return;
   gameStarted = true;
@@ -707,7 +692,7 @@ function startGame() {
     const p2Team = players[p2Id].team;
     
     const orderP1 = createShotsOrder(p1Team);
-    const orderP2 = createShotsOrder(p2Team);
+    const orderP2 = createShotsOrder(p2Team);   
     
     const firstShooter = Math.random() < 0.5 ? p1Id : p2Id;
     
@@ -734,7 +719,6 @@ function startGame() {
   });
 }
 
-/* === เกมเพลย์ === */
 function startGameplay(room, players) {
   document.getElementById("room").style.display = "none";
   document.getElementById("gameScreen").style.display = "block";
@@ -750,6 +734,11 @@ function startGameplay(room, players) {
     btn.classList.remove('locked');
     btn.disabled = false;
   });
+
+  setTimeout(() => {
+    const tlBtn = document.getElementById("tl");
+    if (tlBtn) tlBtn.focus();
+  }, 500);
 
   let lastTurn = -1;
   let lastIsSudden = false;
@@ -852,7 +841,6 @@ async function processShot(data, players, gameRef) {
 
   const isGoal = data.shooterDir !== data.keeperDir;
 
-  // สุ่มไฟล์เสียง (ฝ่ายไหน trigger ก็ได้ เพราะส่งชื่อไฟล์ไปที่ server แล้วทั้งสองฝ่ายจะเล่นไฟล์เดียวกัน)
   const soundName = isGoal 
     ? goalSounds[Math.floor(Math.random() * goalSounds.length)]
     : missSounds[Math.floor(Math.random() * missSounds.length)];
@@ -892,7 +880,6 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
-/* === ตรวจสอบจบเกมตามกฎ FIFA จริง (ปรับใหม่ให้ถูกต้อง 100%) === */
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP1, shotIndexP2) {
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
@@ -996,9 +983,6 @@ function showResult(room) {
     live.textContent = finalMsg;
     setTimeout(() => live.textContent = "", 8000);
   }
-}
-
-function backToLobby() {
 }
 </script>
 </body>
