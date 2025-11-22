@@ -178,7 +178,6 @@ body {
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
-<!-- เสียงทั้งหมด (เพิ่ม preload="auto" เพื่อโหลดล่วงหน้า) -->
 <audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
 <audio id="end" preload="auto" src="audio/end.mp3"></audio>
 <audio id="missPlayer" preload="auto" src="audio/f.mp3"></audio>
@@ -198,8 +197,9 @@ const winScore = 2;
 let playerWins = 0;
 let cpuWins = 0;
 let currentRound = 1;
+let hasUserInteracted = false;  // สำคัญมากสำหรับ iOS
 
-/* ========== เสียง (ระบบเดียวกับ a1.html) ========== */
+/* ========== เสียง ========== */
 const bgm = document.getElementById("bgm");
 const endSnd = document.getElementById("end");
 const missPlayer = document.getElementById("missPlayer");
@@ -208,6 +208,7 @@ const hitPlayer = document.getElementById("hitPlayer");
 const hitCpu = document.getElementById("hitCpu");
 
 function playSound(el){
+  if (!hasUserInteracted) return; // ป้องกัน iOS บล็อก
   el.currentTime = 0;
   el.play().catch(() => {});
 }
@@ -217,23 +218,34 @@ function stopBGM(){
   bgm.currentTime = 0;
 }
 
-function waitForSound(audioEl){
+async function waitForSound(audioEl){
   return new Promise(resolve => {
-    audioEl.onended = () => resolve();
-    // ถ้าเสียงกำลังเล่นอยู่แล้ว ให้รอจนจบก่อน resolve
-    if (!audioEl.paused && !audioEl.ended) {
-      audioEl.onended = () => resolve();
-    } else {
-      playSound(audioEl);
+    if (!hasUserInteracted) {
+      resolve(); // ถ้ายังไม่มี user interaction ให้ข้ามเสียงไปเลย (iOS)
+      return;
     }
+    const onEnd = () => {
+      audioEl.onended = null;
+      resolve();
+    };
+    audioEl.onended = onEnd;
+    playSound(audioEl);
+    // ถ้าเสียงเล่นไม่ติดใน 300ms ให้ข้ามไปเลย
+    setTimeout(() => {
+      if (audioEl.onended === onEnd) {
+        audioEl.onended = null;
+        resolve();
+      }
+    }, 300);
   });
 }
 
-/* ========== TTS Queue (เหมือน a1.html) ========== */
+/* ========== TTS ========== */
 let ttsQueue = [], isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
 
 function speak(text){
+  if (!hasUserInteracted) return; // iOS ไม่พูดถ้ายังไม่มี interaction
   ttsQueue.push(text);
   processTTS();
 }
@@ -254,14 +266,26 @@ function processTTS(){
   }, Math.max(1800, msg.length * 70));
 }
 
+/* ========== User Interaction Unlock (สำคัญสุดสำหรับ iOS) ========== */
+function unlockAudio(){
+  if (hasUserInteracted) return;
+  hasUserInteracted = true;
+  playSound(bgm); // เริ่ม BGM ทันทีที่ผู้ใช้แตะครั้งแรก
+  console.log("Audio unlocked for iOS Safari");
+}
+document.addEventListener("touchstart", unlockAudio, {once: true});
+document.addEventListener("click", unlockAudio, {once: true});
+
 /* ========== เกม ========== */
 function selectMode(){
+  unlockAudio(); // เผื่อคนกดปุ่มโดยไม่แตะหน้าจอ
   document.getElementById("homeScreen").style.display = "none";
   document.getElementById("playerSelect").style.display = "flex";
   setTimeout(() => document.getElementById("firstCharBtn").focus(), 300);
 }
 
 function selectPlayer(player){
+  unlockAudio();
   userPlayer = player;
   cpuPlayer = player === "อ้ายมดแดง" ? "อ้ายมดดำ" : "อ้ายมดแดง";
 
@@ -272,7 +296,7 @@ function selectPlayer(player){
   playerWins = cpuWins = 0;
   currentRound = 1;
   startNewRound();
-  playSound(bgm);
+  if (hasUserInteracted) playSound(bgm);
 }
 
 function startNewRound(){
@@ -295,7 +319,7 @@ function startNewRound(){
     const cell = document.createElement("button");
     cell.className = "cell";
     cell.textContent = `ช่อง ${i+1}`;
-    cell.onclick = () => playerChoose(i);
+    cell.onclick = () => { unlockAudio(); playerChoose(i); };
     cell.setAttribute("aria-label", `ช่อง ${i+1}`);
     if(i === 0) cell.id = "cell-1";
     grid.appendChild(cell);
@@ -408,7 +432,7 @@ function endGame(){
 
   speak(endMsg);
   setTimeout(() => {
-    alert(`🎉 ${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
+    alert(` ${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
     resetGame();
   }, 3000);
 }
