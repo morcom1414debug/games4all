@@ -178,12 +178,13 @@ body {
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
-<audio id="bgm" loop src="audio/b.mp3"></audio>
-<audio id="end" src="audio/end.mp3"></audio>
-<audio id="missPlayer" src="audio/f.mp3"></audio>
-<audio id="missCpu" src="audio/f4.mp3"></audio>
-<audio id="hitPlayer" src="audio/t.mp3"></audio>
-<audio id="hitCpu" src="audio/t4.mp3"></audio>
+<!-- เสียงทั้งหมด (เพิ่ม preload="auto" เพื่อโหลดล่วงหน้า) -->
+<audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
+<audio id="end" preload="auto" src="audio/end.mp3"></audio>
+<audio id="missPlayer" preload="auto" src="audio/f.mp3"></audio>
+<audio id="missCpu" preload="auto" src="audio/f4.mp3"></audio>
+<audio id="hitPlayer" preload="auto" src="audio/t.mp3"></audio>
+<audio id="hitCpu" preload="auto" src="audio/t4.mp3"></audio>
 
 <script>
 let userPlayer, cpuPlayer;
@@ -192,12 +193,13 @@ let currentTurn;
 let opened = new Set();
 const totalCells = 16;
 const totalBombs = 4;
-const winScore = 2;  // ถึง 2 คะแนนก่อนชนะ
+const winScore = 2;
 
 let playerWins = 0;
 let cpuWins = 0;
 let currentRound = 1;
 
+/* ========== เสียง (ระบบเดียวกับ a1.html) ========== */
 const bgm = document.getElementById("bgm");
 const endSnd = document.getElementById("end");
 const missPlayer = document.getElementById("missPlayer");
@@ -205,8 +207,31 @@ const missCpu = document.getElementById("missCpu");
 const hitPlayer = document.getElementById("hitPlayer");
 const hitCpu = document.getElementById("hitCpu");
 
-const ttsDisplay = document.getElementById("ttsDisplay");
+function playSound(el){
+  el.currentTime = 0;
+  el.play().catch(() => {});
+}
+
+function stopBGM(){
+  bgm.pause();
+  bgm.currentTime = 0;
+}
+
+function waitForSound(audioEl){
+  return new Promise(resolve => {
+    audioEl.onended = () => resolve();
+    // ถ้าเสียงกำลังเล่นอยู่แล้ว ให้รอจนจบก่อน resolve
+    if (!audioEl.paused && !audioEl.ended) {
+      audioEl.onended = () => resolve();
+    } else {
+      playSound(audioEl);
+    }
+  });
+}
+
+/* ========== TTS Queue (เหมือน a1.html) ========== */
 let ttsQueue = [], isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
 
 function speak(text){
   ttsQueue.push(text);
@@ -220,6 +245,7 @@ function processTTS(){
   ttsDisplay.textContent = msg;
   ttsDisplay.classList.add('show');
   document.getElementById("tts").innerText = msg;
+
   setTimeout(()=>{
     isSpeaking = false;
     document.getElementById("tts").innerText = "";
@@ -228,13 +254,7 @@ function processTTS(){
   }, Math.max(1800, msg.length * 70));
 }
 
-function waitForSound(audioEl){
-  return new Promise(resolve => {
-    audioEl.onended = ()=>resolve();
-    audioEl.play().catch(()=>resolve());
-  });
-}
-
+/* ========== เกม ========== */
 function selectMode(){
   document.getElementById("homeScreen").style.display = "none";
   document.getElementById("playerSelect").style.display = "flex";
@@ -252,7 +272,7 @@ function selectPlayer(player){
   playerWins = cpuWins = 0;
   currentRound = 1;
   startNewRound();
-  bgm.play().catch(()=>{});
+  playSound(bgm);
 }
 
 function startNewRound(){
@@ -346,7 +366,6 @@ async function openCell(idx, who){
     document.getElementById("lifeBoard").innerText = 
       `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    // ตรวจสอบว่ามีใครถึง 2 คะแนนก่อนหรือยัง
     if(playerWins >= winScore || cpuWins >= winScore){
       endGame();
     } else {
@@ -377,8 +396,8 @@ async function openCell(idx, who){
 }
 
 function endGame(){
-  bgm.pause();
-  endSnd.play();
+  stopBGM();
+  playSound(endSnd);
 
   let endMsg;
   if(playerWins >= winScore){
@@ -395,8 +414,7 @@ function endGame(){
 }
 
 function resetGame(){
-  bgm.pause(); 
-  bgm.currentTime = 0;
+  stopBGM();
   document.getElementById("gameScreen").style.display="none";
   document.getElementById("playerSelect").style.display="flex";
   document.getElementById("backToMainMenu").style.display="block";
