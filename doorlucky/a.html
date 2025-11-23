@@ -15,6 +15,7 @@ body {
   overflow:hidden;
   position:relative;
 }
+
 #backToMainMenu {
   position: fixed;
   top: 20px;
@@ -32,6 +33,7 @@ body {
   transition: all 0.2s;
 }
 #backToMainMenu:hover { background:#fff; transform:translateY(-2px); }
+
 #lifeBoard { 
   position:fixed;
   top:10px;
@@ -48,6 +50,7 @@ body {
   text-shadow: 3px 3px 6px #000;
   min-width:500px;
 }
+
 #grid-container {
   max-width: 720px;
   margin: 110px auto 0;
@@ -56,6 +59,7 @@ body {
   border-radius: 20px;
   box-shadow: 0 0 30px rgba(255,255,0,0.6);
 }
+
 #grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -65,6 +69,7 @@ body {
   border-radius: 15px;
   border: 8px solid #ffff00;
 }
+
 .cell {
   position: relative;
   background: #ffffff;
@@ -78,10 +83,27 @@ body {
   color: #000;
   aspect-ratio: 1;
 }
-.cell:hover { background: #ffff99; border-color: #ff0000; transform: scale(1.06); }
+
+.cell:hover { 
+  background: #ffff99; 
+  border-color: #ff0000;
+  transform: scale(1.06);
+}
 .cell:active { transform: scale(0.95); }
-.cell.safe { background: #00ff00 !important; color: white; border-color: #00aa00; cursor: default; }
-.cell.boom { background: #ff0000 !important; color: white; border-color: #aa0000; cursor: default; }
+
+.cell.safe { 
+  background: #00ff00 !important; 
+  color: white; 
+  border-color: #00aa00;
+  cursor: default; 
+}
+.cell.boom { 
+  background: #ff0000 !important; 
+  color: white; 
+  border-color: #aa0000;
+  cursor: default; 
+}
+
 #ttsDisplay {
   position:fixed;
   bottom:20px;
@@ -100,6 +122,7 @@ body {
   transition:opacity 0.4s;
 }
 #ttsDisplay.show { opacity:1; }
+
 #homeScreen, #playerSelect { 
   height:100vh; 
   display:flex; 
@@ -112,7 +135,7 @@ body {
   background:#ffffff;
   color:#000;
   border-radius:20px;
-  padding:35px 80_px;
+  padding:35px 80px;
   font-weight:bold;
   cursor:pointer;
   border:8px solid #ffff00;
@@ -155,122 +178,24 @@ body {
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
+<!-- audio elements — ตั้ง preload=auto เอาไว้ -->
+<audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
+<audio id="end" preload="auto" src="audio/end.mp3"></audio>
+<audio id="missPlayer" preload="auto" src="audio/f.mp3"></audio>
+<audio id="missCpu" preload="auto" src="audio/f4.mp3"></audio>
+<audio id="hitPlayer" preload="auto" src="audio/t.mp3"></audio>
+<audio id="hitCpu" preload="auto" src="audio/t4.mp3"></audio>
+
 <script>
-// ==================== ระบบเสียงแบบ b.html + แก้ iOS 100% ====================
-const audioQueue = [];
-let isAudioPlaying = false;
-let hasUserInteracted = false;
-let bgmAudio = null;
+/*
+  Version: แก้ให้เล่นเสียงเสถียรบน Safari iOS
+  หลักการ:
+  - ใช้ AudioEngine ที่มี queue สำหรับ effects (เล่นทีละไฟล์)
+  - BGM แยกการทำงาน (loop) แต่เริ่มเมื่อ unlockAudio() สำเร็จ
+  - unlockAudio() พยายาม play() แล้ว pause() ทุกไฟล์ ตอน interaction แรก
+  - onended มี fallback timeout เพื่อรองรับกรณี onended ไม่ทำงาน
+*/
 
-// ปลดล็อกเสียง iOS ด้วยวิธีที่ใช้ได้จริงที่สุด
-function unlockAudio() {
-  if (hasUserInteracted) return;
-  hasUserInteracted = true;
-
-  // วิธีที่ 1: สร้าง silent sound
-  const silent = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
-  silent.play().catch(() => {});
-
-  // วิธีที่ 2: AudioContext (บางเครื่องต้องการ)
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (AudioContext) {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    gain.gain.value = 0.001;
-    osc.start(0);
-    osc.stop(ctx.currentTime + 0.001);
-  }
-
-  console.log("Audio unlocked for iOS Safari");
-}
-
-// BGM แยกจัดการ (loop)
-function playBGM() {
-  if (!hasUserInteracted || bgmAudio) return;
-  bgmAudio = new Audio("audio/b.mp3");
-  bgmAudio.loop = true;
-  bgmAudio.volume = 0.7;
-  bgmAudio.play().catch(() => {});
-}
-
-function stopBGM() {
-  if (bgmAudio) {
-    bgmAudio.pause();
-    bgmAudio.currentTime = 0;
-    bgmAudio = null;
-  }
-}
-
-// เล่นเสียงเอฟเฟกต์ → สร้างใหม่ทุกครั้ง (สำคัญสุดสำหรับ iOS)
-function playSound(filename) {
-  if (!hasUserInteracted) return;
-  audioQueue.push(filename);
-  processAudioQueue();
-}
-
-function processAudioQueue() {
-  if (isAudioPlaying || audioQueue.length === 0) return;
-  isAudioPlaying = true;
-
-  const filename = audioQueue.shift();
-  const audio = new Audio(`audio/${filename}`);  // สร้างใหม่ทุกครั้ง!
-
-  audio.addEventListener('ended', () => {
-    isAudioPlaying = false;
-    processAudioQueue();
-  });
-
-  audio.addEventListener('error', () => {
-    console.warn("Audio error:", filename);
-    isAudioPlaying = false;
-    processAudioQueue();
-  });
-
-  // สำคัญ: บางครั้ง iOS ยังปฏิเสธ → ลองอีกครั้ง
-  const tryPlay = () => {
-    audio.play().catch(() => {
-      setTimeout(() => {
-        audio.play().catch(() => {});
-      }, 100);
-    });
-  };
-  tryPlay();
-}
-
-// Unlock เมื่อแตะ/คลิก
-document.addEventListener("touchstart", unlockAudio, { once: true });
-document.addEventListener("click", unlockAudio, { once: true });
-
-// ==================== TTS ====================
-let ttsQueue = [], isSpeaking = false;
-const ttsDisplay = document.getElementById("ttsDisplay");
-
-function speak(text) {
-  if (!hasUserInteracted) return;
-  ttsQueue.push(text);
-  processTTS();
-}
-
-function processTTS() {
-  if (isSpeaking || ttsQueue.length === 0) return;
-  isSpeaking = true;
-  const msg = ttsQueue.shift();
-  ttsDisplay.textContent = msg;
-  ttsDisplay.classList.add('show');
-  document.getElementById("tts").innerText = msg;
-
-  setTimeout(() => {
-    isSpeaking = false;
-    document.getElementById("tts").innerText = "";
-    ttsDisplay.classList.remove('show');
-    processTTS();
-  }, Math.max(1800, msg.length * 70));
-}
-
-// ==================== ตัวแปรเกม ====================
 let userPlayer, cpuPlayer;
 let bombs = [];
 let currentTurn;
@@ -278,53 +203,269 @@ let opened = new Set();
 const totalCells = 16;
 const totalBombs = 4;
 const winScore = 2;
+
 let playerWins = 0;
 let cpuWins = 0;
 let currentRound = 1;
+let hasUserInteracted = false;  // สำคัญมากสำหรับ iOS
 
-// ==================== เกม ====================
-function selectMode() {
-  unlockAudio();
-  document.getElementById("homeScreen").style.display = "none";
-  document.getElementById("playerSelect").style.display = "flex";
+/* ======== AudioEngine ======== */
+class AudioEngine {
+  constructor(map) {
+    // map: { key: audioElement }
+    this.map = map;
+    this.queue = [];
+    this.isPlaying = false;
+    this.bgmEl = this.map['bgm'] || null;
+    // keep references for quick use
+  }
+
+  // Try to unlock each audio element by playing briefly then pausing.
+  // This should be called once on first user interaction.
+  async unlockAll() {
+    const els = Object.values(this.map);
+    for (const el of els) {
+      try {
+        // Some browsers may require a non-muted play. We try play() then pause()
+        el.muted = false;
+        el.currentTime = 0;
+        const p = el.play();
+        if (p && p.catch) {
+          // swallow error
+          await p.catch(()=>{});
+        }
+        // pause immediately to avoid audible glitch (if it started)
+        if (!el.paused) el.pause();
+        el.currentTime = 0;
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  // Play BGM (looping). Ensure it only starts after unlock.
+  async startBGM() {
+    if (!this.bgmEl) return;
+    try {
+      // Only start if not already playing
+      if (this.bgmEl.paused) {
+        this.bgmEl.currentTime = 0;
+        await this.bgmEl.play().catch(()=>{});
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  stopBGM() {
+    if (!this.bgmEl) return;
+    try {
+      this.bgmEl.pause();
+      this.bgmEl.currentTime = 0;
+    } catch (e) {}
+  }
+
+  // enqueue an effect to be played sequentially
+  playEffect(key) {
+    if (!this.map[key]) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.queue.push({key, resolve});
+      if (!this.isPlaying) this._dequeue();
+    });
+  }
+
+  async _dequeue() {
+    if (this.queue.length === 0) {
+      this.isPlaying = false;
+      return;
+    }
+    this.isPlaying = true;
+    const {key, resolve} = this.queue.shift();
+    const el = this.map[key];
+    if (!el) {
+      resolve();
+      this._dequeue();
+      return;
+    }
+
+    // attempt to play el; use ended event with fallback timeout
+    let settled = false;
+
+    const cleanup = () => {
+      try {
+        el.onended = null;
+      } catch (e) {}
+    };
+
+    const onEnded = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      el.currentTime = 0;
+      resolve();
+      // small delay to avoid immediate chained overlap
+      setTimeout(()=>this._dequeue(), 40);
+    };
+
+    // attach event
+    try {
+      el.onended = onEnded;
+    } catch (e) {}
+
+    // estimate fallback: if duration available use it, else default 600ms
+    let duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? (el.duration * 1000) : 600;
+    // but some files have duration Infinity before loaded, choose min 200 and max 3000
+    if (!isFinite(duration) || duration <= 0) duration = 600;
+    // add a bit of margin
+    const fallbackTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try { el.pause(); } catch(e){}
+      try { el.currentTime = 0; } catch(e){}
+      resolve();
+      setTimeout(()=>this._dequeue(), 40);
+    }, duration + 300);
+
+    // try to play
+    try {
+      el.currentTime = 0;
+      const p = el.play();
+      if (p && p.catch) {
+        // swallow error but still rely on fallback
+        p.catch(()=>{});
+      }
+    } catch (e) {
+      // on play error just resolve after clearing timer
+      clearTimeout(fallbackTimer);
+      if (!settled) {
+        settled = true;
+        cleanup();
+        try { el.pause(); } catch(e){}
+        try { el.currentTime = 0; } catch(e){}
+        resolve();
+        setTimeout(()=>this._dequeue(), 40);
+      }
+    }
+  }
 }
 
-function selectPlayer(player) {
+/* ========== map the audio elements ========== */
+const audioMap = {
+  bgm: document.getElementById("bgm"),
+  end: document.getElementById("end"),
+  missPlayer: document.getElementById("missPlayer"),
+  missCpu: document.getElementById("missCpu"),
+  hitPlayer: document.getElementById("hitPlayer"),
+  hitCpu: document.getElementById("hitCpu")
+};
+
+const audioEngine = new AudioEngine(audioMap);
+
+/* ========== TTS ========== */
+let ttsQueue = [], isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
+
+function speak(text){
+  if (!hasUserInteracted) return; // iOS จะไม่ประกาศจนกว่าจะมี interaction จริง
+  ttsQueue.push(text);
+  processTTS();
+}
+
+function processTTS(){
+  if(isSpeaking || ttsQueue.length === 0) return;
+  isSpeaking = true;
+  const msg = ttsQueue.shift();
+  ttsDisplay.textContent = msg;
+  ttsDisplay.classList.add('show');
+  document.getElementById("tts").innerText = msg;
+
+  setTimeout(()=>{
+    isSpeaking = false;
+    document.getElementById("tts").innerText = "";
+    ttsDisplay.classList.remove('show');
+    processTTS();
+  }, Math.max(1800, msg.length * 70));
+}
+
+/* ========== User Interaction Unlock (สำคัญสุดสำหรับ iOS) ========== */
+async function unlockAudio(){
+  if (hasUserInteracted) return;
+  hasUserInteracted = true;
+  // Try to unlock all audio elements via AudioEngine
+  await audioEngine.unlockAll();
+  // start bgm if not playing
+  await audioEngine.startBGM();
+  console.log("Audio unlocked for iOS Safari (unlocked and bgm started)");
+}
+
+document.addEventListener("touchstart", unlockAudio, {once: true, passive: true});
+document.addEventListener("click", unlockAudio, {once: true});
+
+/* ========== Helpers for playing sounds in game logic ========== */
+function playSoundByKey(key){
+  if (!hasUserInteracted) {
+    // If not unlocked, do nothing (iOS policy)
+    return;
+  }
+  // For bgm, use start/stop instead of queue
+  if (key === 'bgm') {
+    audioEngine.startBGM();
+    return;
+  }
+  return audioEngine.playEffect(key).catch(()=>{});
+}
+
+function stopBGM(){
+  audioEngine.stopBGM();
+}
+
+/* ========== เกม ========== */
+function selectMode(){
+  unlockAudio(); // เผื่อคนกดปุ่มโดยไม่แตะหน้าจอ
+  document.getElementById("homeScreen").style.display = "none";
+  document.getElementById("playerSelect").style.display = "flex";
+  setTimeout(() => document.getElementById("firstCharBtn").focus(), 300);
+}
+
+function selectPlayer(player){
   unlockAudio();
   userPlayer = player;
   cpuPlayer = player === "อ้ายมดแดง" ? "อ้ายมดดำ" : "อ้ายมดแดง";
 
-  document.getElementById("playerSelect").style.display = "none";
-  document.getElementById("gameScreen").style.display = "block";
-  document.getElementById("backToMainMenu").style.display = "none";
+  document.getElementById("playerSelect").style.display="none";
+  document.getElementById("gameScreen").style.display="block";
+  document.getElementById("backToMainMenu").style.display="none";
 
   playerWins = cpuWins = 0;
   currentRound = 1;
   startNewRound();
-  playBGM();
+  if (hasUserInteracted) playSoundByKey('bgm');
 }
 
-function startNewRound() {
+function startNewRound(){
   opened.clear();
   bombs = [];
-  while (bombs.length < totalBombs) {
-    const r = Math.floor(Math.random() * totalCells);
-    if (!bombs.includes(r)) bombs.push(r);
+  while(bombs.length < totalBombs){
+    const r = Math.floor(Math.random()*totalCells);
+    if(!bombs.includes(r)) bombs.push(r);
   }
 
-  currentTurn = (currentRound === 1) 
-    ? (Math.random() < 0.5 ? 'player' : 'cpu')
-    : (currentTurn === 'player' ? 'cpu' : 'player');
+  if(currentRound === 1){
+    currentTurn = Math.random() < 0.5 ? 'player' : 'cpu';
+  } else {
+    currentTurn = currentTurn === 'player' ? 'cpu' : 'player';
+  }
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
-  for (let i = 0; i < totalCells; i++) {
+  for(let i=0; i<totalCells; i++){
     const cell = document.createElement("button");
     cell.className = "cell";
-    cell.textContent = `ช่อง ${i + 1}`;
+    cell.textContent = `ช่อง ${i+1}`;
     cell.onclick = () => { unlockAudio(); playerChoose(i); };
-    cell.setAttribute("aria-label", `ช่อง ${i + 1}`);
-    if (i === 0) cell.id = "cell-1";
+    cell.setAttribute("aria-label", `ช่อง ${i+1}`);
+    if(i === 0) cell.id = "cell-1";
     grid.appendChild(cell);
   }
 
@@ -334,23 +475,28 @@ function startNewRound() {
   const starter = currentTurn === 'player' ? userPlayer : cpuPlayer;
   speak(`${scoreText} ${starter} เริ่มก่อน เลือกได้เลย`);
 
-  if (currentTurn === 'cpu') {
+  setTimeout(() => {
+    const firstCell = document.getElementById("cell-1");
+    if(firstCell) firstCell.focus();
+  }, 800);
+
+  if(currentTurn === 'cpu'){
     setTimeout(cpuTurn, 3500);
   }
 }
 
-async function playerChoose(idx) {
-  if (currentTurn !== 'player' || opened.has(idx)) return;
+async function playerChoose(idx){
+  if(currentTurn !== 'player' || opened.has(idx)) return;
   await openCell(idx, 'player');
 }
 
-async function cpuTurn() {
-  if (currentTurn !== 'cpu') return;
+async function cpuTurn(){
+  if(currentTurn !== 'cpu') return;
 
   let choice;
-  do {
-    choice = Math.floor(Math.random() * totalCells);
-  } while (opened.has(choice));
+  do{
+    choice = Math.floor(Math.random()*totalCells);
+  }while(opened.has(choice));
 
   const cellNumber = choice + 1;
   speak(`${cpuPlayer} กำลังเปิดช่อง ${cellNumber}`);
@@ -360,48 +506,51 @@ async function cpuTurn() {
   await openCell(choice, 'cpu');
 }
 
-async function openCell(idx, who) {
+async function openCell(idx, who){
   opened.add(idx);
   const cell = document.querySelectorAll("#grid .cell")[idx];
   cell.disabled = true;
 
   const isBomb = bombs.includes(idx);
 
-  if (isBomb) {
+  if(isBomb){
     cell.classList.add("boom");
     cell.textContent = "ระเบิด!";
+    cell.setAttribute("aria-label", `ช่อง ${idx+1} ระเบิด! ไม่สามารถกดได้`);
 
     const loser = who === 'player' ? userPlayer : cpuPlayer;
     const winner = who === 'player' ? cpuPlayer : userPlayer;
 
-    if (who === 'player') {
+    if(who === 'player') {
       cpuWins++;
-      playSound("t.mp3");     // ผู้เล่นโดน
+      // play hitPlayer (player hits bomb -> cpu scores)
+      await playSoundByKey('hitPlayer');
       speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     } else {
       playerWins++;
-      playSound("t4.mp3");    // CPU โดน ← เล่นได้ทุกครั้งแน่นอน
+      await playSoundByKey('hitCpu');
       speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     }
 
     document.getElementById("lifeBoard").innerText = 
       `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if (playerWins >= winScore || cpuWins >= winScore) {
-      setTimeout(endGame, 3000);
+    if(playerWins >= winScore || cpuWins >= winScore){
+      endGame();
     } else {
       currentRound++;
-      setTimeout(currentRound <= 3 ? startNewRound : endGame, 3500);
+      setTimeout(startNewRound, 3000);
     }
   } else {
     cell.classList.add("safe");
-    cell.textContent = `ช่อง${idx + 1}ว่างเปล่า`;
+    cell.textContent = `ช่อง${idx+1}ว่างเปล่า`;
+    cell.setAttribute("aria-label", `ช่อง ${idx+1} ว่างเปล่า ไม่สามารถกดได้`);
 
-    if (who === 'player') {
-      playSound("f.mp3");
+    if(who === 'player'){
+      await playSoundByKey('missPlayer');
       speak(`${userPlayer} รอด! ว่างเปล่า`);
     } else {
-      playSound("f4.mp3");    // CPU รอด ← เล่นได้ทุกครั้งแน่นอน
+      await playSoundByKey('missCpu');
       speak(`${cpuPlayer} รอด! ว่างเปล่า ถึงตา ${userPlayer} เลือกแล้ว`);
     }
 
@@ -409,36 +558,44 @@ async function openCell(idx, who) {
     document.getElementById("lifeBoard").innerText = 
       `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if (currentTurn === 'cpu') {
-      setTimeout(cpuTurn, 2800);
+    if(currentTurn === 'cpu'){
+      setTimeout(cpuTurn, 2500);
     }
   }
 }
 
-function endGame() {
+function endGame(){
   stopBGM();
-  playSound("end.mp3");
+  playSoundByKey('end');
 
-  const endMsg = playerWins >= winScore 
-    ? `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !` 
-    : `เสียใจด้วย ${userPlayer} แพ้ ${cpuPlayer} นะ!`;
+  let endMsg;
+  if(playerWins >= winScore){
+    endMsg = `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !`;
+  } else {
+    endMsg = `เสียใจด้วย ${userPlayer} แพ้ ${cpuPlayer} นะ!`;
+  }
 
   speak(endMsg);
   setTimeout(() => {
-    alert(`${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
+    alert(` ${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
     resetGame();
-  }, 3500);
+  }, 3000);
 }
 
-function resetGame() {
+function resetGame(){
   stopBGM();
-  document.getElementById("gameScreen").style.display = "none";
-  document.getElementById("playerSelect").style.display = "flex";
-  document.getElementById("backToMainMenu").style.display = "block";
+  document.getElementById("gameScreen").style.display="none";
+  document.getElementById("playerSelect").style.display="flex";
+  document.getElementById("backToMainMenu").style.display="block";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("backToMainMenu").style.display = "block";
+  // Make sure audio elements are preloaded in browser
+  for (const k in audioMap) {
+    const el = audioMap[k];
+    try { el.load(); } catch(e){}
+  }
 });
 </script>
 </body>
