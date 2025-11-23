@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>ระเบิด 16 ช่อง (ชนะ 2 ใน 3 รอบ)</title>
 <style>
+/* CSS เดิมทั้งหมด (ไม่เปลี่ยน) */
 body { 
   font-family: Tahoma, sans-serif; 
   background:#111; 
@@ -15,7 +16,6 @@ body {
   overflow:hidden;
   position:relative;
 }
-
 #backToMainMenu {
   position: fixed;
   top: 20px;
@@ -33,7 +33,6 @@ body {
   transition: all 0.2s;
 }
 #backToMainMenu:hover { background:#fff; transform:translateY(-2px); }
-
 #lifeBoard { 
   position:fixed;
   top:10px;
@@ -50,7 +49,6 @@ body {
   text-shadow: 3px 3px 6px #000;
   min-width:500px;
 }
-
 #grid-container {
   max-width: 720px;
   margin: 110px auto 0;
@@ -59,7 +57,6 @@ body {
   border-radius: 20px;
   box-shadow: 0 0 30px rgba(255,255,0,0.6);
 }
-
 #grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -69,7 +66,6 @@ body {
   border-radius: 15px;
   border: 8px solid #ffff00;
 }
-
 .cell {
   position: relative;
   background: #ffffff;
@@ -83,27 +79,10 @@ body {
   color: #000;
   aspect-ratio: 1;
 }
-
-.cell:hover { 
-  background: #ffff99; 
-  border-color: #ff0000;
-  transform: scale(1.06);
-}
+.cell:hover { background: #ffff99; border-color: #ff0000; transform: scale(1.06); }
 .cell:active { transform: scale(0.95); }
-
-.cell.safe { 
-  background: #00ff00 !important; 
-  color: white; 
-  border-color: #00aa00;
-  cursor: default; 
-}
-.cell.boom { 
-  background: #ff0000 !important; 
-  color: white; 
-  border-color: #aa0000;
-  cursor: default; 
-}
-
+.cell.safe { background: #00ff00 !important; color: white; border-color: #00aa00; cursor: default; }
+.cell.boom { background: #ff0000 !important; color: white; border-color: #aa0000; cursor: default; }
 #ttsDisplay {
   position:fixed;
   bottom:20px;
@@ -122,7 +101,6 @@ body {
   transition:opacity 0.4s;
 }
 #ttsDisplay.show { opacity:1; }
-
 #homeScreen, #playerSelect { 
   height:100vh; 
   display:flex; 
@@ -178,14 +156,102 @@ body {
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
-<audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
-<audio id="end" preload="auto" src="audio/end.mp3"></audio>
-<audio id="missPlayer" preload="auto" src="audio/f.mp3"></audio>
-<audio id="missCpu" preload="auto" src="audio/f4.mp3"></audio>
-<audio id="hitPlayer" preload="auto" src="audio/t.mp3"></audio>
-<audio id="hitCpu" preload="auto" src="audio/t4.mp3"></audio>
-
 <script>
+// ==================== ระบบเสียงใหม่ (แก้ปัญหา BGM บล็อกคิว) ====================
+const audioQueue = [];
+let isAudioPlaying = false;
+let hasUserInteracted = false;
+let bgmAudio = null;        // ตัวแปรพิเศษสำหรับ BGM
+let isBgmPlaying = false;
+
+function unlockAudio() {
+  if (hasUserInteracted) return;
+  hasUserInteracted = true;
+  console.log("Audio unlocked");
+  const silent = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
+  silent.play().catch(() => {});
+}
+
+// เล่น BGM แบบ loop โดยไม่บล็อกคิว
+function playBGM() {
+  if (!hasUserInteracted || isBgmPlaying) return;
+  bgmAudio = new Audio("audio/b.mp3");
+  bgmAudio.loop = true;
+  bgmAudio.volume = 0.7;
+  bgmAudio.play().catch(() => {});
+  isBgmPlaying = true;
+}
+
+function stopBGM() {
+  if (bgmAudio) {
+    bgmAudio.pause();
+    bgmAudio.currentTime = 0;
+    isBgmPlaying = false;
+  }
+}
+
+// เล่นเสียงเอฟเฟกต์ทั่วไป (ผ่านคิว)
+function playSound(filename) {
+  if (!hasUserInteracted) return;
+  audioQueue.push(filename);
+  processAudioQueue();
+}
+
+function processAudioQueue() {
+  if (isAudioPlaying || audioQueue.length === 0) return;
+  isAudioPlaying = true;
+
+  const filename = audioQueue.shift();
+  const audio = new Audio(`audio/${filename}`);
+
+  audio.addEventListener('ended', () => {
+    isAudioPlaying = false;
+    processAudioQueue();
+  });
+
+  audio.addEventListener('error', () => {
+    console.warn("Audio error:", filename);
+    isAudioPlaying = false;
+    processAudioQueue();
+  });
+
+  audio.play().catch(() => {
+    isAudioPlaying = false;
+    processAudioQueue();
+  });
+}
+
+// Unlock เมื่อแตะหรือคลิก
+document.addEventListener("touchstart", unlockAudio, { once: true });
+document.addEventListener("click", unlockAudio, { once: true });
+
+// ==================== TTS ====================
+let ttsQueue = [], isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
+
+function speak(text) {
+  if (!hasUserInteracted) return;
+  ttsQueue.push(text);
+  processTTS();
+}
+
+function processTTS() {
+  if (isSpeaking || ttsQueue.length === 0) return;
+  isSpeaking = true;
+  const msg = ttsQueue.shift();
+  ttsDisplay.textContent = msg;
+  ttsDisplay.classList.add('show');
+  document.getElementById("tts").innerText = msg;
+
+  setTimeout(() => {
+    isSpeaking = false;
+    document.getElementById("tts").innerText = "";
+    ttsDisplay.classList.remove('show');
+    processTTS();
+  }, Math.max(1800, msg.length * 70));
+}
+
+// ==================== ตัวแปรเกม ====================
 let userPlayer, cpuPlayer;
 let bombs = [];
 let currentTurn;
@@ -197,117 +263,39 @@ const winScore = 2;
 let playerWins = 0;
 let cpuWins = 0;
 let currentRound = 1;
-let hasUserInteracted = false;  // สำคัญมากสำหรับ iOS
 
-/* ========== เสียง ========== */
-const bgm = document.getElementById("bgm");
-const endSnd = document.getElementById("end");
-const missPlayer = document.getElementById("missPlayer");
-const missCpu = document.getElementById("missCpu");
-const hitPlayer = document.getElementById("hitPlayer");
-const hitCpu = document.getElementById("hitCpu");
-
-function playSound(el){
-  if (!hasUserInteracted) return; // ป้องกัน iOS บล็อก
-  el.currentTime = 0;
-  el.play().catch(() => {});
-}
-
-function stopBGM(){
-  bgm.pause();
-  bgm.currentTime = 0;
-}
-
-async function waitForSound(audioEl){
-  return new Promise(resolve => {
-    if (!hasUserInteracted) {
-      resolve(); // ถ้ายังไม่มี user interaction ให้ข้ามเสียงไปเลย (iOS)
-      return;
-    }
-    const onEnd = () => {
-      audioEl.onended = null;
-      resolve();
-    };
-    audioEl.onended = onEnd;
-    playSound(audioEl);
-    // ถ้าเสียงเล่นไม่ติดใน 300ms ให้ข้ามไปเลย
-    setTimeout(() => {
-      if (audioEl.onended === onEnd) {
-        audioEl.onended = null;
-        resolve();
-      }
-    }, 300);
-  });
-}
-
-/* ========== TTS ========== */
-let ttsQueue = [], isSpeaking = false;
-const ttsDisplay = document.getElementById("ttsDisplay");
-
-function speak(text){
-  if (!hasUserInteracted) return; // iOS ไม่พูดถ้ายังไม่มี interaction
-  ttsQueue.push(text);
-  processTTS();
-}
-
-function processTTS(){
-  if(isSpeaking || ttsQueue.length === 0) return;
-  isSpeaking = true;
-  const msg = ttsQueue.shift();
-  ttsDisplay.textContent = msg;
-  ttsDisplay.classList.add('show');
-  document.getElementById("tts").innerText = msg;
-
-  setTimeout(()=>{
-    isSpeaking = false;
-    document.getElementById("tts").innerText = "";
-    ttsDisplay.classList.remove('show');
-    processTTS();
-  }, Math.max(1800, msg.length * 70));
-}
-
-/* ========== User Interaction Unlock (สำคัญสุดสำหรับ iOS) ========== */
-function unlockAudio(){
-  if (hasUserInteracted) return;
-  hasUserInteracted = true;
-  playSound(bgm); // เริ่ม BGM ทันทีที่ผู้ใช้แตะครั้งแรก
-  console.log("Audio unlocked for iOS Safari");
-}
-document.addEventListener("touchstart", unlockAudio, {once: true});
-document.addEventListener("click", unlockAudio, {once: true});
-
-/* ========== เกม ========== */
-function selectMode(){
-  unlockAudio(); // เผื่อคนกดปุ่มโดยไม่แตะหน้าจอ
+// ==================== ฟังก์ชันเกม ====================
+function selectMode() {
+  unlockAudio();
   document.getElementById("homeScreen").style.display = "none";
   document.getElementById("playerSelect").style.display = "flex";
   setTimeout(() => document.getElementById("firstCharBtn").focus(), 300);
 }
 
-function selectPlayer(player){
+function selectPlayer(player) {
   unlockAudio();
   userPlayer = player;
   cpuPlayer = player === "อ้ายมดแดง" ? "อ้ายมดดำ" : "อ้ายมดแดง";
 
-  document.getElementById("playerSelect").style.display="none";
-  document.getElementById("gameScreen").style.display="block";
-  document.getElementById("backToMainMenu").style.display="none";
+  document.getElementById("playerSelect").style.display = "none";
+  document.getElementById("gameScreen").style.display = "block";
+  document.getElementById("backToMainMenu").style.display = "none";
 
   playerWins = cpuWins = 0;
   currentRound = 1;
   startNewRound();
-  if (hasUserInteracted) playSound(bgm);
+  playBGM();  // เริ่ม BGM ที่นี่
 }
 
-function startNewRound(){
+function startNewRound() {
   opened.clear();
   bombs = [];
-  while(bombs.length < totalBombs){
-    const r = Math.floor(Math.random()*totalCells);
-    if(!bombs.includes(r)) bombs.push(r);
+  while (bombs.length < totalBombs) {
+    const r = Math.floor(Math.random() * totalCells);
+    if (!bombs.includes(r)) bombs.push(r);
   }
 
-  if(currentRound === 1){
+  if (currentRound === 1) {
     currentTurn = Math.random() < 0.5 ? 'player' : 'cpu';
   } else {
     currentTurn = currentTurn === 'player' ? 'cpu' : 'player';
@@ -315,13 +303,13 @@ function startNewRound(){
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
-  for(let i=0; i<totalCells; i++){
+  for (let i = 0; i < totalCells; i++) {
     const cell = document.createElement("button");
     cell.className = "cell";
-    cell.textContent = `ช่อง ${i+1}`;
+    cell.textContent = `ช่อง ${i + 1}`;
     cell.onclick = () => { unlockAudio(); playerChoose(i); };
-    cell.setAttribute("aria-label", `ช่อง ${i+1}`);
-    if(i === 0) cell.id = "cell-1";
+    cell.setAttribute("aria-label", `ช่อง ${i + 1}`);
+    if (i === 0) cell.id = "cell-1";
     grid.appendChild(cell);
   }
 
@@ -331,28 +319,23 @@ function startNewRound(){
   const starter = currentTurn === 'player' ? userPlayer : cpuPlayer;
   speak(`${scoreText} ${starter} เริ่มก่อน เลือกได้เลย`);
 
-  setTimeout(() => {
-    const firstCell = document.getElementById("cell-1");
-    if(firstCell) firstCell.focus();
-  }, 800);
-
-  if(currentTurn === 'cpu'){
+  if (currentTurn === 'cpu') {
     setTimeout(cpuTurn, 3500);
   }
 }
 
-async function playerChoose(idx){
-  if(currentTurn !== 'player' || opened.has(idx)) return;
+async function playerChoose(idx) {
+  if (currentTurn !== 'player' || opened.has(idx)) return;
   await openCell(idx, 'player');
 }
 
-async function cpuTurn(){
-  if(currentTurn !== 'cpu') return;
+async function cpuTurn() {
+  if (currentTurn !== 'cpu') return;
 
   let choice;
-  do{
-    choice = Math.floor(Math.random()*totalCells);
-  }while(opened.has(choice));
+  do {
+    choice = Math.floor(Math.random() * totalCells);
+  } while (opened.has(choice));
 
   const cellNumber = choice + 1;
   speak(`${cpuPlayer} กำลังเปิดช่อง ${cellNumber}`);
@@ -362,50 +345,48 @@ async function cpuTurn(){
   await openCell(choice, 'cpu');
 }
 
-async function openCell(idx, who){
+async function openCell(idx, who) {
   opened.add(idx);
   const cell = document.querySelectorAll("#grid .cell")[idx];
   cell.disabled = true;
 
   const isBomb = bombs.includes(idx);
 
-  if(isBomb){
+  if (isBomb) {
     cell.classList.add("boom");
     cell.textContent = "ระเบิด!";
-    cell.setAttribute("aria-label", `ช่อง ${idx+1} ระเบิด! ไม่สามารถกดได้`);
 
     const loser = who === 'player' ? userPlayer : cpuPlayer;
     const winner = who === 'player' ? cpuPlayer : userPlayer;
 
-    if(who === 'player') {
+    if (who === 'player') {
       cpuWins++;
-      await waitForSound(hitPlayer);
+      playSound("t.mp3");      // ผู้เล่นโดน
       speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     } else {
       playerWins++;
-      await waitForSound(hitCpu);
+      playSound("t4.mp3");     // บอทโดน
       speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     }
 
     document.getElementById("lifeBoard").innerText = 
       `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if(playerWins >= winScore || cpuWins >= winScore){
-      endGame();
+    if (playerWins >= winScore || cpuWins >= winScore) {
+      setTimeout(endGame, 2800);
     } else {
       currentRound++;
-      setTimeout(startNewRound, 3000);
+      setTimeout(startNewRound, 3200);
     }
   } else {
     cell.classList.add("safe");
-    cell.textContent = `ช่อง${idx+1}ว่างเปล่า`;
-    cell.setAttribute("aria-label", `ช่อง ${idx+1} ว่างเปล่า ไม่สามารถกดได้`);
+    cell.textContent = `ช่อง${idx + 1}ว่างเปล่า`;
 
-    if(who === 'player'){
-      await waitForSound(missPlayer);
+    if (who === 'player') {
+      playSound("f.mp3");
       speak(`${userPlayer} รอด! ว่างเปล่า`);
     } else {
-      await waitForSound(missCpu);
+      playSound("f4.mp3");
       speak(`${cpuPlayer} รอด! ว่างเปล่า ถึงตา ${userPlayer} เลือกแล้ว`);
     }
 
@@ -413,35 +394,32 @@ async function openCell(idx, who){
     document.getElementById("lifeBoard").innerText = 
       `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if(currentTurn === 'cpu'){
+    if (currentTurn === 'cpu') {
       setTimeout(cpuTurn, 2500);
     }
   }
 }
 
-function endGame(){
+function endGame() {
   stopBGM();
-  playSound(endSnd);
+  playSound("end.mp3");
 
-  let endMsg;
-  if(playerWins >= winScore){
-    endMsg = `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !`;
-  } else {
-    endMsg = `เสียใจด้วย ${userPlayer} แพ้ ${cpuPlayer} นะ!`;
-  }
+  const endMsg = playerWins >= winScore 
+    ? `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !` 
+    : `เสียใจด้วย ${userPlayer} แพ้ ${cpuPlayer} นะ!`;
 
   speak(endMsg);
   setTimeout(() => {
-    alert(` ${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
+    alert(`${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
     resetGame();
   }, 3000);
 }
 
-function resetGame(){
+function resetGame() {
   stopBGM();
-  document.getElementById("gameScreen").style.display="none";
-  document.getElementById("playerSelect").style.display="flex";
-  document.getElementById("backToMainMenu").style.display="block";
+  document.getElementById("gameScreen").style.display = "none";
+  document.getElementById("playerSelect").style.display = "flex";
+  document.getElementById("backToMainMenu").style.display = "block";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
