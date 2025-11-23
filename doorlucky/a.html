@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<title>ระเบิด 16 ช่อง (ชนะ 2 ใน 3 รอบ)</title>
+<title>กดติด...ตาย : Dead switch</title>
 <style>
 body { 
   font-family: Tahoma, sans-serif; 
@@ -123,6 +123,16 @@ body {
 }
 #ttsDisplay.show { opacity:1; }
 
+#resultAnnouncement {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
 #homeScreen, #playerSelect { 
   height:100vh; 
   display:flex; 
@@ -154,7 +164,7 @@ body {
 <button id="backToMainMenu" onclick="window.location.href='../index.html'">กลับเมนูหลัก</button>
 
 <div id="homeScreen">
-  <h1 style="font-size:56px;color:#ffff00;text-shadow:4px 4px #000;">ระเบิด 16 ช่อง<br>(ชนะ 2 ใน 3 รอบ)</h1>
+  <h1 style="font-size:56px;color:#ffff00;text-shadow:4px 4px #000;">กดติด...ตาย : Dead switch</h1>
   <button class="mode-btn" onclick="selectMode()">เริ่มเล่นกับบอท</button>
   <p style="font-size:30px;max-width:800px;color:#ffdd00;">
     ใครถึง 2 คะแนนก่อน = ชนะทันที!<br>
@@ -177,6 +187,7 @@ body {
 
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+<div id="resultAnnouncement" aria-live="assertive" role="alert"></div>
 
 <!-- audio -->
 <audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
@@ -185,13 +196,14 @@ body {
 <audio id="missCpu" preload="auto" src="audio/f4.mp3"></audio>
 <audio id="hitPlayer" preload="auto" src="audio/t.mp3"></audio>
 <audio id="hitCpu" preload="auto" src="audio/t4.mp3"></audio>
-<audio id="s1" preload="auto" src="audio/s1.mp3"></audio> <!-- ผู้เล่นเริ่มก่อน -->
-<audio id="s2" preload="auto" src="audio/s2.mp3"></audio> <!-- CPU เริ่มก่อน -->
+<audio id="s1" preload="auto" src="audio/s1.mp3"></audio>
+<audio id="s2" preload="auto" src="audio/s2.mp3"></audio>
 
 <script>
 let userPlayer, cpuPlayer;
 let bombs = [];
 let currentTurn;
+let roundStarter = null;
 let opened = new Set();
 const totalCells = 16;
 const totalBombs = 4;
@@ -204,43 +216,28 @@ let hasUserInteracted = false;
 
 /* ======== AudioEngine ======== */
 class AudioEngine {
-  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = this.map['bgm'] || null; }
+  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = map['bgm']; }
   async unlockAll() {
     for (const el of Object.values(this.map)) {
-      try {
-        el.muted = false; el.currentTime = 0;
-        await el.play().catch(()=>{});
-        if (!el.paused) el.pause();
-        el.currentTime = 0;
-      } catch(e) {}
+      try { el.muted = false; el.currentTime = 0; await el.play().catch(()=>{}); if(!el.paused) el.pause(); el.currentTime = 0; } catch(e) {}
     }
   }
   async startBGM() { if (this.bgmEl && this.bgmEl.paused) { this.bgmEl.currentTime = 0; await this.bgmEl.play().catch(()=>{}); } }
   stopBGM() { if (this.bgmEl) { this.bgmEl.pause(); this.bgmEl.currentTime = 0; } }
   playEffect(key) {
     if (!this.map[key]) return Promise.resolve();
-    return new Promise(resolve => { this.queue.push({key, resolve}); if (!this.isPlaying) this._dequeue(); });
+    return new Promise(r => { this.queue.push({key, r}); if (!this.isPlaying) this._dequeue(); });
   }
   async _dequeue() {
     if (!this.queue.length) { this.isPlaying = false; return; }
     this.isPlaying = true;
-    const {key, resolve} = this.queue.shift();
+    const {key, r} = this.queue.shift();
     const el = this.map[key];
-    if (!el) { resolve(); this._dequeue(); return; }
-
     let settled = false;
-    const cleanup = () => { try { el.onended = null; } catch(e){} };
-    const onEnded = () => { if (settled) return; settled = true; cleanup(); el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40); };
-    try { el.onended = onEnded; } catch(e){}
-
-    const duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? el.duration*1000 : 600;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true; cleanup(); try{el.pause();}catch(e){} el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40);
-    }, duration + 300);
-
-    try { el.currentTime = 0; await el.play().catch(()=>{}); }
-    catch(e) { clearTimeout(timer); if (!settled) { settled=true; resolve(); setTimeout(()=>this._dequeue(),40); } }
+    const done = () => { if(settled) return; settled=true; el.currentTime=0; r(); setTimeout(()=>this._dequeue(),40); };
+    el.onended = done;
+    const timer = setTimeout(done, (el.duration ? el.duration*1000 : 600) + 300);
+    try { el.currentTime = 0; await el.play().catch(()=>{}); } catch(e) { clearTimeout(timer); if(!settled) done(); }
   }
 }
 
@@ -261,7 +258,7 @@ let ttsQueue = [], isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
 function speak(text){
   if (!hasUserInteracted) return;
-  ttsQueue.push(text); processTTS();
+  ttsQueue.push(text); if(!isSpeaking) processTTS();
 }
 function processTTS(){
   if (isSpeaking || !ttsQueue.length) return;
@@ -273,7 +270,7 @@ function processTTS(){
   setTimeout(()=>{ isSpeaking=false; document.getElementById("tts").innerText=""; ttsDisplay.classList.remove('show'); processTTS(); }, Math.max(1800, msg.length*70));
 }
 
-/* ======== Unlock Audio (iOS) ======== */
+/* ======== Unlock Audio ======== */
 async function unlockAudio(){
   if (hasUserInteracted) return;
   hasUserInteracted = true;
@@ -304,12 +301,13 @@ function selectPlayer(player){
   userPlayer = player;
   cpuPlayer = player === "อ้ายมดแดง" ? "อ้ายมดดำ" : "อ้ายมดแดง";
 
-  document.getElementById("playerSelect").style.display="none";
-  document.getElementById("gameScreen").style.display="block";
-  document.getElementById("backToMainMenu").style.display="none";
+  document.getElementById("playerSelect").style.display = "none";
+  document.getElementById("gameScreen").style.display = "block";
+  document.getElementById("backToMainMenu").style.display = "none";
 
   playerWins = cpuWins = 0;
   currentRound = 1;
+  roundStarter = null;
   startNewRound();
   if (hasUserInteracted) playSoundByKey('bgm');
 }
@@ -322,12 +320,12 @@ function startNewRound(){
     if(!bombs.includes(r)) bombs.push(r);
   }
 
-  // รอบ 1 สุ่ม, รอบต่อไปสลับกันเริ่มก่อน
-  if(currentRound === 1){
-    currentTurn = Math.random() < 0.5 ? 'player' : 'cpu';
+  if (currentRound === 1) {
+    roundStarter = Math.random() < 0.5 ? 'player' : 'cpu';
   } else {
-    currentTurn = currentTurn === 'player' ? 'cpu' : 'player';
+    roundStarter = roundStarter === 'player' ? 'cpu' : 'player';
   }
+  currentTurn = roundStarter;
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
@@ -341,13 +339,12 @@ function startNewRound(){
     grid.appendChild(cell);
   }
 
+  // แก้ตรงนี้แล้ว! จาก userrimiPlayer → userPlayer
   const scoreText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
   document.getElementById("lifeBoard").innerText = scoreText;
 
-  const starter = currentTurn === 'player' ? userPlayer : cpuPlayer;
-  speak(`${scoreText} ${starter} เริ่มก่อน เลือกได้เลย`);
-
-  // เสียง s1 / s2
+  const starterName = currentTurn === 'player' ? userPlayer : cpuPlayer;
+  speak(`${scoreText} ${starterName} เริ่มก่อน เลือกได้เลย`);
   playSoundByKey(currentTurn === 'player' ? 's1' : 's2');
 
   setTimeout(() => {
@@ -383,6 +380,7 @@ async function openCell(idx, who){
   if(isBomb){
     cell.classList.add("boom");
     cell.textContent = "ระเบิด!";
+    cell.setAttribute("aria-label", `ช่อง ${idx+1} ระเบิด`);
 
     const loser = who === 'player' ? userPlayer : cpuPlayer;
     const winner = who === 'player' ? cpuPlayer : userPlayer;
@@ -393,19 +391,31 @@ async function openCell(idx, who){
     speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     document.getElementById("lifeBoard").innerText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if(playerWins >= winScore || cpuWins >= winScore) endGame();
-    else { currentRound++; setTimeout(startNewRound, 3000); }
+    if(playerWins >= winScore || cpuWins >= winScore){
+      endGame();
+    } else {
+      currentRound++;
+      setTimeout(startNewRound, 3000);
+    }
   } else {
     cell.classList.add("safe");
-    cell.textContent = `ช่อง${idx+1}ว่างเปล่า`;
+    cell.textContent = `ช่อง${idx+1} ว่างเปล่า`;
+    cell.setAttribute("aria-label", `ช่อง ${idx+1} ว่างเปล่า`);
 
-    if(who === 'player'){ await playSoundByKey('missPlayer'); speak(`${userPlayer} รอด! ว่างเปล่า`); }
-    else { await playSoundByKey('missCpu'); speak(`${cpuPlayer} รอด! ว่างเปล่า ถึงตา ${userPlayer} เลือกแล้ว`); }
+    if(who === 'player'){
+      await playSoundByKey('missPlayer');
+      speak(`${userPlayer} รอด! ว่างเปล่า`);
+    } else {
+      await playSoundByKey('missCpu');
+      speak(`${cpuPlayer} รอด! ว่างเปล่า ถึงตา ${userPlayer} เลือกแล้ว`);
+    }
 
     currentTurn = who === 'player' ? 'cpu' : 'player';
     document.getElementById("lifeBoard").innerText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if(currentTurn === 'cpu') setTimeout(cpuTurn, 2500);
+    if(currentTurn === 'cpu'){
+      setTimeout(cpuTurn, 2500);
+    }
   }
 }
 
@@ -415,9 +425,17 @@ function endGame(){
   const endMsg = playerWins >= winScore 
     ? `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !` 
     : `เสียใจด้วย ${userPlayer} แพ้ ${cpuPlayer} นะ!`;
+  
+  const finalScore = `คะแนนสุดท้าย ${playerWins} ต่อ ${cpuWins}`;
+  const fullMessage = `${endMsg} ${finalScore}`;
+
   speak(endMsg);
+
+  // ประกาศผลให้ screen reader ทันที (ซ่อนจากหน้าจอ)
+  document.getElementById("resultAnnouncement").textContent = fullMessage;
+
   setTimeout(() => {
-    alert(`${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
+    alert(`${endMsg}\n${finalScore}`);
     resetGame();
   }, 3000);
 }
@@ -427,6 +445,13 @@ function resetGame(){
   document.getElementById("gameScreen").style.display="none";
   document.getElementById("playerSelect").style.display="flex";
   document.getElementById("backToMainMenu").style.display="block";
+
+  document.getElementById("resultAnnouncement").textContent = "";
+
+  setTimeout(() => {
+    const btn = document.getElementById("firstCharBtn");
+    if (btn) btn.focus();
+  }, 100);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
