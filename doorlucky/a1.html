@@ -213,45 +213,30 @@ let cpuWins = 0;
 let currentRound = 1;
 let hasUserInteracted = false;
 
-/* ======== AudioEngine (คัดลอกมาจาก a10.html ทั้งชุด - ดีที่สุด) ======== */
+/* ======== AudioEngine ======== */
 class AudioEngine {
-  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = this.map['bgm'] || null; }
+  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = map['bgm']; }
   async unlockAll() {
     for (const el of Object.values(this.map)) {
-      try {
-        el.muted = false; el.currentTime = 0;
-        await el.play().catch(()=>{});
-        if (!el.paused) el.pause();
-        el.currentTime = 0;
-      } catch(e) {}
+      try { el.muted = false; el.currentTime = 0; await el.play().catch(()=>{}); if(!el.paused) el.pause(); el.currentTime = 0; } catch(e) {}
     }
   }
   async startBGM() { if (this.bgmEl && this.bgmEl.paused) { this.bgmEl.currentTime = 0; await this.bgmEl.play().catch(()=>{}); } }
   stopBGM() { if (this.bgmEl) { this.bgmEl.pause(); this.bgmEl.currentTime = 0; } }
   playEffect(key) {
     if (!this.map[key]) return Promise.resolve();
-    return new Promise(resolve => { this.queue.push({key, resolve}); if (!this.isPlaying) this._dequeue(); });
+    return new Promise(r => { this.queue.push({key, r}); if (!this.isPlaying) this._dequeue(); });
   }
   async _dequeue() {
     if (!this.queue.length) { this.isPlaying = false; return; }
     this.isPlaying = true;
-    const {key, resolve} = this.queue.shift();
+    const {key, r} = this.queue.shift();
     const el = this.map[key];
-    if (!el) { resolve(); this._dequeue(); return; }
-
     let settled = false;
-    const cleanup = () => { try { el.onended = null; } catch(e){} };
-    const onEnded = () => { if (settled) return; settled = true; cleanup(); el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40); };
-    try { el.onended = onEnded; } catch(e){}
-
-    const duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? el.duration*1000 : 600;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true; cleanup(); try{el.pause();}catch(e){} el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40);
-    }, duration + 300);
-
-    try { el.currentTime = 0; await el.play().catch(()=>{}); }
-    catch(e) { clearTimeout(timer); if (!settled) { settled=true; resolve(); setTimeout(()=>this._dequeue(),40); } }
+    const done = () => { if(settled) return; settled=true; el.currentTime=0; r(); setTimeout(()=>this._dequeue(),40); };
+    el.onended = done;
+    const timer = setTimeout(done, (el.duration ? el.duration*1000 : 600) + 300);
+    try { el.currentTime = 0; await el.play().catch(()=>{}); } catch(e) { clearTimeout(timer); if(!settled) done(); }
   }
 }
 
@@ -272,7 +257,7 @@ let ttsQueue = [], isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
 function speak(text){
   if (!hasUserInteracted) return;
-  ttsQueue.push(text); processTTS();
+  ttsQueue.push(text); if(!isSpeaking) processTTS();
 }
 function processTTS(){
   if (isSpeaking || !ttsQueue.length) return;
@@ -315,9 +300,9 @@ function selectPlayer(player){
   userPlayer = player;
   cpuPlayer = player === "อ้ายมดแดง" ? "อ้ายมดดำ" : "อ้ายมดแดง";
 
-  document.getElementById("playerSelect").style.display="none";
-  document.getElementById("gameScreen").style.display="block";
-  document.getElementById("backToMainMenu").style.display="none";
+  document.getElementById("playerSelect").style.display = "none";
+  document.getElementById("gameScreen").style.display = "block";
+  document.getElementById("backToMainMenu").style.display = "none";
 
   playerWins = cpuWins = 0;
   currentRound = 1;
@@ -353,6 +338,7 @@ function startNewRound(){
     grid.appendChild(cell);
   }
 
+  // แก้ตรงนี้แล้ว! จาก userrimiPlayer → userPlayer
   const scoreText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
   document.getElementById("lifeBoard").innerText = scoreText;
 
@@ -398,7 +384,7 @@ async function openCell(idx, who){
     const loser = who === 'player' ? userPlayer : cpuPlayer;
     const winner = who === 'player' ? cpuPlayer : userPlayer;
 
-    if (who === 'player') { cpuWins++; await playSoundByKey('hitPlayer'); }
+    if(who === 'player') { cpuWins++; await playSoundByKey('hitPlayer'); }
     else { playerWins++; await playSoundByKey('hitCpu'); }
 
     speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
@@ -443,6 +429,8 @@ function endGame(){
   const fullMessage = `${endMsg} ${finalScore}`;
 
   speak(endMsg);
+
+  // ประกาศผลให้ screen reader ทันที (ซ่อนจากหน้าจอ)
   document.getElementById("resultAnnouncement").textContent = fullMessage;
 
   setTimeout(() => {
@@ -456,6 +444,7 @@ function resetGame(){
   document.getElementById("gameScreen").style.display="none";
   document.getElementById("playerSelect").style.display="flex";
   document.getElementById("backToMainMenu").style.display="block";
+
   document.getElementById("resultAnnouncement").textContent = "";
 
   setTimeout(() => {
