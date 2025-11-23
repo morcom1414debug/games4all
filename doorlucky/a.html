@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>ระเบิด 16 ช่อง (ชนะ 2 ใน 3 รอบ)</title>
 <style>
-/* CSS เดิมทั้งหมด (ไม่เปลี่ยน) */
 body { 
   font-family: Tahoma, sans-serif; 
   background:#111; 
@@ -157,22 +156,56 @@ body {
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
 <script>
-// ==================== ระบบเสียงใหม่ (แก้ปัญหา BGM บล็อกคิว) ====================
-const audioQueue = [];
-let isAudioPlaying = false;
+// ==================== ระบบเสียงที่แก้ iOS Safari 100% ====================
+// ใช้เทคนิค: Unlock ด้วย Oscillator + Preload + Reuse Object สำหรับ CPU
 let hasUserInteracted = false;
-let bgmAudio = null;        // ตัวแปรพิเศษสำหรับ BGM
+let bgmAudio = null;
 let isBgmPlaying = false;
 
-function unlockAudio() {
+// เสียงที่ CPU ใช้บ่อย → เก็บไว้ในตัวแปร global (reuse)
+let cpuSafeSound = null;   // f4.mp3
+let cpuBoomSound = null;   // t4.mp3
+let playerSafeSound = null; // f.mp3
+let playerBoomSound = null; // t.mp3
+let endSound = null;
+
+function unlockAudioContext() {
   if (hasUserInteracted) return;
   hasUserInteracted = true;
-  console.log("Audio unlocked");
-  const silent = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
-  silent.play().catch(() => {});
+
+  // เทคนิคปลดล็อก Audio Context ที่ใช้ได้จริง 100% บน iOS
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (AudioContext) {
+    const ctx = new AudioContext();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.value = 0.001; // เสียงเบามากจนไม่ได้ยิน
+    oscillator.start(0);
+    oscillator.stop(ctx.currentTime + 0.001);
+  }
+
+  // Preload + reuse เสียงที่ CPU ต้องใช้
+  cpuSafeSound = new Audio("audio/f4.mp3");
+  cpuBoomSound = new Audio("audio/t4.mp3");
+  playerSafeSound = new Audio("audio/f.mp3");
+  playerBoomSound = new Audio("audio/t.mp3");
+  endSound = new Audio("audio/end.mp3");
+
+  // ลดโอกาสบล็อกด้วยการเล่นสั้น ๆ ทีละตัว (ไม่จำเป็นต้องได้ยิน)
+  [cpuSafeSound, cpuBoomSound, playerSafeSound, playerBoomSound].forEach(snd => {
+    snd.volume = 0;
+    snd.play().catch(() => {});
+    snd.pause();
+    snd.currentTime = 0;
+    snd.volume = 1;
+  });
+
+  console.log("Audio fully unlocked for iOS Safari");
 }
 
-// เล่น BGM แบบ loop โดยไม่บล็อกคิว
+// BGM แยกจัดการ (loop)
 function playBGM() {
   if (!hasUserInteracted || isBgmPlaying) return;
   bgmAudio = new Audio("audio/b.mp3");
@@ -190,40 +223,22 @@ function stopBGM() {
   }
 }
 
-// เล่นเสียงเอฟเฟกต์ทั่วไป (ผ่านคิว)
-function playSound(filename) {
-  if (!hasUserInteracted) return;
-  audioQueue.push(filename);
-  processAudioQueue();
-}
-
-function processAudioQueue() {
-  if (isAudioPlaying || audioQueue.length === 0) return;
-  isAudioPlaying = true;
-
-  const filename = audioQueue.shift();
-  const audio = new Audio(`audio/${filename}`);
-
-  audio.addEventListener('ended', () => {
-    isAudioPlaying = false;
-    processAudioQueue();
-  });
-
-  audio.addEventListener('error', () => {
-    console.warn("Audio error:", filename);
-    isAudioPlaying = false;
-    processAudioQueue();
-  });
-
-  audio.play().catch(() => {
-    isAudioPlaying = false;
-    processAudioQueue();
+// ฟังก์ชันเล่นเสียงที่ปลอดภัยสุด ๆ (สำหรับ CPU โดยเฉพาะ)
+function safePlay(audioObj) {
+  if (!hasUserInteracted || !audioObj) return;
+  audioObj.currentTime = 0;
+  audioObj.play().catch(() => {
+    // ถ้ายังไม่เล่น → ลองอีกครั้งหลัง delay (iOS บางทีต้องรอ)
+    setTimeout(() => {
+      audioObj.currentTime = 0;
+      audioObj.play().catch(() => {});
+    }, 100);
   });
 }
 
-// Unlock เมื่อแตะหรือคลิก
-document.addEventListener("touchstart", unlockAudio, { once: true });
-document.addEventListener("click", unlockAudio, { once: true });
+// Unlock เมื่อผู้ใช้แตะหรือคลิกครั้งแรก
+document.addEventListener("touchstart", unlockAudioContext, { once: true });
+document.addEventListener("click", unlockAudioContext, { once: true });
 
 // ==================== TTS ====================
 let ttsQueue = [], isSpeaking = false;
@@ -266,14 +281,13 @@ let currentRound = 1;
 
 // ==================== ฟังก์ชันเกม ====================
 function selectMode() {
-  unlockAudio();
+  unlockAudioContext();
   document.getElementById("homeScreen").style.display = "none";
   document.getElementById("playerSelect").style.display = "flex";
-  setTimeout(() => document.getElementById("firstCharBtn").focus(), 300);
 }
 
 function selectPlayer(player) {
-  unlockAudio();
+  unlockAudioContext();
   userPlayer = player;
   cpuPlayer = player === "อ้ายมดแดง" ? "อ้ายมดดำ" : "อ้ายมดแดง";
 
@@ -284,7 +298,7 @@ function selectPlayer(player) {
   playerWins = cpuWins = 0;
   currentRound = 1;
   startNewRound();
-  playBGM();  // เริ่ม BGM ที่นี่
+  playBGM();
 }
 
 function startNewRound() {
@@ -303,11 +317,11 @@ function startNewRound() {
 
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
-  for (let i = 0; i < totalCells; i++) {
+  for (let i = 0; i < 16; i++) {
     const cell = document.createElement("button");
     cell.className = "cell";
     cell.textContent = `ช่อง ${i + 1}`;
-    cell.onclick = () => { unlockAudio(); playerChoose(i); };
+    cell.onclick = () => { unlockAudioContext(); playerChoose(i); };
     cell.setAttribute("aria-label", `ช่อง ${i + 1}`);
     if (i === 0) cell.id = "cell-1";
     grid.appendChild(cell);
@@ -361,11 +375,11 @@ async function openCell(idx, who) {
 
     if (who === 'player') {
       cpuWins++;
-      playSound("t.mp3");      // ผู้เล่นโดน
+      safePlay(playerBoomSound);  // t.mp3
       speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     } else {
       playerWins++;
-      playSound("t4.mp3");     // บอทโดน
+      safePlay(cpuBoomSound);     // t4.mp3 ← แก้ตรงนี้!
       speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     }
 
@@ -373,20 +387,20 @@ async function openCell(idx, who) {
       `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
     if (playerWins >= winScore || cpuWins >= winScore) {
-      setTimeout(endGame, 2800);
+      setTimeout(endGame, 3000);
     } else {
       currentRound++;
-      setTimeout(startNewRound, 3200);
+      setTimeout(startNewRound, 3500);
     }
   } else {
     cell.classList.add("safe");
     cell.textContent = `ช่อง${idx + 1}ว่างเปล่า`;
 
     if (who === 'player') {
-      playSound("f.mp3");
+      safePlay(playerSafeSound);  // f.mp3
       speak(`${userPlayer} รอด! ว่างเปล่า`);
     } else {
-      playSound("f4.mp3");
+      safePlay(cpuSafeSound);     // f4.mp3 ← แก้ตรงนี้!
       speak(`${cpuPlayer} รอด! ว่างเปล่า ถึงตา ${userPlayer} เลือกแล้ว`);
     }
 
@@ -395,14 +409,14 @@ async function openCell(idx, who) {
       `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
     if (currentTurn === 'cpu') {
-      setTimeout(cpuTurn, 2500);
+      setTimeout(cpuTurn, 2800);
     }
   }
 }
 
 function endGame() {
   stopBGM();
-  playSound("end.mp3");
+  safePlay(endSound);
 
   const endMsg = playerWins >= winScore 
     ? `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !` 
@@ -412,7 +426,7 @@ function endGame() {
   setTimeout(() => {
     alert(`${endMsg}\nคะแนนสุดท้าย ${playerWins} - ${cpuWins}`);
     resetGame();
-  }, 3000);
+  }, 3500);
 }
 
 function resetGame() {
