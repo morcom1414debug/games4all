@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>กดติด...ตาย : Dead switch</title>
+<style>
+body { 
+  font-family: Tahoma, sans-serif; 
+  background:#111; 
+  color:white; 
+  text-align:center; 
+  margin:0;
+  padding:20px;
+  height:100vh;
+  overflow:hidden;
+  position:relative;
+}
+
+#backToMainMenu {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(255,255,255,0.95);
+  color: #333;
+  border: 3px solid #fff;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 1002;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+  transition: all 0.2s;
+}
+#backToMainMenu:hover { background:#fff; transform:translateY(-2px); }
+
+#lifeBoard { 
+  position:fixed;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:1001;
+  background:rgba(0,0,0,0.9);
+  padding:18px 60px;
+  border-radius:15px;
+  border:4px solid #ffff00;
+  font-size:38px;
+  font-weight:bold;
+  color:#ffff00;
+  text-shadow: 3px 3px 6px #000;
+  min-width:500px;
+}
+
+#grid-container {
+  max-width: 720px;
+  margin: 110px auto 0;
+  padding: 20px;
+  background: #000;
+  border-radius: 20px;
+  box-shadow: 0 0 30px rgba(255,255,0,0.6);
+}
+
+#grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-gap: 10px;
+  background: #333;
+  padding: 20px;
+  border-radius: 15px;
+  border: 8px solid #ffff00;
+}
+
+.cell {
+  position: relative;
+  background: #ffffff;
+  border: 7px solid #0000ff;
+  border-radius: 15px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: bold;
+  font-size: 32px;
+  color: #000;
+  aspect-ratio: 1;
+}
+
+.cell:hover { 
+  background: #ffff99; 
+  border-color: #ff0000;
+  transform: scale(1.06);
+}
+.cell:active { transform: scale(0.95); }
+
+.cell.safe { 
+  background: #00ff00 !important; 
+  color: white; 
+  border-color: #00aa00;
+  cursor: default; 
+}
+.cell.boom { 
+  background: #ff0000 !important; 
+  color: white; 
+  border-color: #aa0000;
+  cursor: default; 
+}
+
+#ttsDisplay {
+  position:fixed;
+  bottom:20px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.95);
+  color:#ffff00;
+  padding:18px 40px;
+  border-radius:15px;
+  border:4px solid #ffff00;
+  font-size:32px;
+  font-weight:bold;
+  max-width:90%;
+  z-index:1002;
+  opacity:0;
+  transition:opacity 0.4s;
+}
+#ttsDisplay.show { opacity:1; }
+
+#resultAnnouncement {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+#homeScreen, #playerSelect { 
+  height:100vh; 
+  display:flex; 
+  flex-direction:column; 
+  justify-content:center; 
+  align-items:center; 
+  gap:50px; 
+}
+.mode-btn, #playerSelect button {
+  background:#ffffff;
+  color:#000;
+  border-radius:20px;
+  padding:35px 80px;
+  font-weight:bold;
+  cursor:pointer;
+  border:8px solid #ffff00;
+  font-size:38px;
+  transition:all 0.3s;
+  box-shadow:0 12px 30px rgba(255,255,0,0.6);
+}
+.mode-btn:hover, #playerSelect button:hover {
+  background:#ffff99;
+  transform:translateY(-10px);
+}
+</style>
+</head>
+<body>
+
+<button id="backToMainMenu" onclick="window.location.href='../index.html'">กลับเมนูหลัก</button>
+
+<div id="homeScreen">
+  <h1 style="font-size:56px;color:#ffff00;text-shadow:4px 4px #000;">กดติด...ตาย : Dead switch</h1>
+  <button class="mode-btn" onclick="selectMode()">เริ่มเล่นกับบอท</button>
+  <p style="font-size:30px;max-width:800px;color:#ffdd00;">
+    เกมที่จะให้คุณสลับกันเลือกช่องจากทั้งหมด 16 ช่อง กดเลือกผิด...ติดระเบิดตายทันที<br>ชนะกัน 2 ใน 3 รอบ โดยในแต่ละรอบมีระเบิดซ่อนอยู่ 4 ลูกต่อรอบ
+  </p>
+</div>
+
+<div id="playerSelect" style="display:none;">
+  <p style="font-size:42px;color:#ffff00;">เลือกตัวละครของคุณ</p>
+  <button id="firstCharBtn" onclick="selectPlayer('อ้ายมดแดง')">อ้ายมดแดง</button>
+  <button onclick="selectPlayer('อ้ายมดดำ')">อ้ายมดดำ</button>
+</div>
+
+<div id="gameScreen" style="display:none;">
+  <div id="lifeBoard">กำลังเริ่มเกม...</div>
+  <div id="grid-container">
+    <div id="grid"></div>
+  </div>
+</div>
+
+<div id="ttsDisplay"></div>
+<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+<div id="resultAnnouncement" aria-live="assertive" role="alert"></div>
+
+<!-- audio -->
+<audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
+<audio id="end" preload="auto" src="audio/end.mp3"></audio>
+<audio id="missPlayer" preload="auto" src="audio/f.mp3"></audio>
+<audio id="missCpu" preload="auto" src="audio/f4.mp3"></audio>
+<audio id="hitPlayer" preload="auto" src="audio/t.mp3"></audio>
+<audio id="hitCpu" preload="auto" src="audio/t4.mp3"></audio>
+<audio id="s1" preload="auto" src="audio/s1.mp3"></audio>
+<audio id="s2" preload="auto" src="audio/s2.mp3"></audio>
+
+<script>
+let userPlayer, cpuPlayer;
+let bombs = [];
+let currentTurn;
+let roundStarter = null;
+let opened = new Set();
+const totalCells = 16;
+const totalBombs = 4;
+const winScore = 2;
+
+let playerWins = 0;
+let cpuWins = 0;
+let currentRound = 1;
+let hasUserInteracted = false;
+
+/* ======== AudioEngine (คัดลอกมาจาก a10.html ทั้งชุด - ดีที่สุด) ======== */
+class AudioEngine {
+  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = this.map['bgm'] || null; }
+  async unlockAll() {
+    for (const el of Object.values(this.map)) {
+      try {
+        el.muted = false; el.currentTime = 0;
+        await el.play().catch(()=>{});
+        if (!el.paused) el.pause();
+        el.currentTime = 0;
+      } catch(e) {}
+    }
+  }
+  async startBGM() { if (this.bgmEl && this.bgmEl.paused) { this.bgmEl.currentTime = 0; await this.bgmEl.play().catch(()=>{}); } }
+  stopBGM() { if (this.bgmEl) { this.bgmEl.pause(); this.bgmEl.currentTime = 0; } }
+  playEffect(key) {
+    if (!this.map[key]) return Promise.resolve();
+    return new Promise(resolve => { this.queue.push({key, resolve}); if (!this.isPlaying) this._dequeue(); });
+  }
+  async _dequeue() {
+    if (!this.queue.length) { this.isPlaying = false; return; }
+    this.isPlaying = true;
+    const {key, resolve} = this.queue.shift();
+    const el = this.map[key];
+    if (!el) { resolve(); this._dequeue(); return; }
+
+    let settled = false;
+    const cleanup = () => { try { el.onended = null; } catch(e){} };
+    const onEnded = () => { if (settled) return; settled = true; cleanup(); el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40); };
+    try { el.onended = onEnded; } catch(e){}
+
+    const duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? el.duration*1000 : 600;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true; cleanup(); try{el.pause();}catch(e){} el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40);
+    }, duration + 300);
+
+    try { el.currentTime = 0; await el.play().catch(()=>{}); }
+    catch(e) { clearTimeout(timer); if (!settled) { settled=true; resolve(); setTimeout(()=>this._dequeue(),40); } }
+  }
+}
+
+const audioMap = {
+  bgm: document.getElementById("bgm"),
+  end: document.getElementById("end"),
+  missPlayer: document.getElementById("missPlayer"),
+  missCpu: document.getElementById("missCpu"),
+  hitPlayer: document.getElementById("hitPlayer"),
+  hitCpu: document.getElementById("hitCpu"),
+  s1: document.getElementById("s1"),
+  s2: document.getElementById("s2")
+};
+const audioEngine = new AudioEngine(audioMap);
+
+/* ======== TTS ======== */
+let ttsQueue = [], isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
+function speak(text){
+  if (!hasUserInteracted) return;
+  ttsQueue.push(text); processTTS();
+}
+function processTTS(){
+  if (isSpeaking || !ttsQueue.length) return;
+  isSpeaking = true;
+  const msg = ttsQueue.shift();
+  ttsDisplay.textContent = msg;
+  ttsDisplay.classList.add('show');
+  document.getElementById("tts").innerText = msg;
+  setTimeout(()=>{ isSpeaking=false; document.getElementById("tts").innerText=""; ttsDisplay.classList.remove('show'); processTTS(); }, Math.max(1800, msg.length*70));
+}
+
+/* ======== Unlock Audio ======== */
+async function unlockAudio(){
+  if (hasUserInteracted) return;
+  hasUserInteracted = true;
+  await audioEngine.unlockAll();
+  await audioEngine.startBGM();
+}
+document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
+document.addEventListener("click", unlockAudio, {once:true});
+
+/* ======== Sound ======== */
+function playSoundByKey(key){
+  if (!hasUserInteracted) return;
+  if (key==='bgm') audioEngine.startBGM();
+  else audioEngine.playEffect(key);
+}
+function stopBGM(){ audioEngine.stopBGM(); }
+
+/* ======== เกม ======== */
+function selectMode(){
+  unlockAudio();
+  document.getElementById("homeScreen").style.display = "none";
+  document.getElementById("playerSelect").style.display = "flex";
+  setTimeout(() => document.getElementById("firstCharBtn").focus(), 300);
+}
+
+function selectPlayer(player){
+  unlockAudio();
+  userPlayer = player;
+  cpuPlayer = player === "อ้ายมดแดง" ? "อ้ายมดดำ" : "อ้ายมดแดง";
+
+  document.getElementById("playerSelect").style.display="none";
+  document.getElementById("gameScreen").style.display="block";
+  document.getElementById("backToMainMenu").style.display="none";
+
+  playerWins = cpuWins = 0;
+  currentRound = 1;
+  roundStarter = null;
+  startNewRound();
+  if (hasUserInteracted) playSoundByKey('bgm');
+}
+
+function startNewRound(){
+  opened.clear();
+  bombs = [];
+  while(bombs.length < totalBombs){
+    const r = Math.floor(Math.random()*totalCells);
+    if(!bombs.includes(r)) bombs.push(r);
+  }
+
+  if (currentRound === 1) {
+    roundStarter = Math.random() < 0.5 ? 'player' : 'cpu';
+  } else {
+    roundStarter = roundStarter === 'player' ? 'cpu' : 'player';
+  }
+  currentTurn = roundStarter;
+
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  for(let i=0; i<totalCells; i++){
+    const cell = document.createElement("button");
+    cell.className = "cell";
+    cell.textContent = `ช่อง ${i+1}`;
+    cell.onclick = () => { unlockAudio(); playerChoose(i); };
+    cell.setAttribute("aria-label", `ช่อง ${i+1}`);
+    if(i===0) cell.id="cell-1";
+    grid.appendChild(cell);
+  }
+
+  const scoreText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
+  document.getElementById("lifeBoard").innerText = scoreText;
+
+  const starterName = currentTurn === 'player' ? userPlayer : cpuPlayer;
+  speak(`${scoreText} ${starterName} เริ่มก่อน เลือกได้เลย`);
+  playSoundByKey(currentTurn === 'player' ? 's1' : 's2');
+
+  setTimeout(() => {
+    const firstCell = document.getElementById("cell-1");
+    if(firstCell) firstCell.focus();
+  }, 800);
+
+  if(currentTurn === 'cpu') setTimeout(cpuTurn, 3500);
+}
+
+async function playerChoose(idx){
+  if(currentTurn !== 'player' || opened.has(idx)) return;
+  await openCell(idx, 'player');
+}
+
+async function cpuTurn(){
+  if(currentTurn !== 'cpu') return;
+  let choice;
+  do{ choice = Math.floor(Math.random()*totalCells); }while(opened.has(choice));
+  const cellNumber = choice + 1;
+  speak(`${cpuPlayer} กำลังเปิดช่อง ${cellNumber}`);
+  document.getElementById("lifeBoard").innerText = `${cpuPlayer} กำลังเปิดช่อง ${cellNumber}...`;
+  await new Promise(r => setTimeout(r, 2800));
+  await openCell(choice, 'cpu');
+}
+
+async function openCell(idx, who){
+  opened.add(idx);
+  const cell = document.querySelectorAll("#grid .cell")[idx];
+  cell.disabled = true;
+
+  const isBomb = bombs.includes(idx);
+  if(isBomb){
+    cell.classList.add("boom");
+    cell.textContent = "ระเบิด!";
+    cell.setAttribute("aria-label", `ช่อง ${idx+1} ระเบิด`);
+
+    const loser = who === 'player' ? userPlayer : cpuPlayer;
+    const winner = who === 'player' ? cpuPlayer : userPlayer;
+
+    if (who === 'player') { cpuWins++; await playSoundByKey('hitPlayer'); }
+    else { playerWins++; await playSoundByKey('hitCpu'); }
+
+    speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
+    document.getElementById("lifeBoard").innerText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
+
+    if(playerWins >= winScore || cpuWins >= winScore){
+      endGame();
+    } else {
+      currentRound++;
+      setTimeout(startNewRound, 3000);
+    }
+  } else {
+    cell.classList.add("safe");
+    cell.textContent = `ช่อง${idx+1} ว่างเปล่า`;
+    cell.setAttribute("aria-label", `ช่อง ${idx+1} ว่างเปล่า`);
+
+    if(who === 'player'){
+      await playSoundByKey('missPlayer');
+      speak(`${userPlayer} รอด! ว่างเปล่า`);
+    } else {
+      await playSoundByKey('missCpu');
+      speak(`${cpuPlayer} รอด! ว่างเปล่า ถึงตา ${userPlayer} เลือกแล้ว`);
+    }
+
+    currentTurn = who === 'player' ? 'cpu' : 'player';
+    document.getElementById("lifeBoard").innerText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
+
+    if(currentTurn === 'cpu'){
+      setTimeout(cpuTurn, 2500);
+    }
+  }
+}
+
+function endGame(){
+  stopBGM();
+  playSoundByKey('end');
+  const endMsg = playerWins >= winScore 
+    ? `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !` 
+    : `เสียใจด้วย ${userPlayer} แพ้ ${cpuPlayer} นะ!`;
+  
+  const finalScore = `คะแนนสุดท้าย ${playerWins} ต่อ ${cpuWins}`;
+  const fullMessage = `${endMsg} ${finalScore}`;
+
+  speak(endMsg);
+  document.getElementById("resultAnnouncement").textContent = fullMessage;
+
+  setTimeout(() => {
+    alert(`${endMsg}\n${finalScore}`);
+    resetGame();
+  }, 3000);
+}
+
+function resetGame(){
+  stopBGM();
+  document.getElementById("gameScreen").style.display="none";
+  document.getElementById("playerSelect").style.display="flex";
+  document.getElementById("backToMainMenu").style.display="block";
+  document.getElementById("resultAnnouncement").textContent = "";
+
+  setTimeout(() => {
+    const btn = document.getElementById("firstCharBtn");
+    if (btn) btn.focus();
+  }, 100);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("backToMainMenu").style.display = "block";
+  for (const k in audioMap) { try { audioMap[k].load(); } catch(e){} }
+});
+</script>
+</body>
+</html>
