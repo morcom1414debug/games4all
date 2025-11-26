@@ -309,13 +309,13 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// ===== ระบบเสียงสุดเสถียร (เหมือน o.html ทุกประการ) =====
+// === ระบบเสียง (เหมือน o.html ทุกประการ) ===
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
 const popSound = "pop.mp3";
 
 function preloadAllSounds() {
-  const files = ["friend.mp3", "b.mp3", "end.mp3"];
+  const files = ["friend.mp3", "b.mp3", "end.mp3", popSound];
   files.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
@@ -331,9 +331,6 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
-  const popAudio = new Audio(`audio/${popSound}`);
-  popAudio.preload = "auto";
-  preloadedAudios[popSound] = popAudio;
 }
 
 function startBGM() {
@@ -377,9 +374,10 @@ function startSoundListener() {
 
     let msg = "";
     if (goalSounds.includes(name)) msg = "ยิงเข้า!";
-    else if (missSounds.includes(name)) msg = "ยิงไม่เข้า!";
+    else if (missSounds.includes(name) || name === "f.mp3") msg = "ยิงไม่เข้า!";
     else if (name === "end.mp3") msg = "จบเกม!";
     else if (name === "friend.mp3") msg = `${playerName} เลือกทีมแล้ว`;
+    else if (name === popSound) msg = "เลือกทิศทางแล้ว!";
 
     if (msg) {
       speak(msg);
@@ -390,6 +388,7 @@ function startSoundListener() {
   });
 }
 
+// === TTS System ===
 let ttsQueue = [];
 let isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
@@ -415,6 +414,7 @@ function processTTS(){
   }, 50);
 }
 
+// === ข้อมูลทีม ===
 const squads = {
   "Manchester United": {
     "players": ["แกรี่ เนวิลล์","ริโอ เฟอร์ดินานด์","เวส บราวน์","ปาทริซ เอฟร่า",
@@ -424,8 +424,8 @@ const squads = {
   },
   "Liverpool": {
     "players": ["สตีฟ ฟินแนน","เจมี่ คาร์ราเกอร์","ซามี่ ฮูเปีย","จอห์น อาร์เน่ รีเซ่",
-                "ซาบี อลอนโซ่","โมฮาเหม็ด ซิสโซโก้","สตีเว่น เจอร์ราร์ด","หลุยส์ การ์เซีย",
-                "ปีเตอร์ เคร้าช์","ฌิบริล ซิสเซ่"],
+                "ซาบี อลอนโซë","โมฮาเหม็ด ซิสโซโก้","สตีเว่น เจอร์ราร์ด","หลุยส์ การ์เซีย",
+                "ปีเตอร์ เคร้าซ์","ฌิบริล ซิสเซ่"],
     "keeper": "เปเป้ เรน่า"
   },
   "Arsenal": {
@@ -532,11 +532,6 @@ async function showCreateRoom() {
     roomId = newRoomId;
     isHost = true;
     showRoom();
-
-    setTimeout(() => {
-      const firstTeamBtn = document.querySelector("#teamSelectInRoom button");
-      if (firstTeamBtn) firstTeamBtn.focus();
-    }, 300);
   } catch (err) {
     console.error("สร้างห้องล้มเหลว:", err);
     alert("สร้างห้องล้มเหลว กรุณาลองใหม่");
@@ -569,17 +564,6 @@ async function joinRoom(id) {
     playerRef.onDisconnect().remove();
 
     showRoom();
-
-    setTimeout(() => {
-      const manUButton = document.querySelector('#teamSelectInRoom button[data-team="Manchester United"]');
-      if (manUButton && !manUButton.disabled) {
-        manUButton.focus();
-      } else {
-        const firstAvailable = document.querySelector('#teamSelectInRoom button:not(.unavailable):not(:disabled)');
-        if (firstAvailable) firstAvailable.focus();
-      }
-    }, 400);
-
   } catch (err) {
     console.error(err);
     alert("เข้าร่วมห้องล้มเหลว");
@@ -750,11 +734,6 @@ function startGameplay(room, players) {
     btn.disabled = false;
   });
 
-  setTimeout(() => {
-    const tlBtn = document.getElementById("tl");
-    if (tlBtn) tlBtn.focus();
-  }, 500);
-
   let lastTurn = -1;
   let lastIsSudden = false;
 
@@ -770,8 +749,7 @@ function startGameplay(room, players) {
 
     const scoreP1 = data.scoreP1 || 0;
     const scoreP2 = data.scoreP2 || 0;
-    document.getElementById("scoreBoard").innerText = 
-      `Score: ${scoreP1} - ${scoreP2}`;
+    document.getElementById("scoreBoard").innerText = `Score: ${scoreP1} - ${scoreP2}`;
 
     const p1Id = data.p1Id;
     const p2Id = data.p2Id;
@@ -870,9 +848,6 @@ async function processShot(data, players, gameRef) {
 
   const resultMsg = `${shooterName} จากทีม ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! คะแนน ${scoreP1} - ${scoreP2}`;
   speak(resultMsg);
-  const live = document.getElementById("tts");
-  live.textContent = resultMsg;
-  setTimeout(() => live.textContent = "", 5000);
 
   const updates = {
     turn: data.turn + 1,
@@ -997,9 +972,6 @@ function showResult(room) {
     finalResultSpoken = true;
     const finalMsg = `${winnerTeam} เป็นฝ่ายชนะ ยินดีด้วย!`;
     speak(finalMsg);
-    const live = document.getElementById("tts");
-    live.textContent = finalMsg;
-    setTimeout(() => live.textContent = "", 8000);
   }
 }
 </script>
