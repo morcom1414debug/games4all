@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="th">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <head>
 <meta charset="UTF-8">
 <title>เกมยิงจุดโทษ 2005/2006 - ออนไลน์</title>
@@ -206,6 +207,40 @@
     font-size:22px;
     cursor:pointer;
   }
+	@media (max-width: 600px) {
+	  .shot-btn {
+		padding:18px 14px;
+		font-size:16px;
+		border-radius:10px;
+		border-width:2px;
+		box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+	  }
+	  #tl, #tr, #bl, #br {
+		/* จัดตำแหน่งใหม่ให้อยู่ห่างขอบแต่ไม่ล้น */
+		left:auto; right:auto; top:auto; bottom:auto;
+	  }
+	  #tl {
+		top:7%;
+		left:5%;
+	  }
+	  #tr {
+		top:7%;
+		right:5%;
+	  }
+	  #bl {
+		bottom:8%;
+		left:5%;
+	  }
+	  #br {
+		bottom:8%;
+		right:5%;
+	  }
+	  #center {
+		top:52%;
+		left:50%;
+		transform:translate(-50%, -50%);
+	  }
+	}
 </style>
 </head>
 <body>
@@ -296,8 +331,10 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
+// ===== เพิ่มตรงนี้: รายชื่อไฟล์เสียงทั้งหมด =====
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
+const popSound = "pop.mp3";   // <--- เสียงใหม่ที่เพิ่มมา
 
 function preloadAllSounds() {
   const files = ["friend.mp3", "b.mp3", "end.mp3"];
@@ -316,6 +353,11 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
+
+  // <<< เพิ่มเสียง pop.mp3 >>>
+  const popAudio = new Audio(`audio/${popSound}`);
+  popAudio.preload = "auto";
+  preloadedAudios[popSound] = popAudio;
 }
 
 function startBGM() {
@@ -552,7 +594,6 @@ async function joinRoom(id) {
 
     showRoom();
 
-    /* ==== เพิ่มตรงนี้เท่านั้น: โฟกัสไปที่ปุ่มแมนยูทันทีหลังเข้าร่วมห้อง ==== */
     setTimeout(() => {
       const manUButton = document.querySelector('#teamSelectInRoom button[data-team="Manchester United"]');
       if (manUButton && !manUButton.disabled) {
@@ -562,7 +603,6 @@ async function joinRoom(id) {
         if (firstAvailable) firstAvailable.focus();
       }
     }, 400);
-    /* ===================================================================== */
 
   } catch (err) {
     console.error(err);
@@ -942,6 +982,7 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP
   }
 }
 
+// <<<<<<<<<<<<<<<<<<<<<<<< ส่วนที่แก้ไขสำคัญที่สุด >>>>>>>>>>>>>>>>>>>>>>>>
 async function chooseDirection(dir) {
   const snap = await db.ref(`penaltyRooms/${roomId}`).once("value");
   const data = snap.val();
@@ -950,10 +991,15 @@ async function chooseDirection(dir) {
   const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
   const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
 
+  // ถ้าเป็นคนยิง และยังไม่มีคนเลือกทิศทางยิง → กดเป็นคนแรก
   if (playerId === currentShooterId && !data.shooterDir) {
     await db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
-  } else if (playerId === currentKeeperId && !data.keeperDir) {
+    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
+  }
+  // ถ้าเป็นคนเซฟ และยังไม่มีคนเลือกทิศทางเซฟ → กดเป็นคนแรก
+  else if (playerId === currentKeeperId && !data.keeperDir) {
     await db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
+    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
   }
 }
 
