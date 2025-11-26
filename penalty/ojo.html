@@ -216,13 +216,30 @@
 		box-shadow: 0 4px 10px rgba(0,0,0,0.45);
 	  }
 	  #tl, #tr, #bl, #br {
+		/* จัดตำแหน่งใหม่ให้อยู่ห่างขอบแต่ไม่ล้น */
 		left:auto; right:auto; top:auto; bottom:auto;
 	  }
-	  #tl { top:7%; left:5%; }
-	  #tr { top:7%; right:5%; }
-	  #bl { bottom:8%; left:5%; }
-	  #br { bottom:8%; right:5%; }
-	  #center { top:52%; left:50%; transform:translate(-50%, -50%); }
+	  #tl {
+		top:7%;
+		left:5%;
+	  }
+	  #tr {
+		top:7%;
+		right:5%;
+	  }
+	  #bl {
+		bottom:8%;
+		left:5%;
+	  }
+	  #br {
+		bottom:8%;
+		right:5%;
+	  }
+	  #center {
+		top:52%;
+		left:50%;
+		transform:translate(-50%, -50%);
+	  }
 	}
 </style>
 </head>
@@ -279,6 +296,11 @@
 <div id="ttsDisplay"></div>
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 
+<audio id="bgm" loop src="audio/b.mp3"></audio>
+<audio id="goal" src="audio/t.mp3"></audio>
+<audio id="miss" src="audio/f.mp3"></audio>
+<audio id="end" src="audio/end.mp3"></audio>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
@@ -309,10 +331,10 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
-// ===== ระบบเสียงสุดเสถียร (เหมือน o.html ทุกประการ) =====
+// ===== เพิ่มตรงนี้: รายชื่อไฟล์เสียงทั้งหมด =====
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
-const popSound = "pop.mp3";
+const popSound = "pop.mp3";   // <--- เสียงใหม่ที่เพิ่มมา
 
 function preloadAllSounds() {
   const files = ["friend.mp3", "b.mp3", "end.mp3"];
@@ -331,6 +353,8 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
+
+  // <<< เพิ่มเสียง pop.mp3 >>>
   const popAudio = new Audio(`audio/${popSound}`);
   popAudio.preload = "auto";
   preloadedAudios[popSound] = popAudio;
@@ -371,7 +395,7 @@ function startSoundListener() {
     const audio = preloadedAudios[name];
     if (audio) {
       audio.currentTime = 0;
-      audio.volume = (name === "b.mp3") ? 0.3 : 1.0;
+      audio.volume = 1;
       audio.play().catch(() => {});
     }
 
@@ -958,6 +982,7 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP
   }
 }
 
+// <<<<<<<<<<<<<<<<<<<<<<<< ส่วนที่แก้ไขสำคัญที่สุด >>>>>>>>>>>>>>>>>>>>>>>>
 async function chooseDirection(dir) {
   const snap = await db.ref(`penaltyRooms/${roomId}`).once("value");
   const data = snap.val();
@@ -966,13 +991,15 @@ async function chooseDirection(dir) {
   const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
   const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
 
+  // ถ้าเป็นคนยิง และยังไม่มีคนเลือกทิศทางยิง → กดเป็นคนแรก
   if (playerId === currentShooterId && !data.shooterDir) {
     await db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
-    triggerSound(popSound);
+    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
   }
+  // ถ้าเป็นคนเซฟ และยังไม่มีคนเลือกทิศทางเซฟ → กดเป็นคนแรก
   else if (playerId === currentKeeperId && !data.keeperDir) {
     await db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
-    triggerSound(popSound);
+    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
   }
 }
 
