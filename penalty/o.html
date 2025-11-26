@@ -5,89 +5,58 @@
 <title>เกมยิงจุดโทษ 2005/2006 - ออนไลน์</title>
 <style>
   body { 
-    font-family: Tahoma, sans-serif; 
+    font-family: Tahoma; 
     background:#111; 
     color:white; 
     text-align:center; 
     margin:0;
-    padding:0;
+    padding:20px;
     height:100vh;
     overflow:hidden;
     position:relative;
   }
 
-  /* ========== ปุ่มยิงจุดโทษ 5 ปุ่ม – ขนาดพอดีสมาร์ทโฟนทุกเครื่อง ไม่ล้น ไม่ต้องเลื่อน ========== */
+  /* ปุ่มยิงจุดโทษ - ปรับขนาดเล็กลง 50% และจัดตำแหน่งใหม่ให้ชิดกันมากขึ้น */
   .shot-btn { 
     position:fixed;
-    background:rgba(255,255,255,0.95);
-    color:#000;
-    border-radius:14px;
-    padding:16px 20px;
+    background:rgba(255,255,255,0.9); 
+    border-radius:12px;
+    padding:14px 16px;           /* ลดลงจาก 28px 32px */
     font-weight:bold;
     cursor:pointer;
     border:3px solid #fff;
-    font-size:17px;
+    font-size:16px;              /* ลดขนาดตัวอักษรให้เหมาะกับปุ่มเล็ก */
     z-index:1000;
     box-shadow:0 6px 16px rgba(0,0,0,0.5);
-    transition:all 0.18s ease;
-    user-select:none;
-    -webkit-tap-highlight-color:transparent;
-    min-width:88px;
-    text-align:center;
+    transition:all 0.2s;
+    opacity:1;
     white-space:nowrap;
+    min-width:110px;
+    line-height:1.2;
   }
-  .shot-btn:active { 
-    transform:scale(0.92);
-    box-shadow:0 3px 8px rgba(0,0,0,0.6);
-  }
-  .shot-btn:disabled { opacity:0.4; cursor:not-allowed; }
-  .shot-btn.locked { opacity:0.25; cursor:not-allowed; }
+  .shot-btn:active { transform:scale(0.95); box-shadow:0 3px 8px rgba(0,0,0,0.5); }
+  .shot-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .shot-btn.locked { opacity:0.3; cursor:not-allowed; }
 
-  /* ตำแหน่งที่ลงตัวที่สุด – เห็นครบ 5 ปุ่มทันที บนมือถือทุกรุ่น */
-  #tl  { top:13%; left:7%; }
-  #tr  { top:13%; right:7%; }
-  #center { top:50%; left:50%; transform:translate(-50%, -50%); }
-  #bl  { bottom:13%; left:7%; }
-  #br  { bottom:13%; right:7%; }
-
-  /* ปรับสำหรับหน้าจอเล็กมาก (iPhone SE, iPhone 8, Android เก่า) */
-  @media (max-height: 670px) or (max-width: 370px) {
-    .shot-btn {
-      padding:14px 18px;
-      font-size:16px;
-      min-width:80px;
-    }
-    #tl, #tr { top:11%; }
-    #bl, #br { bottom:11%; }
-  }
+  /* ปรับตำแหน่งใหม่ให้ทุกปุ่มชิดกันมากขึ้น (อยู่ในกรอบเดียวกัน) */
+  #tl { top:22%; left:12%; }
+  #tr { top:22%; right:12%; }
+  #center { top:38%; left:50%; transform:translate(-50%, -50%); }
+  #bl { top:52%; left:14%; }
+  #br { top:52%; right:14%; }
 
   #scoreBoard { 
+    margin-top:20px; 
+    font-size:28px;
     position:fixed;
-    top:4px;
+    top:10px;
     left:50%;
     transform:translateX(-50%);
     z-index:1001;
-    background:rgba(0,0,0,0.8);
-    padding:8px 22px;
-    border-radius:12px;
+    background:rgba(0,0,0,0.7);
+    padding:15px 30px;
+    border-radius:15px;
     border:2px solid #fff;
-    font-size:24px;
-    font-weight:bold;
-  }
-
-  #currentTurn {
-    position:fixed;
-    top:56px;
-    left:50%;
-    transform:translateX(-50%);
-    background:rgba(255,255,255,0.95);
-    color:#000;
-    padding:8px 18px;
-    border-radius:10px;
-    font-size:17px;
-    font-weight:bold;
-    z-index:1001;
-    display:none;
   }
 
   #nameInput {
@@ -204,6 +173,21 @@
     display:none;
   }
 
+  #currentTurn {
+    position:fixed;
+    top:70px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(255,255,255,0.9);
+    color:#333;
+    padding:10px 20px;
+    border-radius:10px;
+    font-size:18px;
+    font-weight:bold;
+    z-index:1001;
+    display:none;
+  }
+
   #resultScreen {
     position:fixed;
     top:0; left:0; width:100%; height:100%;
@@ -267,7 +251,6 @@
 <div id="gameScreen" style="display:none;">
   <div id="scoreBoard">Score ตอนนี้คือ 0 - 0</div>
   <div id="currentTurn"></div>
-  
   <button id="tl" class="shot-btn" onclick="debounceClick('TL')">มุมซ้ายบน</button>
   <button id="tr" class="shot-btn" onclick="debounceClick('TR')">มุมขวาบน</button>
   <button id="center" class="shot-btn" onclick="debounceClick('C')">ตรงกลาง</button>
@@ -318,9 +301,10 @@ let shotOrderP1 = [], shotOrderP2 = [];
 let lastProcessedTurn = -1;   
 let finalResultSpoken = false;
 
+// ===== เพิ่มตรงนี้: รายชื่อไฟล์เสียงทั้งหมด =====
 const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
-const popSound = "pop.mp3";
+const popSound = "pop.mp3";   // <--- เสียงใหม่ที่เพิ่มมา
 
 function preloadAllSounds() {
   const files = ["friend.mp3", "b.mp3", "end.mp3"];
@@ -339,6 +323,8 @@ function preloadAllSounds() {
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
+
+  // <<< เพิ่มเสียง pop.mp3 >>>
   const popAudio = new Audio(`audio/${popSound}`);
   popAudio.preload = "auto";
   preloadedAudios[popSound] = popAudio;
@@ -475,7 +461,7 @@ function debounceClick(dir){
   if(isButtonLocked || !isMyTurn) return;
   isButtonLocked = true;
   chooseDirection(dir);
-  setTimeout(()=>{ isButtonLocked = false; }, 150);
+  setTimeout(()=>{ isButtonLocked = false; }, 100);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -778,7 +764,8 @@ function startGameplay(room, players) {
 
     const scoreP1 = data.scoreP1 || 0;
     const scoreP2 = data.scoreP2 || 0;
-    document.getElementById("scoreBoard").innerText = `Score: ${scoreP1} - ${scoreP2}`;
+    document.getElementById("scoreBoard").innerText = 
+      `Score: ${scoreP1} - ${scoreP2}`;
 
     const p1Id = data.p1Id;
     const p2Id = data.p2Id;
