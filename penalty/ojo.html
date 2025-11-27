@@ -216,6 +216,7 @@
 		box-shadow: 0 4px 10px rgba(0,0,0,0.45);
 	  }
 	  #tl, #tr, #bl, #br {
+		/* จัดตำแหน่งใหม่ให้อยู่ห่างขอบแต่ไม่ล้น */
 		left:auto; right:auto; top:auto; bottom:auto;
 	  }
 	  #tl {
@@ -918,24 +919,24 @@ async function processShot(data, players, gameRef) {
   }, 1000);
 }
 
-// <<<<<<<<<<<<<<<<<<<<<<<< แก้ไขเฉพาะฟังก์ชันนี้เท่านั้น >>>>>>>>>>>>>>>>>>>>>>>>
 function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP1, shotIndexP2) {
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
   const isP1First = data.firstShooter === p1Id;
 
+  const totalShotsP1 = shotIndexP1;
+  const totalShotsP2 = shotIndexP2;
+
   let end = false;
   let winnerId = null;
 
-  // ยังอยู่ในช่วง 5 ลูกปกติ
   if (!data.isSudden) {
-    const shotsDoneP1 = Math.min(shotIndexP1, 5);
-    const shotsDoneP2 = Math.min(shotIndexP2, 5);
+    const shotsDoneP1 = Math.min(totalShotsP1, 5);
+    const shotsDoneP2 = Math.min(totalShotsP2, 5);
     const remainingP1 = 5 - shotsDoneP1;
     const remainingP2 = 5 - shotsDoneP2;
 
-    // ตรวจสอบว่ามีทีมไหนชนะแน่นอนก่อนครบ 5 ลูกหรือยัง
-    if (shotIndexP1 < 5 || shotIndexP2 < 5) {
+    if (totalShotsP1 < 5 || totalShotsP2 < 5) {
       const maxP1 = scoreP1 + remainingP1;
       const maxP2 = scoreP2 + remainingP2;
       if (maxP1 < scoreP2 || maxP2 < scoreP1) {
@@ -944,30 +945,25 @@ function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP
       }
     }
 
-    // ครบ 5 ลูกแล้ว
-    if (shotIndexP1 >= 5 && shotIndexP2 >= 5) {
+    if (totalShotsP1 >= 5 && totalShotsP2 >= 5) {
       if (scoreP1 !== scoreP2) {
         end = true;
         winnerId = scoreP1 > scoreP2 ? (isP1First ? p1Id : p2Id) : (isP1First ? p2Id : p1Id);
       } else {
-        // เสมอ → เข้าสู่ซัดเด้นเดธ
         gameRef.update({ isSudden: true });
         return;
       }
     }
   }
-  // อยู่ในช่วงซัดเด้นเดธ
   else {
-    const suddenShotsP1 = shotIndexP1 - 5;
-    const suddenShotsP2 = shotIndexP2 - 5;
+    const suddenShotsP1 = totalShotsP1 - 5;
+    const suddenShotsP2 = totalShotsP2 - 5;
 
-    // ต้องรอให้ยิงครบคู่ (ทั้งสองทีมยิงเท่ากัน) ก่อนถึงจะตัดสินได้
     if (suddenShotsP1 === suddenShotsP2 && suddenShotsP1 > 0) {
       if (scoreP1 !== scoreP2) {
         end = true;
         winnerId = scoreP1 > scoreP2 ? (isP1First ? p1Id : p2Id) : (isP1First ? p2Id : p1Id);
       }
-      // ถ้ายังเสมอ → ดำเนินต่อไปคู่ถัดไป (ไม่ต้องทำอะไร)
     }
   }
 
@@ -995,13 +991,15 @@ async function chooseDirection(dir) {
   const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
   const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
 
+  // ถ้าเป็นคนยิง และยังไม่มีคนเลือกทิศทางยิง → กดเป็นคนแรก
   if (playerId === currentShooterId && !data.shooterDir) {
     await db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
-    triggerSound(popSound);
+    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
   }
+  // ถ้าเป็นคนเซฟ และยังไม่มีคนเลือกทิศทางเซฟ → กดเป็นคนแรก
   else if (playerId === currentKeeperId && !data.keeperDir) {
     await db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
-    triggerSound(popSound);
+    triggerSound(popSound);   // <--- ดังทันทีทุกเครื่อง
   }
 }
 
