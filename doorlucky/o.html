@@ -158,6 +158,7 @@ let isHost = false, myRole = "";
 let currentRoomListener = null, soundListener = null, lobbyListener = null;
 let gameStarted = false;
 let opened = new Set();
+let lastPlayedSound = { file: null, time: 0, sender: null }; // <--- ป้องกันเสียงซ้ำ
 
 // ==================== TTS ====================
 function speak(text) {
@@ -166,14 +167,29 @@ function speak(text) {
   setTimeout(() => el.textContent = "", 4000);
 }
 
-// ==================== เสียงซิงค์ ====================
-async function playSound(file) {
+// ==================== เสียงซิงค์ (แก้เสียงซ้ำแล้ว) ====================
+async function playSound(file, senderId = playerId) {
   if (!roomId || !hasUserInteracted) return;
+
+  // end.mp3 เล่นแยกเครื่อง ไม่ต้องซิงค์
   if (file === "end.mp3") {
     audio.playEffect("end");
     return;
   }
-  await db.ref(`deadswitchRooms/${roomId}/sound`).set({file, time: Date.now()});
+
+  // ป้องกันการเล่นซ้ำภายใน 1.5 วินาที + ต้องไม่ใช่ตัวเองส่ง (ยกเว้นบางกรณี)
+  const now = Date.now();
+  if (lastPlayedSound.file === file && 
+      now - lastPlayedSound.time < 1500 && 
+      lastPlayedSound.sender !== playerId) {
+    return; // ข้ามเสียงซ้ำ
+  }
+
+  await db.ref(`deadswitchRooms/${roomId}/sound`).set({
+    file,
+    time: now,
+    sender: senderId
+  });
 }
 
 function startSoundListener() {
@@ -181,7 +197,16 @@ function startSoundListener() {
   soundListener = db.ref(`deadswitchRooms/${roomId}/sound`);
   soundListener.on("value", async s => {
     const data = s.val();
-    if (!data || Date.now() - data.time > 1500) return;
+    if (!data) return;
+
+    const now = Date.now();
+    // ข้ามถ้าเป็นเสียงที่เราเพิ่งส่งไปเอง หรือซ้ำภายใน 1.5 วินาที
+    if (data.sender === playerId || 
+        (lastPlayedSound.file === data.file && now - lastPlayedSound.time < 1500)) {
+      return;
+    }
+
+    lastPlayedSound = { file: data.file, time: data.time, sender: data.sender };
     const key = data.file.replace(".mp3", "");
     if (audio.map[key]) await audio.playEffect(key);
   });
@@ -285,7 +310,7 @@ document.getElementById("startBtn").onclick = () => {
   });
 };
 
-// ==================== เกม (แก้ปัญหาเสียงซ้ำแล้ว) ====================
+// ==================== เกม ====================
 function startGameplay() {
   gameStarted = true;
   document.getElementById("room").style.display = "none";
@@ -301,9 +326,10 @@ function startGameplay() {
 
     if(!document.getElementById("grid").children.length){
       createBoard();
+      speak(`${d.turn} เริ่มก่อน เลือกได้เลย`);
+      playSound(d.turn==="Host" ? "s3.mp3" : "s4.mp3");
     }
 
-    // แสดงผลช่องที่เปิดแล้ว (ไม่เล่นเสียงตรงนี้)
     if(d.opened){
       Object.keys(d.opened).forEach(idxStr => {
         const idx = parseInt(idxStr);
@@ -316,36 +342,18 @@ function startGameplay() {
         if(d.bombs.includes(idx)){
           cell.classList.add("boom");
           cell.textContent = "ระเบิด";
+          speak(`${d.turn} โดนระเบิดไม่รอด`);
+          playSound(d.turn==="Host" ? "t3.mp3" : "t2.mp3");
         } else {
           cell.classList.add("safe");
           cell.textContent = `ช่อง${idx+1} ว่างเปล่า`;
+          const next = d.turn==="Host" ? "Guest" : "Host";
+          speak(`${d.turn} รอด ต่อไปตา ${next}`);
+          playSound(d.turn==="Host" ? "f3.mp3" : "f2.mp3");
         }
       });
     }
 
-    // --- แก้ตรงนี้: เล่นเสียงผ่าน Firebase เท่านั้น ---
-    if (d.lastBoom !== undefined && !opened.has("boom_processed")) {
-      opened.add("boom_processed");
-      const lastTurn = d.turn === "Host" ? "Guest" : "Host"; // คนที่เพิ่งกด
-      if (d.lastBoom) {
-        speak(`${lastTurn} โดนระเบิดไม่รอด`);
-        playSound(lastTurn === "Host" ? "t3.mp3" : "t2.mp3");
-      } else {
-        const next = lastTurn === "Host" ? "Guest" : "Host";
-        speak(`${lastTurn} รอด ต่อไปตา ${next}`);
-        playSound(lastTurn === "Host" ? "f3.mp3" : "f2.mp3");
-      }
-    }
-
-    // เสียงเริ่มรอบใหม่
-    const roundKey = "round_start_" + (d.currentRound || 1);
-    if (d.turn && d.currentRound && !opened.has(roundKey)) {
-      opened.add(roundKey);
-      speak(`${d.turn} เริ่มก่อน เลือกได้เลย`);
-      playSound(d.turn === "Host" ? "s3.mp3" : "s4.mp3");
-    }
-
-    // รอ 4 วินาทีหลังระเบิดแล้วไปรอบต่อไป
     if(d.lastBoom){
       setTimeout(() => {
         const h = d.hostWins || 0;
@@ -411,7 +419,9 @@ function startNewRound(d){
 
   opened.clear();
   document.getElementById("grid").innerHTML = "";
-  createBoard();
+
+  speak(`${nextTurn} เริ่มก่อน เลือกได้เลย`);
+  playSound(nextTurn==="Host" ? "s3.mp3" : "s4.mp3");
 }
 
 // ==================== ผลลัพธ์ ====================
@@ -434,7 +444,7 @@ function showResult(room){
   setTimeout(() => titleEl.focus(), 300);
 
   document.getElementById("okButton").onclick = () => {
-    playSound("end.mp3");
+    playSound("end.mp3"); // เล่นแยกเครื่อง
     setTimeout(() => location.href = "../index.html", 4000);
   };
 }
