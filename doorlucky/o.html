@@ -158,7 +158,9 @@ let isHost = false, myRole = "";
 let currentRoomListener = null, soundListener = null, lobbyListener = null;
 let gameStarted = false;
 let opened = new Set();
-let lastPlayedSound = { file: null, time: 0, sender: null }; // <--- ป้องกันเสียงซ้ำ
+
+// เก็บ timestamp ของเสียงล่าสุดที่เล่นแล้ว เพื่อป้องกันซ้ำ
+let lastPlayedSoundKey = "";
 
 // ==================== TTS ====================
 function speak(text) {
@@ -167,48 +169,39 @@ function speak(text) {
   setTimeout(() => el.textContent = "", 4000);
 }
 
-// ==================== เสียงซิงค์ (แก้เสียงซ้ำแล้ว) ====================
-async function playSound(file, senderId = playerId) {
+// ==================== เสียงซิงค์ (แก้แล้ว: ดังทั้ง 2 ฝั่ง + ไม่ซ้ำ) ====================
+async function playSound(file) {
   if (!roomId || !hasUserInteracted) return;
 
-  // end.mp3 เล่นแยกเครื่อง ไม่ต้องซิงค์
+  // end.mp3 เล่นแยกเครื่อง
   if (file === "end.mp3") {
     audio.playEffect("end");
     return;
   }
 
-  // ป้องกันการเล่นซ้ำภายใน 1.5 วินาที + ต้องไม่ใช่ตัวเองส่ง (ยกเว้นบางกรณี)
-  const now = Date.now();
-  if (lastPlayedSound.file === file && 
-      now - lastPlayedSound.time < 1500 && 
-      lastPlayedSound.sender !== playerId) {
-    return; // ข้ามเสียงซ้ำ
-  }
-
+  const soundKey = `${file}_${Date.now()}`;
   await db.ref(`deadswitchRooms/${roomId}/sound`).set({
-    file,
-    time: now,
-    sender: senderId
+    file: file,
+    key: soundKey,
+    time: Date.now()
   });
 }
 
 function startSoundListener() {
   if (soundListener) soundListener.off();
   soundListener = db.ref(`deadswitchRooms/${roomId}/sound`);
-  soundListener.on("value", async s => {
+  soundListener.on("value", async (s) => {
     const data = s.val();
-    if (!data) return;
+    if (!data || !data.file || !data.key) return;
 
-    const now = Date.now();
-    // ข้ามถ้าเป็นเสียงที่เราเพิ่งส่งไปเอง หรือซ้ำภายใน 1.5 วินาที
-    if (data.sender === playerId || 
-        (lastPlayedSound.file === data.file && now - lastPlayedSound.time < 1500)) {
-      return;
-    }
+    // ป้องกันเล่นซ้ำด้วย key ที่ไม่ซ้ำกันทุกครั้ง
+    if (lastPlayedSoundKey === data.key) return;
 
-    lastPlayedSound = { file: data.file, time: data.time, sender: data.sender };
+    lastPlayedSoundKey = data.key;
     const key = data.file.replace(".mp3", "");
-    if (audio.map[key]) await audio.playEffect(key);
+    if (audio.map[key]) {
+      await audio.playEffect(key);
+    }
   });
 }
 
@@ -397,7 +390,7 @@ async function playerClick(idx){
     if(myRole==="Host") updates.guestWins = (d.guestWins||0)+1;
     else updates.hostWins = (d.hostWins||0)+1;
   }
-  db.ref(`deadswitchRooms/${roomId}`).update(updates);
+  await db.ref(`deadswitchRooms/${roomId}`).update(updates);
 }
 
 function startNewRound(d){
@@ -444,7 +437,7 @@ function showResult(room){
   setTimeout(() => titleEl.focus(), 300);
 
   document.getElementById("okButton").onclick = () => {
-    playSound("end.mp3"); // เล่นแยกเครื่อง
+    playSound("end.mp3");
     setTimeout(() => location.href = "../index.html", 4000);
   };
 }
