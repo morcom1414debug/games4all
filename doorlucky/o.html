@@ -24,6 +24,8 @@
   #resultScreen h1{font-size:82px;color:#ffff00;text-shadow:7px 7px #000;margin:0;}
   #resultScreen p{font-size:52px;margin:20px 0;}
   #resultScreen button{padding:25px 100px;font-size:40px;background:#4CAF50;color:white;border:none;border-radius:25px;cursor:pointer;}
+  /* เพิ่ม aria-live สำหรับ screen reader */
+  #liveResult{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
 </style>
 </head>
 <body>
@@ -55,31 +57,28 @@
   <h1 id="resultTitle"></h1>
   <p id="resultMessage"></p>
   <button id="okButton">ตกลง</button>
+  <!-- aria-live region สำหรับ screen reader -->
+  <div id="liveResult" role="region" aria-live="assertive"></div>
 </div>
 
-<!-- Firebase CDN (แก้ URL ให้ถูกต้อง 100%) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-// ====================== ระบบเสียงใหม่ (100% ทุกแพลตฟอร์ม + เสียงถูกต้องตามบทบาท) ======================
+// ====================== ระบบเสียง (เหมือนเดิมทุกอย่าง) ======================
 let audioCtx = null;
 let audioBuffers = {};
 let bgmSource = null;
 let isAudioUnlocked = false;
 
 function getAudioContext() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
 }
-
 function unlockAudioContext() {
   if (isAudioUnlocked) return;
   const ctx = getAudioContext();
   if (ctx.state === 'running') { isAudioUnlocked = true; return; }
-
   const unlock = () => {
     ctx.resume().then(() => {
       isAudioUnlocked = true;
@@ -90,85 +89,47 @@ function unlockAudioContext() {
   document.body.addEventListener('touchstart', unlock, { once: true });
   document.body.addEventListener('click', unlock, { once: true });
 }
-
 async function preloadAllSounds() {
-  const soundList = [
-    "b.mp3","pop.mp3","friend.mp3","t2.mp3","t3.mp3",
-    "f2.mp3","f3.mp3","s3.mp3","s4.mp3","end.mp3"
-  ];
-  const ctx = getAudioContext();
-  unlockAudioContext();
-
+  const soundList = ["b.mp3","pop.mp3","friend.mp3","t2.mp3","t3.mp3","f2.mp3","f3.mp3","s3.mp3","s4.mp3","end.mp3"];
+  const ctx = getAudioContext(); unlockAudioContext();
   for (const name of soundList) {
     try {
-      const response = await fetch(`audio/${name}`);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      audioBuffers[name] = audioBuffer;
-    } catch (e) {
-      console.warn(`Failed to preload ${name}`, e);
-    }
+      const r = await fetch(`audio/${name}`);
+      const ab = await r.arrayBuffer();
+      audioBuffers[name] = await ctx.decodeAudioData(ab);
+    } catch(e) { console.warn("preload fail:",name,e); }
   }
 }
-
 function playSound(name) {
-  if (!isAudioUnlocked) {
-    unlockAudioContext();
-    setTimeout(() => playSound(name), 100);
-    return;
-  }
-  const buffer = audioBuffers[name];
-  if (!buffer) return;
-
-  const ctx = getAudioContext();
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  source.connect(ctx.destination);
-  source.start(0);
+  if (!isAudioUnlocked) { unlockAudioContext(); setTimeout(()=>playSound(name),100); return; }
+  const b = audioBuffers[name]; if(!b) return;
+  const s = getAudioContext().createBufferSource();
+  s.buffer = b; s.connect(getAudioContext().destination); s.start(0);
 }
-
 function startBGM() {
-  if (bgmSource) stopBGM();
-  const buffer = audioBuffers["b.mp3"];
-  if (!buffer) return;
-
+  if(bgmSource) stopBGM();
+  const b = audioBuffers["b.mp3"]; if(!b) return;
   const ctx = getAudioContext();
-  bgmSource = ctx.createBufferSource();
-  bgmSource.buffer = buffer;
-  bgmSource.loop = true;
-
-  const gainNode = ctx.createGain();
-  gainNode.gain.value = 0.35;
-  bgmSource.connect(gainNode);
-  gainNode.connect(ctx.destination);
-
+  bgmSource = ctx.createBufferSource(); bgmSource.buffer = b; bgmSource.loop = true;
+  const g = ctx.createGain(); g.gain.value = 0.35;
+  bgmSource.connect(g); g.connect(ctx.destination);
   bgmSource.start(0);
 }
-
-function stopBGM() {
-  if (bgmSource) {
-    bgmSource.stop();
-    bgmSource = null;
-  }
-}
+function stopBGM() { if(bgmSource){ bgmSource.stop(); bgmSource=null; } }
 
 function triggerSound(name) {
   if (!roomId) return;
-  db.ref(`deadswitchRooms/${roomId}/soundTrigger`).set({
-    name: name,
-    time: Date.now()
-  });
+  db.ref(`deadswitchRooms/${roomId}/soundTrigger`).set({name:name,time:Date.now()});
 }
-
 let soundListener = null;
 function startSoundListener() {
-  if (soundListener) soundListener.off();
-  if (!roomId) return;
+  if(soundListener) soundListener.off();
+  if(!roomId) return;
   soundListener = db.ref(`deadswitchRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => {
-    const data = s.val();
-    if (!data || Date.now() - data.time > 1200) return;
-    playSound(data.name);
+    const d = s.val();
+    if(!d || Date.now()-d.time>1200) return;
+    playSound(d.name);
   });
 }
 
@@ -191,41 +152,34 @@ let isHost = false, myRole = "";
 let currentRoomListener = null, lobbyListener = null;
 let opened = new Set();
 
-// ====================== เริ่มต้น ======================
+// ====================== เริ่มต้น (เพิ่ม focus ที่ปุ่มสร้างห้อง + preload) ======================
 document.addEventListener("DOMContentLoaded", async () => {
   await preloadAllSounds();
   document.getElementById("lobby").style.display = "block";
   document.getElementById("backToMainMenu").style.display = "block";
+  document.getElementById("createRoomBtn").focus();   // ข้อ 1: focus ที่ปุ่มสร้างห้องทันที
   loadRooms();
 });
 
-// ====================== Lobby & Room ======================
+// ====================== Lobby & Room (เหมือนเดิม) ======================
 document.getElementById("createRoomBtn").onclick = async () => {
   const name = prompt("ตั้งชื่อห้อง (หรือเว้นว่าง):") || "ห้องใหม่";
   if (!name.trim()) return;
   const roomRef = db.ref("deadswitchRooms").push();
-  roomId = roomRef.key;
-  isHost = true;
-  myRole = "Host";
-  await roomRef.set({name: name.trim(), status:"waiting", host:playerId, created:Date.now(), players:{[playerId]:{role:"Host"}}});
+  roomId = roomRef.key; isHost = true; myRole = "Host";
+  await roomRef.set({name:name.trim(),status:"waiting",host:playerId,created:Date.now(),players:{[playerId]:{role:"Host"}}});
   db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).onDisconnect().remove();
-  showRoom();
-  startBGM();
+  showRoom(); startBGM();
 };
 
 async function joinRoom(id) {
   const snap = await db.ref(`deadswitchRooms/${id}`).once("value");
   const room = snap.val();
-  if (!room || room.status!=="waiting" || Object.keys(room.players||{}).length>=2) {
-    alert("เข้าร่วมไม่ได้"); return;
-  }
-  roomId = id;
-  myRole = "Guest";
+  if (!room || room.status!=="waiting" || Object.keys(room.players||{}).length>=2) { alert("เข้าร่วมไม่ได้"); return; }
+  roomId = id; myRole = "Guest";
   await db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).set({role:"Guest"});
   db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).onDisconnect().remove();
-  triggerSound("friend.mp3");
-  showRoom();
-  startBGM();
+  triggerSound("friend.mp3"); showRoom(); startBGM();
 }
 
 function loadRooms() {
@@ -233,15 +187,10 @@ function loadRooms() {
   if(lobbyListener) lobbyListener.off();
   lobbyListener = db.ref("deadswitchRooms").orderByChild("status").equalTo("waiting");
   lobbyListener.on("value", snap => {
-    list.innerHTML = "";
-    const now = Date.now();
+    list.innerHTML = ""; const now = Date.now();
     snap.forEach(r => {
-      const room = r.val();
-      const key = r.key;
-      if (!room || (room.created && now - room.created > 300000)) {
-        db.ref(`deadswitchRooms/${key}`).remove();
-        return;
-      }
+      const room = r.val(); const key = r.key;
+      if (!room || (room.created && now - room.created > 300000)) { db.ref(`deadswitchRooms/${key}`).remove(); return; }
       if (Object.keys(room.players||{}).length === 1) {
         const li = document.createElement("li");
         li.innerHTML = `<strong>${room.name}</strong> (1/2) <button style="margin-left:10px;padding:6px 15px;background:#4CAF50;color:white;border:none;border-radius:8px;cursor:pointer;">เข้าร่วม</button>`;
@@ -256,164 +205,108 @@ function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
   startSoundListener();
-
   if(currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`deadswitchRooms/${roomId}`);
   currentRoomListener.on("value", snap => {
-    const room = snap.val();
-    if(!room) return location.reload();
-
+    const room = snap.val(); if(!room) return location.reload();
     document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
-    const pl = Object.values(room.players||{}).map(p => p.role || '???');
-    document.getElementById("playerList").innerHTML = pl.map(r => `<li>${r}</li>`).join("");
-
+    const pl = Object.values(room.players||{}).map(p=>p.role||'???');
+    document.getElementById("playerList").innerHTML = pl.map(r=>`<li>${r}</li>`).join("");
     const startBtn = document.getElementById("startBtn");
-    if(pl.length === 2){
-      document.getElementById("statusMessage").textContent = isHost ? "กดเริ่มเกมได้เลย" : "รอ Host เริ่มเกม";
-      startBtn.style.display = isHost ? "inline-block" : "none";
+    if(pl.length===2){
+      document.getElementById("statusMessage").textContent = isHost?"กดเริ่มเกมได้เลย":"รอ Host เริ่มเกม";
+      startBtn.style.display = isHost?"inline-block":"none";
     } else {
       document.getElementById("statusMessage").textContent = "รอผู้เล่นคนที่ 2...";
       startBtn.style.display = "none";
     }
-
-    if(room.status === "playing") startGameplay();
-    if(room.status === "finished") showResult(room);
+    if(room.status==="playing") startGameplay();
+    if(room.status==="finished") showResult(room);
   });
 }
 
 document.getElementById("startBtn").onclick = () => {
-  const bombs = [];
-  while(bombs.length < 4){
-    const n = Math.floor(Math.random()*16);
-    if(!bombs.includes(n)) bombs.push(n);
-  }
-  const firstTurn = Math.random() < 0.5 ? "Host" : "Guest";
+  const bombs = []; while(bombs.length<4){ const n=Math.floor(Math.random()*16); if(!bombs.includes(n)) bombs.push(n); }
+  const firstTurn = Math.random()<0.5?"Host":"Guest";
   db.ref(`deadswitchRooms/${roomId}`).update({
-    status: "playing",
-    currentRound: 1,
-    hostWins: 0,
-    guestWins: 0,
-    bombs,
-    opened: {},
-    turn: firstTurn,
-    lastBoom: false
+    status:"playing",currentRound:1,hostWins:0,guestWins:0,bombs,opened:{},turn:firstTurn,lastBoom:false
   });
-  triggerSound(firstTurn === "Host" ? "s3.mp3" : "s4.mp3");
+  triggerSound(firstTurn==="Host"?"s3.mp3":"s4.mp3");
 };
 
-// ====================== เกม ======================
+// ====================== เกม (เหมือนเดิม) ======================
 function startGameplay() {
   document.getElementById("room").style.display = "none";
   document.getElementById("gameScreen").style.display = "block";
-
   const gameRef = db.ref(`deadswitchRooms/${roomId}`);
   let lastBoomProcessed = false;
-
   gameRef.on("value", snap => {
-    const d = snap.val();
-    if(!d || d.status !== "playing") return;
-
+    const d = snap.val(); if(!d || d.status!=="playing") return;
     document.getElementById("lifeBoard").textContent = `รอบที่ ${d.currentRound||1}/3 | Host ${d.hostWins||0} - Guest ${d.guestWins||0}`;
-
     if(!document.getElementById("grid").children.length) createBoard();
-
     if(d.opened){
-      Object.keys(d.opened).forEach(idxStr => {
-        const idx = parseInt(idxStr);
-        if(opened.has(idx)) return;
-        opened.add(idx);
-
-        const cell = document.querySelectorAll("#grid .cell")[idx];
-        if(!cell) return;
-        cell.disabled = true;
-
-        const isBomb = d.bombs.includes(idx);
-        const currentPlayer = d.turn;   // คนที่เพิ่งกด = คนที่อยู่ในเทิร์น
-
+      Object.keys(d.opened).forEach(idxStr=>{
+        const idx=parseInt(idxStr); if(opened.has(idx)) return; opened.add(idx);
+        const cell=document.querySelectorAll("#grid .cell")[idx]; if(!cell) return; cell.disabled=true;
+        const isBomb=d.bombs.includes(idx);
+        const currentPlayer = d.turn;
         if(isBomb){
-          cell.classList.add("boom");
-          cell.textContent = "ระเบิด";
-          playSound(currentPlayer === "Host" ? "t3.mp3" : "t2.mp3");
+          cell.classList.add("boom"); cell.textContent="ระเบิด";
+          playSound(currentPlayer==="Host"?"t3.mp3":"t2.mp3");
         } else {
-          cell.classList.add("safe");
-          cell.textContent = "รอด";
-          playSound(currentPlayer === "Host" ? "f2.mp3" : "f3.mp3");
+          cell.classList.add("safe"); cell.textContent="รอด";
+          playSound(currentPlayer==="Host"?"f2.mp3":"f3.mp3");
         }
       });
     }
-
     if(d.lastBoom && !lastBoomProcessed){
-      lastBoomProcessed = true;
-      setTimeout(() => {
-        const h = d.hostWins || 0;
-        const g = d.guestWins || 0;
-        if(h >= 2 || g >= 2 || (d.currentRound || 1) >= 3){
-          gameRef.update({status:"finished", winner: h > g ? "Host" : "Guest"});
-        } else {
-          startNewRound(d.currentRound || 1);
-        }
-      }, 3000);
+      lastBoomProcessed=true;
+      setTimeout(()=>{
+        const h=d.hostWins||0, g=d.guestWins||0;
+        if(h>=2 || g>=2 || (d.currentRound||1)>=3){
+          gameRef.update({status:"finished",winner:h>g?"Host":"Guest"});
+        } else startNewRound(d.currentRound||1);
+      },3000);
     }
   });
 }
 
 function createBoard(){
-  const grid = document.getElementById("grid");
-  grid.innerHTML = "";
-  for(let i = 0; i < 16; i++){
-    const cell = document.createElement("button");
-    cell.className = "cell";
-    cell.textContent = `ช่อง ${i+1}`;
-    cell.onclick = () => {
-      triggerSound("pop.mp3");
-      playerClick(i);
-    };
-    if(i === 0) cell.id = "cell0";
+  const grid=document.getElementById("grid"); grid.innerHTML="";
+  for(let i=0;i<16;i++){
+    const cell=document.createElement("button");
+    cell.className="cell"; cell.textContent=`ช่อง ${i+1}`;
+    cell.onclick=()=>{ triggerSound("pop.mp3"); playerClick(i); };
+    if(i===0) cell.id="cell0";
     grid.appendChild(cell);
   }
-  setTimeout(() => document.getElementById("cell0")?.focus(), 500);
+  setTimeout(()=>document.getElementById("cell0")?.focus(),500);
 }
 
 async function playerClick(idx){
-  const snap = await db.ref(`deadswitchRooms/${roomId}`).once("value");
-  const d = snap.val();
-  if(!d || d.turn !== myRole || d.opened?.[idx]) return;
-
-  const isBomb = d.bombs.includes(idx);
-  const updates = {[`opened/${idx}`]: true, lastBoom: isBomb};
-  if(!isBomb){
-    updates.turn = myRole === "Host" ? "Guest" : "Host";
-  } else {
-    if(myRole === "Host") updates.guestWins = (d.guestWins || 0) + 1;
-    else updates.hostWins = (d.hostWins || 0) + 1;
-  }
+  const snap=await db.ref(`deadswitchRooms/${roomId}`).once("value");
+  const d=snap.val();
+  if(!d || d.turn!==myRole || d.opened?.[idx]) return;
+  const isBomb=d.bombs.includes(idx);
+  const updates={[`opened/${idx}`]:true, lastBoom:isBomb};
+  if(!isBomb) updates.turn = myRole==="Host"?"Guest":"Host";
+  else { if(myRole==="Host") updates.guestWins=(d.guestWins||0)+1; else updates.hostWins=(d.hostWins||0)+1; }
   db.ref(`deadswitchRooms/${roomId}`).update(updates);
 }
 
 function startNewRound(currentRd){
-  const bombs = [];
-  while(bombs.length < 4){
-    const n = Math.floor(Math.random()*16);
-    if(!bombs.includes(n)) bombs.push(n);
-  }
-  const nextRound = currentRd + 1;
-  const nextTurn = nextRound % 2 === 1 ? "Host" : "Guest";
-
+  const bombs=[]; while(bombs.length<4){ const n=Math.floor(Math.random()*16); if(!bombs.includes(n)) bombs.push(n); }
+  const nextRound=currentRd+1;
+  const nextTurn=nextRound%2===1?"Host":"Guest";
   db.ref(`deadswitchRooms/${roomId}`).update({
-    bombs,
-    opened: {},
-    lastBoom: false,
-    turn: nextTurn,
-    currentRound: nextRound
+    bombs,opened:{},lastBoom:false,turn:nextTurn,currentRound:nextRound
   });
-
-  opened.clear();
-  document.getElementById("grid").innerHTML = "";
-  setTimeout(createBoard, 100);
-  triggerSound(nextTurn === "Host" ? "s3.mp3" : "s4.mp3");
+  opened.clear(); document.getElementById("grid").innerHTML="";
+  setTimeout(createBoard,100);
+  triggerSound(nextTurn==="Host"?"s3.mp3":"s4.mp3");
 }
 
-// ====================== ผลลัพธ์ ======================
+// ====================== ผลลัพธ์ (เพิ่ม aria-live) ======================
 function showResult(room){
   stopBGM();
   document.getElementById("gameScreen").style.display = "none";
@@ -426,14 +319,15 @@ function showResult(room){
   document.getElementById("resultTitle").textContent = `${winner} ชนะ!`;
   document.getElementById("resultMessage").textContent = `${h} - ${g}`;
 
+  // ข้อ 2: screen reader ประกาศผลทันทีผ่าน aria-live
+  const live = document.getElementById("liveResult");
+  live.textContent = `${winner === "Host" ? "เจ้าของห้อง" : "แขก"} ชนะ ${h} ต่อ ${g}`;
+
   document.getElementById("okButton").onclick = () => {
     playSound("end.mp3");
     const btn = document.getElementById("okButton");
-    btn.disabled = true;
-    btn.textContent = "กำลังออก...";
-    setTimeout(() => {
-      location.href = "../index.html";
-    }, 4000);
+    btn.disabled = true; btn.textContent = "กำลังออก...";
+    setTimeout(() => { location.href = "../index.html"; }, 4000);
   };
 }
 </script>
