@@ -20,11 +20,10 @@
   #createRoomBtn{background:#fff;color:#000;padding:20px 60px;border-radius:20px;font-weight:bold;font-size:32px;cursor:pointer;margin:30px;border:8px solid #ffff00;box-shadow:0 12px 30px rgba(255,255,0,0.6);}
   #startBtn{background:#4CAF50;color:white;padding:18px 50px;border-radius:15px;font-weight:bold;font-size:28px;cursor:pointer;margin:20px;display:none;}
   #statusMessage{font-size:28px;margin:20px;color:#ffff00;}
-  #resultScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:10000;display:none;gap:40px;}
+  #resultScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:10000;display:none;gap:60px;}
   #resultScreen h1{font-size:82px;color:#ffff00;text-shadow:7px 7px #000;margin:0;}
-  #resultScreen p{font-size:52px;margin:20px 0;}
+  #resultScreen p{font-size:52px;margin:20px 0;color:#ffdd00;}
   #resultScreen button{padding:25px 100px;font-size:40px;background:#4CAF50;color:white;border:none;border-radius:25px;cursor:pointer;}
-  /* เพิ่ม aria-live สำหรับ screen reader */
   #liveResult{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
   #liveRound{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
 </style>
@@ -54,8 +53,8 @@
   <div id="grid-container"><div id="grid"></div></div>
 </div>
 
-<div id="resultScreen">
-  <h1 id="resultTitle"></h1>
+<div id="resultScreen" role="alert" aria-live="assertive">
+  <h1 id="resultTitle" tabindex="-1"></h1>
   <p id="resultMessage"></p>
   <button id="okButton">ตกลง</button>
   <div id="liveResult" role="region" aria-live="assertive"></div>
@@ -154,8 +153,8 @@ let roomId = "", playerId = Math.random().toString(36).substr(2,9);
 let isHost = false, myRole = "";
 let currentRoomListener = null, lobbyListener = null;
 let opened = new Set();
-let pendingNewRound = false;        // สำหรับข้อ 1
-let lastAnnouncedRound = 0;         // สำหรับข้อ 2
+let pendingNewRound = false;
+let lastAnnouncedRound = 0;
 
 // ====================== เริ่มต้น ======================
 document.addEventListener("DOMContentLoaded", async () => {
@@ -249,7 +248,7 @@ function startGameplay() {
   gameRef.on("value", snap => {
     const d = snap.val(); if(!d || d.status!=="playing") return;
 
-    // ข้อ 2 + 3: แสดงคะแนนและตา
+    // แสดงคะแนนและตา
     const round = d.currentRound || 1;
     const h = d.hostWins || 0;
     const g = d.guestWins || 0;
@@ -257,10 +256,10 @@ function startGameplay() {
     document.getElementById("lifeBoard").innerHTML = 
       `รอบที่ ${round} : คะแนน Host ${h} ต่อ Guest ${g}<br>${turnText}`;
 
-    // ข้อ 2: ประกาศ aria-live เฉพาะตอนเริ่มรอบใหม่
+    // ข้อ 2: ประกาศรอบใหม่ผ่าน aria-live (เฉพาะตอนเริ่มรอบใหม่)
     if (round !== lastAnnouncedRound) {
       lastAnnouncedRound = round;
-      const announce = `เริ่มรอบที่ ${round} คะแนน Host ${h} ต่อ Guest ${g} ${d.turn === "Host" ? "Host" : "Guest"} เป็นฝ่ายเลือก`;
+      const announce = `รอบที่ ${round} : คะแนน Host ${h} ต่อ Guest ${g}`;
       document.getElementById("liveRound").textContent = announce;
     }
 
@@ -295,11 +294,10 @@ function startGameplay() {
         return;
       }
 
-      // รอเสียง t2/t3 จบ (ใช้ duration ของ buffer)
       const lastPlayer = d.turn;
       const loseSound = lastPlayer === "Host" ? "t3.mp3" : "t2.mp3";
       const buffer = audioBuffers[loseSound];
-      const durationMs = buffer ? buffer.duration * 1000 : 2000; // fallback ถ้าไม่มี buffer
+      const durationMs = buffer ? buffer.duration * 1000 : 2000;
 
       const startNext = () => {
         if (!pendingNewRound) return;
@@ -308,7 +306,7 @@ function startGameplay() {
       };
 
       playSound(loseSound, startNext);
-      setTimeout(startNext, durationMs + 100); // safety
+      setTimeout(startNext, durationMs + 100);
     }
   });
 }
@@ -337,7 +335,7 @@ async function playerClick(idx){
 }
 
 function startNewRound(currentRd){
-  if (pendingNewRound) return; // ป้องกันเรียกซ้ำ
+  if (pendingNewRound) return;
   const bombs=[]; while(bombs.length<4){ const n=Math.floor(Math.random()*16); if(!bombs.includes(n)) bombs.push(n); }
   const nextRound=currentRd+1;
   const nextTurn=nextRound%2===1?"Host":"Guest";
@@ -359,11 +357,18 @@ function showResult(room){
   const g = room.guestWins || 0;
   const winner = h > g ? "Host" : "Guest";
 
-  document.getElementById("resultTitle").textContent = `${winner} ชนะ!`;
-  document.getElementById("resultMessage").textContent = `${h} - ${g}`;
+  // ข้อ 1 & 3: หน้า result เรียบง่าย + accessibility
+  document.getElementById("resultTitle").textContent = `${winner} เป็นฝ่ายชนะ`;
+  document.getElementById("resultMessage").textContent = `ด้วยคะแนน ${h} ต่อ ${g}`;
 
-  const live = document.getElementById("liveResult");
-  live.textContent = `${winner === "Host" ? "เจ้าของห้อง" : "แขก"} ชนะ ${h} ต่อ ${g}`;
+  // ประกาศผลทันทีผ่าน aria-live assertive
+  document.getElementById("liveResult").textContent = `${winner === "Host" ? "เจ้าของห้อง" : "แขก"} เป็นฝ่ายชนะ ด้วยคะแนน ${h} ต่อ ${g}`;
+
+  // Focus ไปที่หัวข้อผลแพ้ชนะทันที
+  const titleEl = document.getElementById("resultTitle");
+  titleEl.focus();
+
+  // ทำให้ screen reader อ่านซ้ำได้ทันทีสำหรับผู้ใช้บางตัว
 
   document.getElementById("okButton").onclick = () => {
     playSound("end.mp3");
