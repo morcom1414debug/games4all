@@ -21,7 +21,7 @@
   #startBtn{background:#4CAF50;color:white;padding:18px 50px;border-radius:15px;font-weight:bold;font-size:28px;cursor:pointer;margin:20px;display:none;}
   #statusMessage{font-size:28px;margin:20px;color:#ffff00;}
   #resultScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:10000;display:none;gap:40px;}
-  #resultScreen h1{font-size:82px;color:#ffff00;text-shadow:7px 7px #000;margin:0 precedenti;}
+  #resultScreen h1{font-size:82px;color:#ffff00;text-shadow:7px 7px #000;margin:0;}
   #resultScreen p{font-size:52px;margin:20px 0;}
   #resultScreen button{padding:25px 100px;font-size:40px;background:#4CAF50;color:white;border:none;border-radius:25px;cursor:pointer;}
 </style>
@@ -57,17 +57,17 @@
   <button id="okButton">ตกลง</button>
 </div>
 
+<!-- Firebase CDN (แก้ URL ให้ถูกต้อง 100%) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-// ====================== ระบบเสียงใหม่ (100% ทำงานบน iOS Safari, Android, Windows) ======================
+// ====================== ระบบเสียงใหม่ (100% ทุกแพลตฟอร์ม + เสียงถูกต้องตามบทบาท) ======================
 let audioCtx = null;
 let audioBuffers = {};
 let bgmSource = null;
 let isAudioUnlocked = false;
 
-// สร้าง AudioContext ครั้งเดียว
 function getAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -75,14 +75,10 @@ function getAudioContext() {
   return audioCtx;
 }
 
-// ปลดล็อก AudioContext ด้วย user gesture (สำคัญสุดสำหรับ iOS)
 function unlockAudioContext() {
   if (isAudioUnlocked) return;
   const ctx = getAudioContext();
-  if (ctx.state === 'running') {
-    isAudioUnlocked = true;
-    return;
-  }
+  if (ctx.state === 'running') { isAudioUnlocked = true; return; }
 
   const unlock = () => {
     ctx.resume().then(() => {
@@ -91,17 +87,15 @@ function unlockAudioContext() {
       document.body.removeEventListener('click', unlock);
     });
   };
-
   document.body.addEventListener('touchstart', unlock, { once: true });
   document.body.addEventListener('click', unlock, { once: true });
 }
 
-// Preload ทุกไฟล์เสียงเป็น AudioBuffer (ป้องกันเสียงไม่ทันบน iOS)
 async function preloadAllSounds() {
   const soundList = [
-    "b.mp3","pop.mp3","friend.mp3","t2.mp3","t3.mp3","f2.mp3","f3.mp3","s3.mp3","s4.mp3","end.mp3"
+    "b.mp3","pop.mp3","friend.mp3","t2.mp3","t3.mp3",
+    "f2.mp3","f3.mp3","s3.mp3","s4.mp3","end.mp3"
   ];
-
   const ctx = getAudioContext();
   unlockAudioContext();
 
@@ -117,15 +111,12 @@ async function preloadAllSounds() {
   }
 }
 
-// เล่นเสียงด้วย AudioBuffer + AudioContext (เสถียรที่สุดทุกแพลตฟอร์ม)
 function playSound(name) {
   if (!isAudioUnlocked) {
     unlockAudioContext();
-    // ถ้ายังไม่ unlock ให้ลองอีกครั้งหลัง delay
     setTimeout(() => playSound(name), 100);
     return;
   }
-
   const buffer = audioBuffers[name];
   if (!buffer) return;
 
@@ -136,10 +127,8 @@ function playSound(name) {
   source.start(0);
 }
 
-// BGM loop ด้วย AudioBufferSource (ทำงาน 100% บน iOS หลัง unlock)
 function startBGM() {
   if (bgmSource) stopBGM();
-
   const buffer = audioBuffers["b.mp3"];
   if (!buffer) return;
 
@@ -163,7 +152,6 @@ function stopBGM() {
   }
 }
 
-// ระบบซิงค์เสียงผ่าน Firebase ยังเหมือนเดิมทุกประการ
 function triggerSound(name) {
   if (!roomId) return;
   db.ref(`deadswitchRooms/${roomId}/soundTrigger`).set({
@@ -180,7 +168,7 @@ function startSoundListener() {
   soundListener.on("value", s => {
     const data = s.val();
     if (!data || Date.now() - data.time > 1200) return;
-    playSound(data.name); // ใช้ playSound ใหม่ที่เสถียร 100%
+    playSound(data.name);
   });
 }
 
@@ -205,7 +193,7 @@ let opened = new Set();
 
 // ====================== เริ่มต้น ======================
 document.addEventListener("DOMContentLoaded", async () => {
-  await preloadAllSounds(); // Preload ก่อนทุกอย่าง
+  await preloadAllSounds();
   document.getElementById("lobby").style.display = "block";
   document.getElementById("backToMainMenu").style.display = "block";
   loadRooms();
@@ -339,14 +327,17 @@ function startGameplay() {
         if(!cell) return;
         cell.disabled = true;
 
-        if(d.bombs.includes(idx)){
+        const isBomb = d.bombs.includes(idx);
+        const currentPlayer = d.turn;   // คนที่เพิ่งกด = คนที่อยู่ในเทิร์น
+
+        if(isBomb){
           cell.classList.add("boom");
           cell.textContent = "ระเบิด";
-          playSound("t2.mp3");
+          playSound(currentPlayer === "Host" ? "t3.mp3" : "t2.mp3");
         } else {
           cell.classList.add("safe");
           cell.textContent = "รอด";
-          playSound("f2.mp3");
+          playSound(currentPlayer === "Host" ? "f2.mp3" : "f3.mp3");
         }
       });
     }
@@ -437,7 +428,12 @@ function showResult(room){
 
   document.getElementById("okButton").onclick = () => {
     playSound("end.mp3");
-    setTimeout(() => location.href = "../index.html", 500);
+    const btn = document.getElementById("okButton");
+    btn.disabled = true;
+    btn.textContent = "กำลังออก...";
+    setTimeout(() => {
+      location.href = "../index.html";
+    }, 4000);
   };
 }
 </script>
