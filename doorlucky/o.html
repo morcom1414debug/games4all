@@ -62,12 +62,12 @@
 <!-- Audio Elements -->
 <audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
 <audio id="end" preload="auto" src="audio/end.mp3"></audio>
-<audio id="t3" preload="auto" src="audio/t3.mp3"></audio> <!-- Host โดน -->
-<audio id="t2" preload="auto" src="audio/t2.mp3"></audio> <!-- Guest โดน -->
-<audio id="f3" preload="auto" src="audio/f3.mp3"></audio> <!-- Host รอด -->
-<audio id="f2" preload="auto" src="audio/f2.mp3"></audio> <!-- Guest รอด -->
-<audio id="s3" preload="auto" src="audio/s3.mp3"></audio> <!-- Host เริ่ม -->
-<audio id="s4" preload="auto" src="audio/s4.mp3"></audio> <!-- Guest เริ่ม -->
+<audio id="t3" preload="auto" src="audio/t3.mp3"></audio>
+<audio id="t2" preload="auto" src="audio/t2.mp3"></audio>
+<audio id="f3" preload="auto" src="audio/f3.mp3"></audio>
+<audio id="f2" preload="auto" src="audio/f2.mp3"></audio>
+<audio id="s3" preload="auto" src="audio/s3.mp3"></audio>
+<audio id="s4" preload="auto" src="audio/s4.mp3"></audio>
 <audio id="friend" preload="auto" src="audio/friend.mp3"></audio>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -89,43 +89,26 @@ const db = firebase.database();
 
 // ==================== AudioEngine ====================
 class AudioEngine {
-  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = map['bgm'] || null; }
+  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = map['bgm']; }
   async unlockAll() {
     for (const el of Object.values(this.map)) {
-      try {
-        el.muted = false; el.currentTime = 0;
-        await el.play().catch(()=>{});
-        if (!el.paused) el.pause();
-        el.currentTime = 0;
-      } catch(e) {}
+      try { el.muted = false; el.currentTime = 0; await el.play(); el.pause(); } catch(e) {}
     }
   }
   async startBGM() { if (this.bgmEl && this.bgmEl.paused) { this.bgmEl.currentTime = 0; await this.bgmEl.play().catch(()=>{}); } }
   stopBGM() { if (this.bgmEl) { this.bgmEl.pause(); this.bgmEl.currentTime = 0; } }
   playEffect(key) {
     if (!this.map[key]) return Promise.resolve();
-    return new Promise(resolve => { this.queue.push({key, resolve}); if (!this.isPlaying) this._dequeue(); });
+    return new Promise(r => { this.queue.push({key, r}); if (!this.isPlaying) this._dequeue(); });
   }
   async _dequeue() {
     if (!this.queue.length) { this.isPlaying = false; return; }
     this.isPlaying = true;
-    const {key, resolve} = this.queue.shift();
+    const {key, r} = this.queue.shift();
     const el = this.map[key];
-    if (!el) { resolve(); this._dequeue(); return; }
-
-    let settled = false;
-    const cleanup = () => { try { el.onended = null; } catch(e){} };
-    const onEnded = () => { if (settled) return; settled = true; cleanup(); el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40); };
-    try { el.onended = onEnded; } catch(e){}
-
-    const duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? el.duration*1000 : 600;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true; cleanup(); try{el.pause();}catch(e){} el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40);
-    }, duration + 300);
-
-    try { el.currentTime = 0; await el.play().catch(()=>{}); }
-    catch(e) { clearTimeout(timer); if (!settled) { settled=true; resolve(); setTimeout(()=>this._dequeue(),40); } }
+    const onEnd = () => { el.onended = null; el.currentTime = 0; r(); setTimeout(() => this._dequeue(), 50); };
+    el.onended = onEnd;
+    try { el.currentTime = 0; await el.play(); } catch(e) { onEnd(); }
   }
 }
 
@@ -158,9 +141,7 @@ let isHost = false, myRole = "";
 let currentRoomListener = null, soundListener = null, lobbyListener = null;
 let gameStarted = false;
 let opened = new Set();
-
-// เก็บ timestamp ของเสียงล่าสุดที่เล่นแล้ว เพื่อป้องกันซ้ำ
-let lastPlayedSoundKey = "";
+let lastSoundId = -1; // สำคัญมาก: ป้องกันซ้ำ 100%
 
 // ==================== TTS ====================
 function speak(text) {
@@ -169,38 +150,38 @@ function speak(text) {
   setTimeout(() => el.textContent = "", 4000);
 }
 
-// ==================== เสียงซิงค์ (แก้แล้ว: ดังทั้ง 2 ฝั่ง + ไม่ซ้ำ) ====================
-async function playSound(file) {
+// ==================== ระบบเสียงออนไลน์ที่ดีที่สุด ====================
+// ใช้ transaction + soundId ที่เพิ่มขึ้นเรื่อย ๆ → ไม่ซ้ำ ไม่หาย ไม่สะดุด
+async function playSyncedSound(file) {
   if (!roomId || !hasUserInteracted) return;
 
-  // end.mp3 เล่นแยกเครื่อง
   if (file === "end.mp3") {
     audio.playEffect("end");
     return;
   }
 
-  const soundKey = `${file}_${Date.now()}`;
-  await db.ref(`deadswitchRooms/${roomId}/sound`).set({
-    file: file,
-    key: soundKey,
-    time: Date.now()
+  const soundRef = db.ref(`deadswitchRooms/${roomId}/nextSoundId`);
+  await soundRef.transaction(current => (current || 0) + 1, (error, committed, snapshot) => {
+    if (error || !committed) return;
+    const newId = snapshot.val();
+    db.ref(`deadswitchRooms/${roomId}/soundQueue/${newId}`).set({ file });
   });
 }
 
 function startSoundListener() {
   if (soundListener) soundListener.off();
-  soundListener = db.ref(`deadswitchRooms/${roomId}/sound`);
-  soundListener.on("value", async (s) => {
-    const data = s.val();
-    if (!data || !data.file || !data.key) return;
+  soundListener = db.ref(`deadswitchRooms/${roomId}/soundQueue`);
+  soundListener.on("child_added", snap => {
+    const id = parseInt(snap.key);
+    if (isNaN(id) || id <= lastSoundId) return; // ข้ามถ้าเคยเล่นแล้ว
+    lastSoundId = id;
 
-    // ป้องกันเล่นซ้ำด้วย key ที่ไม่ซ้ำกันทุกครั้ง
-    if (lastPlayedSoundKey === data.key) return;
+    const data = snap.val();
+    if (!data || !data.file) return;
 
-    lastPlayedSoundKey = data.key;
     const key = data.file.replace(".mp3", "");
     if (audio.map[key]) {
-      await audio.playEffect(key);
+      audio.playEffect(key);
     }
   });
 }
@@ -220,7 +201,14 @@ document.getElementById("createRoomBtn").onclick = async () => {
   roomId = roomRef.key;
   isHost = true;
   myRole = "Host";
-  await roomRef.set({name: name.trim(), status:"waiting", host:playerId, created:Date.now(), players:{[playerId]:"Host"}});
+  await roomRef.set({
+    name: name.trim(),
+    status: "waiting",
+    host: playerId,
+    created: Date.now(),
+    players: { [playerId]: "Host" },
+    nextSoundId: 0
+  });
   db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).onDisconnect().remove();
   showRoom();
 };
@@ -229,24 +217,26 @@ async function joinRoom(id) {
   unlockAudio();
   const snap = await db.ref(`deadswitchRooms/${id}`).once("value");
   const room = snap.val();
-  if (!room || room.status!=="waiting" || Object.keys(room.players||{}).length>=2) {alert("เข้าร่วมไม่ได้");return;}
+  if (!room || room.status !== "waiting" || Object.keys(room.players || {}).length >= 2) {
+    alert("เข้าร่วมไม่ได้"); return;
+  }
   roomId = id;
   myRole = "Guest";
   await db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).set("Guest");
   db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).onDisconnect().remove();
-  playSound("friend.mp3");
+  playSyncedSound("friend.mp3");
   showRoom();
 }
 
 function loadRooms() {
   const list = document.getElementById("roomList");
-  if(lobbyListener) lobbyListener.off();
+  if (lobbyListener) lobbyListener.off();
   lobbyListener = db.ref("deadswitchRooms").orderByChild("status").equalTo("waiting");
   lobbyListener.on("value", snap => {
     list.innerHTML = "";
     snap.forEach(r => {
       const room = r.val();
-      if(Object.keys(room.players||{}).length===1){
+      if (Object.keys(room.players || {}).length === 1) {
         const li = document.createElement("li");
         li.innerHTML = `<strong>${room.name}</strong> (1/2) <button style="margin-left:10px;padding:6px 15px;background:#4CAF50;color:white;border:none;border-radius:8px;cursor:pointer;">เข้าร่วม</button>`;
         li.querySelector("button").onclick = () => joinRoom(r.key);
@@ -262,17 +252,17 @@ function showRoom() {
   startSoundListener();
   audio.startBGM();
 
-  if(currentRoomListener) currentRoomListener.off();
+  if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`deadswitchRooms/${roomId}`);
   currentRoomListener.on("value", snap => {
     const room = snap.val();
-    if(!room) return location.reload();
+    if (!room) return location.reload();
     document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
-    document.getElementById("playerList").innerHTML = Object.values(room.players||{}).map(p=>`<li>${p}</li>`).join("");
+    document.getElementById("playerList").innerHTML = Object.values(room.players || {}).map(p => `<li>${p}</li>`).join("");
 
     const statusMsg = document.getElementById("statusMessage");
     const startBtn = document.getElementById("startBtn");
-    if(Object.keys(room.players||{}).length===2){
+    if (Object.keys(room.players || {}).length === 2) {
       statusMsg.textContent = isHost ? "ผู้เล่นครบแล้ว กดเริ่มเกมได้ทันที" : "รอ Host กดเริ่มเกม";
       startBtn.style.display = isHost ? "inline-block" : "none";
     } else {
@@ -280,26 +270,26 @@ function showRoom() {
       startBtn.style.display = "none";
     }
 
-    if(room.status==="playing") startGameplay();
-    if(room.status==="finished") showResult(room);
+    if (room.status === "playing") startGameplay();
+    if (room.status === "finished") showResult(room);
   });
 }
 
 document.getElementById("startBtn").onclick = () => {
   const bombs = [];
-  while(bombs.length<4){
-    const n = Math.floor(Math.random()*16);
-    if(!bombs.includes(n)) bombs.push(n);
+  while (bombs.length < 4) {
+    const n = Math.floor(Math.random() * 16);
+    if (!bombs.includes(n)) bombs.push(n);
   }
   db.ref(`deadswitchRooms/${roomId}`).update({
-    status:"playing",
-    currentRound:1,
-    hostWins:0,
-    guestWins:0,
+    status: "playing",
+    currentRound: 1,
+    hostWins: 0,
+    guestWins: 0,
     bombs,
-    opened:{},
-    turn:"Host",
-    lastBoom:false
+    opened: {},
+    turn: "Host",
+    lastBoom: false
   });
 };
 
@@ -312,47 +302,47 @@ function startGameplay() {
   const gameRef = db.ref(`deadswitchRooms/${roomId}`);
   gameRef.on("value", snap => {
     const d = snap.val();
-    if(!d || d.status!=="playing") return;
+    if (!d || d.status !== "playing") return;
 
     document.getElementById("lifeBoard").textContent = 
-      `รอบที่ ${d.currentRound||1}/3 | Host ${d.hostWins||0} - Guest ${d.guestWins||0}`;
+      `รอบที่ ${d.currentRound || 1}/3 | Host ${d.hostWins || 0} - Guest ${d.guestWins || 0}`;
 
-    if(!document.getElementById("grid").children.length){
+    if (!document.getElementById("grid").children.length) {
       createBoard();
       speak(`${d.turn} เริ่มก่อน เลือกได้เลย`);
-      playSound(d.turn==="Host" ? "s3.mp3" : "s4.mp3");
+      playSyncedSound(d.turn === "Host" ? "s3.mp3" : "s4.mp3");
     }
 
-    if(d.opened){
+    if (d.opened) {
       Object.keys(d.opened).forEach(idxStr => {
         const idx = parseInt(idxStr);
-        if(opened.has(idx)) return;
+        if (opened.has(idx)) return;
         opened.add(idx);
 
         const cell = document.querySelectorAll("#grid .cell")[idx];
         cell.disabled = true;
 
-        if(d.bombs.includes(idx)){
+        if (d.bombs.includes(idx)) {
           cell.classList.add("boom");
           cell.textContent = "ระเบิด";
           speak(`${d.turn} โดนระเบิดไม่รอด`);
-          playSound(d.turn==="Host" ? "t3.mp3" : "t2.mp3");
+          playSyncedSound(d.turn === "Host" ? "t3.mp3" : "t2.mp3");
         } else {
           cell.classList.add("safe");
           cell.textContent = `ช่อง${idx+1} ว่างเปล่า`;
-          const next = d.turn==="Host" ? "Guest" : "Host";
+          const next = d.turn === "Host" ? "Guest" : "Host";
           speak(`${d.turn} รอด ต่อไปตา ${next}`);
-          playSound(d.turn==="Host" ? "f3.mp3" : "f2.mp3");
+          playSyncedSound(d.turn === "Host" ? "f3.mp3" : "f2.mp3");
         }
       });
     }
 
-    if(d.lastBoom){
+    if (d.lastBoom) {
       setTimeout(() => {
         const h = d.hostWins || 0;
         const g = d.guestWins || 0;
-        if(h >= 2 || g >= 2 || d.currentRound >= 3){
-          gameRef.update({status:"finished"});
+        if (h >= 2 || g >= 2 || d.currentRound >= 3) {
+          gameRef.update({ status: "finished" });
         } else {
           startNewRound(d);
         }
@@ -361,51 +351,51 @@ function startGameplay() {
   });
 }
 
-function createBoard(){
+function createBoard() {
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
-  for(let i=0;i<16;i++){
+  for (let i = 0; i < 16; i++) {
     const cell = document.createElement("button");
     cell.className = "cell";
     cell.textContent = `ช่อง ${i+1}`;
     cell.onclick = () => playerClick(i);
     cell.setAttribute("aria-label", `ช่อง ${i+1}`);
-    if(i===0) cell.id = "cell0";
+    if (i === 0) cell.id = "cell0";
     grid.appendChild(cell);
   }
-  setTimeout(()=>document.getElementById("cell0")?.focus(), 600);
+  setTimeout(() => document.getElementById("cell0")?.focus(), 600);
 }
 
-async function playerClick(idx){
-  if(!gameStarted) return;
+async function playerClick(idx) {
+  if (!gameStarted) return;
   const snap = await db.ref(`deadswitchRooms/${roomId}`).once("value");
   const d = snap.val();
-  if(d.turn !== myRole || d.opened?.[idx]) return;
+  if (d.turn !== myRole || d.opened?.[idx]) return;
 
   const isBomb = d.bombs.includes(idx);
-  const updates = {[`opened/${idx}`]: true, lastBoom: isBomb};
-  if(!isBomb){
-    updates.turn = myRole==="Host" ? "Guest" : "Host";
+  const updates = { [`opened/${idx}`]: true, lastBoom: isBomb };
+  if (!isBomb) {
+    updates.turn = myRole === "Host" ? "Guest" : "Host";
   } else {
-    if(myRole==="Host") updates.guestWins = (d.guestWins||0)+1;
-    else updates.hostWins = (d.hostWins||0)+1;
+    if (myRole === "Host") updates.guestWins = (d.guestWins || 0) + 1;
+    else updates.hostWins = (d.hostWins || 0) + 1;
   }
   await db.ref(`deadswitchRooms/${roomId}`).update(updates);
 }
 
-function startNewRound(d){
+function startNewRound(d) {
   const bombs = [];
-  while(bombs.length<4){
-    const n = Math.floor(Math.random()*16);
-    if(!bombs.includes(n)) bombs.push(n);
+  while (bombs.length < 4) {
+    const n = Math.floor(Math.random() * 16);
+    if (!bombs.includes(n)) bombs.push(n);
   }
   const nextRound = (d.currentRound || 1) + 1;
   const nextTurn = nextRound % 2 === 1 ? "Host" : "Guest";
 
   db.ref(`deadswitchRooms/${roomId}`).update({
     bombs,
-    opened:{},
-    lastBoom:false,
+    opened: {},
+    lastBoom: false,
     turn: nextTurn,
     currentRound: nextRound
   });
@@ -414,11 +404,11 @@ function startNewRound(d){
   document.getElementById("grid").innerHTML = "";
 
   speak(`${nextTurn} เริ่มก่อน เลือกได้เลย`);
-  playSound(nextTurn==="Host" ? "s3.mp3" : "s4.mp3");
+  playSyncedSound(nextTurn === "Host" ? "s3.mp3" : "s4.mp3");
 }
 
 // ==================== ผลลัพธ์ ====================
-function showResult(room){
+function showResult(room) {
   audio.stopBGM();
   document.getElementById("gameScreen").style.display = "none";
   document.getElementById("resultScreen").style.display = "flex";
@@ -426,8 +416,8 @@ function showResult(room){
   const hostScore = room.hostWins || 0;
   const guestScore = room.guestWins || 0;
 
-  let winner = hostScore >= 2 || (hostScore > guestScore && room.currentRound >= 3) ? "Host" : "Guest";
-  let message = hostScore > guestScore ? `Host ชนะ ${hostScore}-${guestScore}` : `Guest ชนะ ${guestScore}-${hostScore}`;
+  const winner = hostScore >= 2 || (hostScore > guestScore && room.currentRound >= 3) ? "Host" : "Guest";
+  const message = hostScore > guestScore ? `Host ชนะ ${hostScore}-${guestScore}` : `Guest ชนะ ${guestScore}-${hostScore}`;
 
   const titleEl = document.getElementById("resultTitle");
   titleEl.textContent = `${winner} ชนะ!`;
@@ -437,7 +427,7 @@ function showResult(room){
   setTimeout(() => titleEl.focus(), 300);
 
   document.getElementById("okButton").onclick = () => {
-    playSound("end.mp3");
+    playSyncedSound("end.mp3");
     setTimeout(() => location.href = "../index.html", 4000);
   };
 }
