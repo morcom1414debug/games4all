@@ -58,26 +58,25 @@
 </div>
 
 <!-- เสียงทั้งหมด -->
-<audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
-<audio preload="auto" src="audio/end.mp3"></audio>
-<audio preload="auto" src="audio/pop.mp3"></audio>
-<audio preload="auto" src="audio/friend.mp3"></audio>
-<audio preload="auto" src="audio/t3.mp3"></audio>
-<audio preload="auto" src="audio/t2.mp3"></audio>
-<audio preload="auto" src="audio/f3.mp3"></audio>
-<audio preload="auto" src="audio/f2.mp3"></audio>
-<audio preload="auto" src="audio/s3.mp3"></audio>
-<audio preload="auto" src="audio/s4.mp3"></audio>
+<audio id="bgm" loop src="audio/b.mp3"></audio>
+<audio id="pop" src="audio/pop.mp3"></audio>
+<audio id="friend" src="audio/friend.mp3"></audio>
+<audio id="t2" src="audio/t2.mp3"></audio>
+<audio id="t3" src="audio/t3.mp3"></audio>
+<audio id="f2" src="audio/f2.mp3"></audio>
+<audio id="f3" src="audio/f3.mp3"></audio>
+<audio id="s3" src="audio/s3.mp3"></audio>
+<audio id="s4" src="audio/s4.mp3"></audio>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
-// ====================== ระบบเสียงเทพจากเกมจุดโทษ ======================
+// ====================== ระบบเสียงแบบ o.html (สมบูรณ์แบบ) ======================
 let preloadedAudios = {};
 
 function preloadAllSounds() {
-  const files = ["b.mp3","end.mp3","pop.mp3","friend.mp3","t3.mp3","t2.mp3","f3.mp3","f2.mp3","s3.mp3","s4.mp3"];
+  const files = ["b.mp3","pop.mp3","friend.mp3","t2.mp3","t3.mp3","f2.mp3","f3.mp3","s3.mp3","s4.mp3"];
   files.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
@@ -87,7 +86,12 @@ function preloadAllSounds() {
 
 function startBGM() {
   const bgm = preloadedAudios["b.mp3"];
-  if (bgm) { bgm.currentTime = 0; bgm.volume = 0.35; bgm.loop = true; bgm.play().catch(()=>{}); }
+  if (bgm) {
+    bgm.currentTime = 0;
+    bgm.volume = 0.35;
+    bgm.loop = true;
+    bgm.play().catch(() => {});
+  }
 }
 
 function stopBGM() {
@@ -106,15 +110,17 @@ function triggerSound(name) {
 let soundListener = null;
 function startSoundListener() {
   if (soundListener) soundListener.off();
+  if (!roomId) return;
   soundListener = db.ref(`deadswitchRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => {
     const data = s.val();
     if (!data || Date.now() - data.time > 1200) return;
+
     const audio = preloadedAudios[data.name];
     if (audio) {
       audio.currentTime = 0;
       audio.volume = 1.0;
-      audio.play().catch(()=>{});
+      audio.play().catch(() => {});
     }
   });
 }
@@ -245,7 +251,7 @@ document.getElementById("startBtn").onclick = () => {
     turn: firstTurn,
     lastBoom: false
   });
-  triggerSound(firstTurn === "Host" ? "s3.mp3" : "s4.mp3");  // ดังทั้ง 2 ฝ่ายแน่นอน
+  triggerSound(firstTurn === "Host" ? "s3.mp3" : "s4.mp3");
 };
 
 // ====================== เกม ======================
@@ -277,12 +283,11 @@ function startGameplay() {
         if(d.bombs.includes(idx)){
           cell.classList.add("boom");
           cell.textContent = "ระเบิด";
-          // เสียงระเบิด: ถ้า Host กด = Guest ได้คะแนน → ใช้ t2.mp3
-          triggerSound(myRole === "Host" ? "t2.mp3" : "t3.mp3");
+          triggerSound("t2.mp3");  // ทั้งสองฝ่ายได้ยินพร้อมกัน
         } else {
           cell.classList.add("safe");
           cell.textContent = "รอด";
-          triggerSound(myRole === "Host" ? "f3.mp3" : "f2.mp3");
+          triggerSound("f2.mp3");
         }
       });
     }
@@ -293,9 +298,12 @@ function startGameplay() {
         const h = d.hostWins || 0;
         const g = d.guestWins || 0;
         if(h >= 2 || g >= 2 || (d.currentRound || 1) >= 3){
-          gameRef.update({status:"finished", winner: h > g ? "Host" : "Guest"});
-          triggerSound("end.mp3");
+          // end.mp3 เล่นต่างคนต่างเล่นเอง (เหมือน o.html)
+          const endAudio = new Audio("audio/end.mp3");
+          endAudio.volume = 1.0;
+          endAudio.play().catch(() => {});
           stopBGM();
+          gameRef.update({status:"finished", winner: h > g ? "Host" : "Guest"});
         } else {
           startNewRound(d.currentRound || 1);
         }
@@ -312,7 +320,7 @@ function createBoard(){
     cell.className = "cell";
     cell.textContent = `ช่อง ${i+1}`;
     cell.onclick = () => {
-      triggerSound("pop.mp3");  // เสียงกดช่อง ดังทั้ง 2 ฝ่าย
+      triggerSound("pop.mp3");
       playerClick(i);
     };
     if(i === 0) cell.id = "cell0";
@@ -357,7 +365,7 @@ function startNewRound(currentRd){
   opened.clear();
   document.getElementById("grid").innerHTML = "";
   setTimeout(createBoard, 100);
-  triggerSound(nextTurn === "Host" ? "s3.mp3" : "s4.mp3");  // ดังทั้ง 2 ฝ่าย
+  triggerSound(nextTurn === "Host" ? "s3.mp3" : "s4.mp3");
 }
 
 // ====================== ผลลัพธ์ ======================
