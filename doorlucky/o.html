@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<title>กดติด...ตาย : Dead switch (ออนไลน์) - เวอร์ชันเสียงสมบูรณ์</title>
+<title>กดติด...ตาย : Dead switch (ออนไลน์) - เสียงซิงค์ทั้ง 2 ฝ่าย</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   body {font-family: Tahoma, sans-serif;background:#111;color:white;text-align:center;margin:0;padding:20px;height:100vh;overflow:hidden;position:relative;}
@@ -24,8 +24,6 @@
   #resultScreen h1{font-size:82px;color:#ffff00;text-shadow:7px 7px #000;margin:0;}
   #resultScreen p{font-size:52px;margin:20px 0;}
   #resultScreen button{padding:25px 100px;font-size:40px;background:#4CAF50;color:white;border:none;border-radius:25px;cursor:pointer;}
-  #ttsDisplay{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:15px 30px;border-radius:15px;font-size:24px;z-index:1002;opacity:0;transition:opacity 0.3s;pointer-events:none;max-width:90%;word-wrap:break-word;}
-  #ttsDisplay.show{opacity:1;}
 </style>
 </head>
 <body>
@@ -59,9 +57,6 @@
   <button id="okButton">ตกลง</button>
 </div>
 
-<div id="ttsDisplay"></div>
-<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
-
 <!-- เสียงทั้งหมด -->
 <audio id="bgm" loop preload="auto" src="audio/b.mp3"></audio>
 <audio preload="auto" src="audio/end.mp3"></audio>
@@ -79,11 +74,6 @@
 
 <script>
 // ====================== ระบบเสียงเทพจากเกมจุดโทษ ======================
-const goalSounds = ["t3.mp3", "t2.mp3"];      // ระเบิด (Host โดน = t2, Guest โดน = t3)
-const safeSounds = ["f3.mp3", "f2.mp3"];      // รอด
-const startSounds = ["s3.mp3", "s4.mp3"];     // เริ่มตา
-const popSound = "pop.mp3";
-
 let preloadedAudios = {};
 
 function preloadAllSounds() {
@@ -97,20 +87,12 @@ function preloadAllSounds() {
 
 function startBGM() {
   const bgm = preloadedAudios["b.mp3"];
-  if (bgm) { 
-    bgm.currentTime = 0; 
-    bgm.volume = 0.35; 
-    bgm.loop = true; 
-    bgm.play().catch(()=>{}); 
-  }
+  if (bgm) { bgm.currentTime = 0; bgm.volume = 0.35; bgm.loop = true; bgm.play().catch(()=>{}); }
 }
 
 function stopBGM() {
   const bgm = preloadedAudios["b.mp3"];
-  if (bgm) { 
-    bgm.pause(); 
-    bgm.currentTime = 0; 
-  }
+  if (bgm) { bgm.pause(); bgm.currentTime = 0; }
 }
 
 function triggerSound(name) {
@@ -121,7 +103,6 @@ function triggerSound(name) {
   });
 }
 
-// ฟังเสียงจาก Firebase
 let soundListener = null;
 function startSoundListener() {
   if (soundListener) soundListener.off();
@@ -135,45 +116,7 @@ function startSoundListener() {
       audio.volume = 1.0;
       audio.play().catch(()=>{});
     }
-
-    // TTS จากเสียง
-    let msg = "";
-    if (data.name === "friend.mp3") msg = "มีผู้เล่นเข้ามาแล้ว";
-    else if (data.name === "s3.mp3") msg = "Host เริ่มก่อน";
-    else if (data.name === "s4.mp3") msg = "Guest เริ่มก่อน";
-    else if (data.name === "t3.mp3") msg = "Host โดนระเบิด!";
-    else if (data.name === "t2.mp3") msg = "Guest โดนระเบิด!";
-    else if (data.name === "f3.mp3") msg = "Host รอด ต่อไป Guest";
-    else if (data.name === "f2.mp3") msg = "Guest รอด ต่อไป Host";
-    else if (data.name === "end.mp3") msg = "จบเกม!";
-
-    if (msg) speak(msg);
   });
-}
-
-// TTS คิว
-let ttsQueue = [], isSpeaking = false;
-const ttsDisplay = document.getElementById("ttsDisplay");
-function speak(text){
-  ttsQueue.push(text);
-  if (!isSpeaking) processTTS();
-}
-function processTTS(){
-  if (isSpeaking || ttsQueue.length===0) return;
-  isSpeaking = true;
-  const msg = ttsQueue.shift();
-  if (ttsDisplay) {
-    ttsDisplay.textContent = msg;
-    ttsDisplay.classList.add("show");
-  }
-  const ttsEl = document.getElementById("tts");
-  if (ttsEl) ttsEl.textContent = msg;
-  setTimeout(()=>{
-    isSpeaking = false;
-    if (ttsDisplay) ttsDisplay.classList.remove("show");
-    if (ttsEl) ttsEl.textContent = "";
-    processTTS();
-  }, Math.max(1200, msg.length*70));
 }
 
 // ====================== Firebase ======================
@@ -194,7 +137,6 @@ let roomId = "", playerId = Math.random().toString(36).substr(2,9);
 let isHost = false, myRole = "";
 let currentRoomListener = null, lobbyListener = null;
 let opened = new Set();
-let currentRound = 1;  // สำหรับ startNewRound
 
 // ====================== เริ่มต้น ======================
 document.addEventListener("DOMContentLoaded", () => {
@@ -229,7 +171,6 @@ async function joinRoom(id) {
   await db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).set({role:"Guest"});
   db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).onDisconnect().remove();
   triggerSound("friend.mp3");
-  speak("มีผู้เล่นเข้ามาแล้ว");
   showRoom();
   startBGM();
 }
@@ -244,7 +185,7 @@ function loadRooms() {
     snap.forEach(r => {
       const room = r.val();
       const key = r.key;
-      if (!room || (room.created && now - room.created > 300000)) {  // ลบห้องเก่า >5 นาที
+      if (!room || (room.created && now - room.created > 300000)) {
         db.ref(`deadswitchRooms/${key}`).remove();
         return;
       }
@@ -270,47 +211,45 @@ function showRoom() {
     if(!room) return location.reload();
 
     document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
-    const pl = Object.values(room.players||{}).map(p=>p.role || 'Unknown');
-    document.getElementById("playerList").innerHTML = pl.map(r=>`<li>${r}</li>`).join("");
+    const pl = Object.values(room.players||{}).map(p => p.role || '???');
+    document.getElementById("playerList").innerHTML = pl.map(r => `<li>${r}</li>`).join("");
 
-    const statusMsg = document.getElementById("statusMessage");
     const startBtn = document.getElementById("startBtn");
-    if(pl.length===2){
-      statusMsg.textContent = isHost ? "กดเริ่มเกมได้เลย" : "รอ Host เริ่มเกม";
+    if(pl.length === 2){
+      document.getElementById("statusMessage").textContent = isHost ? "กดเริ่มเกมได้เลย" : "รอ Host เริ่มเกม";
       startBtn.style.display = isHost ? "inline-block" : "none";
     } else {
-      statusMsg.textContent = "รอผู้เล่นคนที่ 2...";
+      document.getElementById("statusMessage").textContent = "รอผู้เล่นคนที่ 2...";
       startBtn.style.display = "none";
     }
 
-    if(room.status==="playing") startGameplay(room);
-    if(room.status==="finished") showResult(room);
+    if(room.status === "playing") startGameplay();
+    if(room.status === "finished") showResult(room);
   });
 }
 
 document.getElementById("startBtn").onclick = () => {
   const bombs = [];
-  while(bombs.length<4){
+  while(bombs.length < 4){
     const n = Math.floor(Math.random()*16);
     if(!bombs.includes(n)) bombs.push(n);
   }
-  const firstTurn = Math.random()<0.5 ? "Host" : "Guest";
+  const firstTurn = Math.random() < 0.5 ? "Host" : "Guest";
   db.ref(`deadswitchRooms/${roomId}`).update({
-    status:"playing",
-    currentRound:1,
-    hostWins:0,
-    guestWins:0,
+    status: "playing",
+    currentRound: 1,
+    hostWins: 0,
+    guestWins: 0,
     bombs,
-    opened:{},
+    opened: {},
     turn: firstTurn,
-    lastBoom:false
+    lastBoom: false
   });
-  triggerSound(firstTurn==="Host" ? "s3.mp3" : "s4.mp3");
-  speak(`${firstTurn} เริ่มก่อน เลือกได้เลย`);
+  triggerSound(firstTurn === "Host" ? "s3.mp3" : "s4.mp3");  // ดังทั้ง 2 ฝ่ายแน่นอน
 };
 
 // ====================== เกม ======================
-function startGameplay(initialRoom) {
+function startGameplay() {
   document.getElementById("room").style.display = "none";
   document.getElementById("gameScreen").style.display = "block";
 
@@ -319,51 +258,41 @@ function startGameplay(initialRoom) {
 
   gameRef.on("value", snap => {
     const d = snap.val();
-    if(!d || d.status!=="playing") return;
+    if(!d || d.status !== "playing") return;
 
     document.getElementById("lifeBoard").textContent = `รอบที่ ${d.currentRound||1}/3 | Host ${d.hostWins||0} - Guest ${d.guestWins||0}`;
 
-    if(!document.getElementById("grid").children.length) {
-      createBoard();
-      // เสียงเริ่มจาก initial
-      if (initialRoom && initialRoom.turn) {
-        triggerSound(initialRoom.turn==="Host" ? "s3.mp3" : "s4.mp3");
-        speak(`${initialRoom.turn} เริ่มก่อน เลือกได้เลย`);
-      }
-    }
+    if(!document.getElementById("grid").children.length) createBoard();
 
-    // แสดงผลที่เปิดแล้ว
     if(d.opened){
       Object.keys(d.opened).forEach(idxStr => {
         const idx = parseInt(idxStr);
         if(opened.has(idx)) return;
         opened.add(idx);
+
         const cell = document.querySelectorAll("#grid .cell")[idx];
-        if (!cell) return;
+        if(!cell) return;
         cell.disabled = true;
-        if(d.bombs && d.bombs.includes(idx)){
+
+        if(d.bombs.includes(idx)){
           cell.classList.add("boom");
           cell.textContent = "ระเบิด";
-          const sound = myRole==="Host" ? "t2.mp3" : "t3.mp3";  // ถ้า Host กดระเบิด = Guest ได้คะแนน (t2)
-          triggerSound(sound);
-          speak(`${myRole==="Host" ? "Guest" : "Host"} ได้คะแนน!`);
+          // เสียงระเบิด: ถ้า Host กด = Guest ได้คะแนน → ใช้ t2.mp3
+          triggerSound(myRole === "Host" ? "t2.mp3" : "t3.mp3");
         } else {
           cell.classList.add("safe");
           cell.textContent = "รอด";
-          const sound = myRole==="Host" ? "f3.mp3" : "f2.mp3";
-          triggerSound(sound);
-          speak(`${myRole==="Host" ? "Host" : "Guest"} รอด ต่อไป ${myRole==="Host" ? "Guest" : "Host"}`);
+          triggerSound(myRole === "Host" ? "f3.mp3" : "f2.mp3");
         }
       });
     }
 
-    // จบรอบ
     if(d.lastBoom && !lastBoomProcessed){
       lastBoomProcessed = true;
       setTimeout(() => {
         const h = d.hostWins || 0;
         const g = d.guestWins || 0;
-        if (h >= 2 || g >= 2 || (d.currentRound || 1) >= 3){
+        if(h >= 2 || g >= 2 || (d.currentRound || 1) >= 3){
           gameRef.update({status:"finished", winner: h > g ? "Host" : "Guest"});
           triggerSound("end.mp3");
           stopBGM();
@@ -378,41 +307,39 @@ function startGameplay(initialRoom) {
 function createBoard(){
   const grid = document.getElementById("grid");
   grid.innerHTML = "";
-  for(let i=0;i<16;i++){
+  for(let i = 0; i < 16; i++){
     const cell = document.createElement("button");
     cell.className = "cell";
     cell.textContent = `ช่อง ${i+1}`;
     cell.onclick = () => {
-      if (roomId) triggerSound("pop.mp3");
+      triggerSound("pop.mp3");  // เสียงกดช่อง ดังทั้ง 2 ฝ่าย
       playerClick(i);
     };
-    cell.setAttribute("aria-label", `ช่อง ${i+1}`);
-    if(i===0) cell.id = "cell0";
+    if(i === 0) cell.id = "cell0";
     grid.appendChild(cell);
   }
-  setTimeout(()=> { const firstCell = document.getElementById("cell0"); if (firstCell) firstCell.focus(); }, 500);
+  setTimeout(() => document.getElementById("cell0")?.focus(), 500);
 }
 
 async function playerClick(idx){
-  if(!roomId) return;
   const snap = await db.ref(`deadswitchRooms/${roomId}`).once("value");
   const d = snap.val();
   if(!d || d.turn !== myRole || d.opened?.[idx]) return;
 
-  const isBomb = d.bombs && d.bombs.includes(idx);
+  const isBomb = d.bombs.includes(idx);
   const updates = {[`opened/${idx}`]: true, lastBoom: isBomb};
   if(!isBomb){
-    updates.turn = myRole==="Host" ? "Guest" : "Host";
+    updates.turn = myRole === "Host" ? "Guest" : "Host";
   } else {
-    if(myRole==="Host") updates.guestWins = (d.guestWins||0)+1;
-    else updates.hostWins = (d.hostWins||0)+1;
+    if(myRole === "Host") updates.guestWins = (d.guestWins || 0) + 1;
+    else updates.hostWins = (d.hostWins || 0) + 1;
   }
   db.ref(`deadswitchRooms/${roomId}`).update(updates);
 }
 
-function startNewRound(currentRd) {
+function startNewRound(currentRd){
   const bombs = [];
-  while(bombs.length<4){
+  while(bombs.length < 4){
     const n = Math.floor(Math.random()*16);
     if(!bombs.includes(n)) bombs.push(n);
   }
@@ -421,16 +348,16 @@ function startNewRound(currentRd) {
 
   db.ref(`deadswitchRooms/${roomId}`).update({
     bombs,
-    opened:{},
-    lastBoom:false,
+    opened: {},
+    lastBoom: false,
     turn: nextTurn,
     currentRound: nextRound
   });
+
   opened.clear();
   document.getElementById("grid").innerHTML = "";
-  setTimeout(() => createBoard(), 100);
-  triggerSound(nextTurn==="Host" ? "s3.mp3" : "s4.mp3");
-  speak(`${nextTurn} เริ่มรอบที่ ${nextRound}`);
+  setTimeout(createBoard, 100);
+  triggerSound(nextTurn === "Host" ? "s3.mp3" : "s4.mp3");  // ดังทั้ง 2 ฝ่าย
 }
 
 // ====================== ผลลัพธ์ ======================
@@ -444,8 +371,7 @@ function showResult(room){
   const winner = h > g ? "Host" : "Guest";
 
   document.getElementById("resultTitle").textContent = `${winner} ชนะ!`;
-  document.getElementById("resultMessage").textContent = `คะแนน ${h} - ${g}`;
-  speak(`${winner} ชนะด้วยคะแนน ${h} ต่อ ${g} ยินดีด้วย!`);
+  document.getElementById("resultMessage").textContent = `${h} - ${g}`;
 
   document.getElementById("okButton").onclick = () => location.href = "../index.html";
 }
