@@ -24,8 +24,8 @@
   #resultScreen h1{font-size:82px;color:#ffff00;text-shadow:7px 7px #000;margin:0;}
   #resultScreen p{font-size:52px;margin:20px 0;color:#ffdd00;}
   #resultScreen button{padding:25px 100px;font-size:40px;background:#4CAF50;color:white;border:none;border-radius:25px;cursor:pointer;}
-  /* ซ่อน aria-live ให้มองไม่เห็นจริงๆ แต่ screen reader ยังอ่านได้ */
-  #liveResult, #liveRound{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;}
+  #liveResult{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+  #liveRound{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
 </style>
 </head>
 <body>
@@ -53,15 +53,12 @@
   <div id="grid-container"><div id="grid"></div></div>
 </div>
 
-<!-- หน้า result ผลสรุป แสดงเฉพาะ 3 อย่างเท่านั้น -->
 <div id="resultScreen" role="alert" aria-live="assertive">
   <h1 id="resultTitle" tabindex="-1"></h1>
   <p id="resultMessage"></p>
   <button id="okButton">ตกลง</button>
-
-  <!-- ซ่อนจากหน้าจอแต่ screen reader ยังอ่านได้ -->
-  <div id="liveResult" aria-live="assertive"></div>
-  <div id="liveRound" aria-live="polite"></div>
+  <div id="liveResult" role="region" aria-live="assertive"></div>
+  <div id="liveRound" role="region" aria-live="polite"></div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -251,6 +248,7 @@ function startGameplay() {
   gameRef.on("value", snap => {
     const d = snap.val(); if(!d || d.status!=="playing") return;
 
+    // แสดงคะแนนและตา
     const round = d.currentRound || 1;
     const h = d.hostWins || 0;
     const g = d.guestWins || 0;
@@ -258,10 +256,11 @@ function startGameplay() {
     document.getElementById("lifeBoard").innerHTML = 
       `รอบที่ ${round} : คะแนน Host ${h} ต่อ Guest ${g}<br>${turnText}`;
 
-    // ข้อ 2: ประกาศเฉพาะตอนเริ่มรอบใหม่
+    // ข้อ 2: ประกาศรอบใหม่ผ่าน aria-live (เฉพาะตอนเริ่มรอบใหม่)
     if (round !== lastAnnouncedRound) {
       lastAnnouncedRound = round;
-      document.getElementById("liveRound").textContent = `รอบที่ ${round} : คะแนน Host ${h} ต่อ Guest ${g}`;
+      const announce = `รอบที่ ${round} : คะแนน Host ${h} ต่อ Guest ${g}`;
+      document.getElementById("liveRound").textContent = announce;
     }
 
     if(!document.getElementById("grid").children.length) createBoard();
@@ -282,6 +281,7 @@ function startGameplay() {
       });
     }
 
+    // ข้อ 1: รอเสียงแพ้จบก่อนเริ่มรอบใหม่
     if(d.lastBoom && !lastBoomProcessed){
       lastBoomProcessed = true;
       pendingNewRound = true;
@@ -357,15 +357,18 @@ function showResult(room){
   const g = room.guestWins || 0;
   const winner = h > g ? "Host" : "Guest";
 
+  // ข้อ 1 & 3: หน้า result เรียบง่าย + accessibility
   document.getElementById("resultTitle").textContent = `${winner} เป็นฝ่ายชนะ`;
   document.getElementById("resultMessage").textContent = `ด้วยคะแนน ${h} ต่อ ${g}`;
 
-  // สำหรับ screen reader (assertive)
+  // ประกาศผลทันทีผ่าน aria-live assertive
   document.getElementById("liveResult").textContent = `${winner === "Host" ? "เจ้าของห้อง" : "แขก"} เป็นฝ่ายชนะ ด้วยคะแนน ${h} ต่อ ${g}`;
 
-  // Focus ทันที + ช่วยให้บาง screen reader อ่านซ้ำ
+  // Focus ไปที่หัวข้อผลแพ้ชนะทันที
   const titleEl = document.getElementById("resultTitle");
   titleEl.focus();
+
+  // ทำให้ screen reader อ่านซ้ำได้ทันทีสำหรับผู้ใช้บางตัว
 
   document.getElementById("okButton").onclick = () => {
     playSound("end.mp3");
