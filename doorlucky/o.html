@@ -84,7 +84,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// ==================== AudioEngine (ปรับปรุงใหม่) ====================
+// ==================== AudioEngine (แก้ไขสำหรับ iOS) ====================
 class AudioEngine {
   constructor(map) {
     this.map = map;
@@ -93,6 +93,7 @@ class AudioEngine {
     this.bgmEl = map['bgm'] || null;
     this.lastPlayedSound = null;
     this.lastPlayedTime = 0;
+    this.fullyUnlocked = false; // เพิ่มตัวแปรเช็คว่า unlock ครบแล้ว
   }
 
   async unlockAll() {
@@ -105,6 +106,7 @@ class AudioEngine {
         el.currentTime = 0;
       } catch (e) {}
     }
+    this.fullyUnlocked = true;
   }
 
   async startBGM() {
@@ -121,7 +123,6 @@ class AudioEngine {
     }
   }
 
-  // ป้องกันเสียงซ้ำด้วย debounce
   playEffect(key) {
     const now = Date.now();
     if (this.lastPlayedSound === key && now - this.lastPlayedTime < 500) {
@@ -227,10 +228,11 @@ let currentRoomListener = null, soundListener = null, lobbyListener = null;
 let gameStarted = false;
 let opened = new Set();
 let lastSoundTimestamp = 0;
+let pendingSounds = []; // เก็บเสียงที่ยังไม่ได้เล่น
 
-// ==================== เสียงซิงค์ (ผ่าน Firebase) - ปรับปรุงใหม่ ====================
+// ==================== เสียงซิงค์ (ปรับปรุงสำหรับ iOS) ====================
 async function playSound(file) {
-  if (!roomId || !hasUserInteracted) return;
+  if (!roomId) return;
   
   const timestamp = Date.now();
   await db.ref(`deadswitchRooms/${roomId}/sound`).set({
@@ -251,16 +253,37 @@ function startSoundListener() {
     const now = Date.now();
     const timeDiff = now - data.time;
     
-    // ป้องกันเสียงเก่าและเสียงซ้ำ
     if (timeDiff > 2000 || data.time <= lastSoundTimestamp) return;
     
     lastSoundTimestamp = data.time;
     
     const key = data.file.replace(".mp3", "");
+    
+    // ถ้ายัง unlock ไม่เสร็จ เก็บไว้ก่อน
+    if (!audio.fullyUnlocked) {
+      pendingSounds.push(key);
+      return;
+    }
+    
     if (audio.map[key]) {
       await audio.playEffect(key);
     }
   });
+}
+
+// ฟังก์ชันเล่นเสียงที่ค้างไว้
+async function playPendingSounds() {
+  if (pendingSounds.length === 0) return;
+  
+  const sounds = [...pendingSounds];
+  pendingSounds = [];
+  
+  for (const key of sounds) {
+    if (audio.map[key]) {
+      await audio.playEffect(key);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
 }
 
 // ==================== เริ่มต้น ====================
@@ -272,7 +295,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ==================== Lobby & Room ====================
 document.getElementById("createRoomBtn").onclick = async () => {
-  unlockAudio();
+  await unlockAudio();
   const name = prompt("ตั้งชื่อห้อง (หรือเว้นว่าง):") || "ห้องใหม่";
   const roomRef = db.ref("deadswitchRooms").push();
   roomId = roomRef.key;
@@ -290,7 +313,7 @@ document.getElementById("createRoomBtn").onclick = async () => {
 };
 
 async function joinRoom(id) {
-  unlockAudio();
+  await unlockAudio();
   const snap = await db.ref(`deadswitchRooms/${id}`).once("value");
   const room = snap.val();
   if (!room || room.status !== "waiting" || Object.keys(room.players || {}).length >= 2) {
@@ -301,7 +324,14 @@ async function joinRoom(id) {
   myRole = "Guest";
   await db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).set("Guest");
   db.ref(`deadswitchRooms/${roomId}/players/${playerId}`).onDisconnect().remove();
-  playSound("friend.mp3");
+  
+  // ไม่เล่นเสียง friend ทันทีบน iOS เพราะอาจยัง unlock ไม่เสร็จ
+  setTimeout(() => {
+    if (audio.fullyUnlocked) {
+      playSound("friend.mp3");
+    }
+  }, 300);
+  
   showRoom();
 }
 
@@ -354,13 +384,17 @@ function showRoom() {
   });
 }
 
-document.getElementById("startBtn").onclick = () => {
+document.getElementById("startBtn").onclick = async () => {
+  // iOS: ให้ unlock เสียงอีกครั้งก่อนเริ่มเกม
+  await unlockAudio();
+  
   const bombs = [];
   while (bombs.length < 4) {
     const n = Math.floor(Math.random() * 16);
     if (!bombs.includes(n)) bombs.push(n);
   }
-  db.ref(`deadswitchRooms/${roomId}`).update({
+  
+  await db.ref(`deadswitchRooms/${roomId}`).update({
     status: "playing",
     currentRound: 1,
     hostWins: 0,
@@ -381,6 +415,7 @@ function startGameplay() {
 
   const gameRef = db.ref(`deadswitchRooms/${roomId}`);
   let lastActionTime = 0;
+  let firstLoad = true;
   
   gameRef.on("value", snap => {
     const d = snap.val();
@@ -391,7 +426,25 @@ function startGameplay() {
 
     if (!document.getElementById("grid").children.length) {
       createBoard();
-      playSound(d.turn === "Host" ? "s3.mp3" : "s4.mp3");
+      
+      // iOS: เล่นเสียงเริ่มเกมหลัง user interaction
+      if (firstLoad) {
+        firstLoad = false;
+        
+        // สร้าง invisible overlay ให้คลิก
+        const overlay = document.createElement("div");
+        overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;";
+        overlay.innerHTML = `<div style="background:#ffff00;color:#000;padding:30px 60px;border-radius:20px;font-size:32px;font-weight:bold;cursor:pointer;">แตะเพื่อเริ่มเกม</div>`;
+        
+        overlay.onclick = async () => {
+          await unlockAudio();
+          await playPendingSounds(); // เล่นเสียงที่ค้างไว้
+          playSound(d.turn === "Host" ? "s3.mp3" : "s4.mp3");
+          overlay.remove();
+        };
+        
+        document.body.appendChild(overlay);
+      }
     }
 
     // ตรวจสอบ action ใหม่
@@ -441,7 +494,10 @@ function createBoard() {
     const cell = document.createElement("button");
     cell.className = "cell";
     cell.textContent = `ช่อง ${i + 1}`;
-    cell.onclick = () => playerClick(i);
+    cell.onclick = async () => {
+      await unlockAudio(); // unlock ก่อนทุกครั้งที่คลิก
+      playerClick(i);
+    };
     grid.appendChild(cell);
   }
 }
@@ -507,7 +563,8 @@ function showResult(room) {
   document.getElementById("resultTitle").textContent = `${winner} ชนะ!`;
   document.getElementById("resultMessage").textContent = message;
 
-  document.getElementById("okButton").onclick = () => {
+  document.getElementById("okButton").onclick = async () => {
+    await unlockAudio();
     playSound("end.mp3");
     setTimeout(() => location.href = "../index.html", 2000);
   };
