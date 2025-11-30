@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>คณิตคิดไว - Match for Kids</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    font-family: "Segoe UI", sans-serif;
+    background: linear-gradient(135deg, #a8e6cf, #dcedc1);
+    text-align: center;
+    padding: 20px;
+    margin: 0;
+    color: #333;
+  }
+  #game, #lobby, #room, #quiz, #result { display: none; }
+  button {
+    background: #FF6B6B; color: white; border: none;
+    padding: 12px 24px; margin: 8px; border-radius: 12px; cursor: pointer;
+    font-size: 18px; font-weight: bold;
+    box-shadow: 0 4px 15px rgba(255,107,107,0.4);
+    transition: all 0.3s;
+  }
+  button:hover { background: #ff5252; transform: translateY(-3px); }
+  input { padding: 12px; border-radius: 8px; border: 2px solid #4CAF50; width: 240px; font-size: 18px; }
+  h1, h2, h3 { color: #2e7d32; text-shadow: 1px 1px 3px rgba(0,0,0,0.1); }
+  ul { list-style: none; padding: 0; }
+  li { margin: 12px 0; background:#fff; padding:16px; border-radius:15px; box-shadow:0 4px 12px rgba(0,0,0,0.1); font-size: 18px; }
+
+  #backToMenuBtn {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 9999;
+  }
+  #backToMenuBtn button {
+    background: #f44336;
+    padding: 12px 26px;
+    font-weight: bold;
+    border-radius: 50px;
+    box-shadow: 0 4px 12px rgba(244,67,54,0.4);
+  }
+  #backToMenuBtn button:hover {
+    background: #d32f2f;
+    transform: translateY(-2px);
+  }
+  #options button {
+    width: 90%; margin: 10px auto; padding: 16px; font-size: 22px;
+  }
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+<h1 id="mainTitle" tabindex="0">คณิตคิดไว - Match for Kids ⚡</h1>
+
+<div id="backToMenuBtn">
+  <button onclick="window.location.href='../index.html'">กลับเมนูหลัก</button>
+</div>
+
+<div id="game">
+  <div id="nameInput">
+    <h2>เกมคณิตคิดไว แข่งกันตอบเร็ว!</h2>
+    <p>มาแข่งกันคิดเลขไว ใครตอบเร็วและถูกมากสุด ชนะเลย!<br>เล่นกับเพื่อนได้สูงสุด 8 คน แต่ละรอบมี 7 ข้อ<br>ในแต่ละข้อมีเวลา 20 วินาที จะเล่นคนเดียวหรือรอเพื่อนมาจอยก็ได้</p>
+    <input id="playerName" placeholder="ชื่อของคุณ" autofocus><br><br>
+    <button onclick="confirmName()">ยืนยัน!</button>
+  </div>
+
+  <div id="lobby">
+    <h2 id="lobbyTitle" tabindex="0">ห้องทั้งหมด</h2>
+    <button onclick="showCreateRoom()">สร้างห้องใหม่</button>
+    <h3>ห้องที่เปิดอยู่</h3>
+    <ul id="roomList"></ul>
+  </div>
+
+  <div id="room">
+    <h2 id="roomName" tabindex="0"></h2>
+    <p>คนที่สร้างห้องกด "เริ่มเกม" ได้คนเดียว<br>แต่ละข้อมีเวลา 20 วินาที ถ้าตอบครบทุกคนก่อนจะไปข้อต่อไปทันที</p>
+    <ul id="playerList"></ul>
+    <button id="startBtn" onclick="startGame()">เริ่มเกม!</button>
+  </div>
+
+  <div id="quiz">
+    <h2 id="questionText" tabindex="0"></h2>
+    <div id="options"></div>
+    <p id="timer" style="font-size:24px; font-weight:bold; color:#d50000; margin-top:25px;"></p>
+  </div>
+
+  <div id="result">
+    <h2 id="resultHeading" tabindex="0">สรุปผล</h2>
+    <ul id="scoreList"></ul>
+    <button onclick="requestBackToLobby()">กลับไปล็อบบี้</button>
+  </div>
+</div>
+
+<script>
+// === เปลี่ยน Firebase Config ใหม่ตามที่ขอ ===
+const firebaseConfig = {
+  apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
+  authDomain: "xo-game-134ec.firebaseapp.com",
+  databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "xo-game-134ec",
+  storageBucket: "xo-game-134ec.firebasestorage.app",
+  messagingSenderId: "318375224157",
+  appId: "1:318375224157:web:1ae37e5d1f3c6bc2b77eb4"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let playerName="", roomId="", playerId="", isHost=false;
+let questionIndex=0, timerInterval, timeLeft=20, localAnswered=false;
+let currentRoomListener=null, soundListener=null, currentAudio=null, lastSoundTime=0;
+let lastQuestionText = "";
+
+// เสียงต่าง ๆ (ต้องมีโฟลเดอร์ audio/ และไฟล์เหล่านี้อยู่)
+const soundFiles = ["pop.mp3","start.mp3","friend.mp3","door.mp3","next.mp3","new4.mp3","wait.mp3"];
+const preloadedAudios = {};
+
+function preloadAllSounds() {
+  soundFiles.forEach(name => {
+    const audio = new Audio(`audio/${name}`);
+    audio.preload = "auto";
+    preloadedAudios[name] = audio;
+  });
+  if (preloadedAudios["friend.mp3"]) {
+    preloadedAudios["friend.mp3"].volume = 0;
+    preloadedAudios["friend.mp3"].play().then(() => {
+      preloadedAudios["friend.mp3"].pause();
+      preloadedAudios["friend.mp3"].currentTime = 0;
+      preloadedAudios["friend.mp3"].volume = 1;
+    }).catch(() => {});
+  }
+}
+
+// === ชุดคำถามคณิตคิดไว 100+ ข้อ ===
+const questions = [
+  { q:"15 บวก 27 เท่ากับเท่าไหร่?", options:["40","42","44"], answer:1 },
+  { q:"83 ลบ 36 เท่ากับเท่าไหร่?", options:["47","57","37"], answer:0 },
+  { q:"7 คูณ 8 เท่ากับเท่าไหร่?", options:["54","56","64"], answer:1 },
+  { q:"72 หาร 8 เท่ากับเท่าไหร่?", options:["8","9","10"], answer:1 },
+  { q:"125 บวก 175 เท่ากับเท่าไหร่?", options:["290","300","310"], answer:1 },
+  { q:"9 คูณ 11 เท่ากับเท่าไหร่?", options:["99","88","110"], answer:0 },
+  { q:"144 หาร 12 เท่ากับเท่าไหร่?", options:["10","12","14"], answer:1 },
+  { q:"68 ลบ 29 เท่ากับเท่าไหร่?", options:["39","49","29"], answer:0 },
+  { q:"25 คูณ 4 เท่ากับเท่าไหร่?", options:["80","100","120"], answer:1 },
+  { q:"450 บวก 350 เท่ากับเท่าไหร่?", options:["800","750","850"], answer:0 },
+  { q:"96 หาร 8 เท่ากับเท่าไหร่?", options:["12","10","14"], answer:0 },
+  { q:"19 คูณ 5 เท่ากับเท่าไหร่?", options:["95","90","100"], answer:0 },
+  { q:"99 บวก 88 เท่ากับเท่าไหร่?", options:["177","187","197"], answer:1 },
+  { q:"400 ลบ 225 เท่ากับเท่าไหร่?", options:["175","185","165"], answer:0 },
+  { q:"15 คูณ 15 เท่ากับเท่าไหร่?", options:["225","200","250"], answer:0 },
+  { q:"81 หาร 9 เท่ากับเท่าไหร่?", options:["8","9","10"], answer:1 },
+  { q:"333 บวก 444 เท่ากับเท่าไหร่?", options:["777","767","787"], answer:0 },
+  { q:"11 คูณ 11 เท่ากับเท่าไหร่?", options:["111","121","131"], answer:1 },
+  { q:"240 หาร 8 เท่ากับเท่าไหร่?", options:["30","20","40"], answer:0 },
+  { q:"555 บวก 444 เท่ากับเท่าไหร่?", options:["999","989","1009"], answer:0 },
+  { q:"84 หาร 7 เท่ากับเท่าไหร่?", options:["12","10","14"], answer:0 },
+  { q:"16 คูณ 6 เท่ากับเท่าไหร่?", options:["96","86","106"], answer:0 },
+  { q:"700 ลบ 475 เท่ากับเท่าไหร่?", options:["225","235","215"], answer:0 },
+  { q:"25 คูณ 12 เท่ากับเท่าไหร่?", options:["300","250","350"], answer:0 },
+  { q:"88 บวก 111 เท่ากับเท่าไหร่?", options:["199","189","209"], answer:0 },
+  { q:"48 หาร 6 เท่ากับเท่าไหร่?", options:["7","8","9"], answer:1 },
+  { q:"123 บวก 456 เท่ากับเท่าไหร่?", options:["579","569","589"], answer:0 },
+  { q:"13 คูณ 8 เท่ากับเท่าไหร่?", options:["104","96","112"], answer:0 },
+  { q:"999 ลบ 666 เท่ากับเท่าไหร่?", options:["333","343","323"], answer:0 },
+  { q:"36 หาร 6 เท่ากับเท่าไหร่?", options:["5","6","7"], answer:1 },
+  { q:"76 บวก 89 เท่ากับเท่าไหร่?", options:["165","155","175"], answer:0 },
+  { q:"14 คูณ 7 เท่ากับเท่าไหร่?", options:["98","88","108"], answer:0 },
+  { q:"500 ลบ 278 เท่ากับเท่าไหร่?", options:["222","232","212"], answer:0 },
+  { q:"100 หาร 4 เท่ากับเท่าไหร่?", options:["20","25","30"], answer:1 },
+  { q:"222 บวก 777 เท่ากับเท่าไหร่?", options:["999","989","1009"], answer:0 },
+  { q:"19 คูณ 9 เท่ากับเท่าไหร่?", options:["171","161","181"], answer:0 },
+  { q:"360 หาร 6 เท่ากับเท่าไหร่?", options:["60","50","70"], answer:0 },
+  { q:"432 ลบ 189 เท่ากับเท่าไหร่?", options:["243","253","233"], answer:0 },
+  { q:"28 คูณ 5 เท่ากับเท่าไหร่?", options:["140","130","150"], answer:0 },
+  { q:"888 บวก 111 เท่ากับเท่าไหร่?", options:["999","989","979"], answer:0 },
+  { q:"98 หาร 7 เท่ากับเท่าไหร่?", options:["12","14","16"], answer:1 },
+  { q:"12 คูณ 12 เท่ากับเท่าไหร่?", options:["144","134","154"], answer:0 },
+  { q:"600 หาร 8 เท่ากับเท่าไหร่?", options:["75","70","80"], answer:0 },
+  { q:"777 ลบ 333 เท่ากับเท่าไหร่?", options:["444","454","434"], answer:0 },
+  { q:"17 คูณ 6 เท่ากับเท่าไหร่?", options:["102","92","112"], answer:0 },
+  { q:"987 ลบ 654 เท่ากับเท่าไหร่?", options:["333","343","323"], answer:0 },
+  { q:"13 คูณ 13 เท่ากับเท่าไหร่?", options:["169","159","179"], answer:0 },
+  { q:"480 หาร 6 เท่ากับเท่าไหร่?", options:["80","70","90"], answer:0 },
+  { q:"199 บวก 801 เท่ากับเท่าไหร่?", options:["1000","990","1010"], answer:0 },
+  { q:"24 คูณ 15 เท่ากับเท่าไหร่?", options:["360","350","370"], answer:0 },
+  { q:"56 หาร 7 เท่ากับเท่าไหร่?", options:["8","7","9"], answer:0 },
+  { q:"345 บวก 255 เท่ากับเท่าไหร่?", options:["600","590","610"], answer:0 },
+  { q:"8 คูณ 15 เท่ากับเท่าไหร่?", options:["120","110","130"], answer:0 },
+  { q:"625 หาร 5 เท่ากับเท่าไหร่?", options:["125","120","130"], answer:0 },
+  { q:"49 คูณ 7 เท่ากับเท่าไหร่?", options:["343","336","350"], answer:0 },
+  { q:"100 ลบ 37 เท่ากับเท่าไหร่?", options:["63","73","53"], answer:0 },
+  { q:"6 คูณ 9 เท่ากับเท่าไหร่?", options:["54","48","60"], answer:0 },
+  { q:"81 หาร 3 เท่ากับเท่าไหร่?", options:["27","24","30"], answer:0 },
+  { q:"248 บวก 152 เท่ากับเท่าไหร่?", options:["400","390","410"], answer:0 },
+  { q:"16 คูณ 8 เท่ากับเท่าไหร่?", options:["128","118","138"], answer:0 },
+  { q:"999 ลบ 1 เท่ากับเท่าไหร่?", options:["998","999","997"], answer:0 },
+  { q:"35 บวก 46 เท่ากับเท่าไหร่?", options:["81","71","91"], answer:0 },
+  { q:"112 หาร 8 เท่ากับเท่าไหร่?", options:["14","12","16"], answer:0 },
+  { q:"9 คูณ 25 เท่ากับเท่าไหร่?", options:["225","200","250"], answer:0 },
+  { q:"777 บวก 222 เท่ากับเท่าไหร่?", options:["999","989","979"], answer:0 },
+  { q:"66 หาร 6 เท่ากับเท่าไหร่?", options:["11","10","12"], answer:0 },
+  { q:"124 ลบ 58 เท่ากับเท่าไหร่?", options:["66","76","56"], answer:0 },
+  { q:"18 คูณ 5 เท่ากับเท่าไหร่?", options:["90","80","100"], answer:0 },
+  { q:"500 บวก 499 เท่ากับเท่าไหร่?", options:["999","998","1000"], answer:0 },
+  { q:"75 หาร 5 เท่ากับเท่าไหร่?", options:["15","10","20"], answer:0 },
+  { q:"256 บวก 384 เท่ากับเท่าไหร่?", options:["640","630","650"], answer:0 },
+  { q:"88 หาร 8 เท่ากับเท่าไหร่?", options:["11","10","12"], answer:0 },
+  { q:"444 บวก 555 เท่ากับเท่าไหร่?", options:["999","989","979"], answer:0 },
+  { q:"29 บวก 73 เท่ากับเท่าไหร่?", options:["102","92","112"], answer:0 },
+  { q:"7 คูณ 14 เท่ากับเท่าไหร่?", options:["98","88","108"], answer:0 },
+  { q:"800 ลบ 375 เท่ากับเท่าไหร่?", options:["425","435","415"], answer:0 },
+  { q:"45 หาร 9 เท่ากับเท่าไหร่?", options:["5","4","6"], answer:0 },
+  { q:"159 บวก 241 เท่ากับเท่าไหร่?", options:["400","390","410"], answer:0 },
+  { q:"11 คูณ 12 เท่ากับเท่าไหร่?", options:["132","122","142"], answer:0 },
+  { q:"900 หาร 9 เท่ากับเท่าไหร่?", options:["100","90","110"], answer:0 },
+  { q:"666 บวก 333 เท่ากับเท่าไหร่?", options:["999","989","979"], answer:0 },
+  { q:"52 ลบ 28 เท่ากับเท่าไหร่?", options:["24","34","14"], answer:0 },
+  { q:"8 คูณ 11 เท่ากับเท่าไหร่?", options:["88","80","96"], answer:0 },
+  { q:"144 หาร 6 เท่ากับเท่าไหร่?", options:["24","22","26"], answer:0 },
+  { q:"199 บวก 301 เท่ากับเท่าไหร่?", options:["500","490","510"], answer:0 },
+  { q:"15 คูณ 8 เท่ากับเท่าไหร่?", options:["120","110","130"], answer:0 },
+  { q:"700 ลบ 525 เท่ากับเท่าไหร่?", options:["175","185","165"], answer:0 },
+  { q:"64 หาร 8 เท่ากับเท่าไหร่?", options:["8","7","9"], answer:0 },
+  { q:"425 บวก 575 เท่ากับเท่าไหร่?", options:["1000","990","1010"], answer:0 },
+  { q:"26 คูณ 5 เท่ากับเท่าไหร่?", options:["130","120","140"], answer:0 },
+  { q:"888 ลบ 889 เท่ากับเท่าไหร่?", options:["-1","0","1"], answer:0 },
+  { q:"33 คูณ 3 เท่ากับเท่าไหร่?", options:["99","96","102"], answer:0 },
+  { q:"555 บวก 445 เท่ากับเท่าไหร่?", options:["1000","990","1010"], answer:0 },
+  { q:"48 ลบ 19 เท่ากับเท่าไหร่?", options:["29","39","19"], answer:0 },
+  { q:"9 คูณ 9 เท่ากับเท่าไหร่?", options:["81","72","90"], answer:0 },
+  { q:"120 หาร 5 เท่ากับเท่าไหร่?", options:["24","22","26"], answer:0 },
+  { q:"777 บวก 111 เท่ากับเท่าไหร่?", options:["888","878","898"], answer:0 },
+  { q:"14 คูณ 9 เท่ากับเท่าไหร่?", options:["126","116","136"], answer:0 },
+  { q:"999 ลบ 333 เท่ากับเท่าไหร่?", options:["666","656","676"], answer:0 },
+  { q:"55 หาร 5 เท่ากับเท่าไหร่?", options:["11","10","12"], answer:0 },
+  { q:"299 บวก 701 เท่ากับเท่าไหร่?", options:["1000","990","1010"], answer:0 },
+  { q:"18 คูณ 7 เท่ากับเท่าไหร่?", options:["126","116","136"], answer:0 },
+  { q:"800 หาร 8 เท่ากับเท่าไหร่?", options:["100","90","110"], answer:0 },
+  { q:"444 บวก 556 เท่ากับเท่าไหร่?", options:["1000","990","1010"], answer:0 }
+];
+
+// เริ่มเกม
+document.getElementById("game").style.display="block";
+document.getElementById("backToMenuBtn").style.display="block";
+
+// === ฟังก์ชันเสียง ===
+function triggerSound(name) {
+  if (!roomId) return;
+  const now = Date.now();
+  if (now - lastSoundTime < 200) return;
+  lastSoundTime = now;
+  db.ref(`guessGameRooms/${roomId}/soundTrigger`).set({name, time: now});
+}
+function triggerWaitSoundOnlyAtEnd() {
+  if (!roomId) return;
+  db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).set({time: Date.now()});
+}
+function stopCurrentAudio() {
+  if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
+}
+function playSound(name) {
+  stopCurrentAudio();
+  const audio = preloadedAudios[`${name}.mp3`] || preloadedAudios[name] || new Audio(`audio/${name}.mp3`);
+  audio.play().catch(() => {});
+  currentAudio = audio;
+}
+function startSoundListener() {
+  if (soundListener) soundListener.off();
+  if (!roomId) return;
+  soundListener = db.ref(`guessGameRooms/${roomId}/soundTrigger`);
+  soundListener.on("value", s => { const d = s.val(); if (d?.name) playSound(d.name); });
+  db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).on("value", s => { if (s.val()?.time) playSound("wait"); });
+}
+
+// === การเข้าถึงหน้าจอ ===
+function focusHeading(id) {
+  requestAnimationFrame(() => setTimeout(() => {
+    const el = document.getElementById(id);
+    if (el) { el.setAttribute('tabindex', '-1'); el.focus(); }
+  }, 150));
+}
+function focusQuestionIfChanged(newText) {
+  if (newText !== lastQuestionText) {
+    lastQuestionText = newText;
+    document.getElementById("questionText").textContent = newText;
+    focusHeading("questionText");
+  }
+}
+
+function shuffleArray(arr) {
+  for (let i = arr.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+// === เกมหลัก ===
+function confirmName() {
+  playerName = document.getElementById("playerName").value.trim();
+  if (!playerName) { alert("กรุณาใส่ชื่อ"); return; }
+  playerId = Math.random().toString(36).substr(2,9);
+  document.getElementById("nameInput").style.display = "none";
+  document.getElementById("lobby").style.display = "block";
+  focusHeading("lobbyTitle");
+  preloadAllSounds();
+  loadRooms();
+}
+
+function loadRooms() {
+  const list = document.getElementById("roomList");
+  db.ref("guessGameRooms").on("value", snap => {
+    list.innerHTML = "";
+    const now = Date.now();
+    snap.forEach(r => {
+      const room = r.val();
+      const roomKey = r.key;
+      const playerCount = room.players ? Object.keys(room.players).length : 0;
+      if (playerCount === 0 && room.created && (now - room.created > 3000)) {
+        db.ref(`guessGameRooms/${roomKey}`).remove();
+        return;
+      }
+      if (room.status === "waiting" && playerCount > 0) {
+        const li = document.createElement("li");
+        li.innerHTML = `${room.name} (${playerCount} คน)`;
+        const btn = document.createElement("button");
+        btn.textContent = "เข้าร่วม";
+        btn.onclick = () => joinRoom(roomKey);
+        li.appendChild(btn);
+        list.appendChild(li);
+      }
+    });
+  });
+}
+
+function showCreateRoom() {
+  const name = prompt("ตั้งชื่อห้อง:");
+  if (!name) return;
+  const ref = db.ref("guessGameRooms").push();
+  roomId = ref.key; isHost = true;
+  ref.set({name, status:"waiting", host:playerId, created:Date.now(), players:{}});
+  joinRoom(roomId);
+}
+
+function joinRoom(id) {
+  db.ref(`guessGameRooms/${id}`).once("value").then(snap => {
+    const room = snap.val();
+    const playerCount = room.players ? Object.keys(room.players).length : 0;
+    if (playerCount >= 8) {
+      alert("ห้องเต็มแล้ว (สูงสุด 8 คน)");
+      return;
+    }
+    roomId = id;
+    const ref = db.ref(`guessGameRooms/${roomId}/players/${playerId}`);
+    ref.set({name:playerName, score:0, answered:false});
+    ref.onDisconnect().remove();
+    db.ref(`guessGameRooms/${roomId}/lastJoin`).set(Date.now());
+    showRoom();
+  });
+}
+
+function showRoom() {
+  document.getElementById("lobby").style.display = "none";
+  document.getElementById("room").style.display = "block";
+  focusHeading("roomName");
+  startSoundListener();
+
+  if (currentRoomListener) currentRoomListener.off();
+  currentRoomListener = db.ref(`guessGameRooms/${roomId}`);
+  currentRoomListener.on("value", snap => {
+    const room = snap.val();
+    if (!room) { alert("ห้องถูกลบแล้ว"); backToLobby(); return; }
+    document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
+    const list = document.getElementById("playerList"); list.innerHTML = "";
+    if (room.players) {
+      for (let id in room.players) {
+        const li = document.createElement("li");
+        li.textContent = `${room.players[id].name} (${room.players[id].score||0} คะแนน)`;
+        list.appendChild(li);
+      }
+    }
+    document.getElementById("startBtn").style.display = (room.host === playerId) ? "inline" : "none";
+
+    if (room.lastJoin && room.lastJoin !== window._lastJoinTime) {
+      window._lastJoinTime = room.lastJoin;
+      playSound("friend");
+    }
+    if (room.lastBackToLobby && room.lastBackToLobby !== window._lastBackTime) {
+      window._lastBackTime = room.lastBackToLobby;
+      triggerSound("door");
+    }
+
+    if (room.status === "playing") startQuiz();
+    else if (room.status === "finished") showResult(room);
+  });
+}
+
+function startGame() {
+  triggerSound("start");
+  db.ref(`guessGameRooms/${roomId}`).update({
+    status: "playing",
+    current: 0,
+    questions: getRandomQuestions(7)
+  });
+}
+
+function getRandomQuestions(n) {
+  const copy = [...questions];
+  const res = [];
+  for (let i = 0; i < n; i++) {
+    const idx = Math.floor(Math.random() * copy.length);
+    let q = copy.splice(idx, 1)[0];
+    const opts = [...q.options];
+    const correctText = opts[q.answer];
+    shuffleArray(opts);
+    q.answer = opts.indexOf(correctText);
+    q.options = opts;
+    res.push(q);
+  }
+  return res;
+}
+
+function startQuiz() {
+  document.getElementById("room").style.display = "none";
+  document.getElementById("quiz").style.display = "block";
+  document.getElementById("mainTitle").style.display = "none";
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
+    questionIndex = data.current || 0;
+    showQuestion(data.questions[questionIndex]);
+  });
+}
+
+function showQuestion(q) {
+  if (!q) { if (isHost) endGameHost(); return; }
+  localAnswered = false;
+  timeLeft = Math.floor(Math.random() * 6) + 15;
+
+  const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;
+  focusQuestionIfChanged(newText);
+
+  const container = document.getElementById("options");
+  container.innerHTML = "";
+  q.options.forEach((opt, i) => {
+    const btn = document.createElement("button");
+    btn.textContent = opt;
+    btn.onclick = () => submitAnswer(i === q.answer);
+    container.appendChild(btn);
+  });
+
+  document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`;
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`;
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      triggerSound("next");
+      setTimeout(nextQuestion, 1200);
+    }
+  }, 1000);
+}
+
+function submitAnswer(isCorrect) {
+  if (localAnswered) return;
+  localAnswered = true;
+  playSound("pop");
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
+    if (isCorrect) {
+      db.ref(`guessGameRooms/${roomId}/players/${playerId}/score`).transaction(v => (v || 0) + 1);
+    }
+    db.ref(`guessGameRooms/${roomId}/players/${playerId}/answered`).set(true);
+    checkAllAnswered();
+  });
+}
+
+function checkAllAnswered() {
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
+    const all = Object.values(data.players || {}).every(p => p.answered);
+    if (all) {
+      clearInterval(timerInterval);
+      if (data.current === data.questions.length - 1) {
+        triggerWaitSoundOnlyAtEnd();
+        setTimeout(() => triggerSound("new4"), 600);
+        setTimeout(nextQuestion, 2500);
+      } else {
+        setTimeout(() => triggerSound("next"), 500);
+        setTimeout(nextQuestion, 1200);
+      }
+    }
+  });
+}
+
+function nextQuestion() {
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
+    if (!data) return;
+    const updates = {};
+    for (let id in data.players) updates[`players/${id}/answered`] = false;
+    updates.current = (data.current || 0) + 1;
+    db.ref(`guessGameRooms/${roomId}`).update(updates);
+    questionIndex = updates.current;
+    if (questionIndex < data.questions.length) {
+      showQuestion(data.questions[questionIndex]);
+    } else if (isHost) {
+      setTimeout(endGameHost, 800);
+    }
+  });
+}
+
+function endGameHost() {
+  clearInterval(timerInterval);
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const room = snap.val();
+    if (!room?.players) return;
+    const players = Object.values(room.players);
+    players.sort((a,b) => b.score - a.score);
+    const max = players[0].score;
+    const winners = players.filter(p => p.score === max).map(p => p.name);
+
+    db.ref(`guessGameRooms/${roomId}`).update({
+      status: "finished",
+      result: { winners, players }
+    });
+  });
+}
+
+function showResult(roomData) {
+  clearInterval(timerInterval);
+  document.getElementById("quiz").style.display = "none";
+  document.getElementById("result").style.display = "block";
+  document.getElementById("mainTitle").style.display = "none";
+
+  const list = document.getElementById("scoreList");
+  list.innerHTML = "";
+  const players = roomData.result?.players || [];
+  const winners = roomData.result?.winners || [];
+  document.getElementById("resultHeading").textContent = `ผู้ชนะคือ ${winners.join(", ")}!`;
+
+  players.forEach(p => {
+    const li = document.createElement("li");
+    li.textContent = `${p.name}: ${p.score} คะแนน`;
+    list.appendChild(li);
+  });
+  focusHeading("resultHeading");
+}
+
+function requestBackToLobby() {
+  triggerSound("door");
+  db.ref(`guessGameRooms/${roomId}/lastBackToLobby`).set(Date.now());
+  backToLobby();
+}
+
+function backToLobby() {
+  if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
+  if (soundListener) { soundListener.off(); soundListener = null; }
+  db.ref(`guessGameRooms/${roomId}/players/${playerId}`).remove();
+  roomId = ""; questionIndex = 0; lastQuestionText = "";
+  document.getElementById("result").style.display = "none";
+  document.getElementById("room").style.display = "none";
+  document.getElementById("quiz").style.display = "none";
+  document.getElementById("mainTitle").style.display = "block";
+  document.getElementById("lobby").style.display = "block";
+  focusHeading("lobbyTitle");
+  loadRooms();
+}
+</script>
+</body>
+</html>
