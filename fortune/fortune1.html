@@ -17,7 +17,6 @@
             padding: 20px;
             text-align: center;
             box-sizing: border-box;
-            position: relative; /* เพิ่มเพื่อให้ปุ่มกลับอยู่ด้านบนซ้าย */
         }
 
         h1 { color: #e65100; margin-bottom: 10px; font-size: 1.8rem; }
@@ -32,23 +31,6 @@
             width: 100%;
             max-width: 400px;
         }
-
-        /* ปุ่มกลับเมนูหลัก - ด้านบนซ้าย */
-        #backBtn {
-            position: absolute;
-            top: 15px;
-            left: 15px;
-            background-color: #333;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            font-size: 1rem;
-            border-radius: 50px;
-            cursor: pointer;
-            z-index: 100;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        }
-        #backBtn:hover { background-color: #555; }
 
         /* ปุ่มหลัก */
         #actionBtn {
@@ -95,17 +77,15 @@
 </head>
 <body>
 
-    <!-- ปุ่มกลับเมนูหลัก (ข้อ 1) -->
-    <button id="backBtn" onclick="window.location.href='../index.html'">กลับเมนูหลัก</button>
-
     <h1>เซียมซีเสี่ยงทาย</h1>
 
     <button id="helpBtn" aria-label="กดเพื่อฟังวิธีเล่น">ฟังวิธีเล่น</button>
 
+    <!-- ปุ่มใหม่ที่เพิ่มมา (อยู่ใต้ปุ่มฟังวิธีเล่น) -->
     <button id="bgSoundBtn" aria-label="เล่น/หยุดเสียงบรรยากาศ">เล่นเสียงบรรยากาศ</button>
 
     <div id="resultArea" role="status" aria-live="polite">
-        พร้อมแล้ว! กดปุ่มเสี่ยงทายด้านล่างได้ทันที
+        พร้อมแล้วกดปุ่มสีส้มด้านล่าง
     </div>
 
     <div style="flex-grow: 1;"></div> 
@@ -132,21 +112,17 @@
         let shakeInterval;
         let audioCtx;
 
-        // เสียงบรรยากาศเดิม
+        // เพิ่มตัวแปรสำหรับเสียงบรรยากาศ
         const bgAudio = new Audio('01.mp3');
-        bgAudio.loop = true;
+        bgAudio.loop = true; // ให้วนซ้ำตลอด
         let isBgPlaying = false;
-
-        // เสียงเขย่าใหม่ 02.mp3 (ข้อ 2)
-        const shakeAudio = new Audio('02.mp3');
-        shakeAudio.loop = true; // ให้วนซ้ำตอนเขย่า
 
         const btn = document.getElementById('actionBtn');
         const helpBtn = document.getElementById('helpBtn');
         const bgSoundBtn = document.getElementById('bgSoundBtn');
         const resultArea = document.getElementById('resultArea');
 
-        // --- 2. ระบบ TTS ---
+        // --- 2. ระบบ TTS (เสียงอ่านของ Google) ---
         function speak(text) {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
@@ -161,7 +137,25 @@
             window.speechSynthesis.speak(utterance);
         }
 
-        // --- 3. ลบระบบเสียงเขย่าเดิมทั้งหมด ออกไปหมดแล้ว ---
+        // --- 3. ระบบเสียง Effect (สังเคราะห์เสียงเขย่า) ---
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playShakeSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(200 + Math.random() * 400, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
 
         // --- 4. ปุ่มฟังวิธีเล่น ---
         helpBtn.addEventListener('click', () => {
@@ -169,7 +163,7 @@
             speak(instructions);
         });
 
-        // --- 5. ปุ่มเสียงบรรยากาศ ---
+        // --- 5. ปุ่มเล่น/หยุด เสียงบรรยากาศ ---
         bgSoundBtn.addEventListener('click', () => {
             if (isBgPlaying) {
                 bgAudio.pause();
@@ -183,18 +177,17 @@
             }
         });
 
-        // --- 6. กลไกเกมเซียมซี (เปลี่ยนมาใช้ 02.mp3 แทนเสียงเดิมทั้งหมด) ---
+        // --- 6. กลไกเกมเซียมซี (เดิมทุกประการ) ---
         btn.addEventListener('click', () => {
+            initAudio();
+
             if (!isShaking) {
                 isShaking = true;
                 btn.innerText = "หยุดเขย่า (ฟังผล)";
                 btn.style.backgroundColor = "#d32f2f";
                 
-                // เริ่มเล่น 02.mp3 แทนเสียงเขย่าเดิม
-                shakeAudio.play().catch(e => console.error("เล่นเสียงเขย่าไม่ได้:", e));
-
-                // ยังคงสั่นเหมือนเดิม
                 shakeInterval = setInterval(() => {
+                    playShakeSound();
                     if (navigator.vibrate) navigator.vibrate(50); 
                 }, 150);
 
@@ -202,10 +195,6 @@
                 isShaking = false;
                 clearInterval(shakeInterval);
                 if (navigator.vibrate) navigator.vibrate(0);
-
-                // หยุดเสียง 02.mp3
-                shakeAudio.pause();
-                shakeAudio.currentTime = 0;
 
                 btn.innerText = "เริ่มเสี่ยงทายใหม่";
                 btn.style.backgroundColor = "#ff6f00";
