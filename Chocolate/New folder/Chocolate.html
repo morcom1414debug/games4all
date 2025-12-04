@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เส้นทางช็อกโกแลต: จากสวนสู่บาร์</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #FFFF00;
+            font-family: 'Sarabun', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #FFFF00;
+            padding-bottom: 10px;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 700px;
+            position: relative;
+        }
+
+        #back-to-menu {
+            position: absolute;
+            top: -10px;
+            left: 0;
+            background-color: #000;
+            border: 2px solid #FFFF00;
+            color: #FFFF00;
+            padding: 10px 15px;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 8px;
+            z-index: 10;
+        }
+        #back-to-menu:hover, #back-to-menu:focus {
+            background-color: #FFFF00;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background-color: #111;
+        }
+
+        #scene-description {
+            font-size: 1.4rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            min-height: 100px;
+            text-align: left;
+            padding: 10px;
+        }
+
+        .choices {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        button {
+            background-color: #000;
+            border: 2px solid #FFFF00;
+            color: #FFFF00;
+            padding: 15px 20px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 10px;
+            outline: none;
+            text-align: left;
+        }
+
+        button:hover, button:focus {
+            background-color: #FFFF00;
+            color: #000000;
+            font-weight: bold;
+            transform: scale(1.01);
+            box-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+        }
+
+        #start-btn {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <button id="back-to-menu" onclick="goToMainMenu()">กลับเมนูหลัก</button>
+
+        <h1 tabindex="-1">เส้นทางช็อกโกแลต: จากสวนสู่บาร์</h1>
+        
+        <div id="status-bar" class="status-bar" style="display:none;" aria-live="polite">
+            <span id="step-display">ขั้นตอน: 1/8</span>
+            <span id="mistake-display">ผิดพลาด: 0/2</span>
+        </div>
+
+        <div id="main-content" aria-live="assertive">
+            <p id="welcome-text">ยินดีต้อนรับสู่เกมจำลองการทำช็อกโกแลตฉบับสมจริงค่ะ เกมนี้เราจะเริ่มตั้งแต่การดูแลต้นโกโก้ไปจนถึงช็อกโกแลตพร้อมทาน หากพร้อมแล้ว กดปุ่มเพื่อเริ่มเกมได้เลยค่ะ</p>
+            <button id="start-btn" onclick="startGame()">เริ่มเดินทางสู่โลกช็อกโกแลต</button>
+        </div>
+
+        <div id="choices-container" class="choices" style="display:none;">
+        </div>
+    </div>
+
+    <script>
+        const gameData = [ /* ข้อมูลเดิมทั้งหมด ไม่เปลี่ยน */ 
+            { step: 1, title: "การดูแลต้นโกโก้ (Planting & Care)", description: "คุณยืนอยู่ในสวนโกโก้ อากาศร้อนชื้น มีเสียงนกร้อง 'จิ๊บๆ' และลมพัดใบไม้ไหว 'ฟู่...' ต้นโกโก้ชอบร่มเงา แต่ก็ต้องการแสงแดดบ้าง คุณจะเลือกปลูกต้นโกโก้ในลักษณะไหนเพื่อให้ได้ผลผลิตที่ดีที่สุด?", soundEffect: "nature", choices: [ { text: "ปลูกกลางแจ้ง แดดจัด 100% เพื่อให้สังเคราะห์แสงเต็มที่", correct: false, feedback: "ผิดค่ะ! ต้นโกโก้อ่อนไหวต่อแดดจัด ใบจะไหม้และต้นจะแคระแกร็นค่ะ" }, { text: "ปลูกแซมใต้ร่มเงาไม้ใหญ่ (Agroforestry) ให้มีแสงรำไร", correct: true, feedback: "ถูกต้องค่ะ! ธรรมชาติของโกโก้ต้องการร่มเงาจากไม้พี่เลี้ยง เพื่อรักษาความชื้นและอุณหภูมิที่เหมาะสม" }, { text: "ปลูกในโรงเรือนปิดทึบ ไม่ให้โดนลมโดนแดด", correct: false, feedback: "ผิดค่ะ! โกโก้ต้องการแมลงในการผสมเกสร หากปิดทึบจะไม่ออกลูกค่ะ" } ] },
+            { step: 2, title: "การเก็บเกี่ยว (Harvesting)", description: "ถึงเวลาเก็บเกี่ยวแล้ว เสียงมีดตัดขั้วดัง 'ฉับ!' คุณสัมผัสผลโกโก้ที่ลำต้น มีทั้งผลสีเขียวแข็งๆ และผลสีเหลืองอมส้ม คุณจะเลือกเก็บผลไหนและเก็บอย่างไร?", soundEffect: "cut", choices: [ { text: "ดึงผลสีเขียวๆ ออกจากต้นด้วยมือเปล่า", correct: false, feedback: "ผิดค่ะ! ผลสีเขียวยังไม่สุก และการดึงจะทำลายตาพืชที่จะออกดอกในรอบถัดไป" }, { text: "ใช้กรรไกรตัดเฉพาะผลที่สุกเป็นสีเหลืองหรือส้ม ระวังไม่ให้โดนหมอนรองดอก", correct: true, feedback: "ถูกต้องค่ะ! ต้องเลือกผลสุกเต็มที่เพื่อให้ได้รสชาติที่ดี และตัดอย่างระมัดระวังเพื่อถนอมต้น" }, { text: "ใช้ไม้สอยให้ร่วงลงมาทั้งหมดทีเดียว", correct: false, feedback: "ผิดค่ะ! จะทำให้ผลช้ำเสียหายและได้ผลดิบปนมาด้วย ซึ่งหมักแล้วจะไม่มีรสช็อกโกแลต" } ] },
+            { step: 3, title: "การหมัก (Fermentation)", description: "แกะเมล็ดออกจากผลแล้ว เมล็ดเปียกเยิ้มไปด้วยเยื่อสีขาวรสเปรี้ยวหวาน ต้องนำไปหมักเพื่อสร้างกลิ่นช็อกโกแลต คุณจะหมักอย่างไร?", soundEffect: "squish", choices: [ { text: "ล้างน้ำให้สะอาดแล้วตากแดดทันที", correct: false, feedback: "ผิดค่ะ! ถ้าล้างเยื่อออก จุลินทรีย์จะไม่มีอาหาร กระบวนการหมักจะไม่เกิด รสชาติจะเป็นแค่ถั่วขมๆ" }, { text: "แช่ในน้ำเชื่อมเพื่อเพิ่มความหวาน", correct: false, feedback: "ผิดค่ะ! ไม่จำเป็นต้องเติมน้ำตาล เยื่อโกโก้มีความหวานธรรมชาติเพียงพอสำหรับกระบวนการหมักแล้ว" }, { text: "กองรวมกันในลังไม้แล้วคลุมด้วยใบตอง เพื่อให้เกิดความร้อน", correct: true, feedback: "ถูกต้องค่ะ! การหมักในลังไม้จะสร้างความร้อน 45-50 องศา ฆ่าตัวอ่อนในเมล็ดและเริ่มสร้างสารตั้งต้นของกลิ่นช็อกโกแลต" } ] },
+            { step: 4, title: "การตากแห้ง (Drying)", description: "หมักครบ 6 วันแล้ว เมล็ดเปลี่ยนเป็นสีน้ำตาลแดง กลิ่นเปรี้ยวเริ่มหายไป ตอนนี้ต้องลดความชื้น เสียงเกลี่ยเมล็ดดัง 'แกรกๆ' บนแคร่ไม้ไผ่ วิธีตากที่ถูกต้องคือ?", soundEffect: "rake", choices: [ { text: "นำเข้าเตาอบลมร้อนอุณหภูมิสูงเพื่อให้แห้งเร็วๆ", correct: false, feedback: "ผิดค่ะ! ความร้อนสูงเกินไปจะทำให้เมล็ดแห้งกระด้างและกักเก็บกรดเปรี้ยวไว้ข้างใน" }, { text: "ตากแดดบนแคร่ยกสูง และหมั่นเกลี่ยเมล็ดสม่ำเสมอ", correct: true, feedback: "ถูกต้องค่ะ! แสงแดดจะค่อยๆ ไล่ความชื้นและระเหยกรดที่ไม่ต้องการออกไปอย่างช้าๆ" }, { text: "ตากบนพื้นปูนโดยตรงเพื่อรับความร้อนจากพื้น", correct: false, feedback: "ผิดค่ะ! เมล็ดอาจปนเปื้อนสิ่งสกปรกและได้รับความร้อนไม่สม่ำเสมอ" } ] },
+            { step: 5, title: "การคั่ว (Roasting)", description: "เมล็ดแห้งดีแล้ว นำมาคั่วเพื่อให้กลิ่นหอมฟุ้ง เสียงเมล็ดแตกตัว 'เปรี้ยะ... เปรี้ยะ...' ในกระทะคั่ว คุณจะใช้ไฟระดับไหน?", soundEffect: "roast", choices: [ { text: "ใช้ไฟแรงสุดๆ ให้ไหม้เกรียมเหมือนกาแฟคั่วเข้ม", correct: false, feedback: "ผิดค่ะ! โกโก้บอบบางกว่ากาแฟ ถ้าไหม้จะขมจนทานไม่ได้เลยค่ะ" }, { text: "ต้มในน้ำเดือดจนสุก", correct: false, feedback: "ผิดค่ะ! การต้มไม่ใช่การคั่ว จะไม่ได้กลิ่นหอมของช็อกโกแลตเลย" }, { text: "ใช้ไฟอ่อนถึงปานกลาง คั่วจนมีกลิ่นหอมและเปลือกร่อนออก", correct: true, feedback: "ถูกต้องค่ะ! การคั่วที่เหมาะสมจะดึงเอกลักษณ์รสชาติของโกโก้นั้นๆ ออกมาได้ดีที่สุด" } ] },
+            { step: 6, title: "การโม่บด (Grinding & Conching)", description: "กะเทาะเปลือกออกแล้วเหลือแต่เนื้อใน (Nibs) เสียงเครื่องโม่หินดัง 'ครืด... ครืด...' บดเมล็ดแข็งๆ จนเริ่มเหลว คุณจะบดนานแค่ไหน?", soundEffect: "grind", choices: [ { text: "บดแค่พอหยาบๆ เหมือนทราย", correct: false, feedback: "ผิดค่ะ! เนื้อสัมผัสจะสากลิ้น ไม่ละลายในปาก" }, { text: "บดละเอียดต่อเนื่อง 24-48 ชั่วโมง จนเนื้อเนียนเป็นของเหลว", correct: true, feedback: "ถูกต้องค่ะ! แรงเสียดทานจะทำให้ไขมันโกโก้ละลายออกมาจนกลายเป็นน้ำช็อกโกแลตที่เนียนนุ่ม" }, { text: "เติมน้ำลงไปช่วยปั่นให้เหลวเร็วขึ้น", correct: false, feedback: "ผิดมหันต์ค่ะ! น้ำคือศัตรูของช็อกโกแลต จะทำให้ช็อกโกแลตจับตัวเป็นก้อนแข็ง (Seize) ทันที" } ] },
+            { step: 7, title: "การปรับอุณหภูมิ (Tempering)", description: "ได้ช็อกโกแลตเหลวแล้ว แต่ถ้าเทใส่พิมพ์เลยจะไม่แข็งตัว ต้องทำ Tempering เสียงเกรียงขูดหินอ่อน 'กริก... กริก...' วิธีที่ถูกคือ?", soundEffect: "scrape", choices: [ { text: "นำเข้าช่องฟรีซทันทีที่ยังร้อนๆ", correct: false, feedback: "ผิดค่ะ! จะเกิดฝ้าขาว (Bloom) และช็อกโกแลตจะไม่กรอบ" }, { text: "คนไปเรื่อยๆ โดยไม่ต้องสนใจอุณหภูมิ", correct: false, feedback: "ผิดค่ะ! โครงสร้างผลึกไขมันจะไม่เรียงตัว ทำให้ช็อกโกแลตละลายง่ายเมื่อจับ" }, { text: "ลดอุณหภูมิลงแล้วเพิ่มขึ้นเล็กน้อย เพื่อจัดเรียงผลึกไขมัน", correct: true, feedback: "ถูกต้องค่ะ! การควบคุมอุณหภูมิขึ้นลงจะทำให้ช็อกโกแลตเงางาม กรอบ และไม่ละลายในมือ" } ] },
+            { step: 8, title: "การเทใส่พิมพ์และแช่เย็น (Molding & Cooling)", description: "ขั้นตอนสุดท้าย เทช็อกโกแลตลงพิมพ์ เคาะไล่ฟองอากาศ 'ปึก! ปึก!' จะนำไปแช่เย็นที่ไหนดี?", soundEffect: "fridge", choices: [ { text: "ช่องแช่แข็ง (Freezer) ให้แข็งเร็วที่สุด", correct: false, feedback: "ผิดค่ะ! เย็นจัดเกินไปจะทำให้ช็อกโกแลตชื้นเมื่อนำออกมา (Sugar Bloom)" }, { text: "วางไว้ที่อุณหภูมิห้องในเมืองไทย", correct: false, feedback: "ผิดค่ะ! อากาศร้อนเกินไป ช็อกโกแลตจะไม่เซ็ตตัว" }, { text: "ช่องแช่เย็นธรรมดา (ตู้เย็นช่องปกติ) อุณหภูมิประมาณ 10-15 องศา", correct: true, feedback: "ถูกต้องค่ะ! เป็นอุณหภูมิที่เหมาะสมที่สุดในการให้ช็อกโกแลตค่อยๆ เซ็ตตัวอย่างสมบูรณ์" } ] }
+        ];
+
+        let currentStepIndex = 0;
+        let mistakes = 0;
+        const maxMistakes = 2;
+        
+        const synthesis = window.speechSynthesis;
+        let audioCtx;
+        let bgMusic = null;
+        const doorSound = new Audio('door.mp3');
+        const correctSound = new Audio('t.mp3');
+        const wrongSound = new Audio('f.mp3');
+
+        function stopAllAudioImmediately() {
+            synthesis.cancel();
+                       if (bgMusic) {
+                bgMusic.pause();
+                bgMusic.currentTime = 0;
+            }
+            correctSound.pause();
+            wrongSound.pause();
+        }
+
+        window.addEventListener('pagehide', stopAllAudioImmediately);
+        window.addEventListener('beforeunload', stopAllAudioImmediately);
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playBackgroundMusic() {
+            if (bgMusic) return;
+            bgMusic = new Audio('01.mp3');
+            bgMusic.loop = true;
+            bgMusic.volume = 0.4;
+            bgMusic.play().catch(e => console.log("ไม่สามารถเล่นเพลงพื้นหลังได้:", e));
+        }
+
+        function stopBackgroundMusic() {
+            if (bgMusic) {
+                bgMusic.pause();
+                bgMusic.currentTime = 0;
+                bgMusic = null;
+            }
+        }
+
+        function playDoorSoundAndAction(action) {
+            stopAllAudioImmediately();
+            doorSound.currentTime = 0;
+            doorSound.play();
+            doorSound.onended = () => action();
+        }
+
+        function goToMainMenu() {
+            playDoorSoundAndAction(() => {
+                stopBackgroundMusic();
+                window.location.href = '../index.html';
+            });
+        }
+
+        function restartGame() {
+            playDoorSoundAndAction(() => {
+                stopBackgroundMusic();
+                location.reload();
+            });
+        }
+
+        function playSound(type) {
+            // (เหมือนเดิมทั้งหมด)
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+            osc.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'correct') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth';
+                filter.type = 'lowpass'; filter.frequency.value = 300;
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.3);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'nature') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.1);
+                osc.frequency.linearRampToValueAtTime(600, now + 0.2);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 1.5);
+                osc.start(now); osc.stop(now + 1.5);
+            } else if (type === 'cut' || type === 'squish') {
+                osc.type = 'square';
+                filter.type = 'lowpass'; filter.frequency.value = 500;
+                osc.frequency.setValueAtTime(50, now);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'roast' || type === 'rake') {
+                osc.type = 'sawtooth';
+                filter.type = 'highpass'; filter.frequency.value = 1000;
+                osc.frequency.setValueAtTime(200, now);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'grind') {
+                osc.type = 'sawtooth';
+                filter.type = 'lowpass'; filter.frequency.value = 200;
+                osc.frequency.setValueAtTime(80, now);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.linearRampToValueAtTime(0.1, now + 1.0);
+                gainNode.gain.linearRampToValueAtTime(0, now + 1.2);
+                osc.start(now); osc.stop(now + 1.2);
+            } else {
+                osc.type = 'triangle';
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            }
+        }
+
+        function speak(text, callback) {
+            synthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'th-TH';
+            utterance.rate = 1.3;
+            utterance.volume = 1.0;
+
+            // ปิดการอ่านอัตโนมัติของ screen reader ชั่วคราว
+            const descEl = document.getElementById('scene-description');
+            if (descEl) descEl.setAttribute('aria-live', 'off');
+
+            utterance.onend = () => {
+                if (descEl) descEl.setAttribute('aria-live', 'polite');
+                if (callback) callback();
+            };
+
+            utterance.onerror = () => {
+                if (descEl) descEl.setAttribute('aria-live', 'polite');
+            };
+
+            synthesis.speak(utterance);
+        }
+
+        function startGame() {
+            initAudio();
+            playBackgroundMusic();
+            currentStepIndex = 0;
+            mistakes = 0;
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('welcome-text').style.display = 'none';
+            document.getElementById('status-bar').style.display = 'flex';
+            document.getElementById('choices-container').style.display = 'flex';
+            updateStatus();
+            loadStep();
+        }
+
+        function updateStatus() {
+            document.getElementById('step-display').innerText = `ขั้นตอน: ${currentStepIndex + 1}/${gameData.length}`;
+            document.getElementById('mistake-display').innerText = `ผิดพลาด: ${mistakes}/${maxMistakes}`;
+        }
+
+        function loadStep() {
+            if (currentStepIndex >= gameData.length) {
+                endGame(true);
+                return;
+            }
+
+            const stepData = gameData[currentStepIndex];
+            const contentDiv = document.getElementById('main-content');
+            const choicesDiv = document.getElementById('choices-container');
+
+            playSound(stepData.soundEffect);
+
+            contentDiv.innerHTML = `
+                <h2 tabindex="-1">${stepData.title}</h2>
+                <p id="scene-description" tabindex="0" aria-live="polite">${stepData.description}</p>
+            `;
+
+            choicesDiv.innerHTML = '';
+            stepData.choices.forEach((choice, index) => {
+                const btn = document.createElement('button');
+                btn.innerText = `${index + 1}. ${choice.text}`;
+                btn.onclick = () => checkAnswer(choice);
+                btn.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') checkAnswer(choice); };
+                choicesDiv.appendChild(btn);
+            });
+
+            setTimeout(() => {
+                speak(stepData.description + " เลือกข้อที่ถูกต้องจาก 3 ตัวเลือกค่ะ");
+            }, 500);
+
+            document.getElementById('scene-description').focus();
+        }
+
+        function checkAnswer(choice) {
+            synthesis.cancel(); 
+
+            if (choice.correct) {
+                correctSound.currentTime = 0;
+                correctSound.play();
+                speak("ถูกต้องค่ะ " + choice.feedback, () => {
+                    currentStepIndex++;
+                    updateStatus();
+                    loadStep();
+                });
+            } else {
+                wrongSound.currentTime = 0;
+                wrongSound.play();
+                mistakes++;
+                updateStatus();
+
+                if (mistakes > maxMistakes) {
+                    speak("ผิดค่ะ " + choice.feedback + " คุณทำผิดครบ 3 ครั้งแล้ว เกมจบแล้วค่ะ", () => endGame(false));
+                } else {
+                    const mistakesLeft = (maxMistakes + 1) - mistakes;
+                    speak("ผิดค่ะ " + choice.feedback + ` คุณยังเหลือโอกาสอีก ${mistakesLeft} ครั้ง ลองใหม่อีกครั้งในขั้นตอนต่อไปนะคะ`, () => {
+                        currentStepIndex++; 
+                        updateStatus();
+                        loadStep(); 
+                    });
+                }
+            }
+        }
+
+        function endGame(isSuccess) {
+            const contentDiv = document.getElementById('main-content');
+            const choicesDiv = document.getElementById('choices-container');
+            choicesDiv.style.display = 'none';
+            document.getElementById('status-bar').style.display = 'none';
+
+            if (isSuccess) {
+                correctSound.currentTime = 0;
+                correctSound.play();
+                const winText = "ยินดีด้วยค่ะ! คุณเรียนรู้กระบวนการทำช็อกโกแลตตั้งแต่ต้นจนจบสำเร็จแล้ว ช็อกโกแลตของคุณสมบูรณ์แบบมากค่ะ";
+                contentDiv.innerHTML = `<h1>ภารกิจสำเร็จ!</h1><p>${winText}</p><button onclick="restartGame()" style="margin-top:20px;">เล่นอีกครั้ง</button>`;
+                speak(winText);
+            } else {
+                wrongSound.currentTime = 0;
+                wrongSound.play();
+                const loseText = "เสียใจด้วยค่ะ คุณทำผิดพลาดเกินกำหนด การทำช็อกโกแลตต้องอาศัยความใส่ใจ ลองใหม่อีกครั้งนะคะ";
+                contentDiv.innerHTML = `<h1>จบเกม</h1><p>${loseText}</p><button onclick="restartGame()" style="margin-top:20px;">เริ่มใหม่</button>`;
+                speak(loseText);
+            }
+        }
+    </script>
+</body>
+</html>
