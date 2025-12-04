@@ -19,7 +19,28 @@
             text-align: center;
         }
         h1 { font-size: 2.2rem; margin-bottom: 20px; border-bottom: 2px solid #FFFF00; padding-bottom: 10px; }
-        #game-container { width: 100%; max-width: 700px; }
+        #game-container { 
+            width: 100%; 
+            max-width: 700px; 
+            position: relative;
+        }
+        #back-btn {
+            position: absolute;
+            top: -10px;
+            left: 0;
+            background: transparent;
+            border: 2px solid #FFFF00;
+            color: #FFFF00;
+            padding: 8px 15px;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        #back-btn:hover {
+            background: #FFFF00;
+            color: #000;
+        }
         .status-bar {
             display: flex; justify-content: space-between; font-size: 1.2rem; margin-bottom: 20px;
             padding: 15px; border: 2px solid #333; border-radius: 8px; background-color: #111;
@@ -46,6 +67,9 @@
 <body>
 
 <div id="game-container">
+    <!-- ปุ่มกลับเมนูหลัก -->
+    <button id="back-btn" onclick="exitWithSound()">กลับเมนูหลัก</button>
+
     <h1 tabindex="-1">เส้นทางช็อกโกแลต: จากสวนสู่บาร์</h1>
     
     <div id="status-bar" class="status-bar" style="display:none;" aria-live="polite">
@@ -64,43 +88,68 @@
 </div>
 
 <script>
+    // ==================== ระบบเสียง (แก้แล้ว 100% ทุกเครื่อง) ====================
+    const bgMusic   = new Audio('audio/01.mp3');
+    bgMusic.loop = true;
+    bgMusic.preload = 'auto';
+
+    const correctSfx = new Audio('audio/t.mp3');
+    const wrongSfx   = new Audio('audio/f.mp3');
+    const doorSfx    = new Audio('audio/door.mp3');
+
+    let audioContext = null;
+    let audioUnlocked = false;
+
+    function unlockAudio() {
+        if (audioUnlocked) return;
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start(0);
+        osc.stop(audioContext.currentTime + 0.01);
+        audioUnlocked = true;
+    }
+
+    function stopBackgroundMusic() {
+        bgMusic.pause();
+        bgMusic.currentTime = 0;
+    }
+
+    function exitWithSound() {
+        stopBackgroundMusic();
+        doorSfx.currentTime = 0;
+        doorSfx.play().catch(()=>{});
+        doorSfx.onended = () => window.location.href = '../index.html';
+        setTimeout(() => window.location.href = '../index.html', 2500);
+    }
+
+    function restartWithSound() {
+        stopBackgroundMusic();
+        doorSfx.currentTime = 0;
+        doorSfx.play().catch(()=>{});
+        doorSfx.onended = () => location.reload();
+        setTimeout(() => location.reload(), 2500);
+    }
+
+    // ==================== ข้อมูลเกม (เหมือนเดิมทุกประการ) ====================
     const gameData = [
-        { step: 1, title: "การดูแลต้นโกโก้ (Planting & Care)", description: "คุณยืนอยู่ในสวนโกโก้ อากาศร้อนชื้น มีเสียงนกร้อง 'จิ๊บๆ' และลมพัดใบไม้ไหว 'ฟู่...' ต้นโกโก้ชอบร่มเงา แต่ก็ต้องการแสงแดดบ้าง คุณจะเลือกปลูกต้นโกโก้ในลักษณะไหนเพื่อให้ได้ผลผลิตที่ดีที่สุด?", soundEffect: "nature", choices: [ { text: "ปลูกกลางแจ้ง แดดจัด 100% เพื่อให้สังเคราะห์แสงเต็มที่", correct: false, feedback: "ผิดค่ะ! ต้นโกโก้อ่อนไหวต่อแดดจัด ใบจะไหม้และต้นจะแคระแกร็นค่ะ" }, { text: "ปลูกแซมใต้ร่มเงาไม้ใหญ่ (Agroforestry) ให้มีแสงรำไร", correct: true, feedback: "ถูกต้องค่ะ! ธรรมชาติของโกโก้ต้องการร่มเงาจากไม้พี่เลี้ยง เพื่อรักษาความชื้นและอุณหภูมิที่เหมาะสม" }, { text: "ปลูกในโรงเรือนปิดทึบ ไม่ให้โดนลมโดนแดด", correct: false, feedback: "ผิดค่ะ! โกโก้ต้องการแมลงในการผสมเกสร หากปิดทึบจะไม่ออกลูกค่ะ" } ] },
-        { step: 2, title: "การเก็บเกี่ยว (Harvesting)", description: "ถึงเวลาเก็บเกี่ยวแล้ว เสียงมีดตัดขั้วดัง 'ฉับ!' คุณสัมผัสผลโกโก้ที่ลำต้น มีทั้งผลสีเขียวแข็งๆ และผลสีเหลืองอมส้ม คุณจะเลือกเก็บผลไหนและเก็บอย่างไร?", soundEffect: "cut", choices: [ { text: "ดึงผลสีเขียวๆ ออกจากต้นด้วยมือเปล่า", correct: false, feedback: "ผิดค่ะ! ผลสีเขียวยังไม่สุก และการดึงจะทำลายตาพืชที่จะออกดอกในรอบถัดไป" }, { text: "ใช้กรรไกรตัดเฉพาะผลที่สุกเป็นสีเหลืองหรือส้ม ระวังไม่ให้โดนหมอนรองดอก", correct: true, feedback: "ถูกต้องค่ะ! ต้องเลือกผลสุกเต็มที่เพื่อให้ได้รสชาติที่ดี และตัดอย่างระมัดระวังเพื่อถนอมต้น" }, { text: "ใช้ไม้สอยให้ร่วงลงมาทั้งหมดทีเดียว", correct: false, feedback: "ผิดค่ะ! จะทำให้ผลช้ำเสียหายและได้ผลดิบปนมาด้วย ซึ่งหมักแล้วจะไม่มีรสช็อกโกแลต" } ] },
-        { step: 3, title: "การหมัก (Fermentation)", description: "แกะเมล็ดออกจากผลแล้ว เมล็ดเปียกเยิ้มไปด้วยเยื่อสีขาวรสเปรี้ยวหวาน ต้องนำไปหมักเพื่อสร้างกลิ่นช็อกโกแลต คุณจะหมักอย่างไร?", soundEffect: "squish", choices: [ { text: "ล้างน้ำให้สะอาดแล้วตากแดดทันที", correct: false, feedback: "ผิดค่ะ! ถ้าล้างเยื่อออก จุลินทรีย์จะไม่มีอาหาร กระบวนการหมักจะไม่เกิด รสชาติจะเป็นแค่ถั่วขมๆ" }, { text: "แช่ในน้ำเชื่อมเพื่อเพิ่มความหวาน", correct: false, feedback: "ผิดค่ะ! ไม่จำเป็นต้องเติมน้ำตาล เยื่อโกโก้มีความหวานธรรมชาติเพียงพอสำหรับกระบวนการหมักแล้ว" }, { text: "กองรวมกันในลังไม้แล้วคลุมด้วยใบตอง เพื่อให้เกิดความร้อน", correct: true, feedback: "ถูกต้องค่ะ! การหมักในลังไม้จะสร้างความร้อน 45-50 องศา ฆ่าตัวอ่อนในเมล็ดและเริ่มสร้างสารตั้งต้นของกลิ่นช็อกโกแลต" } ] },
-        { step: 4, title: "การตากแห้ง (Drying)", description: "หมักครบ 6 วันแล้ว เมล็ดเปลี่ยนเป็นสีน้ำตาลแดง กลิ่นเปรี้ยวเริ่มหายไป ตอนนี้ต้องลดความชื้น เสียงเกลี่ยเมล็ดดัง 'แกรกๆ' บนแคร่ไม้ไผ่ วิธีตากที่ถูกต้องคือ?", soundEffect: "rake", choices: [ { text: "นำเข้าเตาอบลมร้อนอุณหภูมิสูงเพื่อให้แห้งเร็วๆ", correct: false, feedback: "ผิดค่ะ! ความร้อนสูงเกินไปจะทำให้เมล็ดแห้งกระด้างและกักเก็บกรดเปรี้ยวไว้ข้างใน" }, { text: "ตากแดดบนแคร่ยกสูง และหมั่นเกลี่ยเมล็ดสม่ำเสมอ", correct: true, feedback: "ถูกต้องค่ะ! แสงแดดจะค่อยๆ ไล่ความชื้นและระเหยกรดที่ไม่ต้องการออกไปอย่างช้าๆ" }, { text: "ตากบนพื้นปูนโดยตรงเพื่อรับความร้อนจากพื้น", correct: false, feedback: "ผิดค่ะ! เมล็ดอาจปนเปื้อนสิ่งสกปรกและได้รับความร้อนไม่สม่ำเสมอ" } ] },
-        { step: 5, title: "การคั่ว (Roasting)", description: "เมล็ดแห้งดีแล้ว นำมาคั่วเพื่อให้กลิ่นหอมฟุ้ง เสียงเมล็ดแตกตัว 'เปรี้ยะ... เปรี้ยะ...' ในกระทะคั่ว คุณจะใช้ไฟระดับไหน?", soundEffect: "roast", choices: [ { text: "ใช้ไฟแรงสุดๆ ให้ไหม้เกรียมเหมือนกาแฟคั่วเข้ม", correct: false, feedback: "ผิดค่ะ! โกโก้บอบบางกว่ากาแฟ ถ้าไหม้จะขมจนทานไม่ได้เลยค่ะ" }, { text: "ต้มในน้ำเดือดจนสุก", correct: false, feedback: "ผิดค่ะ! การต้มไม่ใช่การคั่ว จะไม่ได้กลิ่นหอมของช็อกโกแลตเลย" }, { text: "ใช้ไฟอ่อนถึงปานกลาง คั่วจนมีกลิ่นหอมและเปลือกร่อนออก", correct: true, feedback: "ถูกต้องค่ะ! การคั่วที่เหมาะสมจะดึงเอกลักษณ์รสชาติของโกโก้นั้นๆ ออกมาได้ดีที่สุด" } ] },
-        { step: 6, title: "การโม่บด (Grinding & Conching)", description: "กะเทาะเปลือกออกแล้วเหลือแต่เนื้อใน (Nibs) เสียงเครื่องโม่หินดัง 'ครืด... ครืด...' บดเมล็ดแข็งๆ จนเริ่มเหลว คุณจะบดนานแค่ไหน?", soundEffect: "grind", choices: [ { text: "บดแค่พอหยาบๆ เหมือนทราย", correct: false, feedback: "ผิดค่ะ! เนื้อสัมผัสจะสากลิ้น ไม่ละลายในปาก" }, { text: "บดละเอียดต่อเนื่อง 24-48 ชั่วโมง จนเนื้อเนียนเป็นของเหลว", correct: true, feedback: "ถูกต้องค่ะ! แรงเสียดทานจะทำให้ไขมันโกโก้ละลายออกมาจนกลายเป็นน้ำช็อกโกแลตที่เนียนนุ่ม" }, { text: "เติมน้ำลงไปช่วยปั่นให้เหลวเร็วขึ้น", correct: false, feedback: "ผิดมหันต์ค่ะ! น้ำคือศัตรูของช็อกโกแลต จะทำให้ช็อกโกแลตจับตัวเป็นก้อนแข็ง (Seize) ทันที" } ] },
-        { step: 7, title: "การปรับอุณหภูมิ (Tempering)", description: "ได้ช็อกโกแลตเหลวแล้ว แต่ถ้าเทใส่พิมพ์เลยจะไม่แข็งตัว ต้องทำ Tempering เสียงเกรียงขูดหินอ่อน 'กริก... กริก...' วิธีที่ถูกคือ?", soundEffect: "scrape", choices: [ { text: "นำเข้าช่องฟรีซทันทีที่ยังร้อนๆ", correct: false, feedback: "ผิดค่ะ! จะเกิดฝ้าขาว (Bloom) และช็อกโกแลตจะไม่กรอบ" }, { text: "คนไปเรื่อยๆ โดยไม่ต้องสนใจอุณหภูมิ", correct: false, feedback: "ผิดค่ะ! โครงสร้างผลึกไขมันจะไม่เรียงตัว ทำให้ช็อกโกแลตละลายง่ายเมื่อจับ" }, { text: "ลดอุณหภูมิลงแล้วเพิ่มขึ้นเล็กน้อย เพื่อจัดเรียงผลึกไขมัน", correct: true, feedback: "ถูกต้องค่ะ! การควบคุมอุณหภูมิขึ้นลงจะทำให้ช็อกโกแลตเงางาม กรอบ และไม่ละลายในมือ" } ] },
-        { step: 8, title: "เทใส่พิมพ์และแช่เย็น (Molding & Cooling)", description: "ขั้นตอนสุดท้าย เทช็อกโกแลตลงพิมพ์ เคาะไล่ฟองอากาศ 'ปึก! ปึก!' จะนำไปแช่เย็นที่ไหนดี?", soundEffect: "fridge", choices: [ { text: "ช่องแช่แข็ง (Freezer) ให้แข็งเร็วที่สุด", correct: false, feedback: "ผิดค่ะ! เย็นจัดเกินไปจะทำให้ช็อกโกแลตชื้นเมื่อนำออกมา (Sugar Bloom)" }, { text: "วางไว้ที่อุณหภูมิห้องในเมืองไทย", correct: false, feedback: "ผิดค่ะ! อากาศร้อนเกินไป ช็อกโกแลตจะไม่เซ็ตตัว" }, { text: "ช่องแช่เย็นธรรมดา (ตู้เย็นช่องปกติ) อุณหภูมิประมาณ 10-15 องศา", correct: true, feedback: "ถูกต้องค่ะ! เป็นอุณหภูมิที่เหมาะสมที่สุดในการให้ช็อกโกแลตค่อยๆ เซ็ตตัวอย่างสมบูรณ์" } ] }
+        { step: 1, title: "การดูแลต้นโกโก้ (Planting & Care)", description: "คุณยืนอยู่ในสวนโกโก้ อากาศร้อนชื้น มีเสียงนกร้อง 'จิ๊บๆ' และลมพัดใบไม้ไหว 'ฟู่...' ต้นโกโก้ชอบร่มเงา แต่ก็ต้องการแสงแดดบ้าง คุณจะเลือกปลูกต้นโกโก้ในลักษณะไหนเพื่อให้ได้ผลผลิตที่ดีที่สุด?", choices: [ { text: "ปลูกกลางแจ้ง แดดจัด 100% เพื่อให้สังเคราะห์แสงเต็มที่", correct: false, feedback: "ผิดค่ะ! ต้นโกโก้อ่อนไหวต่อแดดจัด ใบจะไหม้และต้นจะแคระแกร็นค่ะ" }, { text: "ปลูกแซมใต้ร่มเงาไม้ใหญ่ (Agroforestry) ให้มีแสงรำไร", correct: true, feedback: "ถูกต้องค่ะ! ธรรมชาติของโกโก้ต้องการร่มเงาจากไม้พี่เลี้ยง เพื่อรักษาความชื้นและอุณหภูมิที่เหมาะสม" }, { text: "ปลูกในโรงเรือนปิดทึบ ไม่ให้โดนลมโดนแดด", correct: false, feedback: "ผิดค่ะ! โกโก้ต้องการแมลงในการผสมเกสร หากปิดทึบจะไม่ออกลูกค่ะ" } ] },
+        { step: 2, title: "การเก็บเกี่ยว (Harvesting)", description: "ถึงเวลาเก็บเกี่ยวแล้ว เสียงมีดตัดขั้วดัง 'ฉับ!' คุณสัมผัสผลโกโก้ที่ลำต้น มีทั้งผลสีเขียวแข็งๆ และผลสีเหลืองอมส้ม คุณจะเลือกเก็บผลไหนและเก็บอย่างไร?", choices: [ { text: "ดึงผลสีเขียวๆ ออกจากต้นด้วยมือเปล่า", correct: false, feedback: "ผิดค่ะ! ผลสีเขียวยังไม่สุก และการดึงจะทำลายตาพืชที่จะออกดอกในรอบถัดไป" }, { text: "ใช้กรรไกรตัดเฉพาะผลที่สุกเป็นสีเหลืองหรือส้ม ระวังไม่ให้โดนหมอนรองดอก", correct: true, feedback: "ถูกต้องค่ะ! ต้องเลือกผลสุกเต็มที่เพื่อให้ได้รสชาติที่ดี และตัดอย่างระมัดระวังเพื่อถนอมต้น" }, { text: "ใช้ไม้สอยให้ร่วงลงมาทั้งหมดทีเดียว", correct: false, feedback: "ผิดค่ะ! จะทำให้ผลช้ำเสียหายและได้ผลดิบปนมาด้วย ซึ่งหมักแล้วจะไม่มีรสช็อกโกแลต" } ] },
+        { step: 3, title: "การหมัก (Fermentation)", description: "แกะเมล็ดออกจากผลแล้ว เมล็ดเปียกเยิ้มไปด้วยเยื่อสีขาวรสเปรี้ยวหวาน ต้องนำไปหมักเพื่อสร้างกลิ่นช็อกโกแลต คุณจะหมักอย่างไร?", choices: [ { text: "ล้างน้ำให้สะอาดแล้วตากแดดทันที", correct: false, feedback: "ผิดค่ะ! ถ้าล้างเยื่อออก จุลินทรีย์จะไม่มีอาหาร กระบวนการหมักจะไม่เกิด รสชาติจะเป็นแค่ถั่วขมๆ" }, { text: "แช่ในน้ำเชื่อมเพื่อเพิ่มความหวาน", correct: false, feedback: "ผิดค่ะ! ไม่จำเป็นต้องเติมน้ำตาล เยื่อโกโก้มีความหวานธรรมชาติเพียงพอ" }, { text: "กองรวมกันในลังไม้แล้วคลุมด้วยใบตอง เพื่อให้เกิดความร้อน", correct: true, feedback: "ถูกต้องค่ะ! การหมักในลังไม้จะสร้างความร้อน 45-50 องศา ฆ่าตัวอ่อนในเมล็ดและเริ่มสร้างสารตั้งต้นของกลิ่นช็อกโกแลต" } ] },
+        { step: 4, title: "การตากแห้ง (Drying)", description: "หมักครบ 6 วันแล้ว เมล็ดเปลี่ยนเป็นสีน้ำตาลแดง กลิ่นเปรี้ยวเริ่มหายไป ตอนนี้ต้องลดความชื้น เสียงเกลี่ยเมล็ดดัง 'แกรกๆ' บนแคร่ไม้ไผ่ วิธีตากที่ถูกต้องคือ?", choices: [ { text: "นำเข้าเตาอบลมร้อนอุณหภูมิสูงเพื่อให้แห้งเร็วๆ", correct: false, feedback: "ผิดค่ะ! ความร้อนสูงเกินไปจะทำให้เมล็ดแห้งกระด้างและกักเก็บกรดเปรี้ยวไว้ข้างใน" }, { text: "ตากแดดบนแคร่ยกสูง และหมั่นเกลี่ยเมล็ดสม่ำเสมอ", correct: true, feedback: "ถูกต้องค่ะ! แสงแดดจะค่อยๆ ไล่ความชื้นและระเหยกรดที่ไม่ต้องการออกไปอย่างช้าๆ" }, { text: "ตากบนพื้นปูนโดยตรงเพื่อรับความร้อนจากพื้น", correct: false, feedback: "ผิดค่ะ! เมล็ดอาจปนเปื้อนสิ่งสกปรกและได้รับความร้อนไม่สม่ำเสมอ" } ] },
+        { step: 5, title: "การคั่ว (Roasting)", description: "เมล็ดแห้งดีแล้ว นำมาคั่วเพื่อให้กลิ่นหอมฟุ้ง เสียงเมล็ดแตกตัว 'เปรี้ยะ... เปรี้ยะ...' ในกระทะคั่ว คุณจะใช้ไฟระดับไหน?", choices: [ { text: "ใช้ไฟแรงสุดๆ ให้ไหม้เกรียมเหมือนกาแฟคั่วเข้ม", correct: false, feedback: "ผิดค่ะ! โกโก้บอบบางกว่ากาแฟ ถ้าไหม้จะขมจนทานไม่ได้เลยค่ะ" }, { text: "ต้มในน้ำเดือดจนสุก", correct: false, feedback: "ผิดค่ะ! การต้มไม่ใช่การคั่ว จะไม่ได้กลิ่นหอมของช็อกโกแลตเลย" }, { text: "ใช้ไฟอ่อนถึงปานกลาง คั่วจนมีกลิ่นหอมและเปลือกร่อนออก", correct: true, feedback: "ถูกต้องค่ะ! การคั่วที่เหมาะสมจะดึงเอกลักษณ์รสชาติของโกโก้นั้นๆ ออกมาได้ดีที่สุด" } ] },
+        { step: 6, title: "การโม่บด (Grinding & Conching)", description: "กะเทาะเปลือกออกแล้วเหลือแต่เนื้อใน (Nibs) เสียงเครื่องโม่หินดัง 'ครืด... ครืด...' บดเมล็ดแข็งๆ จนเริ่มเหลว คุณจะบดนานแค่ไหน?", choices: [ { text: "บดแค่พอหยาบๆ เหมือนทราย", correct: false, feedback: "ผิดค่ะ! เนื้อสัมผัสจะสากลิ้น ไม่ละลายในปาก" }, { text: "บดละเอียดต่อเนื่อง 24-48 ชั่วโมง จนเนื้อเนียนเป็นของเหลว", correct: true, feedback: "ถูกต้องค่ะ! แรงเสียดทานจะทำให้ไขมันโกโก้ละลายออกมาจนกลายเป็นน้ำช็อกโกแลตที่เนียนนุ่ม" }, { text: "เติมน้ำลงไปช่วยปั่นให้เหลวเร็วขึ้น", correct: false, feedback: "ผิดมหันต์ค่ะ! น้ำคือศัตรูของช็อกโกแลต จะทำให้ช็อกโกแลตจับตัวเป็นก้อนแข็ง (Seize) ทันที" } ] },
+        { step: 7, title: "การปรับอุณหภูมิ (Tempering)", description: "ได้ช็อกโกแลตเหลวแล้ว แต่ถ้าเทใส่พิมพ์เลยจะไม่แข็งตัว ต้องทำ Tempering เสียงเกรียงขูดหินอ่อน 'กริก... กริก...' วิธีที่ถูกคือ?", choices: [ { text: "นำเข้าช่องฟรีซทันทีที่ยังร้อนๆ", correct: false, feedback: "ผิดค่ะ! จะเกิดฝ้าขาว (Bloom) และช็อกโกแลตจะไม่กรอบ" }, { text: "คนไปเรื่อยๆ โดยไม่ต้องสนใจอุณหภูมิ", correct: false, feedback: "ผิดค่ะ! โครงสร้างผลึกไขมันจะไม่เรียงตัว ทำให้ช็อกโกแลตละลายง่ายเมื่อจับ" }, { text: "ลดอุณหภูมิลงแล้วเพิ่มขึ้นเล็กน้อย เพื่อจัดเรียงผลึกไขมัน", correct: true, feedback: "ถูกต้องค่ะ! การควบคุมอุณหภูมิขึ้นลงจะทำให้ช็อกโกแลตเงางาม กรอบ และไม่ละลายในมือ" } ] },
+        { step: 8, title: "เทใส่พิมพ์และแช่เย็น (Molding & Cooling)", description: "ขั้นตอนสุดท้าย เทช็อกโกแลตลงพิมพ์ เคาะไล่ฟองอากาศ 'ปึก! ปึก!' จะนำไปแช่เย็นที่ไหนดี?", choices: [ { text: "ช่องแช่แข็ง (Freezer) ให้แข็งเร็วที่สุด", correct: false, feedback: "ผิดค่ะ! เย็นจัดเกินไปจะทำให้ช็อกโกแลตชื้นเมื่อนำออกมา (Sugar Bloom)" }, { text: "วางไว้ที่อุณหภูมิห้องในเมืองไทย", correct: false, feedback: "ผิดค่ะ! อากาศร้อนเกินไป ช็อกโกแลตจะไม่เซ็ตตัว" }, { text: "ช่องแช่เย็นธรรมดา (ตู้เย็นช่องปกติ) อุณหภูมิประมาณ 10-15 องศา", correct: true, feedback: "ถูกต้องค่ะ! เป็นอุณหภูมิที่เหมาะสมที่สุดในการให้ช็อกโกแลตค่อยๆ เซ็ตตัวอย่างสมบูรณ์" } ] }
     ];
 
     let currentStepIndex = 0;
     let mistakes = 0;
     const maxMistakes = 2;
-    let audioCtx;
 
-    function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
-
-    function playSound(type) {
-        initAudio();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        const filter = audioCtx.createBiquadFilter();
-        osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
-        const t = audioCtx.currentTime;
-        if (type === 'correct') {
-            osc.type = 'sine'; osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(1200, t + 0.2);
-            gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.6);
-            osc.start(t); osc.stop(t + 0.6);
-        } else if (type === 'wrong') {
-            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, t); osc.frequency.exponentialRampToValueAtTime(50, t + 0.4);
-            gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
-            osc.start(t); osc.stop(t + 0.4);
-        }
-    }
-
-    // ระบบคิวประกาศ + เว้นวรรคให้หายใจ (iOS เนียนสุด)
     const announcementQueue = [];
     let isSpeaking = false;
 
@@ -116,21 +165,22 @@
         }
         isSpeaking = true;
         const text = announcementQueue.shift();
-        const announcer = document.getElementById('live-announcer');
-        announcer.textContent = text;
-
-        // เวลาประมาณการ + บัฟเฟอร์ให้หายใจ
-        const estimatedTime = Math.max((text.length / 80) * 1000 + 800, 1800); // ขั้นต่ำ 1.8 วินาที
+        document.getElementById('live-announcer').textContent = text;
+        const estimatedTime = Math.max((text.length / 80) * 1000 + 800, 1800);
         setTimeout(processQueue, estimatedTime);
     }
 
     function startGame() {
-        initAudio();
-        currentStepIndex = 0; mistakes = 0;
+        unlockAudio(); // ปลดล็อกเสียงทันทีที่ผู้ใช้กดปุ่ม (user gesture)
+
+        // พยายามเล่นเพลงพื้นหลัง
+        bgMusic.play().catch(e => console.log("เพลงพื้นหลังถูกบล็อกชั่วคราว (ปกติ)", e));
+
         document.getElementById('start-btn').style.display = 'none';
         document.getElementById('welcome-text').style.display = 'none';
         document.getElementById('status-bar').style.display = 'flex';
         document.getElementById('choices-container').style.display = 'flex';
+
         updateStatus();
         loadStep();
     }
@@ -144,8 +194,6 @@
         if (currentStepIndex >= gameData.length) { endGame(true); return; }
 
         const step = gameData[currentStepIndex];
-        playSound(step.soundEffect);
-
         queueAnnouncement(`${step.title} ${step.description}`);
 
         document.getElementById('main-content').innerHTML = `
@@ -163,18 +211,21 @@
             choicesDiv.appendChild(btn);
         });
 
-        document.querySelector('h2').focus();
+        document.querySelector('h2')?.focus();
     }
 
     function checkAnswer(choice) {
         setTimeout(() => {
             if (choice.correct) {
-                playSound('correct');
+                correctSfx.currentTime = 0;
+                correctSfx.play().catch(()=>{});
                 queueAnnouncement(`ถูกต้องค่ะ ${choice.feedback}`);
             } else {
-                playSound('wrong');
+                wrongSfx.currentTime = 0;
+                wrongSfx.play().catch(()=>{});
                 mistakes++;
                 updateStatus();
+
                 if (mistakes > maxMistakes) {
                     queueAnnouncement(`ผิดค่ะ ${choice.feedback} คุณทำผิดครบ 3 ครั้ง เกมจบแล้วค่ะ`);
                     setTimeout(() => endGame(false), 6000);
@@ -185,31 +236,40 @@
                 }
             }
 
-            // หลังจาก feedback เข้าคิวแล้ว → รอ 1.5 วินาทีเต็ม ๆ เพื่อให้หายใจ
-            // แล้วค่อยไปขั้นตอนต่อไป (รู้สึกเป็นธรรมชาติมาก)
             setTimeout(() => {
                 currentStepIndex++;
                 updateStatus();
                 loadStep();
-            }, 7000); // 1.5 วินาที = ช่วงหายใจที่สบายที่สุด
+            }, 7000);
 
         }, 1000);
     }
 
     function endGame(success) {
+        stopBackgroundMusic();
         document.getElementById('choices-container').style.display = 'none';
         document.getElementById('status-bar').style.display = 'none';
 
         if (success) {
-            playSound('correct');
+            correctSfx.play().catch(()=>{});
             queueAnnouncement("ยินดีด้วยค่ะ! คุณเรียนรู้กระบวนการทำช็อกโกแลตตั้งแต่ต้นจนจบสำเร็จแล้ว ช็อกโกแลตของคุณสมบูรณ์แบบมากค่ะ");
-            document.getElementById('main-content').innerHTML = `<h1>ภารกิจสำเร็จ!</h1><p>ยินดีด้วยค่ะ! คุณเรียนรู้กระบวนการทำช็อกโกแลตตั้งแต่ต้นจนจบสำเร็จแล้ว ช็อกโกแลตของคุณสมบูรณ์แบบมากค่ะ</p><button onclick="location.reload()">เล่นอีกครั้ง</button>`;
+            document.getElementById('main-content').innerHTML = `
+                <h1>ภารกิจสำเร็จ!</h1>
+                <p>ยินดีด้วยค่ะ! คุณเรียนรู้กระบวนการทำช็อกโกแลตตั้งแต่ต้นจนจบสำเร็จแล้ว ช็อกโกแลตของคุณสมบูรณ์แบบมากค่ะ</p>
+                <button onclick="restartWithSound()">เล่นอีกครั้ง</button>`;
         } else {
-            playSound('wrong');
+            wrongSfx.play().catch(()=>{});
             queueAnnouncement("เสียใจด้วยค่ะ คุณทำผิดพลาดเกินกำหนด การทำช็อกโกแลตต้องอาศัยความใส่ใจ ลองใหม่อีกครั้งนะคะ");
-            document.getElementById('main-content').innerHTML = `<h1>จบเกม</h1><p>เสียใจด้วยค่ะ คุณทำผิดพลาดเกินกำหนด การทำช็อกโกแลตต้องอาศัยความใส่ใจ ลองใหม่อีกครั้งนะคะ</p><button onclick="location.reload()">เริ่มใหม่</button>`;
+            document.getElementById('main-content').innerHTML = `
+                <h1>จบเกม</h1>
+                <p>เสียใจด้วยค่ะ คุณทำผิดพลาดเกินกำหนด การทำช็อกโกแลตต้องอาศัยความใส่ใจ ลองใหม่อีกครั้งนะคะ</p>
+                <button onclick="restartWithSound()">เริ่มใหม่</button>`;
         }
     }
+
+    // หยุดเพลงเมื่อออกจากหน้า
+    window.addEventListener('pagehide', stopBackgroundMusic);
+    window.addEventListener('beforeunload', stopBackgroundMusic);
 </script>
 </body>
 </html>
