@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chocolate Sensory Kitchen: Farm to Bar</title>
     <style>
         body {
@@ -42,8 +42,6 @@
             transform: scale(1.01); box-shadow: 0 0 10px rgba(255,255,0,0.5);
         }
         #start-btn { font-size: 2rem; font-weight: bold; text-align: center; margin-top: 20px; }
-
-        /* ใช้ element เดียวกันเป็นทั้งที่มองเห็นและให้ screen reader อ่าน */
         #question-content {
             font-size: 1.4rem;
             line-height: 1.6;
@@ -63,7 +61,6 @@
         <span id="mistake-display">ผิดพลาด: 0/2</span>
     </div>
 
-    <!-- ใช้ element นี้ทั้งแสดงผลและให้ screen reader อ่าน -->
     <div id="question-content" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
     <div id="main-content">
@@ -95,20 +92,27 @@
         audioUnlocked = true;
     }
 
-    function stopBackgroundMusic() { bgMusic.pause(); bgMusic.currentTime = 0; }
+    function stopBackgroundMusic() {
+        bgMusic.pause();
+        bgMusic.currentTime = 0;
+    }
 
     function exitWithSound() {
         stopBackgroundMusic();
-        doorSfx.currentTime = 0; doorSfx.play().catch(()=>{});
-        setTimeout(() => location.href = '../index.html', 800);
-        setTimeout(() => location.href = '../index.html', 2500);
+        doorSfx.currentTime = 0;
+        doorSfx.play().catch(()=>{});
+        doorSfx.onended = () => {
+            window.location.href = '../index.html';
+        };
     }
 
     function restartWithSound() {
         stopBackgroundMusic();
-        doorSfx.currentTime = 0; doorSfx.play().catch(()=>{});
-        setTimeout(() => location.reload(), 800);
-        setTimeout(() => location.reload(), 2500);
+        doorSfx.currentTime = 0;
+        doorSfx.play().catch(()=>{});
+        doorSfx.onended = () => {
+            location.reload();
+        };
     }
 
     // ==================== ข้อมูลเกม ====================
@@ -129,7 +133,7 @@
 
     function announceAndShow(text) {
         const el = document.getElementById('question-content');
-        el.innerHTML = text; // ทั้งแสดงและให้ screen reader อ่านจาก element เดียวกัน
+        el.innerHTML = text;
     }
 
     function startGame() {
@@ -143,7 +147,11 @@
         currentStepIndex = 0;
         mistakes = 0;
         updateStatus();
-        loadStep(); // เริ่มข้อ 1 ทันที
+
+        // หน่วงเฉพาะข้อแรก 500ms ตามที่ขอ
+        setTimeout(() => {
+            loadStep(); // ข้อ 1 จะถูกประกาศหลังหน่วง 0.5 วินาที
+        }, 500);
     }
 
     function updateStatus() {
@@ -158,9 +166,7 @@
         }
 
         const step = gameData[currentStepIndex];
-        const fullText = `<h2>${step.title}</h2><p>${step.description}</p>`;
-
-        announceAndShow(fullText);
+        announceAndShow(`<h2>${step.title}</h2><p>${step.description}</p>`);
 
         const div = document.getElementById('choices-container');
         div.innerHTML = '';
@@ -172,7 +178,6 @@
             div.appendChild(btn);
         });
 
-        // ให้ focus ไปที่หัวข้อเพื่อคนใช้คีย์บอร์ด
         document.querySelector('h2')?.focus();
     }
 
@@ -199,8 +204,8 @@
             setTimeout(() => {
                 currentStepIndex++;
                 updateStatus();
-                loadStep();
-            }, 7000);
+                loadStep(); // ข้อถัดไปไม่มีการหน่วง
+            }, 5000);
 
         }, 1000);
     }
