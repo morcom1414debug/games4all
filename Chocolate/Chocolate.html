@@ -54,7 +54,8 @@
 <div id="game-container">
     <button id="back-btn" onclick="exitWithSound()">กลับเมนูหลัก</button>
 
-    <h1 tabindex="-1">เส้นทางช็อกโกแลต: จากสวนสู่บาร์</h1>
+    <!-- แก้ตรงนี้: เพิ่ม id="game-title" เพื่อให้ซ่อนได้เมื่อเริ่มเกม -->
+    <h1 id="game-title" tabindex="-1">เส้นทางช็อกโกแลต: จากสวนสู่บาร์</h1>
     
     <div id="status-bar" class="status-bar" style="display:none;">
         <span id="step-display">ขั้นตอน: 1/8</span>
@@ -91,7 +92,6 @@
             osc.connect(gain); gain.connect(ctx.destination);
             osc.start(0); osc.stop(ctx.currentTime + 0.01);
             
-            // Preload และ unlock audio elements สำหรับ iOS
             [bgMusic, correctSfx, wrongSfx, doorSfx].forEach(audio => {
                 audio.load();
             });
@@ -147,17 +147,17 @@
     }
 
     async function startGame(event) {
-        // Unlock audio และรอให้พร้อม
         unlockAudio();
         
-        // เล่นเสียงและรอให้เริ่มจริงๆ (สำคัญสำหรับ iOS)
         try {
             await bgMusic.play();
         } catch(e) {
             console.log('Background music play failed:', e);
         }
 
-        // แสดง UI
+        // ซ่อนชื่อเกมทันทีที่เริ่มเล่น
+        document.getElementById('game-title').style.display = 'none';
+
         document.getElementById('main-content').style.display = 'none';
         document.getElementById('status-bar').style.display = 'flex';
         document.getElementById('choices-container').style.display = 'flex';
@@ -166,18 +166,15 @@
         mistakes = 0;
         updateStatus();
 
-        // Reset aria-live สำหรับ Safari และรอให้มันพร้อม
         const q = document.getElementById('question-content');
         q.setAttribute('aria-live', 'off');
-        q.textContent = ''; // Clear content ก่อน
+        q.textContent = '';
         
-        // รอให้ระบบพร้อมสำหรับ aria-live (iOS ต้องการเวลามากกว่า)
         await new Promise(resolve => setTimeout(resolve, 100));
         q.setAttribute('aria-live', 'assertive');
         
-        // รออีกนิดเพื่อให้ aria-live ตั้งค่าเสร็จ แล้วค่อยโหลดข้อแรก
         await new Promise(resolve => setTimeout(resolve, 500));
-        loadStep(); // ตอนนี้ทั้งเสียงและ aria-live พร้อมแล้ว
+        loadStep();
     }
 
     function updateStatus() {
