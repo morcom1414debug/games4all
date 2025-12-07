@@ -218,7 +218,7 @@
 <audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
 
 <script>
-// ======== AudioEngine (ปรับ volume = 0 ตอน unlock) ========
+// ======== AudioEngine (เต็มทุกบรรทัด) ========
 class AudioEngine {
   constructor(map) { 
     this.map = map; 
@@ -234,9 +234,7 @@ class AudioEngine {
     for (const [key, el] of Object.entries(this.map)) {
       try {
         el.muted = false;
-        const originalVolume = el.volume;
-        el.volume = 0;  // <<< ตั้ง volume เป็น 0 เพื่อปลดล็อกเงียบ ๆ
-        
+        el.volume = 0.8;
         el.currentTime = 0;
         
         if (el.readyState < 2) {
@@ -262,7 +260,6 @@ class AudioEngine {
           el.pause();
         }
         el.currentTime = 0;
-        el.volume = originalVolume;  // <<< คืน volume เดิม
       } catch(e) {
         console.warn(`Failed to unlock ${key}:`, e);
       }
@@ -382,7 +379,7 @@ async function unlockAudio(){
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
 
-// คำศัพท์ทั้งหมด
+// คำศัพท์ทั้งหมด (เต็มทุกคำ)
 const vocab = [
     {th:"แมว", en:"cat"}, {th:"หมา", en:"dog"}, {th:"ช้าง", en:"elephant"}, {th:"เสือ", en:"tiger"},
     {th:"ม้า", en:"horse"}, {th:"วัว", en:"cow"}, {th:"หมู", en:"pig"}, {th:"ไก่", en:"chicken"},
@@ -433,6 +430,7 @@ async function startGameWithTime(seconds) {
     document.getElementById('game').style.display = 'block';
     backBtn.style.display = 'none';
 
+    // ข้อ 1: เล่นแค่ BGM ไม่เล่น start.mp3
     await audioEngine.startBGM();
 
     currentQuestions = shuffle(vocab).slice(0, TOTAL_QUESTIONS);
@@ -463,12 +461,7 @@ function nextQuestion() {
         const btn = document.createElement('button');
         btn.className = 'letter-btn';
         btn.textContent = letter.toUpperCase();
-        btn.dataset.letter = letter.toUpperCase();
-        // เพิ่ม accessibility เพื่อ VoiceOver iOS ลื่นขึ้น
-        btn.setAttribute('role', 'button');
-        btn.setAttribute('aria-pressed', 'false');
-        btn.setAttribute('aria-label', letter.toUpperCase());
-        
+        btn.dataset.letter = letter.toUpperCase();           // เก็บตัวอักษรไว้ใช้ตอนเลือกแล้ว
         btn.onclick = () => selectLetter(btn, letter, word.en.toLowerCase());
         lettersDiv.appendChild(btn);
     });
@@ -499,11 +492,9 @@ async function selectLetter(btn, letter, correct) {
 
     selectedLetters.push(letter);
     btn.classList.add('used');
-    btn.setAttribute('aria-pressed', 'true');
-    
-    // ข้อ 1: แสดง "F เลือกแล้ว" ฯลฯ
+    // ข้อ 4: แสดง "X เลือกแล้ว"
     btn.textContent = btn.dataset.letter + " เลือกแล้ว";
-    btn.setAttribute('aria-label', btn.dataset.letter + ' เลือกแล้ว');
+    btn.setAttribute('aria-label', 'เลือกแล้ว');
     
     document.getElementById('spellingDisplay').textContent = selectedLetters.map(l => l.toUpperCase()).join(' ');
 
