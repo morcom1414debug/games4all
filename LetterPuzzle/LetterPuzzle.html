@@ -107,9 +107,7 @@
             color: #ffd93d;
         }
         .timer {
-            font-size: 4rem;
-            margin: 25px 0;
-            font-weight: 900;
+            display: none;
         }
         .letters {
             display: flex;
@@ -134,22 +132,13 @@
         }
         .letter-btn:hover:not(.used) { transform: scale(1.15); }
         .letter-btn.used {
-            background: #95e1d3 !important;
-            color: white !important;
+            background: #999 !important;
+            color: #555 !important;
+            opacity: 0.5;
+            cursor: not-allowed;
             pointer-events: none;
-            transform: scale(0.92);
-        }
-        .letter-btn.used::after {
-            content: "✓";
-            position: absolute;
-            top: -14px;
-            right: -14px;
-            background: #4ecdc4;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            font-size: 2rem;
-            line-height: 40px;
+            transform: scale(0.85);
+            font-size: 1.3rem;
         }
         .letter-btn.wrong {
             background: #ff6b6b !important;
@@ -238,45 +227,145 @@
 <audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
 
 <script>
-// ======== AudioEngine (คัดลอกมาจาก a.html ทั้งชุด - ดีที่สุด) ========
+// ======== AudioEngine (ปรับปรุงสำหรับ iOS) ========
 class AudioEngine {
-  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = this.map['bgm'] || null; }
+  constructor(map) { 
+    this.map = map; 
+    this.queue = []; 
+    this.isPlaying = false; 
+    this.bgmEl = this.map['bgm'] || null;
+    this.isUnlocked = false;
+  }
+  
   async unlockAll() {
-    for (const el of Object.values(this.map)) {
+    if (this.isUnlocked) return;
+    
+    // unlock ทีละตัวอย่างระมัดระวัง
+    for (const [key, el] of Object.entries(this.map)) {
       try {
-        el.muted = false; el.currentTime = 0;
-        await el.play().catch(()=>{});
-        if (!el.paused) el.pause();
+        el.muted = false;
+        el.volume = 0.8;
         el.currentTime = 0;
-      } catch(e) {}
+        
+        // รอให้ audio โหลดเสร็จก่อน
+        if (el.readyState < 2) {
+          await new Promise(resolve => {
+            const onLoad = () => {
+              el.removeEventListener('loadeddata', onLoad);
+              el.removeEventListener('canplaythrough', onLoad);
+              resolve();
+            };
+            el.addEventListener('loadeddata', onLoad);
+            el.addEventListener('canplaythrough', onLoad);
+            setTimeout(resolve, 500); // timeout fallback
+          });
+        }
+        
+        // ลอง play แล้ว pause ทันที
+        const playPromise = el.play();
+        if (playPromise) {
+          await playPromise.catch(() => {});
+        }
+        
+        if (!el.paused) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+          el.pause();
+        }
+        el.currentTime = 0;
+      } catch(e) {
+        console.warn(`Failed to unlock ${key}:`, e);
+      }
+    }
+    
+    this.isUnlocked = true;
+  }
+  
+  async startBGM() { 
+    if (!this.bgmEl) return;
+    try {
+      // รอสักครู่ให้ unlock เสร็จสนิท
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (this.bgmEl.paused) { 
+        this.bgmEl.currentTime = 0;
+        this.bgmEl.volume = 0.6;
+        await this.bgmEl.play().catch(e => console.warn('BGM play failed:', e));
+      }
+    } catch(e) {
+      console.warn('BGM start failed:', e);
     }
   }
-  async startBGM() { if (this.bgmEl && this.bgmEl.paused) { this.bgmEl.currentTime = 0; await this.bgmEl.play().catch(()=>{}); } }
-  stopBGM() { if (this.bgmEl) { this.bgmEl.pause(); this.bgmEl.currentTime = 0; } }
+  
+  stopBGM() { 
+    if (this.bgmEl) { 
+      this.bgmEl.pause(); 
+      this.bgmEl.currentTime = 0; 
+    } 
+  }
+  
   playEffect(key) {
     if (!this.map[key]) return Promise.resolve();
-    return new Promise(resolve => { this.queue.push({key, resolve}); if (!this.isPlaying) this._dequeue(); });
+    return new Promise(resolve => { 
+      this.queue.push({key, resolve}); 
+      if (!this.isPlaying) this._dequeue(); 
+    });
   }
+  
   async _dequeue() {
-    if (!this.queue.length) { this.isPlaying = false; return; }
+    if (!this.queue.length) { 
+      this.isPlaying = false; 
+      return; 
+    }
+    
     this.isPlaying = true;
     const {key, resolve} = this.queue.shift();
     const el = this.map[key];
-    if (!el) { resolve(); this._dequeue(); return; }
+    
+    if (!el) { 
+      resolve(); 
+      this._dequeue(); 
+      return; 
+    }
 
     let settled = false;
-    const cleanup = () => { try { el.onended = null; } catch(e){} };
-    const onEnded = () => { if (settled) return; settled = true; cleanup(); el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40); };
+    const cleanup = () => { 
+      try { el.onended = null; } catch(e){} 
+    };
+    
+    const onEnded = () => { 
+      if (settled) return; 
+      settled = true; 
+      cleanup(); 
+      el.currentTime = 0; 
+      resolve(); 
+      setTimeout(() => this._dequeue(), 40); 
+    };
+    
     try { el.onended = onEnded; } catch(e){}
 
-    const duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? el.duration*1000 : 600;
+    const duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? el.duration * 1000 : 600;
     const timer = setTimeout(() => {
       if (settled) return;
-      settled = true; cleanup(); try{el.pause();}catch(e){} el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40);
+      settled = true; 
+      cleanup(); 
+      try { el.pause(); } catch(e){} 
+      el.currentTime = 0; 
+      resolve(); 
+      setTimeout(() => this._dequeue(), 40);
     }, duration + 300);
 
-    try { el.currentTime = 0; await el.play().catch(()=>{}); }
-    catch(e) { clearTimeout(timer); if (!settled) { settled=true; resolve(); setTimeout(()=>this._dequeue(),40); } }
+    try { 
+      el.currentTime = 0;
+      el.volume = 0.8;
+      await el.play().catch(() => {});
+    } catch(e) { 
+      clearTimeout(timer); 
+      if (!settled) { 
+        settled = true; 
+        resolve(); 
+        setTimeout(() => this._dequeue(), 40); 
+      } 
+    }
   }
 }
 
@@ -335,6 +424,7 @@ let timerInterval;
 let selectedLetters = [];
 let timePerQuestion = 20;
 const TOTAL_QUESTIONS = 10;
+let isProcessingTimeout = false; // ป้องกันเล่นเสียง f.mp3 ซ้ำ
 
 const backBtn = document.getElementById('backToMenu');
 
@@ -355,6 +445,7 @@ async function startGameWithTime(seconds) {
     document.getElementById('game').style.display = 'block';
     backBtn.style.display = 'none';
 
+    // เล่น BGM และ startSound ตามลำดับ
     await audioEngine.startBGM();
     await audioEngine.playEffect('startSound');
     
@@ -370,6 +461,7 @@ function nextQuestion() {
         return;
     }
 
+    isProcessingTimeout = false; // reset flag
     selectedLetters = [];
     const word = currentQuestions[currentQ];
     document.getElementById('spellingDisplay').textContent = '_ '.repeat(word.en.length).trim();
@@ -391,15 +483,22 @@ function nextQuestion() {
 
     let timeLeft = timePerQuestion;
     document.getElementById('timer').textContent = timeLeft;
-    document.getElementById('timer').style.color = "#fff";
 
     timerInterval = setInterval(() => {
         timeLeft--;
         document.getElementById('timer').textContent = timeLeft;
-        if (timeLeft <= 5) document.getElementById('timer').style.color = "#ff6b6b";
+        
         if (timeLeft <= 0) {
+            // ป้องกันเล่นซ้ำ
+            if (isProcessingTimeout) return;
+            isProcessingTimeout = true;
+            
+            clearInterval(timerInterval);
             audioEngine.playEffect('wrongSound');
-            audioEngine.playEffect('fSound').then(wrongAnswer);
+            audioEngine.playEffect('fSound').then(() => {
+                currentQ++;
+                nextQuestion();
+            });
         }
     }, 1000);
 }
@@ -409,6 +508,9 @@ async function selectLetter(btn, letter, correct) {
 
     selectedLetters.push(letter);
     btn.classList.add('used');
+    btn.textContent = 'เลือกแล้ว'; // เปลี่ยน label ที่นี่
+    btn.setAttribute('aria-label', 'เลือกแล้ว');
+    
     document.getElementById('spellingDisplay').textContent = selectedLetters.map(l => l.toUpperCase()).join(' ');
 
     const typed = selectedLetters.join('');
@@ -418,13 +520,18 @@ async function selectLetter(btn, letter, correct) {
     }
 
     if (typed === correct) {
+        clearInterval(timerInterval);
+        isProcessingTimeout = true; // ป้องกัน timeout ทำงาน
+        
         await audioEngine.playEffect('correctSound');
         score++;
-        clearInterval(timerInterval);
         await audioEngine.playEffect('tSound');
         currentQ++;
         nextQuestion();
     } else if (!correct.startsWith(typed)) {
+        clearInterval(timerInterval);
+        isProcessingTimeout = true; // ป้องกัน timeout ทำงาน
+        
         btn.classList.add('wrong');
         await audioEngine.playEffect('wrongSound');
         await audioEngine.playEffect('fSound');
@@ -433,13 +540,8 @@ async function selectLetter(btn, letter, correct) {
     }
 }
 
-function wrongAnswer() {
-    clearInterval(timerInterval);
-    currentQ++;
-    nextQuestion();
-}
-
 async function endGame() {
+    clearInterval(timerInterval);
     audioEngine.stopBGM();
 
     document.getElementById('game').style.display = 'none';
@@ -503,7 +605,9 @@ window.addEventListener('beforeunload', () => audioEngine.stopBGM());
 // Load audio on ready
 document.addEventListener("DOMContentLoaded", () => {
     for (const k in audioMap) { 
-        try { audioMap[k].load(); } catch(e){} 
+        try { 
+            audioMap[k].load(); 
+        } catch(e){} 
     }
 });
 </script>
