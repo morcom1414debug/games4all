@@ -107,9 +107,9 @@
             color: #ffd93d;
         }
         .timer {
-            font-size: 2.5rem;
+            font-size: 4rem;
             margin: 25px 0;
-            font-weight: 700;
+            font-weight: 900;
         }
         .letters {
             display: flex;
@@ -140,7 +140,7 @@
             transform: scale(0.92);
         }
         .letter-btn.used::after {
-            content: "Checkmark";
+            content: "✓";
             position: absolute;
             top: -14px;
             right: -14px;
@@ -211,7 +211,7 @@
     <div id="game">
         <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : แมว ภาษาอังกฤษเขียนว่า</h2>
         <div class="spelling-display" id="spellingDisplay">_ _ _</div>
-        <div class="timer">เวลา: <span id="timer">20</span> วินาที</div>
+        <div class="timer"><span id="timer">20</span></div>
         <div class="letters" id="letters"></div>
     </div>
 
@@ -234,10 +234,77 @@
 <audio id="t1Sound" src="audio/t1.mp3" preload="auto"></audio>
 <audio id="tSound" src="audio/t.mp3" preload="auto"></audio>
 <audio id="fSound" src="audio/f.mp3" preload="auto"></audio>
-<audio id="endSound" src="audio/end.mp3" preload="auto"></audio>  <!-- เฉพาะตอบถูก 10/10 -->
-<audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio> <!-- ตอบผิด 1 ข้อขึ้นไป -->
+<audio id="endSound" src="audio/end.mp3" preload="auto"></audio>
+<audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
 
 <script>
+// ======== AudioEngine (คัดลอกมาจาก a.html ทั้งชุด - ดีที่สุด) ========
+class AudioEngine {
+  constructor(map) { this.map = map; this.queue = []; this.isPlaying = false; this.bgmEl = this.map['bgm'] || null; }
+  async unlockAll() {
+    for (const el of Object.values(this.map)) {
+      try {
+        el.muted = false; el.currentTime = 0;
+        await el.play().catch(()=>{});
+        if (!el.paused) el.pause();
+        el.currentTime = 0;
+      } catch(e) {}
+    }
+  }
+  async startBGM() { if (this.bgmEl && this.bgmEl.paused) { this.bgmEl.currentTime = 0; await this.bgmEl.play().catch(()=>{}); } }
+  stopBGM() { if (this.bgmEl) { this.bgmEl.pause(); this.bgmEl.currentTime = 0; } }
+  playEffect(key) {
+    if (!this.map[key]) return Promise.resolve();
+    return new Promise(resolve => { this.queue.push({key, resolve}); if (!this.isPlaying) this._dequeue(); });
+  }
+  async _dequeue() {
+    if (!this.queue.length) { this.isPlaying = false; return; }
+    this.isPlaying = true;
+    const {key, resolve} = this.queue.shift();
+    const el = this.map[key];
+    if (!el) { resolve(); this._dequeue(); return; }
+
+    let settled = false;
+    const cleanup = () => { try { el.onended = null; } catch(e){} };
+    const onEnded = () => { if (settled) return; settled = true; cleanup(); el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40); };
+    try { el.onended = onEnded; } catch(e){}
+
+    const duration = (el.duration && isFinite(el.duration) && el.duration > 0) ? el.duration*1000 : 600;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true; cleanup(); try{el.pause();}catch(e){} el.currentTime = 0; resolve(); setTimeout(()=>this._dequeue(),40);
+    }, duration + 300);
+
+    try { el.currentTime = 0; await el.play().catch(()=>{}); }
+    catch(e) { clearTimeout(timer); if (!settled) { settled=true; resolve(); setTimeout(()=>this._dequeue(),40); } }
+  }
+}
+
+const audioMap = {
+  bgm: document.getElementById("bgm"),
+  correctSound: document.getElementById("correctSound"),
+  wrongSound: document.getElementById("wrongSound"),
+  startSound: document.getElementById("startSound"),
+  doorSound: document.getElementById("doorSound"),
+  t1Sound: document.getElementById("t1Sound"),
+  tSound: document.getElementById("tSound"),
+  fSound: document.getElementById("fSound"),
+  endSound: document.getElementById("endSound"),
+  end1Sound: document.getElementById("end1Sound")
+};
+const audioEngine = new AudioEngine(audioMap);
+
+let hasUserInteracted = false;
+
+// ======== Unlock Audio ========
+async function unlockAudio(){
+  if (hasUserInteracted) return;
+  hasUserInteracted = true;
+  await audioEngine.unlockAll();
+}
+document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
+document.addEventListener("click", unlockAudio, {once:true});
+
 // คำศัพท์
 const vocab = [
     {th:"แมว", en:"cat"}, {th:"หมา", en:"dog"}, {th:"ช้าง", en:"elephant"}, {th:"เสือ", en:"tiger"},
@@ -269,31 +336,7 @@ let selectedLetters = [];
 let timePerQuestion = 20;
 const TOTAL_QUESTIONS = 10;
 
-const correctSound = document.getElementById('correctSound');
-const wrongSound = document.getElementById('wrongSound');
 const backBtn = document.getElementById('backToMenu');
-
-const bgm = document.getElementById('bgm');
-const startSound = document.getElementById('startSound');
-const doorSound = document.getElementById('doorSound');
-const t1Sound = document.getElementById('t1Sound');
-const tSound = document.getElementById('tSound');
-const fSound = document.getElementById('fSound');
-const endSound = document.getElementById('endSound');   // เฉพาะ 10/10
-const end1Sound = document.getElementById('end1Sound'); // ผิด 1 ข้อขึ้นไป
-
-function stopBGM() {
-    bgm.pause();
-    bgm.currentTime = 0;
-}
-
-function playWithWait(audio, callback) {
-    audio.currentTime = 0;
-    audio.play();
-    audio.onended = () => {
-        if (callback) callback();
-    };
-}
 
 function shuffle(array) {
     const arr = [...array];
@@ -304,19 +347,21 @@ function shuffle(array) {
     return arr;
 }
 
-function startGameWithTime(seconds) {
+async function startGameWithTime(seconds) {
+    await unlockAudio();
+    
     timePerQuestion = seconds;
     document.getElementById('levelSelect').style.display = 'none';
     document.getElementById('game').style.display = 'block';
     backBtn.style.display = 'none';
 
-    bgm.play();
-    playWithWait(startSound, () => {
-        currentQuestions = shuffle(vocab).slice(0, TOTAL_QUESTIONS);
-        currentQ = 0;
-        score = 0;
-        nextQuestion();
-    });
+    await audioEngine.startBGM();
+    await audioEngine.playEffect('startSound');
+    
+    currentQuestions = shuffle(vocab).slice(0, TOTAL_QUESTIONS);
+    currentQ = 0;
+    score = 0;
+    nextQuestion();
 }
 
 function nextQuestion() {
@@ -353,13 +398,13 @@ function nextQuestion() {
         document.getElementById('timer').textContent = timeLeft;
         if (timeLeft <= 5) document.getElementById('timer').style.color = "#ff6b6b";
         if (timeLeft <= 0) {
-            wrongSound.play();
-            playWithWait(fSound, wrongAnswer);
+            audioEngine.playEffect('wrongSound');
+            audioEngine.playEffect('fSound').then(wrongAnswer);
         }
     }, 1000);
 }
 
-function selectLetter(btn, letter, correct) {
+async function selectLetter(btn, letter, correct) {
     if (btn.classList.contains('used')) return;
 
     selectedLetters.push(letter);
@@ -369,25 +414,22 @@ function selectLetter(btn, letter, correct) {
     const typed = selectedLetters.join('');
 
     if (typed.length < correct.length && correct.startsWith(typed)) {
-        t1Sound.currentTime = 0;
-        t1Sound.play();
+        await audioEngine.playEffect('t1Sound');
     }
 
     if (typed === correct) {
-        correctSound.play();
+        await audioEngine.playEffect('correctSound');
         score++;
         clearInterval(timerInterval);
-        playWithWait(tSound, () => {
-            currentQ++;
-            nextQuestion();
-        });
+        await audioEngine.playEffect('tSound');
+        currentQ++;
+        nextQuestion();
     } else if (!correct.startsWith(typed)) {
         btn.classList.add('wrong');
-        wrongSound.play();
-        playWithWait(fSound, () => {
-            currentQ++;
-            nextQuestion();
-        });
+        await audioEngine.playEffect('wrongSound');
+        await audioEngine.playEffect('fSound');
+        currentQ++;
+        nextQuestion();
     }
 }
 
@@ -397,8 +439,8 @@ function wrongAnswer() {
     nextQuestion();
 }
 
-function endGame() {
-    stopBGM();
+async function endGame() {
+    audioEngine.stopBGM();
 
     document.getElementById('game').style.display = 'none';
     document.getElementById('result').style.display = 'block';
@@ -413,10 +455,7 @@ function endGame() {
         title.textContent = "สุดยอดมาก!";
         msg.innerHTML = "ตอบถูกทั้ง 10 ข้อเลย!<br>เก่งสุด ๆ ไปเลยนะ!";
         points = 1000;
-        playWithWait(endSound, () => {  // เฉพาะ 10/10 เท่านั้นที่เล่น end.mp3
-            scoreDiv.textContent = points + " คะแนน";
-            title.focus();
-        });
+        await audioEngine.playEffect('endSound');
     } else {
         if (score >= 8) {
             title.textContent = "เก่งมากเลย!";
@@ -434,11 +473,11 @@ function endGame() {
             title.textContent = "ไม่เป็นไร สู้ต่อไป!";
             msg.textContent = encourages[Math.floor(Math.random() * encourages.length)];
         }
-        playWithWait(end1Sound, () => {  // ผิด 1 ข้อขึ้นไป → เล่น end1.mp3 เท่านั้น
-            scoreDiv.textContent = points + " คะแนน";
-            title.focus();
-        });
+        await audioEngine.playEffect('end1Sound');
     }
+    
+    scoreDiv.textContent = points + " คะแนน";
+    title.focus();
 }
 
 // Event Listeners
@@ -446,22 +485,27 @@ document.getElementById('easy').onclick = () => startGameWithTime(40);
 document.getElementById('medium').onclick = () => startGameWithTime(25);
 document.getElementById('hard').onclick = () => startGameWithTime(15);
 
-document.getElementById('restartBtn').onclick = () => {
-    playWithWait(doorSound, () => {
-        document.getElementById('result').style.display = 'none';
-        document.getElementById('levelSelect').style.display = 'block';
-        backBtn.style.display = 'block';
-    });
+document.getElementById('restartBtn').onclick = async () => {
+    await audioEngine.playEffect('doorSound');
+    document.getElementById('result').style.display = 'none';
+    document.getElementById('levelSelect').style.display = 'block';
+    backBtn.style.display = 'block';
 };
 
-backBtn.onclick = () => {
-    stopBGM();
-    playWithWait(doorSound, () => {
-        location.href = '../index.html';
-    });
+backBtn.onclick = async () => {
+    audioEngine.stopBGM();
+    await audioEngine.playEffect('doorSound');
+    location.href = '../index.html';
 };
 
-window.addEventListener('beforeunload', stopBGM);
+window.addEventListener('beforeunload', () => audioEngine.stopBGM());
+
+// Load audio on ready
+document.addEventListener("DOMContentLoaded", () => {
+    for (const k in audioMap) { 
+        try { audioMap[k].load(); } catch(e){} 
+    }
+});
 </script>
 </body>
 </html>
