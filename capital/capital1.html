@@ -107,13 +107,21 @@ let questionIndex=0, timerInterval, timeLeft=20, localAnswered=false;
 let currentRoomListener=null, soundListener=null, currentAudio=null, lastSoundTime=0;
 let lastQuestionText = "";
 
+// รายชื่อไฟล์เสียงทั้งหมดที่ใช้ในเกม
 const soundFiles = [
-  "pop.mp3", "start.mp3", "friend.mp3", "door.mp3",
-  "next.mp3", "new4.mp3", "wait.mp3"
+  "pop.mp3",
+  "start.mp3",
+  "friend.mp3",
+  "door.mp3",
+  "next.mp3",
+  "new4.mp3",
+  "wait.mp3"
 ];
 
+// ออบเจกต์เก็บ Audio ที่ preload แล้ว
 const preloadedAudios = {};
 
+// PRELOAD ALL SOUNDS เมื่อกดยืนยันชื่อ (แก้ไข)
 function preloadAllSounds() {
   soundFiles.forEach(name => {
     const audio = new Audio(`audio/${name}`);
@@ -121,18 +129,21 @@ function preloadAllSounds() {
     preloadedAudios[name] = audio;
   });
 
+  // ให้ user gesture authorize friend.mp3 สำหรับ iOS, ตอนนี้ mute แล้ว play สั้นๆ
   if (preloadedAudios["friend.mp3"]) {
     preloadedAudios["friend.mp3"].volume = 0;
     preloadedAudios["friend.mp3"].play().then(() => {
       preloadedAudios["friend.mp3"].pause();
       preloadedAudios["friend.mp3"].currentTime = 0;
       preloadedAudios["friend.mp3"].volume = 1;
+      // หลังจากนี้จะสามารถ play friend.mp3 ใน event อื่นได้บน iOS
     }).catch(() => {});
   }
+
   console.log("Preloaded all sound files!");
 }
 
-// === 98 คำถามเมืองหลวง (เหมือนเดิมทุกตัว) ===
+// === 98 คำถามเมืองหลวง ===
 const questions = [
   { q:"เมืองหลวงของไทยคืออะไร?", options:["กรุงเทพมหานคร","โตเกียว","ปารีส"], answer:0 },
   { q:"เมืองหลวงของญี่ปุ่นคืออะไร?", options:["ปักกิ่ง","โตเกียว","โซล"], answer:1 },
@@ -161,7 +172,7 @@ const questions = [
   { q:"เมืองหลวงของสิงคโปร์คืออะไร?", options:["สิงคโปร์","เซ็นโตซา","จูรง"], answer:0 },
   { q:"เมืองหลวงของฟิลิปปินส์คืออะไร?", options:["เซบู","มะนิลา","ดาเวา"], answer:1 },
   { q:"เมืองหลวงของนิวซีแลนด์คืออะไร?", options:["โอคแลนด์","เวลลิงตัน","ไครสต์เชิร์ช"], answer:1 },
-  { q:"เมืองหลวงของสวีเดนคืออะไร?", options:["กอเทนเบิร์ก","สต็อกโฮล์ม","มัลเม"], answer:1 },
+  { q:"เมืองหลวงของสวีเดนคืออะไร?", options:["กอเทนเบิร์ก","สต็อกโฮล์ม","มัลโม"], answer:1 },
   { q:"เมืองหลวงของนอร์เวย์คืออะไร?", options:["เบอร์เกน","ออสโล","ทรอมเซอ"], answer:1 },
   { q:"เมืองหลวงของเดนมาร์กคืออะไร?", options:["ออร์ฮูส","โคเปนเฮเกน","โอเดนเซ"], answer:1 },
   { q:"เมืองหลวงของเนเธอร์แลนด์คืออะไร?", options:["ร็อตเตอร์ดัม","อัมสเตอร์ดัม","เฮก"], answer:1 },
@@ -224,57 +235,28 @@ const questions = [
   { q:"เมืองหลวงของติมอร์-เลสเตคืออะไร?", options:["บาเกา","ดิลี","ซัวอิ"], answer:1 }
 ];
 
-// ==================== เพิ่มระบบลบห้องที่ไม่มีการเคลื่อนไหว 10 นาที ====================
-function updateRoomActivity() {
-  if (!roomId) return;
-  db.ref(`guessGameRooms/${roomId}/lastActivity`).set(firebase.database.ServerValue.TIMESTAMP);
-}
-
-function startInactiveRoomCleaner() {
-  setInterval(() => {
-    const now = Date.now();
-    const timeout = 10 * 60 * 1000; // 10 นาที
-
-    db.ref("guessGameRooms").once("value").then(snap => {
-      snap.forEach(child => {
-        const room = child.val();
-        const key = child.key;
-        const last = room.lastActivity || room.created || 0;
-        if (now - last > timeout) {
-          console.log(`Auto-remove inactive room: ${key}`);
-          db.ref(`guessGameRooms/${key}`).remove();
-        }
-      });
-    });
-  }, 30000); // ตรวจทุก 30 วินาที
-}
-
-startInactiveRoomCleaner(); // เริ่มทันทีที่โหลดหน้า
-
-// =====================================================================
-
+// เริ่มเกม
 document.getElementById("game").style.display="block";
 document.getElementById("backToMenuBtn").style.display="block";
 
+// ============== AUDIO ==============
 function triggerSound(name) {
   if (!roomId) return;
   const now = Date.now();
   if (now - lastSoundTime < 200) return;
   lastSoundTime = now;
   db.ref(`guessGameRooms/${roomId}/soundTrigger`).set({name, time: now});
-  updateRoomActivity(); // เพิ่ม
 }
-
 function triggerWaitSoundOnlyAtEnd() {
   if (!roomId) return;
   db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).set({time: Date.now()});
 }
-
 function stopCurrentAudio() {
   if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
 }
 
 function playSound(name) {
+  // ใช้ preloaded audio ที่ authorize แล้ว ถ้ามี
   stopCurrentAudio();
   const audio = preloadedAudios[`${name}.mp3`] || preloadedAudios[name] || new Audio(`audio/${name}.mp3`);
   audio.play().catch(() => {});
@@ -289,13 +271,13 @@ function startSoundListener() {
   db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).on("value", s => { if (s.val()?.time) playSound("wait"); });
 }
 
+// ============== FOCUS ==============
 function focusHeading(id) {
   requestAnimationFrame(() => setTimeout(() => {
     const el = document.getElementById(id);
     if (el) { el.setAttribute('tabindex', '-1'); el.focus(); }
   }, 150));
 }
-
 function focusQuestionIfChanged(newText) {
   if (newText !== lastQuestionText) {
     lastQuestionText = newText;
@@ -304,12 +286,14 @@ function focusQuestionIfChanged(newText) {
   }
 }
 
+// ============== UTILS ==============
 function shuffleArray(arr) {
   for (let i = arr.length-1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
 }
+
 
 // ============== GAME FLOW ==============
 function confirmName() {
@@ -321,6 +305,7 @@ function confirmName() {
   focusHeading("lobbyTitle");
   
   preloadAllSounds();
+  
   loadRooms();
 }
 
@@ -358,18 +343,21 @@ function showCreateRoom() {
   if (!name) return;
   const ref = db.ref("guessGameRooms").push();
   roomId = ref.key; isHost = true;
-  ref.set({
-    name, 
-    status:"waiting", 
-    host:playerId, 
-    created:Date.now(),
-    lastActivity: firebase.database.ServerValue.TIMESTAMP, // เพิ่ม
-    players:{}
-  });
+  ref.set({name, status:"waiting", host:playerId, created:Date.now(), players:{}});
   joinRoom(roomId);
 }
 
+/* function joinRoom(id) {
+  roomId = id;
+  const ref = db.ref(`guessGameRooms/${roomId}/players/${playerId}`);
+  ref.set({name:playerName, score:0, answered:false});
+  ref.onDisconnect().remove();
+  db.ref(`guessGameRooms/${roomId}/lastJoin`).set(Date.now());
+  showRoom();
+} */
+
 function joinRoom(id) {
+  // ก่อน join ให้เช็คจำนวนคนในห้อง
   db.ref(`guessGameRooms/${id}`).once("value").then(snap => {
     const room = snap.val();
     const playerCount = room.players ? Object.keys(room.players).length : 0;
@@ -382,7 +370,6 @@ function joinRoom(id) {
     ref.set({name:playerName, score:0, answered:false});
     ref.onDisconnect().remove();
     db.ref(`guessGameRooms/${roomId}/lastJoin`).set(Date.now());
-    db.ref(`guessGameRooms/${roomId}/lastActivity`).set(firebase.database.ServerValue.TIMESTAMP); // เพิ่ม
     showRoom();
   });
 }
@@ -392,7 +379,6 @@ function showRoom() {
   document.getElementById("room").style.display = "block";
   focusHeading("roomName");
   startSoundListener();
-  updateRoomActivity(); // เพิ่ม
 
   if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`guessGameRooms/${roomId}`);
@@ -411,10 +397,11 @@ function showRoom() {
     }
     document.getElementById("startBtn").style.display = (room.host === playerId) ? "inline" : "none";
 
-    if (room.lastJoin && room.lastJoin !== window._lastJoinTime) {
-      window._lastJoinTime = room.lastJoin;
-      playSound("friend"); 
-    }
+	if (room.lastJoin && room.lastJoin !== window._lastJoinTime) {
+	  window._lastJoinTime = room.lastJoin;
+	  // ทุกเครื่องที่อยู่ในห้อง เมื่อ lastJoin เปลี่ยน คือมีคนใหม่ join
+	  playSound("friend"); 
+	}
     if (room.lastBackToLobby && room.lastBackToLobby !== window._lastBackTime) {
       window._lastBackTime = room.lastBackToLobby;
       triggerSound("door");
@@ -427,12 +414,10 @@ function showRoom() {
 
 function startGame() {
   triggerSound("start");
-  updateRoomActivity(); // เพิ่ม
   db.ref(`guessGameRooms/${roomId}`).update({
     status: "playing",
     current: 0,
-    questions: getRandomQuestions(7),
-    lastActivity: firebase.database.ServerValue.TIMESTAMP // เพิ่ม
+    questions: getRandomQuestions(7)
   });
 }
 
@@ -473,12 +458,13 @@ function showQuestion(q) {
 
   const container = document.getElementById("options");
   container.innerHTML = "";
-  const shuffled = q.options;
+  const shuffled = q.options; // <<--- ใช้ options จาก Firebase, ไม่ต้อง shuffle
+  const correctText = q.options[q.answer];
 
   shuffled.forEach((opt, i) => {
     const btn = document.createElement("button");
     btn.textContent = opt;
-    btn.onclick = () => submitAnswer(opt === q.options[q.answer]);
+    btn.onclick = () => submitAnswer(opt === correctText);
     container.appendChild(btn);
   });
 
@@ -495,11 +481,11 @@ function showQuestion(q) {
   }, 1000);
 }
 
+
 function submitAnswer(isCorrect) {
   if (localAnswered) return;
   localAnswered = true;
   playSound("pop");
-  updateRoomActivity(); // เพิ่ม
 
   db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
     const data = snap.val();
@@ -536,7 +522,6 @@ function nextQuestion() {
     const updates = {};
     for (let id in data.players) updates[`players/${id}/answered`] = false;
     updates.current = (data.current || 0) + 1;
-    updates.lastActivity = firebase.database.ServerValue.TIMESTAMP; // เพิ่ม
     db.ref(`guessGameRooms/${roomId}`).update(updates);
 
     questionIndex = updates.current;
@@ -560,8 +545,7 @@ function endGameHost() {
 
     db.ref(`guessGameRooms/${roomId}`).update({
       status: "finished",
-      result: { winners, players },
-      lastActivity: firebase.database.ServerValue.TIMESTAMP // เพิ่ม
+      result: { winners, players }
     });
   });
 }
