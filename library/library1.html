@@ -43,16 +43,6 @@
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(244,67,54,0.5);
   }
-
-  /* เพิ่มสไตล์สำหรับปุ่มที่ตอบแล้ว */
-  button.disabled-option {
-    background: #cccccc !important;
-    color: #666666 !important;
-    cursor: not-allowed !important;
-  }
-  button.disabled-option:hover {
-    background: #cccccc !important;
-  }
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -424,25 +414,6 @@ function startQuiz() {
   });
 }
 
-// === ปรับตรงนี้: ทำให้ปุ่มตัวเลือกถูก disable หลังตอบแล้ว ===
-function disableOptionButtons() {
-  const buttons = document.querySelectorAll("#options button");
-  buttons.forEach(btn => {
-    btn.disabled = true;
-    btn.classList.add("disabled-option");
-    btn.setAttribute("aria-label", btn.textContent + " (ไม่สามารถเลือกได้แล้ว)");
-  });
-}
-
-function enableOptionButtons() {
-  const buttons = document.querySelectorAll("#options button");
-  buttons.forEach(btn => {
-    btn.disabled = false;
-    btn.classList.remove("disabled-option");
-    btn.setAttribute("aria-label", btn.textContent);
-  });
-}
-
 function showQuestion(q) {
   if (!q) { if (isHost) endGameHost(); return; }
   localAnswered = false;
@@ -456,17 +427,12 @@ function showQuestion(q) {
   const shuffled = q.options;
   const correctText = q.options[q.answer];
 
-  // สร้างปุ่มใหม่ทุกครั้ง
   shuffled.forEach((opt, i) => {
     const btn = document.createElement("button");
     btn.textContent = opt;
-    btn.setAttribute("aria-label", opt);
     btn.onclick = () => submitAnswer(opt === correctText);
     container.appendChild(btn);
   });
-
-  // เปิดใช้งานปุ่ม (กรณีข้อใหม่)
-  enableOptionButtons();
 
   // ยังคงอัพเดทค่า timeLeft ตามปกติ แต่ไม่แสดงผล
   document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; // แค่ให้ JS เห็นค่า
@@ -486,9 +452,6 @@ function submitAnswer(isCorrect) {
   if (localAnswered) return;
   localAnswered = true;
   playSound("pop");
-
-  // ล็อกปุ่มทันทีหลังตอบ
-  disableOptionButtons();
 
   db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
     const data = snap.val();
