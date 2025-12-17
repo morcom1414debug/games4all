@@ -44,14 +44,14 @@
     box-shadow: 0 6px 16px rgba(244,67,54,0.5);
   }
 
-  /* สไตล์ปุ่มที่ตอบแล้ว */
-  button.disabled-option {
-    background: #cccccc !important;
-    color: #666666 !important;
-    cursor: not-allowed !important;
+  /* เพิ่มสไตล์สำหรับปุ่มที่เลือกแล้ว */
+  button.answered {
+    background: #9e9e9e;      /* สีเทาเข้ม ตัดกับพื้นหลัง */
+    cursor: not-allowed;
+    opacity: 0.7;
   }
-  button.disabled-option:hover {
-    background: #cccccc !important;
+  button.answered:hover {
+    background: #9e9e9e;
   }
 </style>
 
@@ -89,6 +89,7 @@
   <div id="quiz">
     <h2 id="questionText" tabindex="0"></h2>
     <div id="options"></div>
+    <!-- ซ่อนตัวเลขเวลา แต่ยังคงทำงานตามปกติ -->
     <p id="timer" style="font-size:18px; font-weight:bold; margin-top:20px; visibility:hidden; height:0; overflow:hidden;"></p>
   </div>
 
@@ -117,17 +118,29 @@ let questionIndex=0, timerInterval, timeLeft=20, localAnswered=false;
 let currentRoomListener=null, soundListener=null, currentAudio=null, lastSoundTime=0;
 let lastQuestionText = "";
 
+// รายชื่อไฟล์เสียงทั้งหมดที่ใช้ในเกม
 const soundFiles = [
-  "pop.mp3", "start.mp3", "friend.mp3", "door.mp3", "next.mp3", "new4.mp3", "wait.mp3"
+  "pop.mp3",
+  "start.mp3",
+  "friend.mp3",
+  "door.mp3",
+  "next.mp3",
+  "new4.mp3",
+  "wait.mp3"
 ];
+
+// ออบเจกต์เก็บ Audio ที่ preload แล้ว
 const preloadedAudios = {};
 
+// PRELOAD ALL SOUNDS เมื่อกดยืนยันชื่อ (แก้ไข)
 function preloadAllSounds() {
   soundFiles.forEach(name => {
     const audio = new Audio(`audio/${name}`);
     audio.preload = "auto";
     preloadedAudios[name] = audio;
   });
+
+  // ให้ user gesture authorize friend.mp3 สำหรับ iOS
   if (preloadedAudios["friend.mp3"]) {
     preloadedAudios["friend.mp3"].volume = 0;
     preloadedAudios["friend.mp3"].play().then(() => {
@@ -136,8 +149,11 @@ function preloadAllSounds() {
       preloadedAudios["friend.mp3"].volume = 1;
     }).catch(() => {});
   }
+
+  console.log("Preloaded all sound files!");
 }
 
+// === 150 คำถามเมืองหลวง ===
 const questions = [
   { q:"ใครเป็นผู้แต่งนิยายเรื่อง แฮร์รี่ พอตเตอร์ กับ ศิลาอาถรรพ์ ?", options:["J.R. Ward","J. K. Rowling","J. R. R. Tolkien"], answer:1 },
   { q:"ใครเป็นผู้แต่งนิยายเรื่อง บุพเพสันนิวาส ?", options:["รอมแพง","ทมยันตี","คาลิ"], answer:0 },
@@ -191,6 +207,7 @@ const questions = [
   { q:"ใครเป็นผู้แต่งนิยายเรื่อง หงส์ฟ้าประกาศิต ?", options:["จิ่วลู่เฟยเซียง","อ้อเล้งเซ็ง","เตี่ยนซิน"], answer:1 }
 ];
 
+// เริ่มเกม
 document.getElementById("game").style.display="block";
 document.getElementById("backToMenuBtn").style.display="block";
 
@@ -211,12 +228,14 @@ function triggerWaitSoundOnlyAtEnd() {
 function stopCurrentAudio() {
   if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
 }
+
 function playSound(name) {
   stopCurrentAudio();
   const audio = preloadedAudios[`${name}.mp3`] || preloadedAudios[name] || new Audio(`audio/${name}.mp3`);
   audio.play().catch(() => {});
   currentAudio = audio;
 }
+
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
@@ -248,24 +267,6 @@ function shuffleArray(arr) {
   }
 }
 
-// ============== ปุ่มตัวเลือก ==============
-function disableOptionButtons() {
-  const buttons = document.querySelectorAll("#options button");
-  buttons.forEach(btn => {
-    btn.disabled = true;
-    btn.classList.add("disabled-option");
-    btn.setAttribute("aria-label", btn.textContent + " (ไม่สามารถเลือกได้แล้ว)");
-  });
-}
-function enableOptionButtons() {
-  const buttons = document.querySelectorAll("#options button");
-  buttons.forEach(btn => {
-    btn.disabled = false;
-    btn.classList.remove("disabled-option");
-    btn.setAttribute("aria-label", btn.textContent);
-  });
-}
-
 // ============== GAME FLOW ==============
 function confirmName() {
   playerName = document.getElementById("playerName").value.trim();
@@ -274,30 +275,34 @@ function confirmName() {
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
   focusHeading("lobbyTitle");
+  
   preloadAllSounds();
+  
   loadRooms();
 }
-
-// (ส่วน loadRooms, showCreateRoom, joinRoom, showRoom, startGame, getRandomQuestions, startQuiz, checkAllAnswered, nextQuestion, endGameHost, showResult, requestBackToLobby, backToLobby เหมือนเดิมทุกประการ)
 
 function loadRooms() {
   const list = document.getElementById("roomList");
   db.ref("guessGameRooms").on("value", snap => {
     list.innerHTML = "";
     const now = Date.now();
+
     snap.forEach(r => {
       const room = r.val();
       const roomKey = r.key;
       const playerCount = room.players ? Object.keys(room.players).length : 0;
+
       const lastActivity = room.lastActivity || room.created || 0;
-      if (now - lastActivity > 600000) {
+      if (now - lastActivity > 600000) { // 10 นาที
         db.ref(`guessGameRooms/${roomKey}`).remove();
         return;
       }
+
       if (playerCount === 0 && room.created && (now - room.created > 3000)) {
         db.ref(`guessGameRooms/${roomKey}`).remove();
         return;
       }
+
       if (room.status === "waiting" && playerCount > 0) {
         const li = document.createElement("li");
         li.innerHTML = `${room.name} (${playerCount} คน)`;
@@ -317,7 +322,12 @@ function showCreateRoom() {
   const ref = db.ref("guessGameRooms").push();
   roomId = ref.key; isHost = true;
   ref.set({
-    name, status:"waiting", host:playerId, created:Date.now(), lastActivity: Date.now(), players:{}
+    name, 
+    status:"waiting", 
+    host:playerId, 
+    created:Date.now(),
+    lastActivity: Date.now(),
+    players:{}
   });
   joinRoom(roomId);
 }
@@ -345,11 +355,13 @@ function showRoom() {
   document.getElementById("room").style.display = "block";
   focusHeading("roomName");
   startSoundListener();
+
   if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`guessGameRooms/${roomId}`);
   currentRoomListener.on("value", snap => {
     const room = snap.val();
     if (!room) { alert("ห้องถูกลบแล้ว"); backToLobby(); return; }
+
     document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
     const list = document.getElementById("playerList"); list.innerHTML = "";
     if (room.players) {
@@ -360,6 +372,7 @@ function showRoom() {
       }
     }
     document.getElementById("startBtn").style.display = (room.host === playerId) ? "inline" : "none";
+
     if (room.lastJoin && room.lastJoin !== window._lastJoinTime) {
       window._lastJoinTime = room.lastJoin;
       playSound("friend"); 
@@ -368,6 +381,7 @@ function showRoom() {
       window._lastBackTime = room.lastBackToLobby;
       triggerSound("door");
     }
+
     if (room.status === "playing") startQuiz();
     else if (room.status === "finished") showResult(room);
   });
@@ -413,9 +427,9 @@ function startQuiz() {
 function showQuestion(q) {
   if (!q) { if (isHost) endGameHost(); return; }
   localAnswered = false;
-  timeLeft = Math.floor(Math.random() * 11) + 15;
+  timeLeft = Math.floor(Math.random() * 11) + 15;   // 15-25 วินาที (สุ่มเหมือนเดิม)
 
-  const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;  // แก้ตรงนี้ ไม่มี "; หลง
+  const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;
   focusQuestionIfChanged(newText);
 
   const container = document.getElementById("options");
@@ -426,18 +440,23 @@ function showQuestion(q) {
   shuffled.forEach((opt, i) => {
     const btn = document.createElement("button");
     btn.textContent = opt;
+    // aria-label เริ่มต้นเป็นชื่อตัวเลือกปกติ
     btn.setAttribute("aria-label", opt);
-    btn.onclick = () => submitAnswer(opt === correctText);
+
+    btn.onclick = () => {
+      if (localAnswered) return;
+      submitAnswer(opt === correctText);
+    };
+
     container.appendChild(btn);
   });
 
-  enableOptionButtons();  // เปิดใช้งานปุ่มสำหรับข้อใหม่
-
-  document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`;
+  // ยังคงอัพเดทค่า timeLeft ตามปกติ แต่ไม่แสดงผล
+  document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; // แค่ให้ JS เห็นค่า
   clearInterval(timerInterval);
   timerInterval = setInterval(() => {
     timeLeft--;
-    document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`;
+    document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; // ยังอัพเดทอยู่
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
       triggerSound("next");
@@ -450,7 +469,14 @@ function submitAnswer(isCorrect) {
   if (localAnswered) return;
   localAnswered = true;
   playSound("pop");
-  disableOptionButtons();  // ล็อกปุ่มทันที
+
+  // ปรับ UI ของปุ่มตัวเลือกทันที (เฉพาะฝั่งผู้เล่นคนนี้)
+  const buttons = document.querySelectorAll("#options button");
+  buttons.forEach(btn => {
+    btn.disabled = true;                     // ไม่ให้กดซ้ำ
+    btn.classList.add("answered");           // เปลี่ยนสี
+    btn.setAttribute("aria-label", btn.textContent + " (ไม่ให้เลือก)"); // สำหรับ screen reader
+  });
 
   db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
     const data = snap.val();
@@ -462,8 +488,6 @@ function submitAnswer(isCorrect) {
     checkAllAnswered();
   });
 }
-
-// ส่วนที่เหลือเหมือนเดิมทุกอย่าง (checkAllAnswered, nextQuestion, endGameHost, showResult, requestBackToLobby, backToLobby)
 
 function checkAllAnswered() {
   db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
@@ -492,6 +516,7 @@ function nextQuestion() {
     updates.current = (data.current || 0) + 1;
     updates.lastActivity = Date.now();
     db.ref(`guessGameRooms/${roomId}`).update(updates);
+
     questionIndex = updates.current;
     if (questionIndex < data.questions.length) {
       showQuestion(data.questions[questionIndex]);
@@ -510,6 +535,7 @@ function endGameHost() {
     players.sort((a,b) => b.score - a.score);
     const max = players[0].score;
     const winners = players.filter(p => p.score === max).map(p => p.name);
+
     db.ref(`guessGameRooms/${roomId}`).update({
       status: "finished",
       result: { winners, players },
@@ -523,11 +549,13 @@ function showResult(roomData) {
   document.getElementById("quiz").style.display = "none";
   document.getElementById("result").style.display = "block";
   document.getElementById("mainTitle").style.display = "none";
+
   const list = document.getElementById("scoreList");
   list.innerHTML = "";
   const players = roomData.result?.players || [];
   const winners = roomData.result?.winners || [];
   document.getElementById("resultHeading").textContent = `สรุปผล ผู้ชนะคือ ${winners.join(", ")}`;
+
   players.forEach(p => {
     const li = document.createElement("li");
     li.textContent = `${p.name}: ${p.score} คะแนน`;
