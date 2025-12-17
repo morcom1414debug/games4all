@@ -19,6 +19,16 @@
     font-size: 16px;
   }
   button:hover { background: #45a049; }
+  
+  /* เพิ่ม CSS สำหรับปุ่มที่ถูก disabled */
+  button:disabled {
+    background: #cccccc;
+    color: #666666;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+  
   input { padding: 8px; border-radius: 4px; border: 1px solid #ccc; width: 200px; }
   h1, h2, h3 { color: #333; }
   ul { list-style: none; padding: 0; }
@@ -42,16 +52,6 @@
     background: #d32f2f;
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(244,67,54,0.5);
-  }
-
-  /* เพิ่มสไตล์สำหรับปุ่มที่เลือกแล้ว */
-  button.answered {
-    background: #9e9e9e;      /* สีเทาเข้ม ตัดกับพื้นหลัง */
-    cursor: not-allowed;
-    opacity: 0.7;
-  }
-  button.answered:hover {
-    background: #9e9e9e;
   }
 </style>
 
@@ -132,7 +132,7 @@ const soundFiles = [
 // ออบเจกต์เก็บ Audio ที่ preload แล้ว
 const preloadedAudios = {};
 
-// PRELOAD ALL SOUNDS เมื่อกดยืนยันชื่อ (แก้ไข)
+// PRELOAD ALL SOUNDS เมื่อกดยืนยันชื่อ
 function preloadAllSounds() {
   soundFiles.forEach(name => {
     const audio = new Audio(`audio/${name}`);
@@ -153,7 +153,7 @@ function preloadAllSounds() {
   console.log("Preloaded all sound files!");
 }
 
-// === 150 คำถามเมืองหลวง ===
+// === รายการคำถาม ===
 const questions = [
   { q:"ใครเป็นผู้แต่งนิยายเรื่อง แฮร์รี่ พอตเตอร์ กับ ศิลาอาถรรพ์ ?", options:["J.R. Ward","J. K. Rowling","J. R. R. Tolkien"], answer:1 },
   { q:"ใครเป็นผู้แต่งนิยายเรื่อง บุพเพสันนิวาส ?", options:["รอมแพง","ทมยันตี","คาลิ"], answer:0 },
@@ -275,9 +275,9 @@ function confirmName() {
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
   focusHeading("lobbyTitle");
-  
+   
   preloadAllSounds();
-  
+   
   loadRooms();
 }
 
@@ -382,7 +382,42 @@ function showRoom() {
       triggerSound("door");
     }
 
-    if (room.status === "playing") startQuiz();
+    if (room.status === "playing") {
+        // --- แก้ไข: เช็คก่อนว่าคำถามเปลี่ยนหรือไม่ เพื่อไม่ให้รีเฟรชหน้าจอมั่วซั่ว ---
+        const incomingIndex = room.current || 0;
+        
+        // ตรวจสอบสถานะว่าเรายังอยู่ที่หน้าห้องรอ (Waiting Room) หรือไม่ 
+        // โดยดูว่า div#room ถูกแสดงอยู่หรือไม่ (ถ้าแสดงอยู่ แปลว่าต้องเปลี่ยนหน้าไป Quiz)
+        const isWaiting = document.getElementById("room").style.display !== "none";
+        
+        // อัปเดตคำถามก็ต่อเมื่อ:
+        // 1. เรายังอยู่ที่หน้าห้องรอ (เพิ่งเริ่มเกม)
+        // 2. หรือ เลขข้อเปลี่ยนไป (ข้อถัดไป)
+        if (isWaiting || incomingIndex !== questionIndex) {
+             questionIndex = incomingIndex;
+             // ตรวจสอบว่ามีข้อมูลคำถามหรือไม่
+             if (room.questions && room.questions[questionIndex]) {
+                 // ซ่อน Lobby โชว์ Quiz
+                 document.getElementById("lobby").style.display = "none";
+                 document.getElementById("room").style.display = "none";
+                 document.getElementById("quiz").style.display = "block";
+                 document.getElementById("mainTitle").style.display = "none";
+                 
+                 showQuestion(room.questions[questionIndex]);
+             }
+        }
+        
+        // --- ส่วนสำคัญ: บังคับ Disable ปุ่ม หาก Database บอกว่าเราตอบแล้ว ---
+        // ป้องกันกรณีหน้าจอกระพริบ หรือกดรีเฟรชแล้วปุ่มกลับมาเด้ง
+        if (room.players && room.players[playerId] && room.players[playerId].answered) {
+             localAnswered = true;
+             const allBtns = document.querySelectorAll("#options button");
+             // ถ้าปุ่มยังไม่ถูก disable (เช่นเพราะ re-render) ให้ disable ทันที
+             if (allBtns.length > 0) {
+                 allBtns.forEach(btn => btn.disabled = true);
+             }
+        }
+    }
     else if (room.status === "finished") showResult(room);
   });
 }
@@ -398,36 +433,32 @@ function startGame() {
 }
 
 function getRandomQuestions(n) {
-  const copy = [...questions];
+  // สร้าง Deep Copy ของข้อมูลคำถาม เพื่อไม่ให้กระทบกับข้อมูลต้นฉบับ
+  const copy = questions.map(q => ({...q, options: [...q.options]}));
   const res = [];
   for (let i = 0; i < n; i++) {
     const idx = Math.floor(Math.random() * copy.length);
     let q = copy.splice(idx, 1)[0];
+    
+    // ทำการสลับตัวเลือก
     const opts = [...q.options];
     const correctText = opts[q.answer];
     shuffleArray(opts);
     q.answer = opts.indexOf(correctText);
     q.options = opts;
+    
     res.push(q);
   }
   return res;
 }
 
-function startQuiz() {
-  document.getElementById("room").style.display = "none";
-  document.getElementById("quiz").style.display = "block";
-  document.getElementById("mainTitle").style.display = "none";
-  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
-    const data = snap.val();
-    questionIndex = data.current || 0;
-    showQuestion(data.questions[questionIndex]);
-  });
-}
+// เอาฟังก์ชัน startQuiz ออก เพราะเราย้าย logic ไปไว้ใน listener แล้ว
+// (เพื่อให้ควบคุม state ได้แม่นยำกว่า)
 
 function showQuestion(q) {
   if (!q) { if (isHost) endGameHost(); return; }
   localAnswered = false;
-  timeLeft = Math.floor(Math.random() * 11) + 15;   // 15-25 วินาที (สุ่มเหมือนเดิม)
+  timeLeft = Math.floor(Math.random() * 11) + 15;   // 15-25 วินาที
 
   const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;
   focusQuestionIfChanged(newText);
@@ -440,23 +471,16 @@ function showQuestion(q) {
   shuffled.forEach((opt, i) => {
     const btn = document.createElement("button");
     btn.textContent = opt;
-    // aria-label เริ่มต้นเป็นชื่อตัวเลือกปกติ
-    btn.setAttribute("aria-label", opt);
-
-    btn.onclick = () => {
-      if (localAnswered) return;
-      submitAnswer(opt === correctText);
-    };
-
+    btn.onclick = () => submitAnswer(opt === correctText);
     container.appendChild(btn);
   });
 
   // ยังคงอัพเดทค่า timeLeft ตามปกติ แต่ไม่แสดงผล
-  document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; // แค่ให้ JS เห็นค่า
+  document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
   clearInterval(timerInterval);
   timerInterval = setInterval(() => {
     timeLeft--;
-    document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; // ยังอัพเดทอยู่
+    document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
       triggerSound("next");
@@ -468,15 +492,12 @@ function showQuestion(q) {
 function submitAnswer(isCorrect) {
   if (localAnswered) return;
   localAnswered = true;
-  playSound("pop");
 
-  // ปรับ UI ของปุ่มตัวเลือกทันที (เฉพาะฝั่งผู้เล่นคนนี้)
-  const buttons = document.querySelectorAll("#options button");
-  buttons.forEach(btn => {
-    btn.disabled = true;                     // ไม่ให้กดซ้ำ
-    btn.classList.add("answered");           // เปลี่ยนสี
-    btn.setAttribute("aria-label", btn.textContent + " (ไม่ให้เลือก)"); // สำหรับ screen reader
-  });
+  // ปิดปุ่มทันทีที่กด
+  const allBtns = document.querySelectorAll("#options button");
+  allBtns.forEach(btn => btn.disabled = true);
+
+  playSound("pop");
 
   db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
     const data = snap.val();
@@ -517,10 +538,8 @@ function nextQuestion() {
     updates.lastActivity = Date.now();
     db.ref(`guessGameRooms/${roomId}`).update(updates);
 
-    questionIndex = updates.current;
-    if (questionIndex < data.questions.length) {
-      showQuestion(data.questions[questionIndex]);
-    } else if (isHost) {
+    // questionIndex จะถูกอัปเดตอัตโนมัติโดย listener เมื่อ firebase update เสร็จ
+    if (updates.current >= data.questions.length && isHost) {
       setTimeout(endGameHost, 800);
     }
   });
