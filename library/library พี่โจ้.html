@@ -117,7 +117,6 @@ let playerName="", roomId="", playerId="", isHost=false;
 let questionIndex=0, timerInterval, timeLeft=20, localAnswered=false;
 let currentRoomListener=null, soundListener=null, currentAudio=null, lastSoundTime=0;
 let lastQuestionText = "";
-let waitLoopAudio = null; // เพิ่มตัวแปรสำหรับเสียง wait ที่เล่นวน
 
 // รายชื่อไฟล์เสียงทั้งหมดที่ใช้ในเกม
 const soundFiles = [
@@ -221,27 +220,11 @@ function triggerSound(name) {
   db.ref(`guessGameRooms/${roomId}/soundTrigger`).set({name, time: now});
   db.ref(`guessGameRooms/${roomId}/lastActivity`).set(now);
 }
-
-// ฟังก์ชันใหม่สำหรับเริ่มเล่น wait.mp3 แบบ loop
-function startWaitLoop() {
-  stopWaitLoop(); // หยุดก่อนถ้ามีอยู่แล้ว
-  const audio = preloadedAudios["wait.mp3"];
-  if (!audio) return;
-  audio.loop = true;
-  audio.play().catch(() => {});
-  waitLoopAudio = audio;
+function triggerWaitSoundOnlyAtEnd() {
+  if (!roomId) return;
+  db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).set({time: Date.now()});
+  db.ref(`guessGameRooms/${roomId}/lastActivity`).set(Date.now());
 }
-
-// ฟังก์ชันหยุด loop wait.mp3
-function stopWaitLoop() {
-  if (waitLoopAudio) {
-    waitLoopAudio.pause();
-    waitLoopAudio.currentTime = 0;
-    waitLoopAudio.loop = false;
-    waitLoopAudio = null;
-  }
-}
-
 function stopCurrentAudio() {
   if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
 }
@@ -258,6 +241,7 @@ function startSoundListener() {
   if (!roomId) return;
   soundListener = db.ref(`guessGameRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => { const d = s.val(); if (d?.name) playSound(d.name); });
+  db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).on("value", s => { if (s.val()?.time) playSound("wait"); });
 }
 
 // ============== FOCUS ==============
@@ -399,13 +383,21 @@ function showRoom() {
     }
 
     if (room.status === "playing") {
+        // --- แก้ไข: เช็คก่อนว่าคำถามเปลี่ยนหรือไม่ เพื่อไม่ให้รีเฟรชหน้าจอมั่วซั่ว ---
         const incomingIndex = room.current || 0;
         
+        // ตรวจสอบสถานะว่าเรายังอยู่ที่หน้าห้องรอ (Waiting Room) หรือไม่ 
+        // โดยดูว่า div#room ถูกแสดงอยู่หรือไม่ (ถ้าแสดงอยู่ แปลว่าต้องเปลี่ยนหน้าไป Quiz)
         const isWaiting = document.getElementById("room").style.display !== "none";
         
+        // อัปเดตคำถามก็ต่อเมื่อ:
+        // 1. เรายังอยู่ที่หน้าห้องรอ (เพิ่งเริ่มเกม)
+        // 2. หรือ เลขข้อเปลี่ยนไป (ข้อถัดไป)
         if (isWaiting || incomingIndex !== questionIndex) {
              questionIndex = incomingIndex;
+             // ตรวจสอบว่ามีข้อมูลคำถามหรือไม่
              if (room.questions && room.questions[questionIndex]) {
+                 // ซ่อน Lobby โชว์ Quiz
                  document.getElementById("lobby").style.display = "none";
                  document.getElementById("room").style.display = "none";
                  document.getElementById("quiz").style.display = "block";
@@ -415,18 +407,18 @@ function showRoom() {
              }
         }
         
+        // --- ส่วนสำคัญ: บังคับ Disable ปุ่ม หาก Database บอกว่าเราตอบแล้ว ---
+        // ป้องกันกรณีหน้าจอกระพริบ หรือกดรีเฟรชแล้วปุ่มกลับมาเด้ง
         if (room.players && room.players[playerId] && room.players[playerId].answered) {
              localAnswered = true;
              const allBtns = document.querySelectorAll("#options button");
+             // ถ้าปุ่มยังไม่ถูก disable (เช่นเพราะ re-render) ให้ disable ทันที
              if (allBtns.length > 0) {
                  allBtns.forEach(btn => btn.disabled = true);
              }
         }
     }
-    else if (room.status === "finished") {
-      stopWaitLoop(); // หยุดเสียง wait loop เมื่อผลสรุปมา
-      showResult(room);
-    }
+    else if (room.status === "finished") showResult(room);
   });
 }
 
@@ -441,12 +433,14 @@ function startGame() {
 }
 
 function getRandomQuestions(n) {
+  // สร้าง Deep Copy ของข้อมูลคำถาม เพื่อไม่ให้กระทบกับข้อมูลต้นฉบับ
   const copy = questions.map(q => ({...q, options: [...q.options]}));
   const res = [];
   for (let i = 0; i < n; i++) {
     const idx = Math.floor(Math.random() * copy.length);
     let q = copy.splice(idx, 1)[0];
     
+    // ทำการสลับตัวเลือก
     const opts = [...q.options];
     const correctText = opts[q.answer];
     shuffleArray(opts);
@@ -457,6 +451,9 @@ function getRandomQuestions(n) {
   }
   return res;
 }
+
+// เอาฟังก์ชัน startQuiz ออก เพราะเราย้าย logic ไปไว้ใน listener แล้ว
+// (เพื่อให้ควบคุม state ได้แม่นยำกว่า)
 
 function showQuestion(q) {
   if (!q) { if (isHost) endGameHost(); return; }
@@ -478,6 +475,7 @@ function showQuestion(q) {
     container.appendChild(btn);
   });
 
+  // ยังคงอัพเดทค่า timeLeft ตามปกติ แต่ไม่แสดงผล
   document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
   clearInterval(timerInterval);
   timerInterval = setInterval(() => {
@@ -495,6 +493,7 @@ function submitAnswer(isCorrect) {
   if (localAnswered) return;
   localAnswered = true;
 
+  // ปิดปุ่มทันทีที่กด
   const allBtns = document.querySelectorAll("#options button");
   allBtns.forEach(btn => btn.disabled = true);
 
@@ -518,10 +517,9 @@ function checkAllAnswered() {
     if (all) {
       clearInterval(timerInterval);
       if (data.current === data.questions.length - 1) {
-        // กรณีจบข้อสุดท้าย
-        startWaitLoop();           // เริ่มเล่น wait.mp3 วนลูป
-        triggerSound("new4");      // เล่น new4.mp3 ทันที (แทน next.mp3)
-        setTimeout(nextQuestion, 2500); // ไปสู่การจบเกม (host จะคำนวณผล)
+        triggerWaitSoundOnlyAtEnd();
+        setTimeout(() => triggerSound("new4"), 600);
+        setTimeout(nextQuestion, 2500);
       } else {
         setTimeout(() => triggerSound("next"), 500);
         setTimeout(nextQuestion, 1200);
@@ -540,6 +538,7 @@ function nextQuestion() {
     updates.lastActivity = Date.now();
     db.ref(`guessGameRooms/${roomId}`).update(updates);
 
+    // questionIndex จะถูกอัปเดตอัตโนมัติโดย listener เมื่อ firebase update เสร็จ
     if (updates.current >= data.questions.length && isHost) {
       setTimeout(endGameHost, 800);
     }
@@ -566,7 +565,6 @@ function endGameHost() {
 
 function showResult(roomData) {
   clearInterval(timerInterval);
-  stopWaitLoop(); // หยุดเสียง wait loop เมื่อแสดงผลสรุป
   document.getElementById("quiz").style.display = "none";
   document.getElementById("result").style.display = "block";
   document.getElementById("mainTitle").style.display = "none";
@@ -594,7 +592,6 @@ function requestBackToLobby() {
 function backToLobby() {
   if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
   if (soundListener) { soundListener.off(); soundListener = null; }
-  stopWaitLoop(); // หยุดเสียง wait หากยังเล่นอยู่
   db.ref(`guessGameRooms/${roomId}/players/${playerId}`).remove();
   roomId = ""; questionIndex = 0; lastQuestionText = "";
   document.getElementById("result").style.display = "none";
