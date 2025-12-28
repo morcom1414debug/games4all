@@ -97,52 +97,32 @@
     </div>
 
     <script>
-        // ==================== ระบบเสียง (ปรับจาก a.html เพื่อให้ทำงานได้ดีบนทุกแพลตฟอร์ม รวม iOS) ====================
-        const bgm      = new Audio('audio/back.mp3');
-        bgm.loop = true;
-        bgm.preload = 'auto';
+        // --- AUDIO MANAGEMENT ---
+        const audio = {
+            bgm: new Audio('audio/back.mp3'),
+            pass: new Audio('audio/pass.mp3'),
+            win: new Audio('audio/win.mp3'),
+            lost: new Audio('audio/lost.mp3'),
+            home: new Audio('audio/home.mp3')
+        };
 
-        const passSfx  = new Audio('audio/pass.mp3');
-        const winSfx   = new Audio('audio/win.mp3');
-        const lostSfx  = new Audio('audio/lost.mp3');
-        const homeSfx  = new Audio('audio/home.mp3');
+        // Set loop for background music
+        audio.bgm.loop = true;
 
-        let audioUnlocked = false;
-
-        function unlockAudio() {
-            if (audioUnlocked) return;
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                gain.gain.value = 0;
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(0);
-                osc.stop(ctx.currentTime + 0.01);
-
-                [bgm, passSfx, winSfx, lostSfx, homeSfx].forEach(audio => {
-                    audio.load();
-                });
-
-                audioUnlocked = true;
-            } catch (e) {
-                console.log('Audio unlock failed:', e);
-            }
-        }
+        // Preload all sounds
+        Object.values(audio).forEach(a => a.preload = 'auto');
 
         function stopBGM() {
-            bgm.pause();
-            bgm.currentTime = 0;
+            audio.bgm.pause();
+            audio.bgm.currentTime = 0;
         }
 
         function playSound(sound) {
-            if (!audioUnlocked) unlockAudio();
             sound.currentTime = 0;
-            sound.play().catch(() => {});
+            sound.play().catch(() => {}); // ignore autoplay policy errors
         }
 
-        // ==================== GAME DATA ====================
+        // --- GAME DATA ---
         const GAME_DATA = [
           {
             level: 1,
@@ -430,12 +410,190 @@
             missions: [
               {
                 text: "ฐานทัพลอยฟ้ามีเกราะพลังงานป้องกัน",
-                enemyAction: "มันปล่อยเลเซอร์ขนาดใหญ่ผ่าท้องฟ้า",
+                enemyAction: "กระสุนทุกชนิดเด้งออกหมด",
                 options: [
-                  { label: "บินหลบไปใต้ท้องยาน", correct: true },
-                  { label: "กางร่มชูชีพยอมแพ้", correct: false, deathMsg: "เลเซอร์เผาทั้งคนทั้งร่ม" },
-                  { label: "ยิงสวนเลเซอร์", correct: false, deathMsg: "บ้าบอ... คุณสู้แสงไม่ได้" },
-                  { label: "บินหนีสุดขอบโลก", correct: false, deathMsg: "โลกไม่มีที่หนี ยานแม่ยิงเลเซอร์ตามไปเผา" }
+                  { label: "ยิงซ้ำๆ จุดเดิม", correct: false, deathMsg: "กระสุนสะท้อนกลับมาโดนตัวเอง" },
+                  { label: "หาเครื่องกำเนิดสนามพลังภายนอกแล้วทำลาย", correct: true },
+                  { label: "พุ่งชนเกราะ", correct: false, deathMsg: "เหมือนแมลงชนกระจก เละ" },
+                  { label: "รอให้พลังงานหมด", correct: false, deathMsg: "มันใช้พลังนิวเคลียร์ รอไปอีก 100 ปี คุณแก่ตายก่อน" }
+                ]
+              },
+              {
+                text: "ป้อมปืนเลเซอร์ยิงสกัดหนาแน่น",
+                enemyAction: "ไม่มีช่องว่างให้บินเข้า",
+                options: [
+                  { label: "บินเกาะใต้ท้องยานลูกสมุนเพื่อบังกระสุน", correct: true },
+                  { label: "บินฝ่าเข้าไป", correct: false, deathMsg: "ระเหยกลายเป็นไอใน 1 วินาที" },
+                  { label: "ยิงจรวดใส่ป้อม", correct: false, deathMsg: "จรวดโดนยิงทิ้งกลางทาง" },
+                  { label: "ถอยกลับตั้งหลัก", correct: false, deathMsg: "โดนปืนระยะไกลสอยร่วง" }
+                ]
+              },
+              {
+                text: "ต้องบินเข้าไปในท่อระบายความร้อน (เหมือน Star Wars)",
+                enemyAction: "ท่อแคบและมีพัดลมยักษ์หมุนอยู่",
+                options: [
+                  { label: "ยิงพัดลมให้พัง", correct: true },
+                  { label: "บินหลบใบพัด", correct: false, deathMsg: "ใบพัดหมุนเร็วเกินไป สับเครื่องคุณเป็นชิ้นๆ" },
+                  { label: "หยุดเครื่องหน้าพัดลม", correct: false, deathMsg: "ความร้อนในท่อหลอมละลายเครื่องคุณ" },
+                  { label: "ถอยหลังออก", correct: false, deathMsg: "ไม่มีที่กลับตัว ชนผนังตาย" }
+                ]
+              },
+              {
+                text: "แกนกลางปฏิกรณ์กำลังจะระเบิด",
+                enemyAction: "ความร้อนพุ่งสูง ระบบเตือนภัยดังลั่น",
+                options: [
+                  { label: "บินหนีออกทางเดิม", correct: false, deathMsg: "ทางเดิมถูกปิดตาย โดนเผา" },
+                  { label: "เร่งเครื่องทะลุออกอีกฝั่ง (Afterburner)", correct: true },
+                  { label: "กางร่มชูชีพ", correct: false, deathMsg: "ร่มไหม้ไฟ ตกไปในลาวาปฏิกรณ์" },
+                  { label: "รอถ่ายรูปเป็นที่ระลึก", correct: false, deathMsg: "ได้รูปสวยก่อนตาย แต่ไม่ได้โพสต์" }
+                ]
+              },
+              {
+                text: "ฐานทัพกำลังร่วงลงสู่พื้นโลก",
+                enemyAction: "แรงระเบิดดูดทุกอย่างเข้าไป",
+                options: [
+                  { label: "บินตามแรงดูดไป", correct: false, deathMsg: "โดนซากฐานทัพทับตาย" },
+                  { label: "บินฉีกออกด้านข้างตั้งฉากกับแรงระเบิด", correct: true },
+                  { label: "บินสวนแรงระเบิด", correct: false, deathMsg: "สู้แรงลมไม่ไหว ปีกฉีกขาด" },
+                  { label: "สวดมนต์", correct: false, deathMsg: "พระเจ้าช่วยไม่ได้ในเกมนี้" }
+                ]
+              }
+            ]
+          },
+          {
+            level: 7,
+            title: "เขตแดนนรก (Inferno Zone)",
+            missions: [
+              {
+                text: "บินผ่านภูเขาไฟระเบิด ควันและเถ้าถ่านหนาทึบ",
+                enemyAction: "ทัศนวิสัยเป็นศูนย์ เครื่องยนต์เริ่มสำลักฝุ่น",
+                options: [
+                  { label: "เร่งเครื่องเต็มสูบ", correct: false, deathMsg: "เครื่องยนต์ดูดเถ้าภูเขาไฟเข้าไป พังและระเบิด" },
+                  { label: "ลดรอบเครื่องบินร่อน (Glide) และบินสูงเหนือควัน", correct: true },
+                  { label: "บินต่ำลงหาลาวา", correct: false, deathMsg: "ความร้อนหลอมละลายปีก ร่วงลงบ่อลาวา" },
+                  { label: "เปิดแอร์ในห้องนักบิน", correct: false, deathMsg: "ระบบกรองอากาศตัน ขาดอากาศหายใจตาย" }
+                ]
+              },
+              {
+                text: "ลาวากระเด็นขึ้นมาเป็นลูกไฟยักษ์",
+                enemyAction: "หินร้อนพุ่งใส่เหมือนฝนดาวตก",
+                options: [
+                  { label: "ยิงจรวดใส่หิน", correct: false, deathMsg: "หินแตกเป็นเสี่ยงๆ เล็กๆ พุ่งใส่กระจกแตก พรุน" },
+                  { label: "หักหลบซ้ายขวา", correct: true },
+                  { label: "กางโล่พลังงาน", correct: false, deathMsg: "เครื่องคุณไม่มีระบบนั้น! เพ้อเจ้อจนตาย" },
+                  { label: "บินหลับตา", correct: false, deathMsg: "ชนภูเขาตาย" }
+                ]
+              },
+              {
+                text: "เครื่องบินข้าศึกซ่อนตัวในควันดำ",
+                enemyAction: "มันโผล่มายิงแล้วหนีเข้าควัน",
+                options: [
+                  { label: "บินตามเข้าควันไป", correct: false, deathMsg: "ชนหน้าผาในควัน ตาย" },
+                  { label: "ยิงกราดเข้าไปในควัน", correct: false, deathMsg: "กระสุนหมด ข้าศึกบินออกมาสอยคุณทิ้ง" },
+                  { label: "ดึงตัวขึ้นสูงล่อให้มันตามออกมาที่โล่ง", correct: true },
+                  { label: "จอดพัก", correct: false, deathMsg: "ไม่มีที่จอด! ตกภูเขาตาย" }
+                ]
+              },
+              {
+                text: "ความร้อนทำให้จรวดมิสไซล์ทำงานผิดพลาด",
+                enemyAction: "จรวดคุณเริ่มล็อกเป้ามั่วซั่ว",
+                options: [
+                  { label: "ปิดระบบอาวุธทั้งหมดชั่วคราว", correct: true },
+                  { label: "ฝืนยิงต่อไป", correct: false, deathMsg: "จรวดระเบิดคารางปล่อย ปีกขาด" },
+                  { label: "ทุบแผงควบคุม", correct: false, deathMsg: "ไฟช็อต ควันคลุ้งห้องนักบิน สำลักตาย" },
+                  { label: "บินกลับฐาน", correct: false, deathMsg: "ไม่ทันการณ์ โดนข้าศึกสอยร่วง" }
+                ]
+              },
+              {
+                text: "บอส: เครื่องบินหุ้มเกราะทนความร้อน",
+                enemyAction: "มันพยายามเบียดคุณให้ตกไปในปากปล่องภูเขาไฟ",
+                options: [
+                  { label: "เบียดสู้มัน", correct: false, deathMsg: "เครื่องมันหนักกว่า คุณกระเด็นตกลาวา" },
+                  { label: "บินล่อให้มันบินผ่านลาวาพุ", correct: true },
+                  { label: "ยิงปืนกลใส่มัน", correct: false, deathMsg: "เกราะมันหนา กระสุนเด้งออกหมด โดนชนตก" },
+                  { label: "ดีดตัวหนี", correct: false, deathMsg: "ร่มชูชีพไหม้ ตกลาวา" }
+                ]
+              }
+            ]
+          },
+          {
+            level: 8,
+            title: "สงครามข้ามมิติ (Dimensional War)",
+            missions: [
+              {
+                text: "ข้าศึกใช้อาวุธวาร์ป หายตัวไปมาได้",
+                enemyAction: "มันวาร์ปมาโผล่ข้างหลังคุณ",
+                options: [
+                  { label: "หันหลังกลับไปยิง", correct: false, deathMsg: "ช้าไป โดนยิงร่วง" },
+                  { label: "ทิ้งทุ่นระเบิดอากาศ (Air Mines) ดักหลัง", correct: true },
+                  { label: "วาร์ปหนีบ้าง", correct: false, deathMsg: "คุณไม่มีเทคโนโลยีนั้น! กดปุ่มมั่วจนเครื่องดับ" },
+                  { label: "บินเป็นวงกลม", correct: false, deathMsg: "มันดักทางได้ ยิงดักหน้า" }
+                ]
+              },
+              {
+                text: "มิติเริ่มบิดเบี้ยว เพดานบินกลับหัว",
+                enemyAction: "ท้องฟ้ากลายเป็นพื้นดิน",
+                options: [
+                  { label: "ฝืนบินท่าปกติ", correct: false, deathMsg: "แรงโน้มถ่วงกลับด้าน เลือดตกลงหัว หมดสติ เครื่องตก" },
+                  { label: "บินกลับหัว (Inverted Flight) ตามสภาพมิติ", correct: true },
+                  { label: "หลับตาแล้วบิน", correct: false, deathMsg: "ชนตึกที่ห้อยลงมาจากฟ้า" },
+                  { label: "อาเจียน", correct: false, deathMsg: "สำลักอ้วกตัวเองตาย" }
+                ]
+              },
+              {
+                text: "ศัตรูยิงกระสุนหยุดเวลา (Time Stasis)",
+                enemyAction: "กระสุนสีม่วงลอยช้าๆ แต่ถ้าโดนคือจบ",
+                options: [
+                  { label: "บินไปแตะดู", correct: false, deathMsg: "ตัวคุณแข็งค้างตลอดกาล กลายเป็นอนุสาวรีย์ลอยฟ้า" },
+                  { label: "หลบให้พ้นระยะ", correct: true },
+                  { label: "ยิงกระสุนใส่", correct: false, deathMsg: "กระสุนคุณก็หยุดเวลาเหมือนกัน สะสมพลังงานจนระเบิด" },
+                  { label: "บินช้าๆ ให้เท่ากัน", correct: false, deathMsg: "โดนดูดเข้าไปใน Time Vortex หายสาบสูญ" }
+                ]
+              },
+              {
+                text: "เจอร่างแยกของตัวเองจากอีกมิติ (Doppelganger)",
+                enemyAction: "มันบินเหมือนคุณ ยิงเหมือนคุณทุกอย่าง",
+                options: [
+                  { label: "ทำท่าที่คาดเดาได้ยาก (Crazy Ivan)", correct: true },
+                  { label: "บินท่ามาตรฐาน", correct: false, deathMsg: "มันรู้อยู่แล้ว ดักทางถูก ยิงคุณร่วง" },
+                  { label: "ชวนคุย", correct: false, deathMsg: "มันไม่คุย มันยิงแสกหน้า" },
+                  { label: "บินหนี", correct: false, deathMsg: "มันเร็วกว่าคุณ เพราะมันคือเวอร์ชั่นที่ดีกว่า" }
+                ]
+              },
+              {
+                text: "ประตูมิติกำลังปิด",
+                enemyAction: "แรงดึงดูดมหาศาล",
+                options: [
+                  { label: "ยิงนิวเคลียร์ใส่ประตู", correct: false, deathMsg: "แรงระเบิดย้อนกลับมาฆ่าคุณ" },
+                  { label: "ปลดสัมภาระทุกอย่างแล้วพุ่งออก", correct: true },
+                  { label: "บินช้าๆ", correct: false, deathMsg: "ประตูงับเครื่องบินขาดครึ่ง" },
+                  { label: "รอประตูเปิดอีกรอบ", correct: false, deathMsg: "อีก 1,000 ปี กว่าจะเปิด คุณแห้งตายก่อน" }
+                ]
+              }
+            ]
+          },
+          {
+            level: 9,
+            title: "บุกเดี่ยว (The Suicide Run)",
+            missions: [
+              {
+                text: "เพื่อนร่วมทีมตายหมด เหลือคุณคนเดียวกลางดงข้าศึก 100 ลำ",
+                enemyAction: "ข้าศึกประมาท บินเข้ามาล้อมกรอบ",
+                options: [
+                  { label: "ยอมแพ้", correct: false, deathMsg: "โดนจับไปประหาร ขี้ขลาดตาขาว" },
+                  { label: "เล็งยิงถังน้ำมันเรือเหาะยักษ์ใกล้ๆ", correct: true },
+                  { label: "กราดยิงไปเรื่อย", correct: false, deathMsg: "กระสุนหมดใน 5 วิ โดนรุมตาย" },
+                  { label: "ตะโกนร้องไห้", correct: false, deathMsg: "น้ำตาบังมองไม่เห็นทาง ชนกันเองตาย" }
+                ]
+              },
+              {
+                text: "ซากเรือเหาะระเบิด เกิดลูกไฟยักษ์กลางอากาศ",
+                enemyAction: "แรงระเบิดผลักทุกอย่างกระเด็น",
+                options: [
+                  { label: "ขี่คลื่นกระแทก (Shockwave) หนีออกมา", correct: true },
+                  { label: "บินต้านแรงลม", correct: false, deathMsg: "ปีกฉีกขาด เครื่องหมุนติ้วตกพื้น" },
+                  { label: "หยุดดูผลงาน", correct: false, deathMsg: "โดนสะเก็ดระเบิดเสียบห้องนักบิน" },
+                  { label: "บินลงพื้น", correct: false, deathMsg: "โดนแรงอัดกระแทกพื้นแบนแต๊ดแต๋" }
                 ]
               },
               {
@@ -718,7 +876,7 @@
             `;
 
             document.getElementById('return-btn').onclick = () => {
-                playSound(homeSfx);
+                playSound(audio.home);
                 resetToMenu();
             };
 
@@ -753,13 +911,12 @@
         // --- GAME LOGIC ---
 
         function startGame() {
-            unlockAudio(); // ปลดล็อกเสียงก่อนเริ่มเกม (สำคัญมากสำหรับ iOS)
             state.level = 1;
             state.missionIndex = 0;
             state.score = 0;
             state.view = 'playing';
 
-            bgm.play().catch(() => {});
+            audio.bgm.play().catch(() => {});
 
             loadMission();
         }
@@ -775,8 +932,8 @@
             if (option.correct) {
                 state.score += 100;
 
-                playSound(passSfx);
-                passSfx.onended = () => {
+                playSound(audio.pass);
+                audio.pass.onended = () => {
                     if (state.missionIndex < 4) {
                         state.missionIndex++;
                         loadMission();
@@ -787,7 +944,7 @@
                             loadMission();
                         } else {
                             stopBGM();
-                            playSound(winSfx);
+                            playSound(audio.win);
                             state.view = 'victory';
                             renderVictory();
                         }
@@ -796,7 +953,7 @@
             } else {
                 state.deathReason = option.deathMsg || "คุณตัดสินใจผิดพลาด เครื่องบินระเบิดทันที";
                 stopBGM();
-                playSound(lostSfx);
+                playSound(audio.lost);
                 state.view = 'gameover';
                 renderGameOver();
             }
@@ -818,10 +975,6 @@
         // Initialize
         renderMenu();
 
-        // เพิ่ม event เพื่อปลดล็อกเสียงเมื่อผู้ใช้โต้ตอบครั้งแรก (กรณีที่ยังไม่ unlock)
-        window.addEventListener('touchstart', unlockAudio, { once: true });
-        window.addEventListener('click', unlockAudio, { once: true });
-        window.addEventListener('keydown', unlockAudio, { once: true });
     </script>
 </body>
 </html>
