@@ -97,7 +97,7 @@
     </div>
 
     <script>
-        // ==================== ระบบเสียง (ปรับปรุงให้เสถียรสูงสุดบน iOS) ====================
+        // ==================== ระบบเสียง (ปรับจาก a.html เพื่อให้ทำงานได้ดีบนทุกแพลตฟอร์ม รวม iOS) ====================
         const bgm      = new Audio('audio/back.mp3');
         bgm.loop = true;
         bgm.preload = 'auto';
@@ -118,15 +118,11 @@
                 gain.gain.value = 0;
                 osc.connect(gain);
                 gain.connect(ctx.destination);
-                if (ctx.state === 'suspended') ctx.resume();
                 osc.start(0);
                 osc.stop(ctx.currentTime + 0.01);
 
                 [bgm, passSfx, winSfx, lostSfx, homeSfx].forEach(audio => {
                     audio.load();
-                    audio.play().catch(() => {}); // preload play เพื่อ warm up บน iOS
-                    audio.pause();
-                    audio.currentTime = 0;
                 });
 
                 audioUnlocked = true;
@@ -143,16 +139,7 @@
         function playSound(sound) {
             if (!audioUnlocked) unlockAudio();
             sound.currentTime = 0;
-            const playPromise = sound.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(() => {
-                    // ถ้า play ล้มเหลว ลองอีกครั้งหลัง delay เล็กน้อย (ช่วย iOS บ่อยมาก)
-                    setTimeout(() => {
-                        sound.currentTime = 0;
-                        sound.play().catch(() => {});
-                    }, 50);
-                });
-            }
+            sound.play().catch(() => {});
         }
 
         // ==================== GAME DATA ====================
@@ -741,7 +728,7 @@
         function renderVictory() {
             app.innerHTML = `
                 <div class="min-h-screen bg-blue-950 text-cyan-400 font-mono p-4 flex flex-col items-center justify-center border-4 border-cyan-500">
-                    <div class="max-w-2xl w/full text-center space-y-8 fade-in">
+                    <div class="max-w-2xl w-full text-center space-y-8 fade-in">
                         <svg class="w-32 h-32 mx-auto text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                         <h1 tabindex="-1" class="text-5xl md:text-7xl font-black uppercase text-cyan-300 hud-text-shadow">
                             VICTORY
@@ -766,7 +753,7 @@
         // --- GAME LOGIC ---
 
         function startGame() {
-            unlockAudio(); // ปลดล็อกเสียงก่อนเริ่มเกม
+            unlockAudio(); // ปลดล็อกเสียงก่อนเริ่มเกม (สำคัญมากสำหรับ iOS)
             state.level = 1;
             state.missionIndex = 0;
             state.score = 0;
@@ -788,10 +775,8 @@
             if (option.correct) {
                 state.score += 100;
 
-                playSound(passSfx);  // ปรับให้เสถียรสูงสุดสำหรับ pass.mp3 บน iOS
-
-                // ไม่ต้องรอ onended ถัดไปทันทีเพื่อลดโอกาส interrupt บน iOS
-                setTimeout(() => {
+                playSound(passSfx);
+                passSfx.onended = () => {
                     if (state.missionIndex < 4) {
                         state.missionIndex++;
                         loadMission();
@@ -807,7 +792,7 @@
                             renderVictory();
                         }
                     }
-                }, 800);  // ลด delay จาก onended เป็น fixed เพื่อความสม่ำเสมอ
+                };
             } else {
                 state.deathReason = option.deathMsg || "คุณตัดสินใจผิดพลาด เครื่องบินระเบิดทันที";
                 stopBGM();
@@ -833,7 +818,7 @@
         // Initialize
         renderMenu();
 
-        // Event listeners เพื่อปลดล็อกเสียงทันทีที่ผู้ใช้โต้ตอบ
+        // เพิ่ม event เพื่อปลดล็อกเสียงเมื่อผู้ใช้โต้ตอบครั้งแรก (กรณีที่ยังไม่ unlock)
         window.addEventListener('touchstart', unlockAudio, { once: true });
         window.addEventListener('click', unlockAudio, { once: true });
         window.addEventListener('keydown', unlockAudio, { once: true });
