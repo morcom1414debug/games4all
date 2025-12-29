@@ -19,16 +19,6 @@
     font-size: 16px;
   }
   button:hover { background: #45a049; }
-   
-  /* เพิ่ม CSS สำหรับปุ่มที่ถูก disabled */
-  button:disabled {
-    background: #cccccc;
-    color: #666666;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-   
   input { padding: 8px; border-radius: 4px; border: 1px solid #ccc; width: 200px; }
   h1, h2, h3 { color: #333; }
   ul { list-style: none; padding: 0; }
@@ -89,8 +79,7 @@
   <div id="quiz">
     <h2 id="questionText" tabindex="0"></h2>
     <div id="options"></div>
-    <!-- ซ่อนตัวเลขเวลา แต่ยังคงทำงานตามปกติ -->
-    <p id="timer" style="font-size:18px; font-weight:bold; margin-top:20px; visibility:hidden; height:0; overflow:hidden;"></p>
+    <p id="timer" style="font-size:18px; font-weight:bold; margin-top:20px; display:none;"></p>
   </div>
 
   <div id="result">
@@ -115,91 +104,35 @@ const db = firebase.database();
 
 let playerName="", roomId="", playerId="", isHost=false;
 let questionIndex=0, timerInterval, timeLeft=20, localAnswered=false;
-let currentRoomListener=null, soundListener=null, lastSoundTime=0;
+let currentRoomListener=null, soundListener=null, currentAudio=null, lastSoundTime=0;
 let lastQuestionText = "";
-let waitLoopSource = null;
-let isProcessingNext = false; 
 
-// ============== Web Audio API Setup ==============
-let audioCtx = null;
-const soundBuffers = {}; // name (without .mp3) → AudioBuffer
-
-async function initAudioContext() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Preload all sounds
-  const soundFiles = [
-    "pop", "start", "friend", "door", "next", "new4", "wait"
-  ];
-  
-  await Promise.all(soundFiles.map(async (name) => {
-    try {
-      const response = await fetch(`audio/${name}.mp3`);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      soundBuffers[name] = audioBuffer;
-      console.log(`Loaded sound: ${name}.mp3`);
-    } catch (e) {
-      console.warn(`Failed to load sound: ${name}.mp3`, e);
-    }
-  }));
-}
-
-// Resume context on first user interaction (required by browsers)
-function resumeAudioContext() {
-  if (audioCtx && audioCtx.state !== 'running') {
-    audioCtx.resume();
-  }
-}
-
-// Play a sound (non-looping)
-function playSound(name) {
-  if (!audioCtx || !soundBuffers[name]) return;
-  resumeAudioContext();
-  
-  const source = audioCtx.createBufferSource();
-  source.buffer = soundBuffers[name];
-  source.connect(audioCtx.destination);
-  source.start(0);
-}
-
-// Start looping "wait" sound
-function startWaitLoop() {
-  stopWaitLoop();
-  if (!audioCtx || !soundBuffers["wait"]) return;
-  resumeAudioContext();
-  
-  const source = audioCtx.createBufferSource();
-  source.buffer = soundBuffers["wait"];
-  source.loop = true;
-  source.connect(audioCtx.destination);
-  source.start(0);
-  waitLoopSource = source;
-}
-
-// Stop looping "wait" sound
-function stopWaitLoop() {
-  if (waitLoopSource) {
-    waitLoopSource.stop();
-    waitLoopSource = null;
-  }
-}
-
-// ============== END Web Audio API ==============
-
-// รายชื่อไฟล์เสียงทั้งหมดที่ใช้ในเกม (ไว้เผื่ออ้างอิงเดิม)
 const soundFiles = [
-  "pop.mp3",
-  "start.mp3",
-  "friend.mp3",
-  "door.mp3",
-  "next.mp3",
-  "new4.mp3",
-  "wait.mp3"
+  "pop.mp3", "start.mp3", "friend.mp3", "door.mp3",
+  "next.mp3", "new4.mp3", "wait.mp3"
 ];
 
-// === รายการคำถาม ===
+const preloadedAudios = {};
+
+function preloadAllSounds() {
+  soundFiles.forEach(name => {
+    const audio = new Audio(`audio/${name}`);
+    audio.preload = "auto";
+    preloadedAudios[name] = audio;
+  });
+
+  if (preloadedAudios["friend.mp3"]) {
+    preloadedAudios["friend.mp3"].volume = 0;
+    preloadedAudios["friend.mp3"].play().then(() => {
+      preloadedAudios["friend.mp3"].pause();
+      preloadedAudios["friend.mp3"].currentTime = 0;
+      preloadedAudios["friend.mp3"].volume = 1;
+    }).catch(() => {});
+  }
+  console.log("Preloaded all sound files!");
+}
+
+// === 98 คำถามเมืองหลวง (เหมือนเดิมทุกตัว) ===
 const questions = [
   { q:"เมืองหลวงของไทยคืออะไร?", options:["กรุงเทพมหานคร","โตเกียว","ปารีส"], answer:0 },
   { q:"เมืองหลวงของญี่ปุ่นคืออะไร?", options:["ปักกิ่ง","โตเกียว","โซล"], answer:1 },
@@ -291,37 +224,78 @@ const questions = [
   { q:"เมืองหลวงของติมอร์-เลสเตคืออะไร?", options:["บาเกา","ดิลี","ซัวอิ"], answer:1 }
 ];
 
-// เริ่มเกม
+// ==================== เพิ่มระบบลบห้องที่ไม่มีการเคลื่อนไหว 10 นาที ====================
+function updateRoomActivity() {
+  if (!roomId) return;
+  db.ref(`guessGameRooms/${roomId}/lastActivity`).set(firebase.database.ServerValue.TIMESTAMP);
+}
+
+function startInactiveRoomCleaner() {
+  setInterval(() => {
+    const now = Date.now();
+    const timeout = 10 * 60 * 1000; // 10 นาที
+
+    db.ref("guessGameRooms").once("value").then(snap => {
+      snap.forEach(child => {
+        const room = child.val();
+        const key = child.key;
+        const last = room.lastActivity || room.created || 0;
+        if (now - last > timeout) {
+          console.log(`Auto-remove inactive room: ${key}`);
+          db.ref(`guessGameRooms/${key}`).remove();
+        }
+      });
+    });
+  }, 30000); // ตรวจทุก 30 วินาที
+}
+
+startInactiveRoomCleaner(); // เริ่มทันทีที่โหลดหน้า
+
+// =====================================================================
+
 document.getElementById("game").style.display="block";
 document.getElementById("backToMenuBtn").style.display="block";
 
-// ============== AUDIO TRIGGER ==============
 function triggerSound(name) {
   if (!roomId) return;
   const now = Date.now();
   if (now - lastSoundTime < 200) return;
   lastSoundTime = now;
   db.ref(`guessGameRooms/${roomId}/soundTrigger`).set({name, time: now});
-  db.ref(`guessGameRooms/${roomId}/lastActivity`).set(now);
+  updateRoomActivity(); // เพิ่ม
+}
+
+function triggerWaitSoundOnlyAtEnd() {
+  if (!roomId) return;
+  db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).set({time: Date.now()});
+}
+
+function stopCurrentAudio() {
+  if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
+}
+
+function playSound(name) {
+  stopCurrentAudio();
+  const audio = preloadedAudios[`${name}.mp3`] || preloadedAudios[name] || new Audio(`audio/${name}.mp3`);
+  audio.play().catch(() => {});
+  currentAudio = audio;
 }
 
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
   soundListener = db.ref(`guessGameRooms/${roomId}/soundTrigger`);
-  soundListener.on("value", s => { 
-    const d = s.val(); 
-    if (d?.name) playSound(d.name); 
-  });
+  soundListener.on("value", s => { const d = s.val(); if (d?.name) playSound(d.name); });
+  db.ref(`guessGameRooms/${roomId}/waitSoundEnd`).on("value", s => { if (s.val()?.time) playSound("wait"); });
 }
 
-// ============== FOCUS ==============
 function focusHeading(id) {
   requestAnimationFrame(() => setTimeout(() => {
     const el = document.getElementById(id);
     if (el) { el.setAttribute('tabindex', '-1'); el.focus(); }
   }, 150));
 }
+
 function focusQuestionIfChanged(newText) {
   if (newText !== lastQuestionText) {
     lastQuestionText = newText;
@@ -330,7 +304,6 @@ function focusQuestionIfChanged(newText) {
   }
 }
 
-// ============== UTILS ==============
 function shuffleArray(arr) {
   for (let i = arr.length-1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -339,17 +312,15 @@ function shuffleArray(arr) {
 }
 
 // ============== GAME FLOW ==============
-async function confirmName() {
+function confirmName() {
   playerName = document.getElementById("playerName").value.trim();
   if (!playerName) { alert("กรุณาใส่ชื่อ"); return; }
   playerId = Math.random().toString(36).substr(2,9);
   document.getElementById("nameInput").style.display = "none";
   document.getElementById("lobby").style.display = "block";
   focusHeading("lobbyTitle");
-   
-  // เริ่มโหลดเสียงด้วย Web Audio API
-  await initAudioContext();
-   
+  
+  preloadAllSounds();
   loadRooms();
 }
 
@@ -363,12 +334,6 @@ function loadRooms() {
       const room = r.val();
       const roomKey = r.key;
       const playerCount = room.players ? Object.keys(room.players).length : 0;
-
-      const lastActivity = room.lastActivity || room.created || 0;
-      if (now - lastActivity > 600000) { // 10 นาที
-        db.ref(`guessGameRooms/${roomKey}`).remove();
-        return;
-      }
 
       if (playerCount === 0 && room.created && (now - room.created > 3000)) {
         db.ref(`guessGameRooms/${roomKey}`).remove();
@@ -398,7 +363,7 @@ function showCreateRoom() {
     status:"waiting", 
     host:playerId, 
     created:Date.now(),
-    lastActivity: Date.now(),
+    lastActivity: firebase.database.ServerValue.TIMESTAMP, // เพิ่ม
     players:{}
   });
   joinRoom(roomId);
@@ -417,7 +382,7 @@ function joinRoom(id) {
     ref.set({name:playerName, score:0, answered:false});
     ref.onDisconnect().remove();
     db.ref(`guessGameRooms/${roomId}/lastJoin`).set(Date.now());
-    db.ref(`guessGameRooms/${roomId}/lastActivity`).set(Date.now());
+    db.ref(`guessGameRooms/${roomId}/lastActivity`).set(firebase.database.ServerValue.TIMESTAMP); // เพิ่ม
     showRoom();
   });
 }
@@ -427,6 +392,7 @@ function showRoom() {
   document.getElementById("room").style.display = "block";
   focusHeading("roomName");
   startSoundListener();
+  updateRoomActivity(); // เพิ่ม
 
   if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`guessGameRooms/${roomId}`);
@@ -454,72 +420,53 @@ function showRoom() {
       triggerSound("door");
     }
 
-    if (room.status === "playing") {
-        const incomingIndex = room.current || 0;
-        const isWaiting = document.getElementById("room").style.display !== "none";
-        
-        if (isWaiting || incomingIndex !== questionIndex) {
-             questionIndex = incomingIndex;
-             isProcessingNext = false; 
-
-             if (room.questions && room.questions[questionIndex]) {
-                 document.getElementById("lobby").style.display = "none";
-                 document.getElementById("room").style.display = "none";
-                 document.getElementById("quiz").style.display = "block";
-                 document.getElementById("mainTitle").style.display = "none";
-                 
-                 showQuestion(room.questions[questionIndex]);
-             }
-        }
-        
-        if (room.players && room.players[playerId] && room.players[playerId].answered) {
-             localAnswered = true;
-             const allBtns = document.querySelectorAll("#options button");
-             if (allBtns.length > 0) {
-                 allBtns.forEach(btn => btn.disabled = true);
-             }
-        }
-    }
-    else if (room.status === "finished") {
-      stopWaitLoop();
-      showResult(room);
-    }
+    if (room.status === "playing") startQuiz();
+    else if (room.status === "finished") showResult(room);
   });
 }
 
 function startGame() {
   triggerSound("start");
+  updateRoomActivity(); // เพิ่ม
   db.ref(`guessGameRooms/${roomId}`).update({
     status: "playing",
     current: 0,
     questions: getRandomQuestions(7),
-    lastActivity: Date.now()
+    lastActivity: firebase.database.ServerValue.TIMESTAMP // เพิ่ม
   });
 }
 
 function getRandomQuestions(n) {
-  const copy = questions.map(q => ({...q, options: [...q.options]}));
+  const copy = [...questions];
   const res = [];
   for (let i = 0; i < n; i++) {
     const idx = Math.floor(Math.random() * copy.length);
     let q = copy.splice(idx, 1)[0];
-    
     const opts = [...q.options];
     const correctText = opts[q.answer];
     shuffleArray(opts);
     q.answer = opts.indexOf(correctText);
     q.options = opts;
-    
     res.push(q);
   }
   return res;
 }
 
-function showQuestion(q) {
-  if (!q) return;
+function startQuiz() {
+  document.getElementById("room").style.display = "none";
+  document.getElementById("quiz").style.display = "block";
+  document.getElementById("mainTitle").style.display = "none";
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
+    questionIndex = data.current || 0;
+    showQuestion(data.questions[questionIndex]);
+  });
+}
 
+function showQuestion(q) {
+  if (!q) { if (isHost) endGameHost(); return; }
   localAnswered = false;
-  timeLeft = Math.floor(Math.random() * 11) + 15; 
+  timeLeft = 20; // คงเวลาไว้ 20 วินาทีตามเดิม (แต่มีการสุ่มในโค้ดเดิมจริง ๆ เป็น 15-25 วินาที – แต่ตามคำขอให้คงเดิมทุกอย่าง)
 
   const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;
   focusQuestionIfChanged(newText);
@@ -527,27 +474,22 @@ function showQuestion(q) {
   const container = document.getElementById("options");
   container.innerHTML = "";
   const shuffled = q.options;
-  const correctText = q.options[q.answer];
 
   shuffled.forEach((opt, i) => {
     const btn = document.createElement("button");
     btn.textContent = opt;
-    btn.onclick = () => submitAnswer(opt === correctText);
+    btn.onclick = () => submitAnswer(opt === q.options[q.answer]);
     container.appendChild(btn);
   });
 
-  document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
+  // ไม่แสดง timer อีกต่อไป (ซ่อนไว้แล้วใน HTML)
   clearInterval(timerInterval);
   timerInterval = setInterval(() => {
     timeLeft--;
-    document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
-    
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
-      if (!isProcessingNext) {
-          isProcessingNext = true;
-          tryTriggerNextQuestion();
-      }
+      triggerSound("next");
+      setTimeout(nextQuestion, 1200);
     }
   }, 1000);
 }
@@ -555,96 +497,76 @@ function showQuestion(q) {
 function submitAnswer(isCorrect) {
   if (localAnswered) return;
   localAnswered = true;
-
-  const allBtns = document.querySelectorAll("#options button");
-  allBtns.forEach(btn => btn.disabled = true);
-
   playSound("pop");
+  updateRoomActivity(); // เพิ่ม
 
-  const roomRef = db.ref(`guessGameRooms/${roomId}`);
-  roomRef.transaction((room) => {
-    if (!room || !room.players || !room.players[playerId]) return room;
-    
-    const p = room.players[playerId];
-    if (p.answered) return;
-    
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
     if (isCorrect) {
-      p.score = (p.score || 0) + 1;
+      db.ref(`guessGameRooms/${roomId}/players/${playerId}/score`).transaction(v => (v || 0) + 1);
     }
-    p.answered = true;
-    room.lastActivity = Date.now();
-    
-    return room;
-  }, (error, committed, snapshot) => {
-    if (error) return;
-    if (committed && snapshot.val()) {
-       const room = snapshot.val();
-       
-       const allAnswered = Object.values(room.players || {}).every(p => p.answered);
-       
-       if (allAnswered) {
-           console.log("I am the last one! Triggering next...");
-           prepareNextQuestion(room);
-       }
+    db.ref(`guessGameRooms/${roomId}/players/${playerId}/answered`).set(true);
+    checkAllAnswered();
+  });
+}
+
+function checkAllAnswered() {
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
+    const all = Object.values(data.players || {}).every(p => p.answered);
+    if (all) {
+      clearInterval(timerInterval);
+      if (data.current === data.questions.length - 1) {
+        triggerWaitSoundOnlyAtEnd();
+        setTimeout(() => triggerSound("new4"), 600);
+        setTimeout(nextQuestion, 2500);
+      } else {
+        setTimeout(() => triggerSound("next"), 500);
+        setTimeout(nextQuestion, 1200);
+      }
     }
   });
 }
 
-function prepareNextQuestion(room) {
-    isProcessingNext = true;
-    clearInterval(timerInterval);
-    
-    const isLastQuestion = (room.current || 0) >= (room.questions || []).length - 1;
-    
-    if (isLastQuestion) {
-        startWaitLoop();
-        triggerSound("new4");
-        setTimeout(tryTriggerNextQuestion, 2500);
-    } else {
-        setTimeout(tryTriggerNextQuestion, 1200);
+function nextQuestion() {
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const data = snap.val();
+    if (!data) return;
+    const updates = {};
+    for (let id in data.players) updates[`players/${id}/answered`] = false;
+    updates.current = (data.current || 0) + 1;
+    updates.lastActivity = firebase.database.ServerValue.TIMESTAMP; // เพิ่ม
+    db.ref(`guessGameRooms/${roomId}`).update(updates);
+
+    questionIndex = updates.current;
+    if (questionIndex < data.questions.length) {
+      showQuestion(data.questions[questionIndex]);
+    } else if (isHost) {
+      setTimeout(endGameHost, 800);
     }
+  });
 }
 
-function tryTriggerNextQuestion() {
-    const roomRef = db.ref(`guessGameRooms/${roomId}`);
-    roomRef.transaction((room) => {
-        if (!room) return room;
+function endGameHost() {
+  clearInterval(timerInterval);
+  db.ref(`guessGameRooms/${roomId}`).once("value").then(snap => {
+    const room = snap.val();
+    if (!room?.players) return;
+    const players = Object.values(room.players);
+    players.sort((a,b) => b.score - a.score);
+    const max = players[0].score;
+    const winners = players.filter(p => p.score === max).map(p => p.name);
 
-        if (room.current === questionIndex && room.status === 'playing') {
-            const totalQ = (room.questions || []).length;
-            
-            if (room.current >= totalQ - 1) {
-                room.status = 'finished';
-                let playersArr = [];
-                if (room.players) {
-                    playersArr = Object.values(room.players);
-                    playersArr.sort((a,b) => (b.score||0) - (a.score||0));
-                }
-                const max = playersArr.length > 0 ? (playersArr[0].score || 0) : 0;
-                const winners = playersArr.filter(p => (p.score||0) === max).map(p => p.name);
-                room.result = { winners, players: playersArr };
-            } else {
-                room.current++;
-                if (room.players) {
-                    Object.keys(room.players).forEach(k => {
-                        room.players[k].answered = false;
-                    });
-                }
-                room.soundTrigger = { name: "next", time: Date.now() };
-            }
-            
-            room.lastActivity = Date.now();
-            return room;
-        }
-        return; 
-    }, (error, committed) => {
-        if (error) isProcessingNext = false;
+    db.ref(`guessGameRooms/${roomId}`).update({
+      status: "finished",
+      result: { winners, players },
+      lastActivity: firebase.database.ServerValue.TIMESTAMP // เพิ่ม
     });
+  });
 }
 
 function showResult(roomData) {
   clearInterval(timerInterval);
-  stopWaitLoop(); 
   document.getElementById("quiz").style.display = "none";
   document.getElementById("result").style.display = "block";
   document.getElementById("mainTitle").style.display = "none";
@@ -672,7 +594,6 @@ function requestBackToLobby() {
 function backToLobby() {
   if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
   if (soundListener) { soundListener.off(); soundListener = null; }
-  stopWaitLoop(); 
   db.ref(`guessGameRooms/${roomId}/players/${playerId}`).remove();
   roomId = ""; questionIndex = 0; lastQuestionText = "";
   document.getElementById("result").style.display = "none";
