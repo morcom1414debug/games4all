@@ -81,7 +81,7 @@
 
   <div id="room">
     <h2 id="roomName" tabindex="0"></h2>
-    <p>* คนที่สร้างห้อง กดเริ่มเกมได้คนเดียวเท่านั้น แต่ละข้อมีเวลา 15 วินาทีตายตัว<br>ครบ 15 วินาทีจะไปข้อถัดไปอัตโนมัติ ไม่ต้องรอให้ทุกคนตอบครบ<br>ถ้าตอบไม่ทันในข้อนั้น จะไม่ได้คะแนนในข้อนั้น<br>ตอนนี้มีผู้เล่นในห้องดังนี้:</p>
+    <p>* คนที่สร้างห้อง กดเริ่มเกมได้คนเดียวเท่านั้น แต่ละข้อมีเวลา 20 วินาทีตายตัว<br>ครบ 20 วินาทีจะไปข้อถัดไปอัตโนมัติ ไม่ต้องรอให้ทุกคนตอบครบ<br>ถ้าตอบไม่ทันในข้อนั้น จะไม่ได้คะแนนในข้อนั้น<br>ตอนนี้มีผู้เล่นในห้องดังนี้:</p>
     <ul id="playerList"></ul>
     <button id="startBtn" onclick="startGame()">เริ่มเกม</button>
   </div>
@@ -114,11 +114,10 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 let playerName="", roomId="", playerId="", isHost=false;
-let questionIndex=0, timerInterval, timeLeft=15, localAnswered=false;
+let questionIndex=0, timerInterval, timeLeft=20, localAnswered=false;
 let currentRoomListener=null, soundListener=null, lastSoundTime=0;
 let lastQuestionText = "";
 let waitLoopSource = null;
-let isProcessingNext = false;
 
 // ============== Web Audio API Setup ==============
 let audioCtx = null;
@@ -306,7 +305,6 @@ function focusHeading(id) {
     if (el) { el.setAttribute('tabindex', '-1'); el.focus(); }
   }, 150));
 }
-
 function focusQuestionIfChanged(newText) {
   if (newText !== lastQuestionText) {
     lastQuestionText = newText;
@@ -439,11 +437,12 @@ function showRoom() {
     }
 
     if (room.status === "playing") {
-        const incomingIndex = room.current ?? 0;
+        const incomingIndex = room.current ?? 0;  // ใช้ ?? เพื่อป้องกัน undefined
 
         if (room.questions && room.questions[incomingIndex]) {
           questionIndex = incomingIndex;
 
+          // บังคับแสดง quiz และแสดงข้อถัดไปเสมอเมื่อ current เปลี่ยน หรือเมื่อเพิ่งเริ่ม
           document.getElementById("lobby").style.display = "none";
           document.getElementById("room").style.display = "none";
           document.getElementById("quiz").style.display = "block";
@@ -452,11 +451,13 @@ function showRoom() {
           showQuestion(room.questions[questionIndex]);
         }
 
+        // ปรับสถานะปุ่มตอบตามที่ผู้เล่นตอบไปแล้วหรือยัง
         if (room.players && room.players[playerId] && room.players[playerId].answered === true) {
              localAnswered = true;
              const allBtns = document.querySelectorAll("#options button");
              allBtns.forEach(btn => btn.disabled = true);
         } else if (room.players && room.players[playerId]) {
+             // รีเซ็ตถ้ายังไม่ตอบในข้อใหม่
              localAnswered = false;
         }
     }
@@ -476,6 +477,7 @@ function startGame() {
     questions: randomQs,
     lastActivity: Date.now()
   }).then(() => {
+    // สำหรับ host เอง: แสดงข้อที่ 1 ทันทีหลัง update สำเร็จ
     if (roomId && randomQs && randomQs[0]) {
       questionIndex = 0;
       document.getElementById("lobby").style.display = "none";
@@ -512,15 +514,10 @@ function showQuestion(q) {
   if (!q) return;
 
   localAnswered = false;
-  timeLeft = 15;
+  timeLeft = 20;
 
   const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;
-
-  // รอเสียง "next" หรือ "new4" จบก่อน focus (ประมาณ 1200ms สำหรับ next, 2500ms สำหรับ new4)
-  const delay = (questionIndex === 0) ? 0 : 1300; // ข้อแรกไม่มีเสียง next
-  setTimeout(() => {
-    focusQuestionIfChanged(newText);
-  }, delay);
+  focusQuestionIfChanged(newText);
 
   const container = document.getElementById("options");
   container.innerHTML = "";
@@ -541,9 +538,8 @@ function showQuestion(q) {
     
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
-      if (isHost && !isProcessingNext) {
-        isProcessingNext = true;
-        prepareNextQuestion();
+      if (isHost) {
+        advanceToNextQuestion();
       }
     }
   }, 1000);
@@ -569,21 +565,6 @@ function submitAnswer(isCorrect) {
   });
 }
 
-function prepareNextQuestion() {
-  clearInterval(timerInterval);
-  
-  const isLastQuestion = questionIndex >= 6; // 7 ข้อ (index 0-6)
-  
-  if (isLastQuestion) {
-    triggerSound("new4");
-    startWaitLoop();
-    setTimeout(advanceToNextQuestion, 2500);
-  } else {
-    triggerSound("next");
-    setTimeout(advanceToNextQuestion, 1200);
-  }
-}
-
 function advanceToNextQuestion() {
   const roomRef = db.ref(`guessGameRooms/${roomId}`);
   roomRef.transaction(room => {
@@ -602,6 +583,9 @@ function advanceToNextQuestion() {
       const max = playersArr.length > 0 ? (playersArr[0].score || 0) : 0;
       const winners = playersArr.filter(p => (p.score||0) === max).map(p => p.name);
       room.result = { winners, players: playersArr };
+
+      triggerSound("new4");
+      startWaitLoop();
     } else {
       room.current = nextIndex;
       if (room.players) {
@@ -609,12 +593,11 @@ function advanceToNextQuestion() {
           room.players[k].answered = false;
         });
       }
+      triggerSound("next");
     }
 
     room.lastActivity = Date.now();
     return room;
-  }, () => {
-    isProcessingNext = false;
   });
 }
 
