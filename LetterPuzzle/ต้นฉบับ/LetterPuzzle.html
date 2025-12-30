@@ -150,136 +150,123 @@
     </div>
 </div>
 
+<!-- เสียง -->
+<audio id="correctSound" src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3" preload="auto"></audio>
+<audio id="wrongSound" src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3" preload="auto"></audio>
+<audio id="bgm" src="audio/b.mp3" preload="auto" loop></audio>
+<audio id="doorSound" src="audio/door.mp3" preload="auto"></audio>
+<audio id="t1Sound" src="audio/t1.mp3" preload="auto"></audio>
+<audio id="tSound" src="audio/t.mp3" preload="auto"></audio>
+<audio id="fSound" src="audio/f.mp3" preload="auto"></audio>
+<audio id="endSound" src="audio/end.mp3" preload="auto"></audio>
+<audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
+
 <script>
-// ======== Web Audio API Engine ========
+// ======== AudioEngine (เหมือนเดิม) ========
 class AudioEngine {
-  constructor() {
-    this.context = null;
+  constructor(map) {
+    this.map = map;
     this.isUnlocked = false;
-    this.bgmSource = null;
-    this.bgmGain = null;
-    this.bgmBuffer = null;
+    this.bgmEl = map['bgm'] || null;
+    this.bgmStarted = false;
     this.currentEndPromise = null;
-
-    this.buffers = {}; // key -> AudioBuffer
   }
-
-  async init() {
-    if (this.context) return;
-    this.context = new (window.AudioContext || window.webkitAudioContext)();
-  }
-
-  async unlock() {
+  async unlockAll() {
     if (this.isUnlocked) return;
-    await this.init();
-    // เล่นเสียงเงียบเพื่อ unlock บน mobile
-    const buffer = this.context.createBuffer(1, 1, 22050);
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.context.destination);
-    source.start(0);
+    for (const [key, el] of Object.entries(this.map)) {
+      try {
+        const origVol = el.volume;
+        el.volume = 0;
+        el.currentTime = 0;
+        if (el.readyState < 2) {
+          await new Promise(r => {
+            const fn = () => { el.removeEventListener('loadeddata', fn); el.removeEventListener('canplaythrough', fn); r(); };
+            el.addEventListener('loadeddata', fn);
+            el.addEventListener('canplaythrough', fn);
+            setTimeout(r, 500);
+          });
+        }
+        await el.play().catch(() => {});
+        if (!el.paused) { await new Promise(r => setTimeout(r, 50)); el.pause(); }
+        el.currentTime = 0;
+        el.volume = origVol;
+      } catch(e) {}
+    }
     this.isUnlocked = true;
   }
-
-  async loadBuffer(key, url) {
-    if (this.buffers[key]) return this.buffers[key];
-    if (!this.context) await this.init();
-
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
-    this.buffers[key] = audioBuffer;
-    return audioBuffer;
-  }
-
-  async preloadAll() {
-    await this.unlock();
-    const sounds = {
-      correctSound: "https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3",
-      wrongSound: "https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3",
-      doorSound: "audio/door.mp3",
-      t1Sound: "audio/t1.mp3",
-      tSound: "audio/t.mp3",
-      fSound: "audio/f.mp3",
-      endSound: "audio/end.mp3",
-      end1Sound: "audio/end1.mp3",
-      bgm: "audio/b.mp3"
-    };
-
-    await Promise.all(Object.entries(sounds).map(([k, u]) => this.loadBuffer(k, u)));
-    this.bgmBuffer = this.buffers.bgm;
-  }
-
   async startBGM() {
-    if (!this.bgmBuffer) return;
-    await this.unlock();
-
-    if (this.bgmSource) this.stopBGM();
-
-    this.bgmSource = this.context.createBufferSource();
-    this.bgmSource.buffer = this.bgmBuffer;
-    this.bgmSource.loop = true;
-
-    this.bgmGain = this.context.createGain();
-    this.bgmGain.gain.value = 0.6;
-
-    this.bgmSource.connect(this.bgmGain);
-    this.bgmGain.connect(this.context.destination);
-
-    this.bgmSource.start(0);
+    if (!this.bgmEl) return;
+    this.bgmEl.currentTime = 0;
+    this.bgmEl.volume = 0.6;
+    try {
+      await this.bgmEl.play();
+      this.bgmStarted = true;
+    } catch(e) {}
   }
-
   stopBGM() {
-    if (this.bgmSource) {
-      this.bgmSource.stop();
-      this.bgmSource = null;
-      this.bgmGain = null;
+    if (this.bgmEl) {
+      this.bgmEl.pause();
+      this.bgmEl.currentTime = 0;
+      this.bgmStarted = false;
     }
   }
-
   async playEffect(key) {
-    const buffer = this.buffers[key];
-    if (!buffer) return;
-
-    await this.unlock();
-
+    const el = this.map[key];
+    if (!el) return;
     if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
       return this.currentEndPromise;
     }
-
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
-
-    const gain = this.context.createGain();
-    gain.gain.value = key.includes('bgm') ? 0.6 : 0.8;
-
-    source.connect(gain);
-    gain.connect(this.context.destination);
-
     const p = new Promise(resolve => {
-      source.onended = () => resolve();
-      // fallback timeout
-      setTimeout(() => resolve(), buffer.duration * 1000 + 1000);
+      let settled = false;
+      let timer = null;
+      const cleanup = () => {
+        try { el.onended = null; el.onpause = null; el.onerror = null; } catch(e) {}
+        if (timer) { clearTimeout(timer); timer = null; }
+      };
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        try { el.currentTime = 0; } catch(e) {}
+        resolve();
+      };
+      el.onended = done;
+      el.onpause = done;
+      el.onerror = done;
+      timer = setTimeout(done, 4000);
+      try {
+        el.currentTime = 0;
+        el.volume = 0.8;
+        el.play().catch(() => done());
+      } catch (e) {
+        done();
+      }
     });
-
-    source.start(0);
-
     if (key === 'endSound' || key === 'end1Sound') {
       this.currentEndPromise = p;
-      p.finally(() => { this.currentEndPromise = null; });
+      p.then(() => { this.currentEndPromise = null; }).catch(() => { this.currentEndPromise = null; });
     }
-
     return p;
   }
 }
 
-const audioEngine = new AudioEngine();
+const audioEngine = new AudioEngine({
+  bgm: document.getElementById("bgm"),
+  correctSound: document.getElementById("correctSound"),
+  wrongSound: document.getElementById("wrongSound"),
+  doorSound: document.getElementById("doorSound"),
+  t1Sound: document.getElementById("t1Sound"),
+  tSound: document.getElementById("tSound"),
+  fSound: document.getElementById("fSound"),
+  endSound: document.getElementById("endSound"),
+  end1Sound: document.getElementById("end1Sound")
+});
 
 let hasUserInteracted = false;
 async function unlockAudio(){
   if (hasUserInteracted) return;
   hasUserInteracted = true;
-  await audioEngine.preloadAll();
+  await audioEngine.unlockAll();
   await audioEngine.startBGM();
 }
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
