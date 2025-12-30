@@ -113,11 +113,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// === เพิ่มตามที่กำหนดเพื่อแยกเกม ===
-const GAME_ID = "capital";                  // <--- เปลี่ยนเป็นชื่อเฉพาะของเกมนี้ (เช่น capital, flag, animal ฯลฯ)
-const ROOMS_PATH = `games/${GAME_ID}/rooms`;
-// ======================================
-
 let playerName="", roomId="", playerId="", isHost=false;
 let questionIndex=0, timerInterval, timeLeft=11, localAnswered=false;
 let currentRoomListener=null, soundListener=null, lastSoundTime=0;
@@ -285,14 +280,14 @@ function triggerSound(name) {
   const now = Date.now();
   if (now - lastSoundTime < 200) return;
   lastSoundTime = now;
-  db.ref(`${ROOMS_PATH}/${roomId}/soundTrigger`).set({name, time: now});
-  db.ref(`${ROOMS_PATH}/${roomId}/lastActivity`).set(now);
+  db.ref(`guessGameRooms/${roomId}/soundTrigger`).set({name, time: now});
+  db.ref(`guessGameRooms/${roomId}/lastActivity`).set(now);
 }
 
 function startSoundListener() {
   if (soundListener) soundListener.off();
   if (!roomId) return;
-  soundListener = db.ref(`${ROOMS_PATH}/${roomId}/soundTrigger`);
+  soundListener = db.ref(`guessGameRooms/${roomId}/soundTrigger`);
   soundListener.on("value", s => { 
     const d = s.val(); 
     if (d?.name) playSound(d.name); 
@@ -336,7 +331,7 @@ async function confirmName() {
 
 function loadRooms() {
   const list = document.getElementById("roomList");
-  db.ref(ROOMS_PATH).on("value", snap => {
+  db.ref("guessGameRooms").on("value", snap => {
     list.innerHTML = "";
     const now = Date.now();
 
@@ -347,12 +342,12 @@ function loadRooms() {
 
       const lastActivity = room.lastActivity || room.created || 0;
       if (now - lastActivity > 600000) {
-        db.ref(`${ROOMS_PATH}/${roomKey}`).remove();
+        db.ref(`guessGameRooms/${roomKey}`).remove();
         return;
       }
 
       if (playerCount === 0 && room.created && (now - room.created > 3000)) {
-        db.ref(`${ROOMS_PATH}/${roomKey}`).remove();
+        db.ref(`guessGameRooms/${roomKey}`).remove();
         return;
       }
 
@@ -372,7 +367,7 @@ function loadRooms() {
 function showCreateRoom() {
   const name = prompt("ตั้งชื่อห้อง:");
   if (!name) return;
-  const ref = db.ref(ROOMS_PATH).push();
+  const ref = db.ref("guessGameRooms").push();
   roomId = ref.key; isHost = true;
   ref.set({
     name, 
@@ -386,7 +381,7 @@ function showCreateRoom() {
 }
 
 function joinRoom(id) {
-  db.ref(`${ROOMS_PATH}/${id}`).once("value").then(snap => {
+  db.ref(`guessGameRooms/${id}`).once("value").then(snap => {
     const room = snap.val();
     const playerCount = room.players ? Object.keys(room.players).length : 0;
     if (playerCount >= 80) {
@@ -394,11 +389,11 @@ function joinRoom(id) {
       return;
     }
     roomId = id;
-    const ref = db.ref(`${ROOMS_PATH}/${roomId}/players/${playerId}`);
+    const ref = db.ref(`guessGameRooms/${roomId}/players/${playerId}`);
     ref.set({name:playerName, score:0, answered:false});
     ref.onDisconnect().remove();
-    db.ref(`${ROOMS_PATH}/${roomId}/lastJoin`).set(Date.now());
-    db.ref(`${ROOMS_PATH}/${roomId}/lastActivity`).set(Date.now());
+    db.ref(`guessGameRooms/${roomId}/lastJoin`).set(Date.now());
+    db.ref(`guessGameRooms/${roomId}/lastActivity`).set(Date.now());
     showRoom();
   });
 }
@@ -411,7 +406,7 @@ function showRoom() {
   startSoundListener();
 
   if (currentRoomListener) currentRoomListener.off();
-  currentRoomListener = db.ref(`${ROOMS_PATH}/${roomId}`);
+  currentRoomListener = db.ref(`guessGameRooms/${roomId}`);
   currentRoomListener.on("value", snap => {
     const room = snap.val();
     if (!room) { alert("ห้องถูกลบแล้ว"); backToLobby(); return; }
@@ -470,7 +465,7 @@ function showRoom() {
 function startGame() {
   triggerSound("start");
   const randomQs = getRandomQuestions(7);
-  db.ref(`${ROOMS_PATH}/${roomId}`).update({
+  db.ref(`guessGameRooms/${roomId}`).update({
     status: "playing",
     current: 0,
     questions: randomQs,
@@ -554,7 +549,7 @@ function submitAnswer(isCorrect) {
 
   playSound("pop");
 
-  const roomRef = db.ref(`${ROOMS_PATH}/${roomId}/players/${playerId}`);
+  const roomRef = db.ref(`guessGameRooms/${roomId}/players/${playerId}`);
   roomRef.transaction(p => {
     if (!p || p.answered) return p;
     p.answered = true;
@@ -573,7 +568,7 @@ function prepareNextQuestion() {
   if (isLastQuestion) {
     triggerSound("new4");
     startWaitLoop();
-    db.ref(`${ROOMS_PATH}/${roomId}`).update({ phase: "endingSound" });
+    db.ref(`guessGameRooms/${roomId}`).update({ phase: "endingSound" });
     setTimeout(advanceToNextQuestion, 2500);
   } else {
     triggerSound("next");
@@ -582,7 +577,7 @@ function prepareNextQuestion() {
 }
 
 function advanceToNextQuestion() {
-  const roomRef = db.ref(`${ROOMS_PATH}/${roomId}`);
+  const roomRef = db.ref(`guessGameRooms/${roomId}`);
   roomRef.transaction(room => {
     if (!room || room.status !== "playing") return room;
 
@@ -640,7 +635,7 @@ function showResult(roomData) {
 
 function requestBackToLobby() {
   triggerSound("door");
-  db.ref(`${ROOMS_PATH}/${roomId}/lastBackToLobby`).set(Date.now());
+  db.ref(`guessGameRooms/${roomId}/lastBackToLobby`).set(Date.now());
   backToLobby();
 }
 
@@ -649,7 +644,7 @@ function backToLobby() {
   if (soundListener) { soundListener.off(); soundListener = null; }
   stopWaitLoop(); 
   if (roomId && playerId) {
-    db.ref(`${ROOMS_PATH}/${roomId}/players/${playerId}`).remove();
+    db.ref(`guessGameRooms/${roomId}/players/${playerId}`).remove();
   }
   roomId = ""; questionIndex = 0; lastQuestionText = "";
   document.getElementById("result").style.display = "none";
