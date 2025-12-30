@@ -20,6 +20,7 @@
   }
   button:hover { background: #45a049; }
    
+  /* เพิ่ม CSS สำหรับปุ่มที่ถูก disabled */
   button:disabled {
     background: #cccccc;
     color: #666666;
@@ -38,7 +39,6 @@
     top: 15px;
     left: 15px;
     z-index: 9999;
-    display: none; /* ซ่อนปุ่มนี้ไว้ตั้งแต่เริ่มต้น */
   }
   #backToMenuBtn button {
     background: #f44336;
@@ -61,7 +61,6 @@
 <body>
 <h1 id="mainTitle" tabindex="0">Capital questions? online : รู้รอบตัว - ชุดที่ 1</h1>
 
-<!-- ปุ่มกลับเมนูหลัก (เดิม) - ซ่อนไว้และจะแสดงเฉพาะตอนอยู่ในเกมเท่านั้น -->
 <div id="backToMenuBtn">
   <button onclick="window.location.href='../index.html'">กลับเมนูหลัก</button>
 </div>
@@ -90,6 +89,7 @@
   <div id="quiz">
     <h2 id="questionText" tabindex="0"></h2>
     <div id="options"></div>
+    <!-- ซ่อนตัวเลขเวลา แต่ยังคงทำงานตามปกติ -->
     <p id="timer" style="font-size:18px; font-weight:bold; margin-top:20px; visibility:hidden; height:0; overflow:hidden;"></p>
   </div>
 
@@ -122,13 +122,16 @@ let isProcessingNext = false;
 
 // ============== Web Audio API Setup ==============
 let audioCtx = null;
-const soundBuffers = {};
+const soundBuffers = {}; // name (without .mp3) → AudioBuffer
 
 async function initAudioContext() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   
-  const soundFiles = ["pop", "start", "friend", "door", "next", "new4", "wait"];
+  // Preload all sounds
+  const soundFiles = [
+    "pop", "start", "friend", "door", "next", "new4", "wait"
+  ];
   
   await Promise.all(soundFiles.map(async (name) => {
     try {
@@ -136,6 +139,7 @@ async function initAudioContext() {
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       soundBuffers[name] = audioBuffer;
+      console.log(`Loaded sound: ${name}.mp3`);
     } catch (e) {
       console.warn(`Failed to load sound: ${name}.mp3`, e);
     }
@@ -180,7 +184,7 @@ function stopWaitLoop() {
 
 // ============== END Web Audio API ==============
 
-const questions = [ /* คำถามทั้งหมดเหมือนเดิม ไม่เปลี่ยน */ 
+const questions = [
   { q:"เมืองหลวงของไทยคืออะไร?", options:["กรุงเทพมหานคร","โตเกียว","ปารีส"], answer:0 },
   { q:"เมืองหลวงของญี่ปุ่นคืออะไร?", options:["ปักกิ่ง","โตเกียว","โซล"], answer:1 },
   { q:"เมืองหลวงของจีนคืออะไร?", options:["ปักกิ่ง","เซี่ยงไฮ้","ฮ่องกง"], answer:0 },
@@ -271,10 +275,11 @@ const questions = [ /* คำถามทั้งหมดเหมือนเ
   { q:"เมืองหลวงของติมอร์-เลสเตคืออะไร?", options:["บาเกา","ดิลี","ซัวอิ"], answer:1 }
 ];
 
-// เริ่มเกม - ซ่อนปุ่มกลับเมนูหลักไว้ก่อน
+// เริ่มเกม
 document.getElementById("game").style.display="block";
-document.getElementById("backToMenuBtn").style.display="none"; // ซ่อนตั้งแต่เริ่ม
+document.getElementById("backToMenuBtn").style.display="block";
 
+// ============== AUDIO TRIGGER ==============
 function triggerSound(name) {
   if (!roomId) return;
   const now = Date.now();
@@ -294,6 +299,7 @@ function startSoundListener() {
   });
 }
 
+// ============== FOCUS ==============
 function focusHeading(id) {
   requestAnimationFrame(() => setTimeout(() => {
     const el = document.getElementById(id);
@@ -309,6 +315,7 @@ function focusQuestionIfChanged(newText) {
   }
 }
 
+// ============== UTILS ==============
 function shuffleArray(arr) {
   for (let i = arr.length-1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -316,6 +323,7 @@ function shuffleArray(arr) {
   }
 }
 
+// ============== GAME FLOW ==============
 async function confirmName() {
   playerName = document.getElementById("playerName").value.trim();
   if (!playerName) { alert("กรุณาใส่ชื่อ"); return; }
@@ -341,7 +349,7 @@ function loadRooms() {
       const playerCount = room.players ? Object.keys(room.players).length : 0;
 
       const lastActivity = room.lastActivity || room.created || 0;
-      if (now - lastActivity > 600000) {
+      if (now - lastActivity > 600000) { // 10 นาที
         db.ref(`guessGameRooms/${roomKey}`).remove();
         return;
       }
@@ -401,7 +409,6 @@ function joinRoom(id) {
 function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
-  document.getElementById("backToMenuBtn").style.display = "block"; // แสดงปุ่มเมื่อเข้าห้อง
   focusHeading("roomName");
   startSoundListener();
 
@@ -441,7 +448,6 @@ function showRoom() {
           document.getElementById("room").style.display = "none";
           document.getElementById("quiz").style.display = "block";
           document.getElementById("mainTitle").style.display = "none";
-          document.getElementById("backToMenuBtn").style.display = "block"; // แสดงตอนเล่น
 
           showQuestion(room.questions[questionIndex]);
         }
@@ -454,10 +460,9 @@ function showRoom() {
              localAnswered = false;
         }
     }
-    else if (room.status === "finished" && room.phase === "finished") {
+    else if (room.status === "finished") {
       stopWaitLoop();
       showResult(room);
-      document.getElementById("backToMenuBtn").style.display = "block"; // แสดงตอนสรุปผล
     }
   });
 }
@@ -469,16 +474,16 @@ function startGame() {
     status: "playing",
     current: 0,
     questions: randomQs,
-    lastActivity: Date.now(),
-    phase: "playing"
+    lastActivity: Date.now()
   }).then(() => {
-    questionIndex = 0;
-    document.getElementById("lobby").style.display = "none";
-    document.getElementById("room").style.display = "none";
-    document.getElementById("quiz").style.display = "block";
-    document.getElementById("mainTitle").style.display = "none";
-    document.getElementById("backToMenuBtn").style.display = "block";
-    showQuestion(randomQs[0]);
+    if (roomId && randomQs && randomQs[0]) {
+      questionIndex = 0;
+      document.getElementById("lobby").style.display = "none";
+      document.getElementById("room").style.display = "none";
+      document.getElementById("quiz").style.display = "block";
+      document.getElementById("mainTitle").style.display = "none";
+      showQuestion(randomQs[0]);
+    }
   }).catch(err => {
     console.error("Error starting game:", err);
     alert("เกิดข้อผิดพลาดในการเริ่มเกม กรุณาลองใหม่");
@@ -491,11 +496,13 @@ function getRandomQuestions(n) {
   for (let i = 0; i < n; i++) {
     const idx = Math.floor(Math.random() * copy.length);
     let q = copy.splice(idx, 1)[0];
+    
     const opts = [...q.options];
     const correctText = opts[q.answer];
     shuffleArray(opts);
     q.answer = opts.indexOf(correctText);
     q.options = opts;
+    
     res.push(q);
   }
   return res;
@@ -508,7 +515,9 @@ function showQuestion(q) {
   timeLeft = 15;
 
   const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;
-  const delay = (questionIndex === 0) ? 0 : 1300;
+
+  // รอเสียง "next" หรือ "new4" จบก่อน focus (ประมาณ 1200ms สำหรับ next, 2500ms สำหรับ new4)
+  const delay = (questionIndex === 0) ? 0 : 1300; // ข้อแรกไม่มีเสียง next
   setTimeout(() => {
     focusQuestionIfChanged(newText);
   }, delay);
@@ -563,12 +572,11 @@ function submitAnswer(isCorrect) {
 function prepareNextQuestion() {
   clearInterval(timerInterval);
   
-  const isLastQuestion = questionIndex >= 6;
+  const isLastQuestion = questionIndex >= 6; // 7 ข้อ (index 0-6)
   
   if (isLastQuestion) {
     triggerSound("new4");
     startWaitLoop();
-    db.ref(`guessGameRooms/${roomId}`).update({ phase: "endingSound" });
     setTimeout(advanceToNextQuestion, 2500);
   } else {
     triggerSound("next");
@@ -586,7 +594,6 @@ function advanceToNextQuestion() {
 
     if (nextIndex >= totalQ) {
       room.status = "finished";
-      room.phase = "finished";
       let playersArr = [];
       if (room.players) {
         playersArr = Object.values(room.players);
@@ -617,7 +624,6 @@ function showResult(roomData) {
   document.getElementById("quiz").style.display = "none";
   document.getElementById("result").style.display = "block";
   document.getElementById("mainTitle").style.display = "none";
-  document.getElementById("backToMenuBtn").style.display = "block";
 
   const list = document.getElementById("scoreList");
   list.innerHTML = "";
@@ -643,16 +649,13 @@ function backToLobby() {
   if (currentRoomListener) { currentRoomListener.off(); currentRoomListener = null; }
   if (soundListener) { soundListener.off(); soundListener = null; }
   stopWaitLoop(); 
-  if (roomId && playerId) {
-    db.ref(`guessGameRooms/${roomId}/players/${playerId}`).remove();
-  }
+  db.ref(`guessGameRooms/${roomId}/players/${playerId}`).remove();
   roomId = ""; questionIndex = 0; lastQuestionText = "";
   document.getElementById("result").style.display = "none";
   document.getElementById("room").style.display = "none";
   document.getElementById("quiz").style.display = "none";
   document.getElementById("mainTitle").style.display = "block";
   document.getElementById("lobby").style.display = "block";
-  document.getElementById("backToMenuBtn").style.display = "none"; // ซ่อนเมื่อกลับล็อบบี้
   focusHeading("lobbyTitle");
   loadRooms();
 }
