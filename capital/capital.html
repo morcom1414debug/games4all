@@ -20,6 +20,7 @@
   }
   button:hover { background: #45a049; }
    
+  /* เพิ่ม CSS สำหรับปุ่มที่ถูก disabled */
   button:disabled {
     background: #cccccc;
     color: #666666;
@@ -80,7 +81,7 @@
 
   <div id="room">
     <h2 id="roomName" tabindex="0"></h2>
-    <p>* คนที่สร้างห้อง กดเริ่มเกมได้คนเดียวเท่านั้น แต่ละข้อมีเวลา 20 วินาที<br>ถ้าตอบกันครบทุกคนก่อน 20 วินาที จะไปยังข้อถัดไปทันที แต่ถ้ายังมีผู้เล่นบางคนตอบไม่ครบ ต้องรอครบ 20 วินาทีก่อน? ถึงจะไปยังข้อถัดไป<br>โดยถ้าท่านใดตอบไม่ทันเวลาในข้อนั้น เสียไป 1 คะแนนนะ<br>ตอนนี้มีผู้เล่นในห้องดังนี้:</p>
+    <p>* คนที่สร้างห้อง กดเริ่มเกมได้คนเดียวเท่านั้น แต่ละข้อมีเวลา 20 วินาทีตายตัว<br>ครบ 20 วินาทีจะไปข้อถัดไปอัตโนมัติ ไม่ต้องรอให้ทุกคนตอบครบ<br>ถ้าตอบไม่ทันในข้อนั้น จะไม่ได้คะแนนในข้อนั้น<br>ตอนนี้มีผู้เล่นในห้องดังนี้:</p>
     <ul id="playerList"></ul>
     <button id="startBtn" onclick="startGame()">เริ่มเกม</button>
   </div>
@@ -88,6 +89,7 @@
   <div id="quiz">
     <h2 id="questionText" tabindex="0"></h2>
     <div id="options"></div>
+    <!-- ซ่อนตัวเลขเวลา แต่ยังคงทำงานตามปกติ -->
     <p id="timer" style="font-size:18px; font-weight:bold; margin-top:20px; visibility:hidden; height:0; overflow:hidden;"></p>
   </div>
 
@@ -119,13 +121,16 @@ let waitLoopSource = null;
 
 // ============== Web Audio API Setup ==============
 let audioCtx = null;
-const soundBuffers = {};
+const soundBuffers = {}; // name (without .mp3) → AudioBuffer
 
 async function initAudioContext() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   
-  const soundFiles = ["pop", "start", "friend", "door", "next", "new4", "wait"];
+  // Preload all sounds
+  const soundFiles = [
+    "pop", "start", "friend", "door", "next", "new4", "wait"
+  ];
   
   await Promise.all(soundFiles.map(async (name) => {
     try {
@@ -133,6 +138,7 @@ async function initAudioContext() {
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       soundBuffers[name] = audioBuffer;
+      console.log(`Loaded sound: ${name}.mp3`);
     } catch (e) {
       console.warn(`Failed to load sound: ${name}.mp3`, e);
     }
@@ -177,7 +183,6 @@ function stopWaitLoop() {
 
 // ============== END Web Audio API ==============
 
-// === รายการคำถาม ===
 const questions = [
   { q:"เมืองหลวงของไทยคืออะไร?", options:["กรุงเทพมหานคร","โตเกียว","ปารีส"], answer:0 },
   { q:"เมืองหลวงของญี่ปุ่นคืออะไร?", options:["ปักกิ่ง","โตเกียว","โซล"], answer:1 },
@@ -269,6 +274,7 @@ const questions = [
   { q:"เมืองหลวงของติมอร์-เลสเตคืออะไร?", options:["บาเกา","ดิลี","ซัวอิ"], answer:1 }
 ];
 
+// เริ่มเกม
 document.getElementById("game").style.display="block";
 document.getElementById("backToMenuBtn").style.display="block";
 
@@ -341,7 +347,7 @@ function loadRooms() {
       const playerCount = room.players ? Object.keys(room.players).length : 0;
 
       const lastActivity = room.lastActivity || room.created || 0;
-      if (now - lastActivity > 600000) {
+      if (now - lastActivity > 600000) { // 10 นาที
         db.ref(`guessGameRooms/${roomKey}`).remove();
         return;
       }
@@ -431,23 +437,28 @@ function showRoom() {
     }
 
     if (room.status === "playing") {
-        const incomingIndex = room.current || 0;
-        if (incomingIndex !== questionIndex) {
-             questionIndex = incomingIndex;
-             if (room.questions && room.questions[questionIndex]) {
-                 document.getElementById("lobby").style.display = "none";
-                 document.getElementById("room").style.display = "none";
-                 document.getElementById("quiz").style.display = "block";
-                 document.getElementById("mainTitle").style.display = "none";
-                 showQuestion(room.questions[questionIndex], room);
-             }
+        const incomingIndex = room.current ?? 0;  // ใช้ ?? เพื่อป้องกัน undefined
+
+        if (room.questions && room.questions[incomingIndex]) {
+          questionIndex = incomingIndex;
+
+          // บังคับแสดง quiz และแสดงข้อถัดไปเสมอเมื่อ current เปลี่ยน หรือเมื่อเพิ่งเริ่ม
+          document.getElementById("lobby").style.display = "none";
+          document.getElementById("room").style.display = "none";
+          document.getElementById("quiz").style.display = "block";
+          document.getElementById("mainTitle").style.display = "none";
+
+          showQuestion(room.questions[questionIndex]);
         }
 
         // ปรับสถานะปุ่มตอบตามที่ผู้เล่นตอบไปแล้วหรือยัง
-        if (room.players && room.players[playerId] && room.players[playerId].answered) {
+        if (room.players && room.players[playerId] && room.players[playerId].answered === true) {
              localAnswered = true;
              const allBtns = document.querySelectorAll("#options button");
              allBtns.forEach(btn => btn.disabled = true);
+        } else if (room.players && room.players[playerId]) {
+             // รีเซ็ตถ้ายังไม่ตอบในข้อใหม่
+             localAnswered = false;
         }
     }
     else if (room.status === "finished") {
@@ -459,11 +470,25 @@ function showRoom() {
 
 function startGame() {
   triggerSound("start");
+  const randomQs = getRandomQuestions(7);
   db.ref(`guessGameRooms/${roomId}`).update({
     status: "playing",
     current: 0,
-    questions: getRandomQuestions(7),
+    questions: randomQs,
     lastActivity: Date.now()
+  }).then(() => {
+    // สำหรับ host เอง: แสดงข้อที่ 1 ทันทีหลัง update สำเร็จ
+    if (roomId && randomQs && randomQs[0]) {
+      questionIndex = 0;
+      document.getElementById("lobby").style.display = "none";
+      document.getElementById("room").style.display = "none";
+      document.getElementById("quiz").style.display = "block";
+      document.getElementById("mainTitle").style.display = "none";
+      showQuestion(randomQs[0]);
+    }
+  }).catch(err => {
+    console.error("Error starting game:", err);
+    alert("เกิดข้อผิดพลาดในการเริ่มเกม กรุณาลองใหม่");
   });
 }
 
@@ -485,52 +510,39 @@ function getRandomQuestions(n) {
   return res;
 }
 
-/* ==================== แก้ไขหลัก: logic เวลาและการเปลี่ยนข้อ ==================== */
-// เปลี่ยน showQuestion ให้รับ room object เพื่อรู้จำนวนผู้เล่น
-function showQuestion(q, room) {
+function showQuestion(q) {
   if (!q) return;
 
   localAnswered = false;
+  timeLeft = 20;
 
   const newText = `ข้อที่ ${questionIndex + 1}: ${q.q}`;
   focusQuestionIfChanged(newText);
 
   const container = document.getElementById("options");
   container.innerHTML = "";
-  const shuffled = q.options;
+  const correctText = q.options[q.answer];
 
-  shuffled.forEach((opt, i) => {
+  q.options.forEach((opt, i) => {
     const btn = document.createElement("button");
     btn.textContent = opt;
-    btn.onclick = () => submitAnswer(opt === q.options[q.answer]);
+    btn.onclick = () => submitAnswer(opt === correctText);
     container.appendChild(btn);
   });
 
-  document.getElementById("timer").textContent = `เวลา: 20 วินาที`; 
-
+  document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
   clearInterval(timerInterval);
-
-  // นับจำนวนผู้เล่นปัจจุบัน
-  const playerCount = room.players ? Object.keys(room.players).length : 1;
-
-  if (playerCount === 1) {
-    // ผู้เล่นคนเดียว → ใช้ logic เดิม: ตอบแล้วไปทันที (เวลาไม่สำคัญ)
-    timeLeft = 999; // เวลาไม่หมด
-    timerInterval = setInterval(() => {}, 1000); // dummy interval
-  } else {
-    // ≥2 คน → เวลาตายตัว 20 วินาที
-    timeLeft = 20;
-    timerInterval = setInterval(() => {
-      timeLeft--;
-      document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
-      
-      if (timeLeft <= 0) {
-        clearInterval(timerInterval);
-        // ใช้ transaction เพื่อให้เปลี่ยนข้อได้จุดเดียวเท่านั้น
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    document.getElementById("timer").textContent = `เวลา: ${timeLeft} วินาที`; 
+    
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      if (isHost) {
         advanceToNextQuestion();
       }
-    }, 1000);
-  }
+    }
+  }, 1000);
 }
 
 function submitAnswer(isCorrect) {
@@ -542,72 +554,51 @@ function submitAnswer(isCorrect) {
 
   playSound("pop");
 
-  const roomRef = db.ref(`guessGameRooms/${roomId}`);
-  roomRef.transaction((room) => {
-    if (!room || !room.players || !room.players[playerId]) return room;
-    
-    const p = room.players[playerId];
-    if (p.answered) return room; // ป้องกันซ้ำ
-    
+  const roomRef = db.ref(`guessGameRooms/${roomId}/players/${playerId}`);
+  roomRef.transaction(p => {
+    if (!p || p.answered) return p;
+    p.answered = true;
     if (isCorrect) {
       p.score = (p.score || 0) + 1;
     }
-    p.answered = true;
-    room.lastActivity = Date.now();
-    
-    // ตรวจสอบว่าผู้เล่นคนเดียวหรือไม่
-    const playerCount = Object.keys(room.players).length;
-    if (playerCount === 1) {
-      // คนเดียว → ตอบแล้วไปข้อถัดไปทันที
-      advanceRoomToNext(room);
-    }
-    
-    return room;
+    return p;
   });
 }
 
-/* ฟังก์ชันกลางสำหรับเปลี่ยนไปข้อถัดไป (ใช้ transaction เพื่อความปลอดภัย) */
 function advanceToNextQuestion() {
   const roomRef = db.ref(`guessGameRooms/${roomId}`);
-  roomRef.transaction((room) => {
+  roomRef.transaction(room => {
     if (!room || room.status !== "playing") return room;
-    
-    // ตรวจสอบว่า current ยังตรงกับที่ client คาดไว้ (ป้องกัน race condition)
-    if (room.current === questionIndex) {
-      return advanceRoomToNext(room);
+
+    const totalQ = (room.questions || []).length;
+    const nextIndex = (room.current || 0) + 1;
+
+    if (nextIndex >= totalQ) {
+      room.status = "finished";
+      let playersArr = [];
+      if (room.players) {
+        playersArr = Object.values(room.players);
+        playersArr.sort((a,b) => (b.score||0) - (a.score||0));
+      }
+      const max = playersArr.length > 0 ? (playersArr[0].score || 0) : 0;
+      const winners = playersArr.filter(p => (p.score||0) === max).map(p => p.name);
+      room.result = { winners, players: playersArr };
+
+      triggerSound("new4");
+      startWaitLoop();
+    } else {
+      room.current = nextIndex;
+      if (room.players) {
+        Object.keys(room.players).forEach(k => {
+          room.players[k].answered = false;
+        });
+      }
+      triggerSound("next");
     }
-    return room; // ไม่ทำอะไรถ้า current เปลี่ยนไปแล้ว
+
+    room.lastActivity = Date.now();
+    return room;
   });
-}
-
-/* logic จริงของการเปลี่ยนข้อ (แยกออกมาเพื่อใช้ซ้ำ) */
-function advanceRoomToNext(room) {
-  const totalQ = (room.questions || []).length;
-  const isLast = room.current >= totalQ - 1;
-
-  if (isLast) {
-    room.status = 'finished';
-    let playersArr = [];
-    if (room.players) {
-      playersArr = Object.values(room.players);
-      playersArr.sort((a,b) => (b.score||0) - (a.score||0));
-    }
-    const max = playersArr.length > 0 ? (playersArr[0].score || 0) : 0;
-    const winners = playersArr.filter(p => (p.score||0) === max).map(p => p.name);
-    room.result = { winners, players: playersArr };
-  } else {
-    room.current++;
-    // รีเซ็ต answered ทุกคน
-    if (room.players) {
-      Object.keys(room.players).forEach(k => {
-        room.players[k].answered = false;
-      });
-    }
-    room.soundTrigger = { name: "next", time: Date.now() };
-  }
-  
-  room.lastActivity = Date.now();
-  return room;
 }
 
 function showResult(roomData) {
