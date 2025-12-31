@@ -99,117 +99,120 @@
     </div>
 </div>
 
-<!-- เสียง -->
-<audio id="correctSound" src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3" preload="auto"></audio>
-<audio id="wrongSound" src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3" preload="auto"></audio>
-<audio id="bgm" src="audio/b.mp3" preload="auto" loop></audio>
-<audio id="doorSound" src="audio/door.mp3" preload="auto"></audio>
-<audio id="t1Sound" src="audio/t1.mp3" preload="auto"></audio>
-<audio id="tSound" src="audio/t.mp3" preload="auto"></audio>
-<audio id="fSound" src="audio/f.mp3" preload="auto"></audio>
-<audio id="endSound" src="audio/end.mp3" preload="auto"></audio>
-<audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
-
 <script>
-// ======== AudioEngine ======== (เหมือนเดิม)
+// ======== Web Audio API Engine ========
 class AudioEngine {
-  constructor(map) {
-    this.map = map;
-    this.isUnlocked = false;
-    this.bgmEl = map['bgm'] || null;
+  constructor() {
+    this.ctx = null;
+    this.bgmSource = null;
+    this.bgmGain = null;
+    this.bgmBuffer = null;
     this.bgmStarted = false;
+    this.isUnlocked = false;
     this.currentEndPromise = null;
+
+    this.soundBuffers = {}; // key → AudioBuffer
+    this.soundUrls = {
+      correctSound: "https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3",
+      wrongSound: "https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3",
+      bgm: "audio/b.mp3",
+      doorSound: "audio/door.mp3",
+      t1Sound: "audio/t1.mp3",
+      tSound: "audio/t.mp3",
+      fSound: "audio/f.mp3",
+      endSound: "audio/end.mp3",
+      end1Sound: "audio/end1.mp3"
+    };
   }
+
+  async init() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await this.loadAllBuffers();
+  }
+
+  async loadAllBuffers() {
+    const promises = Object.entries(this.soundUrls).map(async ([key, url]) => {
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+        this.soundBuffers[key] = audioBuffer;
+      } catch (e) {
+        console.warn(`Failed to load sound: ${key} - ${url}`, e);
+      }
+    });
+    await Promise.all(promises);
+  }
+
   async unlockAll() {
     if (this.isUnlocked) return;
-    for (const [key, el] of Object.entries(this.map)) {
-      try {
-        const origVol = el.volume;
-        el.volume = 0;
-        el.currentTime = 0;
-        if (el.readyState < 2) {
-          await new Promise(r => {
-            const fn = () => { el.removeEventListener('loadeddata', fn); el.removeEventListener('canplaythrough', fn); r(); };
-            el.addEventListener('loadeddata', fn);
-            el.addEventListener('canplaythrough', fn);
-            setTimeout(r, 500);
-          });
-        }
-        await el.play().catch(() => {});
-        if (!el.paused) { await new Promise(r => setTimeout(r, 50)); el.pause(); }
-        el.currentTime = 0;
-        el.volume = origVol;
-      } catch(e) {}
-    }
+    await this.init(); // ensures context is created after user gesture
     this.isUnlocked = true;
   }
+
   async startBGM() {
-    if (!this.bgmEl) return;
-    this.bgmEl.currentTime = 0;
-    this.bgmEl.volume = 0.6;
-    try {
-      await this.bgmEl.play();
-      this.bgmStarted = true;
-    } catch(e) {}
+    if (!this.isUnlocked || this.bgmStarted || !this.soundBuffers.bgm) return;
+    await this.init();
+
+    this.bgmSource = this.ctx.createBufferSource();
+    this.bgmSource.buffer = this.soundBuffers.bgm;
+    this.bgmSource.loop = true;
+
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 0.6;
+
+    this.bgmSource.connect(this.bgmGain);
+    this.bgmGain.connect(this.ctx.destination);
+
+    this.bgmSource.start(0);
+    this.bgmStarted = true;
   }
+
   stopBGM() {
-    if (this.bgmEl) {
-      this.bgmEl.pause();
-      this.bgmEl.currentTime = 0;
+    if (this.bgmSource) {
+      this.bgmSource.stop();
+      this.bgmSource = null;
+      this.bgmGain = null;
       this.bgmStarted = false;
     }
   }
+
   async playEffect(key) {
-    const el = this.map[key];
-    if (!el) return;
+    if (!this.isUnlocked || !this.soundBuffers[key]) return Promise.resolve();
+    await this.init();
+
     if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
       return this.currentEndPromise;
     }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.soundBuffers[key];
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = key.includes('bgm') ? 0.6 : 0.8;
+
+    source.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+
     const p = new Promise(resolve => {
-      let settled = false;
-      let timer = null;
-      const cleanup = () => {
-        try { el.onended = null; el.onpause = null; el.onerror = null; } catch(e) {}
-        if (timer) { clearTimeout(timer); timer = null; }
-      };
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        try { el.currentTime = 0; } catch(e) {}
-        resolve();
-      };
-      el.onended = done;
-      el.onpause = done;
-      el.onerror = done;
-      timer = setTimeout(done, 4000);
-      try {
-        el.currentTime = 0;
-        el.volume = 0.8;
-        el.play().catch(() => done());
-      } catch (e) {
-        done();
-      }
+      source.onended = () => resolve();
+      // fallback in case onended doesn't fire
+      setTimeout(() => resolve(), this.soundBuffers[key].duration * 1000 + 500);
     });
+
+    source.start(0);
+
     if (key === 'endSound' || key === 'end1Sound') {
       this.currentEndPromise = p;
-      p.then(() => { this.currentEndPromise = null; }).catch(() => { this.currentEndPromise = null; });
+      p.finally(() => { this.currentEndPromise = null; });
     }
+
     return p;
   }
 }
 
-const audioEngine = new AudioEngine({
-  bgm: document.getElementById("bgm"),
-  correctSound: document.getElementById("correctSound"),
-  wrongSound: document.getElementById("wrongSound"),
-  doorSound: document.getElementById("doorSound"),
-  t1Sound: document.getElementById("t1Sound"),
-  tSound: document.getElementById("tSound"),
-  fSound: document.getElementById("fSound"),
-  endSound: document.getElementById("endSound"),
-  end1Sound: document.getElementById("end1Sound")
-});
+const audioEngine = new AudioEngine();
 
 let hasUserInteracted = false;
 async function unlockAudio(){
@@ -255,15 +258,15 @@ const vocab = [
   {th: "ฤๅ", dots: "1 2 3 5 2 1 6"},
   {th: "ฦ", dots: "1 2 3 2"},
   {th: "ฦๅ", dots: "1 2 3 2 1 6"},
-  {th: "เอก", dots: "3 5"},
-  {th: "โท", dots: "2 5 6"},
-  {th: "ตรี", dots: "2 3 5 6"},
-  {th: "จัตวา", dots: "2 3 6"},
+  {th: "ไม้เอก", dots: "3 5"},
+  {th: "ไม้โท", dots: "2 5 6"},
+  {th: "ไม้ตรี", dots: "2 3 5 6"},
+  {th: "ไม้จัตวา", dots: "2 3 6"},
   {th: "ทัณฑฆาต", dots: "3 5 6"},
   {th: "ไม้ไต่คู้", dots: "3"},
   {th: "ๆ", dots: "2"},
   {th: "ไปยาลน้อย(ฯ)", dots: "5 6 2 3"},
-  {th: "ไปยาลน้อย(ฯลฯ)", dots: "5 6 1 2 3"}
+  {th: "ไปยาลใหญ่(ฯลฯ)", dots: "5 6 1 2 3"}
 ];
 
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, selectedLetters = [], timePerQuestion = 20;

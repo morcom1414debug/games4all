@@ -99,127 +99,140 @@
     </div>
 </div>
 
-<!-- เสียง -->
-<audio id="correctSound" src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3" preload="auto"></audio>
-<audio id="wrongSound" src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3" preload="auto"></audio>
-<audio id="bgm" src="audio/b.mp3" preload="auto" loop></audio>
-<audio id="doorSound" src="audio/door.mp3" preload="auto"></audio>
-<audio id="t1Sound" src="audio/t1.mp3" preload="auto"></audio>
-<audio id="tSound" src="audio/t.mp3" preload="auto"></audio>
-<audio id="fSound" src="audio/f.mp3" preload="auto"></audio>
-<audio id="endSound" src="audio/end.mp3" preload="auto"></audio>
-<audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
+<!-- เสียง (ยังคงไว้เพื่อให้โหลดเป็น AudioBuffer) -->
+<audio id="correctSound" src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="wrongSound" src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="bgm" src="audio/b.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="doorSound" src="audio/door.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="t1Sound" src="audio/t1.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="tSound" src="audio/t.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="fSound" src="audio/f.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="endSound" src="audio/end.mp3" preload="auto" crossorigin="anonymous"></audio>
+<audio id="end1Sound" src="audio/end1.mp3" preload="auto" crossorigin="anonymous"></audio>
 
 <script>
-// ======== AudioEngine ======== (เหมือนเดิม)
+// ======== Web Audio API Engine ========
 class AudioEngine {
-  constructor(map) {
-    this.map = map;
+  constructor() {
+    this.ctx = null;
+    this.buffers = {};
+    this.bgmSource = null;
+    this.bgmGain = null;
     this.isUnlocked = false;
-    this.bgmEl = map['bgm'] || null;
-    this.bgmStarted = false;
     this.currentEndPromise = null;
   }
-  async unlockAll() {
-    if (this.isUnlocked) return;
-    for (const [key, el] of Object.entries(this.map)) {
+
+  async init() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const audioElements = {
+      bgm: document.getElementById("bgm"),
+      correctSound: document.getElementById("correctSound"),
+      wrongSound: document.getElementById("wrongSound"),
+      doorSound: document.getElementById("doorSound"),
+      t1Sound: document.getElementById("t1Sound"),
+      tSound: document.getElementById("tSound"),
+      fSound: document.getElementById("fSound"),
+      endSound: document.getElementById("endSound"),
+      end1Sound: document.getElementById("end1Sound")
+    };
+
+    // โหลดทุกไฟล์เป็น AudioBuffer
+    for (const [key, el] of Object.entries(audioElements)) {
       try {
-        const origVol = el.volume;
-        el.volume = 0;
-        el.currentTime = 0;
-        if (el.readyState < 2) {
-          await new Promise(r => {
-            const fn = () => { el.removeEventListener('loadeddata', fn); el.removeEventListener('canplaythrough', fn); r(); };
-            el.addEventListener('loadeddata', fn);
-            el.addEventListener('canplaythrough', fn);
-            setTimeout(r, 500);
-          });
-        }
-        await el.play().catch(() => {});
-        if (!el.paused) { await new Promise(r => setTimeout(r, 50)); el.pause(); }
-        el.currentTime = 0;
-        el.volume = origVol;
-      } catch(e) {}
+        const response = await fetch(el.src);
+        const arrayBuffer = await response.arrayBuffer();
+        this.buffers[key] = await this.ctx.decodeAudioData(arrayBuffer);
+      } catch (e) {
+        console.warn(`ไม่สามารถโหลดเสียง ${key}:`, e);
+        this.buffers[key] = null;
+      }
+    }
+
+    // สร้าง gain สำหรับ BGM
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.connect(this.ctx.destination);
+  }
+
+  async unlock() {
+    if (this.isUnlocked) return;
+    await this.init();
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume();
     }
     this.isUnlocked = true;
   }
+
   async startBGM() {
-    if (!this.bgmEl) return;
-    this.bgmEl.currentTime = 0;
-    this.bgmEl.volume = 0.6;
-    try {
-      await this.bgmEl.play();
-      this.bgmStarted = true;
-    } catch(e) {}
+    await this.unlock();
+    if (this.bgmSource) this.stopBGM();
+
+    const buffer = this.buffers['bgm'];
+    if (!buffer) return;
+
+    this.bgmSource = this.ctx.createBufferSource();
+    this.bgmSource.buffer = buffer;
+    this.bgmSource.loop = true;
+
+    this.bgmGain.gain.setValueAtTime(0.6, this.ctx.currentTime);
+
+    this.bgmSource.connect(this.bgmGain);
+    this.bgmSource.start(0);
   }
+
   stopBGM() {
-    if (this.bgmEl) {
-      this.bgmEl.pause();
-      this.bgmEl.currentTime = 0;
-      this.bgmStarted = false;
+    if (this.bgmSource) {
+      this.bgmSource.stop();
+      this.bgmSource = null;
     }
   }
+
   async playEffect(key) {
-    const el = this.map[key];
-    if (!el) return;
+    await this.unlock();
+    const buffer = this.buffers[key];
+    if (!buffer) return Promise.resolve();
+
     if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
       return this.currentEndPromise;
     }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.setValueAtTime(0.8, this.ctx.currentTime);
+    source.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+
     const p = new Promise(resolve => {
-      let settled = false;
-      let timer = null;
-      const cleanup = () => {
-        try { el.onended = null; el.onpause = null; el.onerror = null; } catch(e) {}
-        if (timer) { clearTimeout(timer); timer = null; }
-      };
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        try { el.currentTime = 0; } catch(e) {}
-        resolve();
-      };
-      el.onended = done;
-      el.onpause = done;
-      el.onerror = done;
-      timer = setTimeout(done, 4000);
-      try {
-        el.currentTime = 0;
-        el.volume = 0.8;
-        el.play().catch(() => done());
-      } catch (e) {
-        done();
-      }
+      source.onended = () => resolve();
+      // สำรองกรณีไม่มี onended
+      setTimeout(() => resolve(), buffer.duration * 1000 + 100);
     });
+
+    source.start(0);
+
     if (key === 'endSound' || key === 'end1Sound') {
       this.currentEndPromise = p;
-      p.then(() => { this.currentEndPromise = null; }).catch(() => { this.currentEndPromise = null; });
+      p.finally(() => { this.currentEndPromise = null; });
     }
+
     return p;
   }
 }
 
-const audioEngine = new AudioEngine({
-  bgm: document.getElementById("bgm"),
-  correctSound: document.getElementById("correctSound"),
-  wrongSound: document.getElementById("wrongSound"),
-  doorSound: document.getElementById("doorSound"),
-  t1Sound: document.getElementById("t1Sound"),
-  tSound: document.getElementById("tSound"),
-  fSound: document.getElementById("fSound"),
-  endSound: document.getElementById("endSound"),
-  end1Sound: document.getElementById("end1Sound")
-});
+const audioEngine = new AudioEngine();
 
 let hasUserInteracted = false;
-async function unlockAudio(){
+async function unlockAudio() {
   if (hasUserInteracted) return;
   hasUserInteracted = true;
-  await audioEngine.unlockAll();
+  await audioEngine.unlock();
   await audioEngine.startBGM();
 }
-document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
-document.addEventListener("click", unlockAudio, {once:true});
+document.addEventListener("touchstart", unlockAudio, {once: true, passive: true});
+document.addEventListener("click", unlockAudio, {once: true});
 
 // คำศัพท์ทั้งหมด (เหมือนเดิม)
 const vocab = [
@@ -300,7 +313,7 @@ function nextQuestion() {
     isProcessingTimeout = false;
     selectedLetters = [];
     const word = currentQuestions[currentQ];
-    document.getElementById('spellingDisplay').textContent = '_ _ _ _ _ _ _ _ _ _ _ _'; // รองรับสูงสุด 12 จุด
+    document.getElementById('spellingDisplay').textContent = '_ _ _ _ _ _ _ _ _ _ _ _';
     document.getElementById('question').innerHTML = `ข้อ ${currentQ + 1} : ตัวอักษร “${word.th}” ใช้จุดเบรลล์อะไร`;
     document.getElementById('question').focus();
 
@@ -352,13 +365,11 @@ function nextQuestion() {
 
 async function selectLetter(btn, dot) {
     const word = currentQuestions[currentQ];
-    const correctDots = word.dots.trim().split(/\s+/).filter(d => d); // array ของจุดที่ถูกต้องตามลำดับ
+    const correctDots = word.dots.trim().split(/\s+/).filter(d => d);
 
-    // ตรวจสอบว่ากดถูกตามลำดับหรือไม่
     const expectedDot = correctDots[selectedLetters.length];
 
     if (dot !== expectedDot) {
-        // ผิด
         clearInterval(timerInterval);
         isProcessingTimeout = true;
         btn.classList.add('wrong');
@@ -370,16 +381,13 @@ async function selectLetter(btn, dot) {
         return;
     }
 
-    // ถูกต้อง
     selectedLetters.push(dot);
 
-    // อัปเดตการแสดงผล
     const displayText = selectedLetters.join(' ') + (selectedLetters.length < correctDots.length ? ' _ _ _ _ _ _ _ _ _ _ _ _'.substring(selectedLetters.join(' ').length) : '');
     document.getElementById('spellingDisplay').textContent = displayText;
 
     await audioEngine.playEffect('t1Sound');
 
-    // ตรวจสอบว่าครบตามลำดับแล้วหรือยัง
     if (selectedLetters.length === correctDots.length) {
         clearInterval(timerInterval);
         isProcessingTimeout = true;
