@@ -150,83 +150,86 @@
     </div>
 </div>
 
+<!-- เสียง (ยังคงไว้เพื่อโหลดด้วย Web Audio API) -->
+<audio id="correctSound" src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3" preload="auto"></audio>
+<audio id="wrongSound" src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3" preload="auto"></audio>
+<audio id="bgm" src="audio/b.mp3" preload="auto" loop></audio>
+<audio id="doorSound" src="audio/door.mp3" preload="auto"></audio>
+<audio id="t1Sound" src="audio/t1.mp3" preload="auto"></audio>
+<audio id="tSound" src="audio/t.mp3" preload="auto"></audio>
+<audio id="fSound" src="audio/f.mp3" preload="auto"></audio>
+<audio id="endSound" src="audio/end.mp3" preload="auto"></audio>
+<audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
+
 <script>
 // ======== Web Audio API Engine ========
 class AudioEngine {
   constructor() {
-    this.context = null;
-    this.isUnlocked = false;
+    this.audioCtx = null;
+    this.buffers = {};
     this.bgmSource = null;
     this.bgmGain = null;
-    this.bgmBuffer = null;
+    this.bgmStarted = false;
     this.currentEndPromise = null;
-
-    this.buffers = {}; // key -> AudioBuffer
+    this.isUnlocked = false;
   }
 
   async init() {
-    if (this.context) return;
-    this.context = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.audioCtx) return;
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const audioElements = {
+      bgm: document.getElementById("bgm"),
+      correctSound: document.getElementById("correctSound"),
+      wrongSound: document.getElementById("wrongSound"),
+      doorSound: document.getElementById("doorSound"),
+      t1Sound: document.getElementById("t1Sound"),
+      tSound: document.getElementById("tSound"),
+      fSound: document.getElementById("fSound"),
+      endSound: document.getElementById("endSound"),
+      end1Sound: document.getElementById("end1Sound")
+    };
+
+    // โหลดทุกไฟล์เป็น ArrayBuffer
+    for (const [key, el] of Object.entries(audioElements)) {
+      if (!el) continue;
+      try {
+        const response = await fetch(el.src);
+        const arrayBuffer = await response.arrayBuffer();
+        this.buffers[key] = await this.audioCtx.decodeAudioData(arrayBuffer);
+      } catch (e) {
+        console.warn(`ไม่สามารถโหลดเสียง ${key}:`, e);
+      }
+    }
   }
 
   async unlock() {
     if (this.isUnlocked) return;
     await this.init();
-    // เล่นเสียงเงียบเพื่อ unlock บน mobile
-    const buffer = this.context.createBuffer(1, 1, 22050);
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.context.destination);
-    source.start(0);
+    // สร้างเสียงสั้น ๆ เพื่อ unlock context (จำเป็นในบางเบราว์เซอร์)
+    const osc = this.audioCtx.createOscillator();
+    osc.connect(this.audioCtx.destination);
+    osc.start(0);
+    osc.stop(this.audioCtx.currentTime + 0.001);
     this.isUnlocked = true;
   }
 
-  async loadBuffer(key, url) {
-    if (this.buffers[key]) return this.buffers[key];
-    if (!this.context) await this.init();
-
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
-    this.buffers[key] = audioBuffer;
-    return audioBuffer;
-  }
-
-  async preloadAll() {
-    await this.unlock();
-    const sounds = {
-      correctSound: "https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3",
-      wrongSound: "https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3",
-      doorSound: "audio/door.mp3",
-      t1Sound: "audio/t1.mp3",
-      tSound: "audio/t.mp3",
-      fSound: "audio/f.mp3",
-      endSound: "audio/end.mp3",
-      end1Sound: "audio/end1.mp3",
-      bgm: "audio/b.mp3"
-    };
-
-    await Promise.all(Object.entries(sounds).map(([k, u]) => this.loadBuffer(k, u)));
-    this.bgmBuffer = this.buffers.bgm;
-  }
-
   async startBGM() {
-    if (!this.bgmBuffer) return;
+    if (!this.buffers.bgm || this.bgmStarted) return;
     await this.unlock();
 
-    if (this.bgmSource) this.stopBGM();
-
-    this.bgmSource = this.context.createBufferSource();
-    this.bgmSource.buffer = this.bgmBuffer;
+    this.bgmSource = this.audioCtx.createBufferSource();
+    this.bgmSource.buffer = this.buffers.bgm;
     this.bgmSource.loop = true;
 
-    this.bgmGain = this.context.createGain();
+    this.bgmGain = this.audioCtx.createGain();
     this.bgmGain.gain.value = 0.6;
 
     this.bgmSource.connect(this.bgmGain);
-    this.bgmGain.connect(this.context.destination);
+    this.bgmGain.connect(this.audioCtx.destination);
 
     this.bgmSource.start(0);
+    this.bgmStarted = true;
   }
 
   stopBGM() {
@@ -234,42 +237,46 @@ class AudioEngine {
       this.bgmSource.stop();
       this.bgmSource = null;
       this.bgmGain = null;
+      this.bgmStarted = false;
     }
   }
 
   async playEffect(key) {
-    const buffer = this.buffers[key];
-    if (!buffer) return;
-
+    if (!this.buffers[key]) return Promise.resolve();
     await this.unlock();
 
-    if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
-      return this.currentEndPromise;
-    }
+    return new Promise(resolve => {
+      const source = this.audioCtx.createBufferSource();
+      source.buffer = this.buffers[key];
 
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
+      const gain = this.audioCtx.createGain();
+      gain.gain.value = (key === 'endSound' || key === 'end1Sound') ? 0.8 : 0.8;
 
-    const gain = this.context.createGain();
-    gain.gain.value = key.includes('bgm') ? 0.6 : 0.8;
+      source.connect(gain);
+      gain.connect(this.audioCtx.destination);
 
-    source.connect(gain);
-    gain.connect(this.context.destination);
+      source.onended = () => {
+        source.disconnect();
+        gain.disconnect();
+        resolve();
+      };
 
-    const p = new Promise(resolve => {
-      source.onended = () => resolve();
-      // fallback timeout
-      setTimeout(() => resolve(), buffer.duration * 1000 + 1000);
+      // ป้องกันกรณีเสียงสั้นมาก
+      setTimeout(() => {
+        if (source.playbackState !== source.FINISHED_STATE) resolve();
+      }, 4000);
+
+      source.start(0);
+
+      // จัดการ endSound / end1Sound แบบ sequential
+      if (key === 'endSound' || key === 'end1Sound') {
+        if (this.currentEndPromise) {
+          this.currentEndPromise.then(() => resolve());
+        } else {
+          this.currentEndPromise = Promise.resolve().then(() => new Promise(r => setTimeout(r, 100))).then(resolve);
+        }
+      }
     });
-
-    source.start(0);
-
-    if (key === 'endSound' || key === 'end1Sound') {
-      this.currentEndPromise = p;
-      p.finally(() => { this.currentEndPromise = null; });
-    }
-
-    return p;
   }
 }
 
@@ -279,7 +286,7 @@ let hasUserInteracted = false;
 async function unlockAudio(){
   if (hasUserInteracted) return;
   hasUserInteracted = true;
-  await audioEngine.preloadAll();
+  await audioEngine.unlock();
   await audioEngine.startBGM();
 }
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
@@ -305,7 +312,7 @@ const vocab = [
     {th:"ยีราฟ", en:"giraffe"}, {th:"จิงโจ้", en:"kangaroo"}, {th:"ผีเสื้อ", en:"butterfly"}, {th:"เต่า", en:"turtle"},
     {th:"มะม่วง", en:"mango"}, {th:"สับปะรด", en:"pineapple"}, {th:"แตงโม", en:"watermelon"}, {th:"องุ่น", en:"grapes"},
     {th:"ช็อกโกแลต", en:"chocolate"}, {th:"พิซซ่า", en:"pizza"},
-    {th:"โรงพยาบาล", en:"hospital"}, {th:"สวนสาธารณะ", en:"park"}, {th:"ทะเล", en:"sea"}, {th:"ภูเขา", en:"mountain"},
+    {th:"โรงพยาบาล", en:"hospital"}, {th:"สวนสาธาระ", en:"park"}, {th:"ทะเล", en:"sea"}, {th:"ภูเขา", en:"mountain"},
     {th:"หุ่นยนต์", en:"robot"}, {th:"โทรศัพท์", en:"phone"}, {th:"คอมพิวเตอร์", en:"computer"}, {th:"ทีวี", en:"television"},
     {th:"กล้อง", en:"camera"}, {th:"หน้าต่าง", en:"window"}, {th:"ประตู", en:"door"}, {th:"กุญแจ", en:"key"},
     {th:"กระเป๋า", en:"bag"}, {th:"นาฬิกา", en:"clock"}, {th:"แว่นตา", en:"glasses"}, {th:"ร่ม", en:"umbrella"},
@@ -357,7 +364,7 @@ const vocab = [
     {th:"คีย์บอร์ด", en:"keyboard"}, {th:"จอคอม", en:"monitor"}, {th:"ปริ้นเตอร์", en:"printer"}, {th:"สแกนเนอร์", en:"scanner"},
     {th:"แท็บเล็ต", en:"tablet"}, {th:"สมาร์ทวอทช์", en:"smartwatch"}, {th:"รถเข็นเด็ก", en:"stroller"}, {th:"เปล", en:"crib"},
     {th:"ของเล่น", en:"toy"}, {th:"เลโก้", en:"lego"}, {th:"จิ๊กซอว์", en:"puzzle"},
-    {th:"สีเทียน", en:"crayon"}, {th:"สมุดวาดเขียน", en:"sketchbook"}, {th:"กรรไกร", en:"scissors"},
+    {th:"สีเทียน", en:"crayon"}, {th:"สมุดวาดเขียน", en:"sketchbook"}, {th:"กรรไชร", en:"scissors"},
     {th:"กาว", en:"glue"}, {th:"เทปกาว", en:"tape"}, {th:"ไม้บรรทัด", en:"ruler"}, {th:"ยางลบ", en:"eraser"},
     {th:"กระดาษ", en:"paper"}, {th:"สมุด", en:"notebook"}, {th:"ปากกาไฮไลต์", en:"highlighter"}, {th:"คลิปหนีบกระดาษ", en:"paperclip"},
     {th:"ลวดเสียบ", en:"stapler"}, {th:"เครื่องคิดเลข", en:"calculator"}, {th:"ปฏิทิน", en:"calendar"},
