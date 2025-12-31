@@ -103,117 +103,123 @@
     </div>
 </div>
 
-<!-- เสียง -->
-<audio id="correctSound" src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3" preload="auto"></audio>
-<audio id="wrongSound" src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3" preload="auto"></audio>
-<audio id="bgm" src="audio/b.mp3" preload="auto" loop></audio>
-<audio id="doorSound" src="audio/door.mp3" preload="auto"></audio>
-<audio id="t1Sound" src="audio/t1.mp3" preload="auto"></audio>
-<audio id="tSound" src="audio/t.mp3" preload="auto"></audio>
-<audio id="fSound" src="audio/f.mp3" preload="auto"></audio>
-<audio id="endSound" src="audio/end.mp3" preload="auto"></audio>
-<audio id="end1Sound" src="audio/end1.mp3" preload="auto"></audio>
-
 <script>
-// ======== AudioEngine ========
+// ======== Web Audio API Engine ========
 class AudioEngine {
-  constructor(map) {
-    this.map = map;
+  constructor() {
+    this.ctx = null;
     this.isUnlocked = false;
-    this.bgmEl = map['bgm'] || null;
-    this.bgmStarted = false;
+    this.bgmSource = null;
+    this.bgmGain = null;
+    this.bgmBuffer = null;
     this.currentEndPromise = null;
+
+    this.sounds = {
+      correctSound: "https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3",
+      wrongSound: "https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3",
+      bgm: "audio/b.mp3",
+      doorSound: "audio/door.mp3",
+      t1Sound: "audio/t1.mp3",
+      tSound: "audio/t.mp3",
+      fSound: "audio/f.mp3",
+      endSound: "audio/end.mp3",
+      end1Sound: "audio/end1.mp3"
+    };
+
+    this.buffers = {};
   }
+
+  async initContext() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await this.loadAllBuffers();
+  }
+
+  async loadAllBuffers() {
+    const promises = Object.entries(this.sounds).map(async ([key, url]) => {
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+        this.buffers[key] = audioBuffer;
+      } catch (e) {
+        console.warn(`Failed to load sound: ${key} - ${url}`, e);
+      }
+    });
+    await Promise.all(promises);
+  }
+
   async unlockAll() {
     if (this.isUnlocked) return;
-    for (const [key, el] of Object.entries(this.map)) {
-      try {
-        const origVol = el.volume;
-        el.volume = 0;
-        el.currentTime = 0;
-        if (el.readyState < 2) {
-          await new Promise(r => {
-            const fn = () => { el.removeEventListener('loadeddata', fn); el.removeEventListener('canplaythrough', fn); r(); };
-            el.addEventListener('loadeddata', fn);
-            el.addEventListener('canplaythrough', fn);
-            setTimeout(r, 500);
-          });
-        }
-        await el.play().catch(() => {});
-        if (!el.paused) { await new Promise(r => setTimeout(r, 50)); el.pause(); }
-        el.currentTime = 0;
-        el.volume = origVol;
-      } catch(e) {}
-    }
+    await this.initContext();
+    // Touch of silence to unlock audio context on mobile
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.ctx.createBuffer(1, 1, 22050);
+    source.connect(this.ctx.destination);
+    source.start(0);
     this.isUnlocked = true;
   }
+
   async startBGM() {
-    if (!this.bgmEl) return;
-    this.bgmEl.currentTime = 0;
-    this.bgmEl.volume = 0.6;
-    try {
-      await this.bgmEl.play();
-      this.bgmStarted = true;
-    } catch(e) {}
+    if (!this.buffers.bgm || this.bgmSource) return;
+    await this.unlockAll();
+
+    this.bgmSource = this.ctx.createBufferSource();
+    this.bgmSource.buffer = this.buffers.bgm;
+    this.bgmSource.loop = true;
+
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 0.6;
+
+    this.bgmSource.connect(this.bgmGain);
+    this.bgmGain.connect(this.ctx.destination);
+
+    this.bgmSource.start(0);
   }
+
   stopBGM() {
-    if (this.bgmEl) {
-      this.bgmEl.pause();
-      this.bgmEl.currentTime = 0;
-      this.bgmStarted = false;
+    if (this.bgmSource) {
+      this.bgmSource.stop();
+      this.bgmSource = null;
+      this.bgmGain = null;
     }
   }
+
   async playEffect(key) {
-    const el = this.map[key];
-    if (!el) return;
+    if (!this.buffers[key]) return;
+    await this.unlockAll();
+
     if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
       return this.currentEndPromise;
     }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers[key];
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = key.includes('end') || key === 'bgm' ? 0.8 : 0.8;
+
+    source.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+
     const p = new Promise(resolve => {
-      let settled = false;
-      let timer = null;
-      const cleanup = () => {
-        try { el.onended = null; el.onpause = null; el.onerror = null; } catch(e) {}
-        if (timer) { clearTimeout(timer); timer = null; }
-      };
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        try { el.currentTime = 0; } catch(e) {}
-        resolve();
-      };
-      el.onended = done;
-      el.onpause = done;
-      el.onerror = done;
-      timer = setTimeout(done, 4000);
-      try {
-        el.currentTime = 0;
-        el.volume = 0.8;
-        el.play().catch(() => done());
-      } catch (e) {
-        done();
-      }
+      source.onended = () => resolve();
+      // Fallback timeout
+      setTimeout(resolve, 4000);
     });
+
+    source.start(0);
+
     if (key === 'endSound' || key === 'end1Sound') {
       this.currentEndPromise = p;
-      p.then(() => { this.currentEndPromise = null; }).catch(() => { this.currentEndPromise = null; });
+      p.finally(() => { this.currentEndPromise = null; });
     }
+
     return p;
   }
 }
 
-const audioEngine = new AudioEngine({
-  bgm: document.getElementById("bgm"),
-  correctSound: document.getElementById("correctSound"),
-  wrongSound: document.getElementById("wrongSound"),
-  doorSound: document.getElementById("doorSound"),
-  t1Sound: document.getElementById("t1Sound"),
-  tSound: document.getElementById("tSound"),
-  fSound: document.getElementById("fSound"),
-  endSound: document.getElementById("endSound"),
-  end1Sound: document.getElementById("end1Sound")
-});
+const audioEngine = new AudioEngine();
 
 let hasUserInteracted = false;
 async function unlockAudio(){
@@ -288,7 +294,7 @@ function nextQuestion() {
     isProcessingTimeout = false;
     selectedLetters = [];
     const word = currentQuestions[currentQ];
-    document.getElementById('spellingDisplay').textContent = '_ '.repeat(6).trim();
+    document.getElementById('spellingDisplay').textContent = '_ _ _ _ _ _';
     document.getElementById('question').innerHTML = `ข้อ ${currentQ + 1} : ตัวอักษร “${word.th}” ใช้จุดเบรลล์อะไร`;
     document.getElementById('question').focus();
 
@@ -338,37 +344,30 @@ function nextQuestion() {
     }, 1000);
 }
 
-async function selectLetter(btn, dot, correctDotsStr) {
-    if (btn.classList.contains('used') || btn.classList.contains('wrong')) return;
+async function selectLetter(bt, dot, correctDotsStr) {
+    if (bt.classList.contains('used') || bt.classList.contains('wrong')) return;
 
     const correctDots = correctDotsStr.split(',').map(d => d.trim());
 
-    // ตรวจสอบว่าต้องกดจุดนี้เป็นลำดับถัดไปหรือไม่
     if (selectedLetters.length >= correctDots.length || correctDots[selectedLetters.length] !== dot) {
-        // ผิดลำดับหรือกดเกิน
         clearInterval(timerInterval); isProcessingTimeout = true;
-        btn.classList.add('wrong');
+        bt.classList.add('wrong');
         await audioEngine.playEffect('wrongSound');
         await audioEngine.playEffect('fSound');
         currentQ++; nextQuestion();
         return;
     }
 
-    // ถูกต้องตามลำดับ
     selectedLetters.push(dot);
-    btn.classList.add('used');
-    btn.setAttribute('aria-pressed', 'true');
-    // ==== ส่วนที่เพิ่มใหม่ เพื่อให้ screen reader รู้ว่าเลือกแล้ว (เหมือน LetterPuzzle.html) ====
-    btn.setAttribute('aria-label', 'จุด ' + dot + ' เลือกแล้ว');
+    bt.classList.add('used');
+    bt.setAttribute('aria-pressed', 'true');
+    bt.setAttribute('aria-label', 'จุด ' + dot + ' เลือกแล้ว');
 
-    // แสดงผลที่เลือก (ตามลำดับที่กด)
     document.getElementById('spellingDisplay').textContent = selectedLetters.join(' ') || '_ _ _ _ _ _';
 
-    // เล่นเสียง t1Sound ถ้ายังไม่ครบ
     if (selectedLetters.length < correctDots.length) {
         await audioEngine.playEffect('t1Sound');
     } else {
-        // ครบและถูกต้องทั้งหมด
         clearInterval(timerInterval); isProcessingTimeout = true;
         await audioEngine.playEffect('correctSound');
         score++;
