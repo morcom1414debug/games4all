@@ -76,40 +76,6 @@
             40%, 60% { transform: translate3d(4px, 0, 0); }
         }
 
-        /* Custom Toast Notification */
-        #toast {
-            visibility: hidden;
-            min-width: 250px;
-            background-color: #166534;
-            color: #fff;
-            text-align: center;
-            border-radius: 4px;
-            padding: 16px;
-            position: fixed;
-            z-index: 50;
-            left: 50%;
-            bottom: 30px;
-            transform: translateX(-50%);
-            font-size: 17px;
-            border: 1px solid #4ade80;
-            box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
-        }
-
-        #toast.show {
-            visibility: visible;
-            animation: fadein 0.5s, fadeout 0.5s 2.5s;
-        }
-
-        @keyframes fadein {
-            from {bottom: 0; opacity: 0;}
-            to {bottom: 30px; opacity: 1;}
-        }
-
-        @keyframes fadeout {
-            from {bottom: 30px; opacity: 1;}
-            to {bottom: 0; opacity: 0;}
-        }
-
         /* Hide Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
@@ -130,10 +96,119 @@
         <!-- Content will be injected here by JavaScript -->
     </div>
     
-    <!-- Toast Notification Element -->
-    <div id="toast">คัดลอกโค้ดสำเร็จ!</div>
 
     <script>
+        // ==================== ระบบเสียง (Web Audio API) ====================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        class WebAudioSound {
+          constructor(url, loop = false) {
+            this.url = url;
+            this.loop = loop;
+            this.buffer = null;
+            this.source = null;
+            this.properties = {};
+            this.isLoaded = false;
+            this.loadPromise = this.load();
+          }
+
+          set onended(callback) {
+            this.properties.onended = callback;
+          }
+
+          get onended() {
+            return this.properties.onended;
+          }
+
+          async load() {
+            try {
+              const response = await fetch(this.url);
+              const arrayBuffer = await response.arrayBuffer();
+              this.buffer = await audioCtx.decodeAudioData(arrayBuffer);
+              this.isLoaded = true;
+            } catch (e) {
+              console.error('Failed to load audio:', this.url, e);
+            }
+          }
+
+          play() {
+            // iOS: Resume context if suspended
+            if (audioCtx.state === 'suspended') {
+              audioCtx.resume();
+            }
+
+            if (!this.isLoaded || !this.buffer) return;
+
+            this.stop();
+
+            try {
+              this.source = audioCtx.createBufferSource();
+              this.source.buffer = this.buffer;
+              this.source.loop = this.loop;
+              this.source.connect(audioCtx.destination);
+
+              this.source.onended = () => {
+                if (this.properties.onended) this.properties.onended();
+              };
+
+              this.source.start(0);
+            } catch (e) {
+              console.error(e);
+            }
+          }
+
+          stop() {
+            if (this.source) {
+              try {
+                this.source.stop();
+              } catch (e) { }
+              this.source = null;
+            }
+          }
+        }
+
+        const bgm = new WebAudioSound('audio/back.mp3', true);
+        const passSfx = new WebAudioSound('audio/pass.mp3');
+        const winSfx = new WebAudioSound('audio/win.mp3');
+        const lostSfx = new WebAudioSound('audio/lost.mp3');
+        const homeSfx = new WebAudioSound('audio/home.mp3');
+
+        let audioUnlocked = false;
+
+        function unlockAudio() {
+          if (audioUnlocked) return;
+
+          try {
+            const buffer = audioCtx.createBuffer(1, 1, 22050);
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioCtx.destination);
+            if (source.start) source.start(0);
+            else if (source.noteOn) source.noteOn(0);
+          } catch (e) { console.error(e); }
+
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume().then(() => {
+              audioUnlocked = true;
+            }).catch(e => console.error(e));
+          } else {
+            audioUnlocked = true;
+          }
+        }
+
+        function stopBGM() {
+          bgm.stop();
+        }
+
+        function stopLostSfx() {
+          lostSfx.stop();
+        }
+
+        function playSound(sound) {
+          unlockAudio();
+          sound.play();
+        }
+
         // --- GAME DATA ---
         const GAME_DATA = [
           {
@@ -411,231 +486,7 @@
                   { label: "ยิงทีละตัว", correct: false, deathMsg: "ยิงไม่ทัน โดนรุมทึ้งจนเละ" },
                   { label: "ปล่อยระเบิด EMP (Electromagnetic Pulse)", correct: true },
                   { label: "บินหนีขึ้นอวกาศ", correct: false, deathMsg: "เครื่องยนต์ขาดออกซิเจน ดับกลางอากาศ ร่วงลงมาตาย" },
-                  { label: "บินแทรกตัวในกลุ่มโดรน", correct: false, deathMsg: "ชนโดรนระเบิดตาย" }
-                ]
-              }
-            ]
-          },
-          {
-            level: 6,
-            title: "โจมตีฐานทัพลอยฟ้า (Sky Fortress)",
-            missions: [
-              {
-                text: "ฐานทัพลอยฟ้ามีเกราะพลังงานป้องกัน",
-                enemyAction: "กระสุนทุกชนิดเด้งออกหมด",
-                options: [
-                  { label: "ยิงซ้ำๆ จุดเดิม", correct: false, deathMsg: "กระสุนสะท้อนกลับมาโดนตัวเอง" },
-                  { label: "หาเครื่องกำเนิดสนามพลังภายนอกแล้วทำลาย", correct: true },
-                  { label: "พุ่งชนเกราะ", correct: false, deathMsg: "เหมือนแมลงชนกระจก เละ" },
-                  { label: "รอให้พลังงานหมด", correct: false, deathMsg: "มันใช้พลังนิวเคลียร์ รอไปอีก 100 ปี คุณแก่ตายก่อน" }
-                ]
-              },
-              {
-                text: "ป้อมปืนเลเซอร์ยิงสกัดหนาแน่น",
-                enemyAction: "ไม่มีช่องว่างให้บินเข้า",
-                options: [
-                  { label: "บินเกาะใต้ท้องยานลูกสมุนเพื่อบังกระสุน", correct: true },
-                  { label: "บินฝ่าเข้าไป", correct: false, deathMsg: "ระเหยกลายเป็นไอใน 1 วินาที" },
-                  { label: "ยิงจรวดใส่ป้อม", correct: false, deathMsg: "จรวดโดนยิงทิ้งกลางทาง" },
-                  { label: "ถอยกลับตั้งหลัก", correct: false, deathMsg: "โดนปืนระยะไกลสอยร่วง" }
-                ]
-              },
-              {
-                text: "ต้องบินเข้าไปในท่อระบายความร้อน (เหมือน Star Wars)",
-                enemyAction: "ท่อแคบและมีพัดลมยักษ์หมุนอยู่",
-                options: [
-                  { label: "ยิงพัดลมให้พัง", correct: true },
-                  { label: "บินหลบใบพัด", correct: false, deathMsg: "ใบพัดหมุนเร็วเกินไป สับเครื่องคุณเป็นชิ้นๆ" },
-                  { label: "หยุดเครื่องหน้าพัดลม", correct: false, deathMsg: "ความร้อนในท่อหลอมละลายเครื่องคุณ" },
-                  { label: "ถอยหลังออก", correct: false, deathMsg: "ไม่มีที่กลับตัว ชนผนังตาย" }
-                ]
-              },
-              {
-                text: "แกนกลางปฏิกรณ์กำลังจะระเบิด",
-                enemyAction: "ความร้อนพุ่งสูง ระบบเตือนภัยดังลั่น",
-                options: [
-                  { label: "บินหนีออกทางเดิม", correct: false, deathMsg: "ทางเดิมถูกปิดตาย โดนเผา" },
-                  { label: "เร่งเครื่องทะลุออกอีกฝั่ง (Afterburner)", correct: true },
-                  { label: "กางร่มชูชีพ", correct: false, deathMsg: "ร่มไหม้ไฟ ตกไปในลาวาปฏิกรณ์" },
-                  { label: "รอถ่ายรูปเป็นที่ระลึก", correct: false, deathMsg: "ได้รูปสวยก่อนตาย แต่ไม่ได้โพสต์" }
-                ]
-              },
-              {
-                text: "ฐานทัพกำลังร่วงลงสู่พื้นโลก",
-                enemyAction: "แรงระเบิดดูดทุกอย่างเข้าไป",
-                options: [
-                  { label: "บินตามแรงดูดไป", correct: false, deathMsg: "โดนซากฐานทัพทับตาย" },
-                  { label: "บินฉีกออกด้านข้างตั้งฉากกับแรงระเบิด", correct: true },
-                  { label: "บินสวนแรงระเบิด", correct: false, deathMsg: "สู้แรงลมไม่ไหว ปีกฉีกขาด" },
-                  { label: "สวดมนต์", correct: false, deathMsg: "พระเจ้าช่วยไม่ได้ในเกมนี้" }
-                ]
-              }
-            ]
-          },
-          {
-            level: 7,
-            title: "เขตแดนนรก (Inferno Zone)",
-            missions: [
-              {
-                text: "บินผ่านภูเขาไฟระเบิด ควันและเถ้าถ่านหนาทึบ",
-                enemyAction: "ทัศนวิสัยเป็นศูนย์ เครื่องยนต์เริ่มสำลักฝุ่น",
-                options: [
-                  { label: "เร่งเครื่องเต็มสูบ", correct: false, deathMsg: "เครื่องยนต์ดูดเถ้าภูเขาไฟเข้าไป พังและระเบิด" },
-                  { label: "ลดรอบเครื่องบินร่อน (Glide) และบินสูงเหนือควัน", correct: true },
-                  { label: "บินต่ำลงหาลาวา", correct: false, deathMsg: "ความร้อนหลอมละลายปีก ร่วงลงบ่อลาวา" },
-                  { label: "เปิดแอร์ในห้องนักบิน", correct: false, deathMsg: "ระบบกรองอากาศตัน ขาดอากาศหายใจตาย" }
-                ]
-              },
-              {
-                text: "ลาวากระเด็นขึ้นมาเป็นลูกไฟยักษ์",
-                enemyAction: "หินร้อนพุ่งใส่เหมือนฝนดาวตก",
-                options: [
-                  { label: "ยิงจรวดใส่หิน", correct: false, deathMsg: "หินแตกเป็นเสี่ยงๆ เล็กๆ พุ่งใส่กระจกแตก พรุน" },
-                  { label: "หักหลบซ้ายขวา", correct: true },
-                  { label: "กางโล่พลังงาน", correct: false, deathMsg: "เครื่องคุณไม่มีระบบนั้น! เพ้อเจ้อจนตาย" },
-                  { label: "บินหลับตา", correct: false, deathMsg: "ชนภูเขาตาย" }
-                ]
-              },
-              {
-                text: "เครื่องบินข้าศึกซ่อนตัวในควันดำ",
-                enemyAction: "มันโผล่มายิงแล้วหนีเข้าควัน",
-                options: [
-                  { label: "บินตามเข้าควันไป", correct: false, deathMsg: "ชนหน้าผาในควัน ตาย" },
-                  { label: "ยิงกราดเข้าไปในควัน", correct: false, deathMsg: "กระสุนหมด ข้าศึกบินออกมาสอยคุณทิ้ง" },
-                  { label: "ดึงตัวขึ้นสูงล่อให้มันตามออกมาที่โล่ง", correct: true },
-                  { label: "จอดพัก", correct: false, deathMsg: "ไม่มีที่จอด! ตกภูเขาตาย" }
-                ]
-              },
-              {
-                text: "ความร้อนทำให้จรวดมิสไซล์ทำงานผิดพลาด",
-                enemyAction: "จรวดคุณเริ่มล็อกเป้ามั่วซั่ว",
-                options: [
-                  { label: "ปิดระบบอาวุธทั้งหมดชั่วคราว", correct: true },
-                  { label: "ฝืนยิงต่อไป", correct: false, deathMsg: "จรวดระเบิดคารางปล่อย ปีกขาด" },
-                  { label: "ทุบแผงควบคุม", correct: false, deathMsg: "ไฟช็อต ควันคลุ้งห้องนักบิน สำลักตาย" },
-                  { label: "บินกลับฐาน", correct: false, deathMsg: "ไม่ทันการณ์ โดนข้าศึกสอยร่วง" }
-                ]
-              },
-              {
-                text: "บอส: เครื่องบินหุ้มเกราะทนความร้อน",
-                enemyAction: "มันพยายามเบียดคุณให้ตกไปในปากปล่องภูเขาไฟ",
-                options: [
-                  { label: "เบียดสู้มัน", correct: false, deathMsg: "เครื่องมันหนักกว่า คุณกระเด็นตกลาวา" },
-                  { label: "บินล่อให้มันบินผ่านลาวาพุ", correct: true },
-                  { label: "ยิงปืนกลใส่มัน", correct: false, deathMsg: "เกราะมันหนา กระสุนเด้งออกหมด โดนชนตก" },
-                  { label: "ดีดตัวหนี", correct: false, deathMsg: "ร่มชูชีพไหม้ ตกลาวา" }
-                ]
-              }
-            ]
-          },
-          {
-            level: 8,
-            title: "สงครามข้ามมิติ (Dimensional War)",
-            missions: [
-              {
-                text: "ข้าศึกใช้อาวุธวาร์ป หายตัวไปมาได้",
-                enemyAction: "มันวาร์ปมาโผล่ข้างหลังคุณ",
-                options: [
-                  { label: "หันหลังกลับไปยิง", correct: false, deathMsg: "ช้าไป โดนยิงร่วง" },
-                  { label: "ทิ้งทุ่นระเบิดอากาศ (Air Mines) ดักหลัง", correct: true },
-                  { label: "วาร์ปหนีบ้าง", correct: false, deathMsg: "คุณไม่มีเทคโนโลยีนั้น! กดปุ่มมั่วจนเครื่องดับ" },
-                  { label: "บินเป็นวงกลม", correct: false, deathMsg: "มันดักทางได้ ยิงดักหน้า" }
-                ]
-              },
-              {
-                text: "มิติเริ่มบิดเบี้ยว เพดานบินกลับหัว",
-                enemyAction: "ท้องฟ้ากลายเป็นพื้นดิน",
-                options: [
-                  { label: "ฝืนบินท่าปกติ", correct: false, deathMsg: "แรงโน้มถ่วงกลับด้าน เลือดตกลงหัว หมดสติ เครื่องตก" },
-                  { label: "บินกลับหัว (Inverted Flight) ตามสภาพมิติ", correct: true },
-                  { label: "หลับตาแล้วบิน", correct: false, deathMsg: "ชนตึกที่ห้อยลงมาจากฟ้า" },
-                  { label: "อาเจียน", correct: false, deathMsg: "สำลักอ้วกตัวเองตาย" }
-                ]
-              },
-              {
-                text: "ศัตรูยิงกระสุนหยุดเวลา (Time Stasis)",
-                enemyAction: "กระสุนสีม่วงลอยช้าๆ แต่ถ้าโดนคือจบ",
-                options: [
-                  { label: "บินไปแตะดู", correct: false, deathMsg: "ตัวคุณแข็งค้างตลอดกาล กลายเป็นอนุสาวรีย์ลอยฟ้า" },
-                  { label: "หลบให้พ้นระยะ", correct: true },
-                  { label: "ยิงกระสุนใส่", correct: false, deathMsg: "กระสุนคุณก็หยุดเวลาเหมือนกัน สะสมพลังงานจนระเบิด" },
-                  { label: "บินช้าๆ ให้เท่ากัน", correct: false, deathMsg: "โดนดูดเข้าไปใน Time Vortex หายสาบสูญ" }
-                ]
-              },
-              {
-                text: "เจอร่างแยกของตัวเองจากอีกมิติ (Doppelganger)",
-                enemyAction: "มันบินเหมือนคุณ ยิงเหมือนคุณทุกอย่าง",
-                options: [
-                  { label: "ทำท่าที่คาดเดาได้ยาก (Crazy Ivan)", correct: true },
-                  { label: "บินท่ามาตรฐาน", correct: false, deathMsg: "มันรู้อยู่แล้ว ดักทางถูก ยิงคุณร่วง" },
-                  { label: "ชวนคุย", correct: false, deathMsg: "มันไม่คุย มันยิงแสกหน้า" },
-                  { label: "บินหนี", correct: false, deathMsg: "มันเร็วกว่าคุณ เพราะมันคือเวอร์ชั่นที่ดีกว่า" }
-                ]
-              },
-              {
-                text: "ประตูมิติกำลังปิด",
-                enemyAction: "แรงดึงดูดมหาศาล",
-                options: [
-                  { label: "ยิงนิวเคลียร์ใส่ประตู", correct: false, deathMsg: "แรงระเบิดย้อนกลับมาฆ่าคุณ" },
-                  { label: "ปลดสัมภาระทุกอย่างแล้วพุ่งออก", correct: true },
-                  { label: "บินช้าๆ", correct: false, deathMsg: "ประตูงับเครื่องบินขาดครึ่ง" },
-                  { label: "รอประตูเปิดอีกรอบ", correct: false, deathMsg: "อีก 1,000 ปี กว่าจะเปิด คุณแห้งตายก่อน" }
-                ]
-              }
-            ]
-          },
-          {
-            level: 9,
-            title: "บุกเดี่ยว (The Suicide Run)",
-            missions: [
-              {
-                text: "เพื่อนร่วมทีมตายหมด เหลือคุณคนเดียวกลางดงข้าศึก 100 ลำ",
-                enemyAction: "ข้าศึกประมาท บินเข้ามาล้อมกรอบ",
-                options: [
-                  { label: "ยอมแพ้", correct: false, deathMsg: "โดนจับไปประหาร ขี้ขลาดตาขาว" },
-                  { label: "เล็งยิงถังน้ำมันเรือเหาะยักษ์ใกล้ๆ", correct: true },
-                  { label: "กราดยิงไปเรื่อย", correct: false, deathMsg: "กระสุนหมดใน 5 วิ โดนรุมตาย" },
-                  { label: "ตะโกนร้องไห้", correct: false, deathMsg: "น้ำตาบังมองไม่เห็นทาง ชนกันเองตาย" }
-                ]
-              },
-              {
-                text: "ซากเรือเหาะระเบิด เกิดลูกไฟยักษ์กลางอากาศ",
-                enemyAction: "แรงระเบิดผลักทุกอย่างกระเด็น",
-                options: [
-                  { label: "ขี่คลื่นกระแทก (Shockwave) หนีออกมา", correct: true },
-                  { label: "บินต้านแรงลม", correct: false, deathMsg: "ปีกฉีกขาด เครื่องหมุนติ้วตกพื้น" },
-                  { label: "หยุดดูผลงาน", correct: false, deathMsg: "โดนสะเก็ดระเบิดเสียบห้องนักบิน" },
-                  { label: "บินลงพื้น", correct: false, deathMsg: "โดนแรงอัดกระแทกพื้นแบนแต๊ดแต๋" }
-                ]
-              },
-              {
-                text: "กระสุนหมดเกลี้ยง เหลือแต่จรวด 1 ลูก",
-                enemyAction: "แม่ทัพข้าศึกขับเครื่องบินเกราะทองคำออกมา",
-                options: [
-                  { label: "ยิงจรวดใส่เกราะหน้า", correct: false, deathMsg: "ไม่ระคายผิว โดนสวนตาย" },
-                  { label: "ล็อกเป้าที่ท่อไอพ่นท้ายเครื่อง", correct: true },
-                  { label: "บินพุ่งชน", correct: false, deathMsg: "เครื่องมันแข็งกว่า คุณเละฝ่ายเดียว" },
-                  { label: "ขว้างหมวกกันน็อคใส่", correct: false, deathMsg: "ตลกตายล่ะ..." }
-                ]
-              },
-              {
-                text: "เครื่องยนต์ข้าศึกระเบิด แต่มันยังร่อนลงจอดได้",
-                enemyAction: "มันพยายามหนีไปขึ้นยานสำรอง",
-                options: [
-                  { label: "บินลงไปยิงซ้ำด้วยปืนพก (เปิดกระจกยิง)", correct: false, deathMsg: "ลมตีหน้าแหก เครื่องตก" },
-                  { label: "ใช้ปีกเฉือนร่มชูชีพมัน", correct: true },
-                  { label: "ปล่อยมันไป", correct: false, deathMsg: "มันกลับมาพร้อมยานรบเทพ สอยคุณร่วงทันที" },
-                  { label: "ลงจอดไปจับกุม", correct: false, deathMsg: "กับดักระเบิดทำงาน ตูม!" }
-                ]
-              },
-              {
-                text: "เรดาร์ตรวจพบขีปนาวุธนิวเคลียร์ถูกยิงออกมา",
-                enemyAction: "เป้าหมายคือเมืองหลวงของคุณ",
-                options: [
-                  { label: "บินไปรับลูกนิวเคลียร์ด้วยตัวเปล่า", correct: false, deathMsg: "ตายแน่นอน และเมืองก็ไม่รอด" },
-                  { label: "ยิงทำลายระบบนำวิถีที่ส่วนหัวจรวด", correct: true },
-                  { label: "บินแข่งกับจรวด", correct: false, deathMsg: "จรวดเร็วกว่า 10 เท่า เมืองบึ้ม คุณก็โดนลูกหลง" },
-                  { label: "แจ้งให้เมืองอพยพ", correct: false, deathMsg: "ไม่ทันแล้ว เมืองหายเป็นจุล" }
+                  { label: "สวดมนต์", correct: false, deathMsg: "พระเจ้าไม่ช่วยคนไม่ช่วยตัวเอง" }
                 ]
               }
             ]
@@ -710,7 +561,6 @@
         };
 
         const app = document.getElementById('app');
-        const toast = document.getElementById('toast');
 
         // --- UTILS ---
         function shuffleArray(array) {
@@ -719,66 +569,21 @@
                 .map(({ value }) => value);
         }
 
-        // --- AUDIO MANAGEMENT WITH WEB AUDIO API ---
-        let audioContext = null;
-        const audioBuffers = {};
-        const audioSources = {}; // To keep track of playing sources for stopping
-
-        async function preloadAudio() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const files = ['back.mp3', 'home.mp3', 'lost.mp3', 'pass.mp3', 'win.mp3'];
-            for (const file of files) {
-                try {
-                    const response = await fetch(`audio/${file}`);
-                    const arrayBuffer = await response.arrayBuffer();
-                    audioBuffers[file] = await audioContext.decodeAudioData(arrayBuffer);
-                } catch (err) {
-                    console.error(`Failed to load ${file}:`, err);
-                }
+        // --- FOCUS HELPERS ---
+        function focusSituationReport() {
+            const heading = document.querySelector('#situation-heading');
+            if (heading) {
+                heading.focus();
+                heading.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         }
 
-        function playAudio(file, loop = false) {
-            if (!audioBuffers[file] || !audioContext) return;
-
-            const source = audioContext.createBufferSource();
-            source.buffer = audioBuffers[file];
-            source.connect(audioContext.destination);
-            source.loop = loop;
-            source.start(0);
-
-            if (loop) {
-                audioSources[file] = source; // Store for later stopping
+        function focusMainResultHeading() {
+            const heading = document.querySelector('#main-result-heading');
+            if (heading) {
+                heading.focus();
+                heading.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-        }
-
-        function stopAudio(file) {
-            if (audioSources[file]) {
-                audioSources[file].stop(0);
-                delete audioSources[file];
-            }
-        }
-
-        // --- CLIPBOARD FUNCTION (Kept but button is hidden) ---
-        function copyGameCode() {
-            const code = document.documentElement.outerHTML;
-            const textarea = document.createElement('textarea');
-            textarea.value = "<!DOCTYPE html>\n" + code;
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand('copy');
-                showToast();
-            } catch (err) {
-                console.error('Failed to copy', err);
-                alert('ไม่สามารถคัดลอกได้อัตโนมัติ กรุณากด Ctrl+U เพื่อดูซอร์สโค้ดและคัดลอกด้วยตนเอง');
-            }
-            document.body.removeChild(textarea);
-        }
-
-        function showToast() {
-            toast.className = "show";
-            setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
         }
 
         // --- RENDER FUNCTIONS ---
@@ -788,14 +593,13 @@
                 <div class="flex-1 flex flex-col items-center justify-center p-4">
                     <div class="max-w-2xl w-full text-center space-y-8 fade-in">
                         <div class="flex justify-center mb-4">
-                            <!-- Plane Icon SVG -->
                             <svg class="w-24 h-24 text-green-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
                             </svg>
                         </div>
                         <h1 class="text-4xl md:text-6xl font-bold tracking-widest text-green-500 uppercase hud-text-shadow font-mono">
                             ศึกจ้าวเวหา
-                            <span class="block text-xl md:text-2xl mt-2 text-green-300">SKY MASTER</span>
+                            <span class="block text-xl md:text-2xl mt-2 text-green-300">Sky Master</span>
                         </h1>
                         
                         <div class="bg-slate-800 p-6 rounded-lg border border-green-700 hud-border-glow">
@@ -817,19 +621,24 @@
                         </div>
 
                         <div class="flex flex-col md:flex-row gap-4 justify-center">
-                            <button onclick="startGame()" class="group relative px-8 py-4 bg-green-900 hover:bg-green-700 text-green-100 font-bold text-xl rounded transition-all duration-300 border border-green-500 hover:shadow-[0_0_20px_rgba(34,197,94,0.6)] flex items-center justify-center gap-2 font-mono">
+                            <button id="start-btn" class="group relative px-8 py-4 bg-green-900 hover:bg-green-700 text-green-100 font-bold text-xl rounded transition-all duration-300 border border-green-500 hover:shadow-[0_0_20px_rgba(34,197,94,0.6)] flex items-center justify-center gap-2 font-mono">
                                 <span>เริ่มภารกิจ (START MISSION)</span>
                             </button>
-
-                            <!-- Hidden copy button -->
-                            <!-- <button onclick="copyGameCode()" class="group relative px-6 py-4 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-lg rounded transition-all duration-300 border border-cyan-500 hover:shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center justify-center gap-2 font-mono">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                                <span>คัดลอกโค้ดเกม (COPY CODE)</span>
-                            </button> -->
                         </div>
                     </div>
                 </div>
             `;
+
+            const btn = document.getElementById('start-btn');
+            if (btn) {
+              const handleStart = (e) => {
+                if (e.type === 'touchstart') e.preventDefault();
+                unlockAudio();
+                startGame();
+              };
+              btn.addEventListener('touchstart', handleStart);
+              btn.addEventListener('click', handleStart);
+            }
         }
 
         function renderGame() {
@@ -867,11 +676,12 @@
                         <div class="relative bg-black border-2 border-green-600 p-6 rounded-lg shadow-2xl">
                             <div class="flex items-start gap-4">
                                 <div class="hidden md:block bg-green-900/20 p-3 rounded-full border border-green-500/50 animate-pulse">
-                                    <!-- Alert Icon -->
-                                    <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                    <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                    </svg>
                                 </div>
                                 <div class="space-y-3 w-full">
-                                    <h3 id="situation-heading" tabindex="0" class="text-green-400 font-bold text-lg md:text-xl border-b border-green-800 pb-2 w-full font-mono">
+                                    <h3 id="situation-heading" tabindex="-1" class="text-green-400 font-bold text-lg md:text-xl border-b border-green-800 pb-2 w-full font-mono outline-none">
                                         SITUATION REPORT
                                     </h3>
                                     <p class="text-white text-lg md:text-xl leading-relaxed font-sans">
@@ -890,7 +700,6 @@
 
                     <!-- Choices Grid -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full" id="choices-grid">
-                        <!-- Choices injected via loop below -->
                     </div>
                 </div>
 
@@ -903,24 +712,28 @@
                 </div>
             `;
 
-            // Inject choices logic
             const grid = document.getElementById('choices-grid');
-            state.shuffledOptions.forEach((option, index) => {
-                const btn = document.createElement('button');
-                btn.className = "relative overflow-hidden group p-4 bg-slate-800 border-l-4 border-slate-600 hover:border-green-400 hover:bg-slate-700 transition-all duration-200 text-left rounded shadow-lg";
-                btn.onclick = () => handleChoice(option);
-                
-                btn.innerHTML = `
-                    <div class="absolute inset-0 bg-green-500/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                    <span class="text-slate-500 font-bold mr-3 group-hover:text-green-400 font-mono">
-                        ${['A', 'B', 'C', 'D'][index]}.
-                    </span>
-                    <span class="text-slate-200 group-hover:text-white font-medium text-lg font-sans">
-                        ${option.label}
-                    </span>
-                `;
-                grid.appendChild(btn);
-            });
+            if (grid) {
+              state.shuffledOptions.forEach((option, index) => {
+                  const btn = document.createElement('button');
+                  btn.className = "relative overflow-hidden group p-4 bg-slate-800 border-l-4 border-slate-600 hover:border-green-400 hover:bg-slate-700 transition-all duration-200 text-left rounded shadow-lg";
+                  btn.onclick = () => handleChoice(option);
+                  
+                  btn.innerHTML = `
+                      <div class="absolute inset-0 bg-green-500/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                      <span class="text-slate-500 font-bold mr-3 group-hover:text-green-400 font-mono">
+                          ${['A', 'B', 'C', 'D'][index]}.
+                      </span>
+                      <span class="text-slate-200 group-hover:text-white font-medium text-lg font-sans">
+                          ${option.label}
+                      </span>
+                  `;
+                  grid.appendChild(btn);
+              });
+            }
+
+            // Focus ไปที่ SITUATION REPORT ทันทีหลัง render
+            setTimeout(focusSituationReport, 100);
         }
 
         function renderGameOver() {
@@ -928,8 +741,8 @@
                 <div class="min-h-screen bg-red-950 text-red-500 font-mono p-4 flex flex-col items-center justify-center border-4 border-red-800 shake">
                     <div class="max-w-2xl w-full text-center space-y-6">
                         <svg class="w-32 h-32 mx-auto text-red-600 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                        <h1 class="text-6xl font-black uppercase text-red-600 tracking-tighter">MIA / K.I.A.</h1>
-                        <h2 id="result-heading" tabindex="0" class="text-3xl font-bold text-white font-sans">ภารกิจล้มเหลว (MISSION FAILED)</h2>
+                        <h1 id="main-result-heading" tabindex="-1" class="text-6xl font-black uppercase text-red-600 tracking-tighter outline-none">MIA / K.I.A.</h1>
+                        <h2 class="text-3xl font-bold text-white font-sans">ภารกิจล้มเหลว (MISSION FAILED)</h2>
                         
                         <div class="bg-black p-6 rounded border-2 border-red-800">
                             <p class="text-xl text-red-400 mb-2 font-sans">สาเหตุการเสียชีวิต:</p>
@@ -942,12 +755,23 @@
                             <span>Score: ${state.score}</span>
                         </div>
 
-                        <button onclick="resetToMenu()" class="w-full py-4 bg-red-800 hover:bg-red-700 text-white font-bold text-xl rounded border border-red-500 hover:shadow-[0_0_20px_rgba(220,38,38,0.6)] transition-all font-mono">
+                        <button id="return-btn" class="w-full py-4 bg-red-800 hover:bg-red-700 text-white font-bold text-xl rounded border border-red-500 hover:shadow-[0_0_20px_rgba(220,38,38,0.6)] transition-all font-mono">
                             กลับสู่ฐานทัพ (RETURN TO BASE)
                         </button>
                     </div>
                 </div>
             `;
+
+            const returnBtn = document.getElementById('return-btn');
+            if (returnBtn) {
+              returnBtn.onclick = () => {
+                playSound(homeSfx);
+                stopLostSfx();
+                resetToMenu();
+              };
+            }
+
+            setTimeout(focusMainResultHeading, 100);
         }
 
         function renderVictory() {
@@ -955,10 +779,10 @@
                 <div class="min-h-screen bg-blue-950 text-cyan-400 font-mono p-4 flex flex-col items-center justify-center border-4 border-cyan-500">
                     <div class="max-w-2xl w-full text-center space-y-8 fade-in">
                         <svg class="w-32 h-32 mx-auto text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <h1 class="text-5xl md:text-7xl font-black uppercase text-cyan-300 hud-text-shadow">
+                        <h1 id="main-result-heading" tabindex="-1" class="text-5xl md:text-7xl font-black uppercase text-cyan-300 hud-text-shadow outline-none">
                             VICTORY
                         </h1>
-                        <h2 id="result-heading" tabindex="0" class="text-2xl text-white font-sans">ภารกิจสำเร็จลุล่วง! คุณคือเจ้าเวหาที่แท้จริง</h2>
+                        <h2 class="text-2xl text-white font-sans">ภารกิจสำเร็จลุล่วง! คุณคือเจ้าเวหาที่แท้จริง</h2>
                         
                         <div class="bg-slate-900 p-8 rounded-xl border-2 border-cyan-600">
                             <p class="text-lg text-cyan-200 font-sans">โลกปลอดภัยแล้ว... สำหรับวันนี้</p>
@@ -971,80 +795,66 @@
                     </div>
                 </div>
             `;
-        }
 
-        // --- FOCUS MANAGEMENT ---
-        function focusOnHeading() {
-            setTimeout(() => {
-                const heading = document.getElementById(state.view === 'playing' ? 'situation-heading' : 'result-heading');
-                if (heading) heading.focus();
-            }, 2000);
+            setTimeout(focusMainResultHeading, 100);
         }
 
         // --- GAME LOGIC ---
 
-        async function startGame() {
-            await preloadAudio(); // Preload audio on start
-            playAudio('back.mp3', true); // Start BGM loop
+        function startGame() {
+            unlockAudio();
             state.level = 1;
             state.missionIndex = 0;
             state.score = 0;
             state.view = 'playing';
+            bgm.play();
             loadMission();
         }
 
         function loadMission() {
-            const scenario = GAME_DATA[state.level - 1].missions[state.missionIndex];
+            const levelData = GAME_DATA.find(l => l.level === state.level);
+            if (!levelData || !levelData.missions[state.missionIndex]) {
+                state.view = 'victory';
+                renderVictory();
+                return;
+            }
+            const scenario = levelData.missions[state.missionIndex];
             state.currentScenario = scenario;
             state.shuffledOptions = shuffleArray([...scenario.options]);
             renderGame();
-            focusOnHeading();
         }
 
         function handleChoice(option) {
             if (option.correct) {
-                // Calculate total missions completed
-                const totalMissions = (state.level - 1) * 5 + state.missionIndex + 1;
-
-                if (totalMissions < 50) {
-                    playAudio('pass.mp3'); // Play pass for 1-49
-                }
-
-                // Correct
                 state.score += 100;
+                playSound(passSfx);
                 
                 if (state.missionIndex < 4) {
-                    // Next mission in same level
                     state.missionIndex++;
                     loadMission();
                 } else {
-                    // Level Complete
                     if (state.level < 10) {
                         state.level++;
                         state.missionIndex = 0;
                         loadMission();
                     } else {
-                        // Game Won
-                        playAudio('win.mp3'); // Play win on 50th correct
-                        stopAudio('back.mp3'); // Stop BGM
+                        stopBGM();
+                        playSound(winSfx);
                         state.view = 'victory';
                         renderVictory();
-                        focusOnHeading();
                     }
                 }
             } else {
-                // Wrong = Game Over
-                playAudio('lost.mp3'); // Play lost
-                stopAudio('back.mp3'); // Stop BGM
                 state.deathReason = option.deathMsg || "คุณตัดสินใจผิดพลาด เครื่องบินระเบิดทันที";
+                stopBGM();
+                playSound(lostSfx);
                 state.view = 'gameover';
                 renderGameOver();
-                focusOnHeading();
             }
         }
 
         function resetToMenu() {
-            playAudio('home.mp3'); // Play home sound
+            stopBGM();
             state.view = 'menu';
             renderMenu();
         }
@@ -1052,6 +862,9 @@
         // Initialize
         renderMenu();
 
+        window.addEventListener('touchstart', unlockAudio, { once: true });
+        window.addEventListener('click', unlockAudio, { once: true });
+        window.addEventListener('keydown', unlockAudio, { once: true });
     </script>
 </body>
 </html>
