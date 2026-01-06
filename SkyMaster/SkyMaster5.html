@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ศึกจ้าวเวหา - Sky Master</title>
+  <title>ศึกเจ้าเวหา - Sky Conqueror</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Fonts -->
@@ -214,6 +214,7 @@
     function unlockAudio() {
       if (audioUnlocked) return;
 
+      // iOS Trick: Play a short silent buffer to wake up the audio engine
       try {
         const buffer = audioCtx.createBuffer(1, 1, 22050);
         const source = audioCtx.createBufferSource();
@@ -639,8 +640,7 @@
       score: 0,
       currentScenario: null,
       shuffledOptions: [],
-      deathReason: "",
-      isTransitioning: false  // เพิ่ม flag ป้องกันการเปลี่ยนข้อซ้ำ
+      deathReason: ""
     };
 
     const app = document.getElementById('app');
@@ -669,8 +669,8 @@
                             </svg>
                         </div>
                         <h1 class="text-4xl md:text-6xl font-bold tracking-widest text-green-500 uppercase hud-text-shadow font-mono">
-                            ศึกจ้าวเวหา
-                            <span class="block text-xl md:text-2xl mt-2 text-green-300">Sky Master</span>
+                            ศึกเจ้าเวหา
+                            <span class="block text-xl md:text-2xl mt-2 text-green-300">SKY CONQUEROR</span>
                         </h1>
                         
                         <div class="bg-slate-800 p-6 rounded-lg border border-green-700 hud-border-glow">
@@ -703,6 +703,7 @@
       const btn = document.getElementById('start-btn');
 
       const handleStart = (e) => {
+        // Prevent double firing if using both touch and click
         if (e.type === 'touchstart') e.preventDefault();
 
         unlockAudio();
@@ -807,6 +808,7 @@
         grid.appendChild(btn);
       });
 
+      // Focus to heading
       document.querySelector('h3').focus();
     }
 
@@ -870,39 +872,14 @@
       document.querySelector('h1').focus();
     }
 
-    // --- SINGLE TRANSITION CONTROLLER ---
-    function advanceToNextMission() {
-      if (state.isTransitioning) return;
-      state.isTransitioning = true;
-
-      if (state.missionIndex < 4) {
-        state.missionIndex++;
-        loadMission();
-      } else {
-        if (state.level < 10) {
-          state.level++;
-          state.missionIndex = 0;
-          loadMission();
-        } else {
-          stopBGM();
-          playSound(winSfx);
-          state.view = 'victory';
-          renderVictory();
-        }
-      }
-
-      state.isTransitioning = false;
-    }
-
     // --- GAME LOGIC ---
 
     function startGame() {
-      unlockAudio();
+      unlockAudio(); // ปลดล็อกเสียงก่อนเริ่มเกม
       state.level = 1;
       state.missionIndex = 0;
       state.score = 0;
       state.view = 'playing';
-      state.isTransitioning = false;
 
       bgm.play();
 
@@ -920,16 +897,25 @@
       if (option.correct) {
         state.score += 100;
 
-        // เคลียร์ onended เก่าก่อนเสมอ
-        passSfx.onended = null;
-
         playSound(passSfx);
 
-        // ผูก onended ใหม่หลังเล่นเสียง
-        passSfx.onended = () => {
-          advanceToNextMission();
+        passSfx.onended = function () {
+          if (state.missionIndex < 4) {
+            state.missionIndex++;
+            loadMission();
+          } else {
+            if (state.level < 10) {
+              state.level++;
+              state.missionIndex = 0;
+              loadMission();
+            } else {
+              stopBGM();
+              playSound(winSfx);
+              state.view = 'victory';
+              renderVictory();
+            }
+          }
         };
-
       } else {
         state.deathReason = option.deathMsg || "คุณตัดสินใจผิดพลาด เครื่องบินระเบิดทันที";
         stopBGM();
@@ -955,6 +941,7 @@
     // Initialize
     renderMenu();
 
+    // Event listeners เพื่อปลดล็อกเสียงทันทีที่ผู้ใช้โต้ตอบ
     window.addEventListener('touchstart', unlockAudio, { once: true });
     window.addEventListener('click', unlockAudio, { once: true });
     window.addEventListener('keydown', unlockAudio, { once: true });
