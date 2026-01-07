@@ -71,15 +71,6 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.4);
         }
         .btn-restart:hover { transform: translateY(-6px); }
-
-        /* aria-live สำหรับประกาศคำถาม */
-        #question-live {
-            position: absolute;
-            left: -9999px;
-            width: 1px;
-            height: 1px;
-            overflow: hidden;
-        }
     </style>
 </head>
 <body>
@@ -103,9 +94,6 @@
         <div class="timer"><span id="timer">20</span></div>
         <div class="letters" id="letters" role="region" aria-label="จุดให้เลือก"></div>
     </div>
-
-    <!-- aria-live element -->
-    <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
     <div id="result">
         <h2 id="resultTitle" tabindex="-1">สุดยอดมาก!</h2>
@@ -164,6 +152,7 @@ class AudioEngine {
   async unlockAll() {
     if (this.isUnlocked) return;
     await this.initContext();
+    // Touch of silence to unlock audio context on mobile
     const source = this.ctx.createBufferSource();
     source.buffer = this.ctx.createBuffer(1, 1, 22050);
     source.connect(this.ctx.destination);
@@ -215,6 +204,7 @@ class AudioEngine {
 
     const p = new Promise(resolve => {
       source.onended = () => resolve();
+      // Fallback timeout
       setTimeout(resolve, 4000);
     });
 
@@ -274,52 +264,14 @@ const vocab = [
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
 const TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
-let backBtn, levelSelect, gameDiv, resultDiv, questionElem, spellingDisplay, lettersDiv, questionLive;
-
-// ฟังก์ชันเริ่มเกม
-async function startGameWithTime(seconds) {
-    timePerQuestion = seconds;
-    levelSelect.style.display = 'none';
-    gameDiv.style.display = 'block';
-    backBtn.style.display = 'none';
-
-    await audioEngine.startBGM();
-
-    currentQuestions = shuffle(vocab).slice(0, TOTAL_QUESTIONS);
-    currentQ = 0; score = 0;
-    activateApplicationMode();
-    nextQuestion(true); // ข้อแรก
-}
-
-// รอ DOM โหลดเสร็จก่อน assign event
-document.addEventListener('DOMContentLoaded', () => {
-    backBtn = document.getElementById('backToMenu');
-    levelSelect = document.getElementById('levelSelect');
-    gameDiv = document.getElementById('game');
-    resultDiv = document.getElementById('result');
-    questionElem = document.getElementById('question');
-    spellingDisplay = document.getElementById('spellingDisplay');
-    lettersDiv = document.getElementById('letters');
-    questionLive = document.getElementById('question-live');
-
-    // Assign ปุ่มเลือกระดับที่นี่ เพื่อให้แน่ใจว่า element มีอยู่แล้ว
-    document.getElementById('easy').onclick = () => startGameWithTime(40);
-    document.getElementById('medium').onclick = () => startGameWithTime(20);
-    document.getElementById('hard').onclick = () => startGameWithTime(10);
-
-    document.getElementById('restartBtn').onclick = async () => {
-        await audioEngine.playEffect('doorSound');
-        resultDiv.style.display = 'none';
-        levelSelect.style.display = 'block';
-        backBtn.style.display = 'block';
-    };
-
-    backBtn.onclick = async () => {
-        audioEngine.stopBGM();
-        await audioEngine.playEffect('doorSound');
-        location.href = '../index.html';
-    };
-});
+const backBtn = document.getElementById('backToMenu');
+const levelSelect = document.getElementById('levelSelect');
+const gameDiv = document.getElementById('game');
+const resultDiv = document.getElementById('result');
+const questionElem = document.getElementById('question');
+const resultTitle = document.getElementById('resultTitle');
+const spellingDisplay = document.getElementById('spellingDisplay');
+const lettersDiv = document.getElementById('letters');
 
 const keyToDot = {
   'f': '1',
@@ -369,7 +321,21 @@ function deactivateApplicationMode() {
     resultDiv.setAttribute('aria-hidden', 'false');
 }
 
-async function nextQuestion(isFirst = false) {
+async function startGameWithTime(seconds) {
+    timePerQuestion = seconds;
+    levelSelect.style.display = 'none';
+    gameDiv.style.display = 'block';
+    backBtn.style.display = 'none';
+
+    await audioEngine.startBGM();
+
+    currentQuestions = shuffle(vocab).slice(0, TOTAL_QUESTIONS);
+    currentQ = 0; score = 0;
+    activateApplicationMode();
+    nextQuestion();
+}
+
+function nextQuestion() {
     if (currentQ >= TOTAL_QUESTIONS) { endGame(); return; }
 
     isProcessingTimeout = false;
@@ -380,9 +346,7 @@ async function nextQuestion(isFirst = false) {
     currentWord = currentQuestions[currentQ];
     const correctDots = currentWord.dots.split(',').map(d => d.trim());
     correctDotsSet = new Set(correctDots);
-
-    const questionText = `ข้อ ${currentQ + 1} : ตัวอักษร “${currentWord.th.replace(/<[^>]+>/g, '')}” ใช้จุดเบรลล์อะไร`;
-    questionElem.innerHTML = questionText;
+    document.getElementById('question').innerHTML = `ข้อ ${currentQ + 1} : ตัวอักษร “${currentWord.th}” ใช้จุดเบรลล์อะไร`;
 
     clearInterval(timerInterval);
 
@@ -424,23 +388,12 @@ async function nextQuestion(isFirst = false) {
             isProcessingTimeout = true;
             clearInterval(timerInterval);
             audioEngine.playEffect('wrongSound');
-            audioEngine.playEffect('fSound').then(() => {
-                currentQ++;
-                announceQuestion();
-                nextQuestion();
+            audioEngine.playEffect('fSound').then(() => { 
+                currentQ++; 
+                nextQuestion(); 
             });
         }
     }, 1000);
-
-    announceQuestion();
-}
-
-function announceQuestion() {
-    const plainText = questionElem.textContent.trim();
-    questionLive.textContent = '';
-    setTimeout(() => {
-        questionLive.textContent = plainText;
-    }, 100);
 }
 
 function updateDisplay() {
@@ -466,7 +419,6 @@ async function handleCorrect() {
     score++;
     await audioEngine.playEffect('tSound');
     currentQ++;
-    announceQuestion();
     nextQuestion();
 }
 
@@ -478,11 +430,11 @@ async function handleWrong() {
     await audioEngine.playEffect('wrongSound');
     await audioEngine.playEffect('fSound');
     currentQ++;
-    announceQuestion();
     nextQuestion();
 }
 
 function selectLetter(bt, dot) {
+    // Keep original sequential click logic for mouse/touch users
     if (bt.classList.contains('used') || bt.classList.contains('wrong')) return;
 
     const correctDots = currentWord.dots.split(',').map(d => d.trim());
@@ -491,11 +443,7 @@ function selectLetter(bt, dot) {
     if (selectedLetters.length >= correctDots.length || correctDots[selectedLetters.length] !== dot) {
         bt.classList.add('wrong');
         audioEngine.playEffect('wrongSound');
-        audioEngine.playEffect('fSound').then(() => { 
-            currentQ++; 
-            announceQuestion();
-            nextQuestion(); 
-        });
+        audioEngine.playEffect('fSound').then(() => { currentQ++; nextQuestion(); });
         return;
     }
 
@@ -512,11 +460,7 @@ function selectLetter(bt, dot) {
         clearInterval(timerInterval); isProcessingTimeout = true;
         audioEngine.playEffect('correctSound');
         score++;
-        audioEngine.playEffect('tSound').then(() => { 
-            currentQ++; 
-            announceQuestion();
-            nextQuestion(); 
-        });
+        audioEngine.playEffect('tSound').then(() => { currentQ++; nextQuestion(); });
     }
 }
 
@@ -561,8 +505,26 @@ async function endGame() {
     }, 50);
 }
 
+document.getElementById('easy').onclick = () => startGameWithTime(40);
+document.getElementById('medium').onclick = () => startGameWithTime(20);
+document.getElementById('hard').onclick = () => startGameWithTime(10);
+
+document.getElementById('restartBtn').onclick = async () => {
+    await audioEngine.playEffect('doorSound');
+    resultDiv.style.display = 'none';
+    levelSelect.style.display = 'block';
+    backBtn.style.display = 'block';
+};
+
+backBtn.onclick = async () => {
+    audioEngine.stopBGM();
+    await audioEngine.playEffect('doorSound');
+    location.href = '../index.html';
+};
+
 window.addEventListener('beforeunload', () => audioEngine.stopBGM());
 
+// Add shortcut keys only during game
 document.addEventListener('keydown', (e) => {
     if (gameDiv.style.display !== 'block' || attempted || isProcessingTimeout) return;
     const key = e.key.toLowerCase();
@@ -572,6 +534,7 @@ document.addEventListener('keydown', (e) => {
             pressedDots.add(dot);
             timestamps[dot] = Date.now();
             updateDisplay();
+            // Mark button as used temporarily
             const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
             if (btn) btn.classList.add('used');
 
