@@ -89,7 +89,7 @@
 
     <div id="levelSelect">
         <h1>Eng Braille letters memory - อักษรพาซน!</h1>
-        <p class="subtitle">เรียงจุดเบรลล์ ตัวอักษรเบรลล์ภาษาอังกฤษให้ถูกต้องตามลำดับ<br>ฝึกพื้นฐานเซียน 5 ข้อ - ระดับเซียน 7 ข้อ - ปราบเซียน 10 ข้อ<br>เวลาต่อข้อต่างกันตามระดับ เลือกระดับแล้วมาสนุกกันเลย!</p>
+        <p class="subtitle">เรียงจุดเบรลล์ ตัวอักษรเบรลล์ภาษาอังกฤษให้ถูกต้องตามลำดับ 10 ข้อต่อรอบ<br>เวลาต่อข้อใน ฝึกพื้นฐานเซียน 40 วิ - ระดับเซียน 20 วิ - โหมดยากสุด ปราบเซียน 10 วิ<br>เลือกระดับความยาก แล้วมาสนุกกันเลย</p>
         <div class="level-buttons">
             <button class="level-btn" id="easy">ฝึกพื้นฐานเซียน</button>
             <button class="level-btn" id="medium">ระดับเซียน</button>
@@ -272,23 +272,13 @@ const vocab = [
 ];
 
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
-let TOTAL_QUESTIONS = 10; // จะถูกตั้งค่าตามโหมด
+const TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, spellingDisplay, lettersDiv, questionLive;
 
 // ฟังก์ชันเริ่มเกม
-async function startGame(level) {
-    if (level === 'easy') {
-        TOTAL_QUESTIONS = 5;
-        timePerQuestion = 10;
-    } else if (level === 'medium') {
-        TOTAL_QUESTIONS = 7;
-        timePerQuestion = 7;
-    } else if (level === 'hard') {
-        TOTAL_QUESTIONS = 10;
-        timePerQuestion = 4;
-    }
-
+async function startGameWithTime(seconds) {
+    timePerQuestion = seconds;
     levelSelect.style.display = 'none';
     gameDiv.style.display = 'block';
     backBtn.style.display = 'none';
@@ -312,9 +302,10 @@ document.addEventListener('DOMContentLoaded', () => {
     lettersDiv = document.getElementById('letters');
     questionLive = document.getElementById('question-live');
 
-    document.getElementById('easy').onclick = () => startGame('easy');
-    document.getElementById('medium').onclick = () => startGame('medium');
-    document.getElementById('hard').onclick = () => startGame('hard');
+    // Assign ปุ่มเลือกระดับที่นี่ เพื่อให้แน่ใจว่า element มีอยู่แล้ว
+    document.getElementById('easy').onclick = () => startGameWithTime(40);
+    document.getElementById('medium').onclick = () => startGameWithTime(20);
+    document.getElementById('hard').onclick = () => startGameWithTime(10);
 
     document.getElementById('restartBtn').onclick = async () => {
         await audioEngine.playEffect('doorSound');
@@ -536,51 +527,35 @@ async function endGame() {
     resultDiv.style.display = 'block';
     backBtn.style.display = 'block';
     deactivateApplicationMode();
-
     const title = document.getElementById('resultTitle');
     const msg = document.getElementById('resultMsg');
     const scoreDiv = document.getElementById('score');
-
-    const points = score * 100; // ข้อละ 100 คะแนน
-
-    scoreDiv.textContent = points + " คะแนน";
-
-    const perfectEncourages = [
-        "สุดยอดไปเลย! ตอบถูกหมดทุกข้อเลยนะ 💖",
-        "เก่งมาก ๆ เลยจ้า! เป็นเซียนเบรลล์ตัวจริงแล้ว ✨",
-        "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆",
-        "เยี่ยมมาก! ทำได้สมบูรณ์แบบเลย ภูมิใจในตัวเองได้เลยนะ 😊"
-    ];
-
-    const goodEncourages = [
-        "เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪",
-        "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ๆ ❤️",
-        "ทำได้ดีมากเลย! เหลืออีกนิดเดียวเอง สู้ ๆ นะ 🌟",
-        "สุดยอดมาก! คะแนนดีแบบนี้ แสดงว่าฝึกมาดีแน่ ๆ 👍"
-    ];
-
-    const normalEncourages = [
-        "ไม่เป็นไรนะจ๊ะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕",
-        "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้เก่งขึ้นเรื่อย ๆ 😘",
-        "พยายามเข้าไว้จ้า! ทุกครั้งที่เล่น เราจะเก่งขึ้นแน่นอน 🌈",
-        "อย่ายอมแพ้นะ สู้ ๆ ! เดี๋ยวก็เป็นเซียนเบรลล์เองแหละ 💖",
-        "เยี่ยมแล้วที่เล่นจนจบ! ครั้งหน้าต้องดีกว่านี้แน่นอนเลยน้า 🚀"
-    ];
-
+    let points;
     if (score === TOTAL_QUESTIONS) {
         title.textContent = "สุดยอดมาก!";
-        msg.innerHTML = perfectEncourages[Math.floor(Math.random() * perfectEncourages.length)];
-        await audioEngine.playEffect('endSound');
-    } else if (score >= Math.ceil(TOTAL_QUESTIONS * 0.8)) {
-        title.textContent = "เก่งมากเลย!";
-        msg.innerHTML = goodEncourages[Math.floor(Math.random() * goodEncourages.length)];
+        msg.innerHTML = `ตอบถูกทั้ง ${TOTAL_QUESTIONS} ข้อเลย!<br>เก่งสุด ๆ ไปเลยนะ!`;
+        points = 1000;
         await audioEngine.playEffect('endSound');
     } else {
-        title.textContent = "สู้ต่อไปนะ!";
-        msg.innerHTML = normalEncourages[Math.floor(Math.random() * normalEncourages.length)];
+        if (score >= Math.max(1, Math.floor(TOTAL_QUESTIONS * 0.8))) {
+            title.textContent = "เก่งมากเลย!";
+            msg.innerHTML = `ตอบถูก ${score} จาก ${TOTAL_QUESTIONS} ข้อ<br>เยี่ยมมาก! ใกล้เต็มแล้ว`;
+            points = 700;
+        } else {
+            points = score * 50;
+            const encourages = [
+              "ไม่เป็นไรนะ ครั้งหน้าต้องเก่งขึ้นแน่!",
+              "พยายามเข้าไว้ สู้ ๆ นะจ๊ะ!",
+              "เยี่ยมแล้วที่เล่นจนจบ!",
+              "ทุกครั้งที่เล่น เราจะเก่งขึ้นนะ",
+              "อย่ายอมแพ้นะ เดี๋ยวก็เก่งเอง!"
+            ];
+            title.textContent = "ไม่เป็นไร สู้ต่อไป!";
+            msg.textContent = encourages[Math.floor(Math.random() * encourages.length)];
+        }
         await audioEngine.playEffect('end1Sound');
     }
-
+    scoreDiv.textContent = points + " คะแนน";
     setTimeout(() => {
       try { title.focus(); } catch(e) {}
     }, 50);
