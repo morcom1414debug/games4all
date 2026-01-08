@@ -341,91 +341,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await audioEngine.playEffect('doorSound');
         location.href = '../index.html';
     };
-
-    // Detect if it's Safari on iOS
-    const isIOSSafari = /iP(ad|od|hone)/i.test(navigator.userAgent) && /AppleWebKit/i.test(navigator.userAgent) && !/(CriOS|FxiOS|OPiOS)/i.test(navigator.userAgent);
-
-    // Original keydown handler for non-iOS Safari (Windows/Android)
-    const originalKeydown = (e) => {
-        if (gameDiv.style.display !== 'block' || attempted || isProcessingTimeout) return;
-        const key = e.key.toLowerCase();
-        if (key in keyToDot) {
-            const dot = keyToDot[key];
-            if (!pressedDots.has(dot)) {
-                pressedDots.add(dot);
-                timestamps[dot] = Date.now();
-                updateDisplay();
-                const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
-                if (btn) btn.classList.add('used');
-
-                if (pressedDots.size > correctDotsSet.size) {
-                    handleWrong();
-                    return;
-                }
-
-                if (pressedDots.size === correctDotsSet.size) {
-                    setTimeout(() => {
-                        if (attempted) return;
-                        const tsValues = Object.values(timestamps);
-                        const minTs = Math.min(...tsValues);
-                        const maxTs = Math.max(...tsValues);
-                        if (maxTs - minTs <= 200 && setEquals(pressedDots, correctDotsSet)) {
-                            handleCorrect();
-                        } else {
-                            handleWrong();
-                        }
-                    }, 0);
-                }
-            }
-        }
-    };
-
-    let bufferTimeout = null; // For iOS buffer timeout
-
-    // iOS Safari keydown handler with buffer-based input
-    const iosKeydown = (e) => {
-        if (gameDiv.style.display !== 'block' || attempted || isProcessingTimeout) return;
-        const key = e.key.toLowerCase();
-        if (key in keyToDot) {
-            const dot = keyToDot[key];
-            if (!pressedDots.has(dot)) {
-                pressedDots.add(dot);
-                timestamps[dot] = Date.now();
-                updateDisplay();
-                const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
-                if (btn) btn.classList.add('used');
-
-                if (pressedDots.size > correctDotsSet.size) {
-                    handleWrong();
-                    return;
-                }
-            }
-
-            // Clear existing timeout and set a new one to check after 300ms of inactivity
-            clearTimeout(bufferTimeout);
-            bufferTimeout = setTimeout(() => {
-                if (attempted) return;
-                if (pressedDots.size === correctDotsSet.size) {
-                    const tsValues = Object.values(timestamps);
-                    const minTs = Math.min(...tsValues);
-                    const maxTs = Math.max(...tsValues);
-                    if (maxTs - minTs <= 200 && setEquals(pressedDots, correctDotsSet)) {
-                        handleCorrect();
-                    } else {
-                        handleWrong();
-                    }
-                }
-                // If size < correctDotsSet.size, do nothing (wait for more keys or question timer)
-            }, 300);
-        }
-    };
-
-    // Attach the appropriate keydown listener based on platform
-    if (!isIOSSafari) {
-        document.addEventListener('keydown', originalKeydown);
-    } else {
-        document.addEventListener('keydown', iosKeydown);
-    }
 });
 
 const keyToDot = {
@@ -706,6 +621,39 @@ async function endGame() {
 
 window.addEventListener('beforeunload', () => audioEngine.stopBGM());
 
+document.addEventListener('keydown', (e) => {
+    if (gameDiv.style.display !== 'block' || attempted || isProcessingTimeout) return;
+    const key = e.key.toLowerCase();
+    if (key in keyToDot) {
+        const dot = keyToDot[key];
+        if (!pressedDots.has(dot)) {
+            pressedDots.add(dot);
+            timestamps[dot] = Date.now();
+            updateDisplay();
+            const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
+            if (btn) btn.classList.add('used');
+
+            if (pressedDots.size > correctDotsSet.size) {
+                handleWrong();
+                return;
+            }
+
+            if (pressedDots.size === correctDotsSet.size) {
+                setTimeout(() => {
+                    if (attempted) return;
+                    const tsValues = Object.values(timestamps);
+                    const minTs = Math.min(...tsValues);
+                    const maxTs = Math.max(...tsValues);
+                    if (maxTs - minTs <= 200 && setEquals(pressedDots, correctDotsSet)) {
+                        handleCorrect();
+                    } else {
+                        handleWrong();
+                    }
+                }, 0);
+            }
+        }
+    }
+});
 </script>
 </body>
 </html>
