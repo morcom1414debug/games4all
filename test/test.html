@@ -272,161 +272,19 @@ const vocab = [
 ];
 
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
-let TOTAL_QUESTIONS = 10; // จะถูกตั้งค่าตามโหมด
+let TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, spellingDisplay, lettersDiv, questionLive;
 
-// ฟังก์ชันเริ่มเกม
-async function startGame(level) {
-    if (level === 'easy') {
-        TOTAL_QUESTIONS = 5;
-        timePerQuestion = 10;
-    } else if (level === 'medium') {
-        TOTAL_QUESTIONS = 7;
-        timePerQuestion = 7;
-    } else if (level === 'hard') {
-        TOTAL_QUESTIONS = 10;
-        timePerQuestion = 4;
-    }
+// === iOS Safari Detection ===
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isSequentialMode = isIOS && isSafari;
 
-    levelSelect.style.display = 'none';
-    gameDiv.style.display = 'block';
-    resultDiv.style.display = 'none';        // เพิ่มบรรทัดนี้เพื่อซ่อนผลสรุป (กรณีที่ยังค้างอยู่)
-    backBtn.style.display = 'none';
-
-    // ล้างข้อความคำถามและการแสดงผลที่อาจค้างอยู่
-    questionElem.innerHTML = '';
-    spellingDisplay.textContent = '_ _ _ _ _ _';
-    lettersDiv.innerHTML = '';
-    questionLive.textContent = '';
-
-    await audioEngine.startBGM();
-
-    currentQuestions = shuffle(vocab).slice(0, TOTAL_QUESTIONS);
-    currentQ = 0; score = 0;
-    activateApplicationMode();
-    nextQuestion(true); // ข้อแรก
-}
-
-// รอ DOM โหลดเสร็จก่อน assign event
-document.addEventListener('DOMContentLoaded', () => {
-    backBtn = document.getElementById('backToMenu');
-    levelSelect = document.getElementById('levelSelect');
-    gameDiv = document.getElementById('game');
-    resultDiv = document.getElementById('result');
-    questionElem = document.getElementById('question');
-    spellingDisplay = document.getElementById('spellingDisplay');
-    lettersDiv = document.getElementById('letters');
-    questionLive = document.getElementById('question-live');
-
-    document.getElementById('easy').onclick = () => startGame('easy');
-    document.getElementById('medium').onclick = () => startGame('medium');
-    document.getElementById('hard').onclick = () => startGame('hard');
-
-    document.getElementById('restartBtn').onclick = async () => {
-        await audioEngine.playEffect('doorSound');
-        resultDiv.style.display = 'none';
-        levelSelect.style.display = 'block';
-        backBtn.style.display = 'block';
-
-        // ล้างข้อความคำถามที่อาจหลงเหลือในหน้าเลือกระดับและหน้าผลสรุป
-        questionElem.innerHTML = '';
-        spellingDisplay.textContent = '_ _ _ _ _ _';
-        lettersDiv.innerHTML = '';
-        questionLive.textContent = '';
-    };
-
-    backBtn.onclick = async () => {
-        audioEngine.stopBGM();
-        await audioEngine.playEffect('doorSound');
-        location.href = '../index.html';
-    };
-
-    // Detect if it's Safari on iOS
-    const isIOSSafari = /iP(ad|od|hone)/i.test(navigator.userAgent) && /AppleWebKit/i.test(navigator.userAgent) && !/(CriOS|FxiOS|OPiOS)/i.test(navigator.userAgent);
-
-    // Original keydown handler for non-iOS Safari (Windows/Android)
-    const originalKeydown = (e) => {
-        if (gameDiv.style.display !== 'block' || attempted || isProcessingTimeout) return;
-        const key = e.key.toLowerCase();
-        if (key in keyToDot) {
-            const dot = keyToDot[key];
-            if (!pressedDots.has(dot)) {
-                pressedDots.add(dot);
-                timestamps[dot] = Date.now();
-                updateDisplay();
-                const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
-                if (btn) btn.classList.add('used');
-
-                if (pressedDots.size > correctDotsSet.size) {
-                    handleWrong();
-                    return;
-                }
-
-                if (pressedDots.size === correctDotsSet.size) {
-                    setTimeout(() => {
-                        if (attempted) return;
-                        const tsValues = Object.values(timestamps);
-                        const minTs = Math.min(...tsValues);
-                        const maxTs = Math.max(...tsValues);
-                        if (maxTs - minTs <= 200 && setEquals(pressedDots, correctDotsSet)) {
-                            handleCorrect();
-                        } else {
-                            handleWrong();
-                        }
-                    }, 0);
-                }
-            }
-        }
-    };
-
-    let bufferTimeout = null; // For iOS buffer timeout
-
-    // iOS Safari keydown handler with buffer-based input
-    const iosKeydown = (e) => {
-        if (gameDiv.style.display !== 'block' || attempted || isProcessingTimeout) return;
-        const key = e.key.toLowerCase();
-        if (key in keyToDot) {
-            const dot = keyToDot[key];
-            if (!pressedDots.has(dot)) {
-                pressedDots.add(dot);
-                timestamps[dot] = Date.now();
-                updateDisplay();
-                const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
-                if (btn) btn.classList.add('used');
-
-                if (pressedDots.size > correctDotsSet.size) {
-                    handleWrong();
-                    return;
-                }
-            }
-
-            // Clear existing timeout and set a new one to check after 300ms of inactivity
-            clearTimeout(bufferTimeout);
-            bufferTimeout = setTimeout(() => {
-                if (attempted) return;
-                if (pressedDots.size === correctDotsSet.size) {
-                    const tsValues = Object.values(timestamps);
-                    const minTs = Math.min(...tsValues);
-                    const maxTs = Math.max(...tsValues);
-                    if (maxTs - minTs <= 200 && setEquals(pressedDots, correctDotsSet)) {
-                        handleCorrect();
-                    } else {
-                        handleWrong();
-                    }
-                }
-                // If size < correctDotsSet.size, do nothing (wait for more keys or question timer)
-            }, 300);
-        }
-    };
-
-    // Attach the appropriate keydown listener based on platform
-    if (!isIOSSafari) {
-        document.addEventListener('keydown', originalKeydown);
-    } else {
-        document.addEventListener('keydown', iosKeydown);
-    }
-});
+// === Sequential Mode Variables (เฉพาะ iOS Safari) ===
+let seqBuffer = new Set();
+let seqTimeout = null;
+const SEQ_TIMEOUT_MS = 300; // 300ms หลังจาก key สุดท้ายแล้วจึงประมวลผล
 
 const keyToDot = {
   'f': '1',
@@ -476,6 +334,157 @@ function deactivateApplicationMode() {
     resultDiv.setAttribute('aria-hidden', 'false');
 }
 
+async function startGame(level) {
+    if (level === 'easy') {
+        TOTAL_QUESTIONS = 5;
+        timePerQuestion = 10;
+    } else if (level === 'medium') {
+        TOTAL_QUESTIONS = 7;
+        timePerQuestion = 7;
+    } else if (level === 'hard') {
+        TOTAL_QUESTIONS = 10;
+        timePerQuestion = 4;
+    }
+
+    levelSelect.style.display = 'none';
+    gameDiv.style.display = 'block';
+    resultDiv.style.display = 'none';
+    backBtn.style.display = 'none';
+
+    questionElem.innerHTML = '';
+    spellingDisplay.textContent = '_ _ _ _ _ _';
+    lettersDiv.innerHTML = '';
+    questionLive.textContent = '';
+
+    await audioEngine.startBGM();
+
+    currentQuestions = shuffle(vocab).slice(0, TOTAL_QUESTIONS);
+    currentQ = 0; score = 0;
+    activateApplicationMode();
+    nextQuestion(true);
+}
+
+// DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+    backBtn = document.getElementById('backToMenu');
+    levelSelect = document.getElementById('levelSelect');
+    gameDiv = document.getElementById('game');
+    resultDiv = document.getElementById('result');
+    questionElem = document.getElementById('question');
+    spellingDisplay = document.getElementById('spellingDisplay');
+    lettersDiv = document.getElementById('letters');
+    questionLive = document.getElementById('question-live');
+
+    document.getElementById('easy').onclick = () => startGame('easy');
+    document.getElementById('medium').onclick = () => startGame('medium');
+    document.getElementById('hard').onclick = () => startGame('hard');
+
+    document.getElementById('restartBtn').onclick = async () => {
+        await audioEngine.playEffect('doorSound');
+        resultDiv.style.display = 'none';
+        levelSelect.style.display = 'block';
+        backBtn.style.display = 'block';
+
+        questionElem.innerHTML = '';
+        spellingDisplay.textContent = '_ _ _ _ _ _';
+        lettersDiv.innerHTML = '';
+        questionLive.textContent = '';
+    };
+
+    backBtn.onclick = async () => {
+        audioEngine.stopBGM();
+        await audioEngine.playEffect('doorSound');
+        location.href = '../index.html';
+    };
+});
+
+function updateDisplay() {
+    const sortedPressed = Array.from(pressedDots).sort();
+    spellingDisplay.textContent = sortedPressed.join(' ') || '_ _ _ _ _ _';
+}
+
+function markButtons(className, dotsSet) {
+    const buttons = lettersDiv.querySelectorAll('.letter-btn');
+    buttons.forEach(btn => {
+        if (dotsSet.has(btn.dataset.letter)) {
+            btn.classList.add(className);
+        }
+    });
+}
+
+async function handleCorrect() {
+    attempted = true;
+    isProcessingTimeout = true;
+    clearInterval(timerInterval);
+    markButtons('used', correctDotsSet);
+    await audioEngine.playEffect('correctSound');
+    score++;
+    await audioEngine.playEffect('tSound');
+    currentQ++;
+    if (currentQ < TOTAL_QUESTIONS) {
+        announceQuestion();
+    }
+    nextQuestion();
+}
+
+async function handleWrong() {
+    attempted = true;
+    isProcessingTimeout = true;
+    clearInterval(timerInterval);
+    markButtons('wrong', pressedDots);
+    await audioEngine.playEffect('wrongSound');
+    await audioEngine.playEffect('fSound');
+    currentQ++;
+    if (currentQ < TOTAL_QUESTIONS) {
+        announceQuestion();
+    }
+    nextQuestion();
+}
+
+function processChord(dotsSet) {
+    if (dotsSet.size === 0) return;
+
+    const sorted = Array.from(dotsSet).sort();
+    const chordStr = sorted.join(',');
+
+    const correctStr = currentWord.dots;
+
+    if (chordStr === correctStr) {
+        handleCorrect();
+    } else {
+        handleWrong();
+    }
+
+    // รีเซ็ต buffer
+    seqBuffer.clear();
+    pressedDots.clear();
+    updateDisplay();
+}
+
+function handleSequentialKey(key) {
+    if (!gameDiv.style.display === 'block' || attempted || isProcessingTimeout) return;
+
+    const dot = keyToDot[key];
+    if (!dot) return;
+
+    seqBuffer.add(dot);
+    pressedDots.add(dot);
+    timestamps[dot] = Date.now();
+    updateDisplay();
+
+    // ไฮไลต์ปุ่มที่กด
+    const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
+    if (btn && !btn.classList.contains('used')) {
+        btn.classList.add('used');
+    }
+
+    // รีเซ็ตและเริ่ม timer ใหม่
+    clearTimeout(seqTimeout);
+    seqTimeout = setTimeout(() => {
+        processChord(seqBuffer);
+    }, SEQ_TIMEOUT_MS);
+}
+
 async function nextQuestion(isFirst = false) {
     if (currentQ >= TOTAL_QUESTIONS) { 
         endGame(); 
@@ -486,6 +495,8 @@ async function nextQuestion(isFirst = false) {
     attempted = false;
     pressedDots = new Set();
     timestamps = {};
+    seqBuffer.clear();
+    clearTimeout(seqTimeout);
     spellingDisplay.textContent = '_ _ _ _ _ _';
     currentWord = currentQuestions[currentQ];
     const correctDots = currentWord.dots.split(',').map(d => d.trim());
@@ -548,55 +559,12 @@ async function nextQuestion(isFirst = false) {
 }
 
 function announceQuestion() {
-    if (currentQ >= TOTAL_QUESTIONS) return; // ป้องกันการประกาศเมื่อเกมจบแล้ว
+    if (currentQ >= TOTAL_QUESTIONS) return;
     const plainText = questionElem.textContent.trim();
     questionLive.textContent = '';
     setTimeout(() => {
         questionLive.textContent = plainText;
     }, 100);
-}
-
-function updateDisplay() {
-    const sortedPressed = Array.from(pressedDots).sort();
-    spellingDisplay.textContent = sortedPressed.join(' ') || '_ _ _ _ _ _';
-}
-
-function markButtons(className, dotsSet) {
-    const buttons = lettersDiv.querySelectorAll('.letter-btn');
-    buttons.forEach(btn => {
-        if (dotsSet.has(btn.dataset.letter)) {
-            btn.classList.add(className);
-        }
-    });
-}
-
-async function handleCorrect() {
-    attempted = true;
-    isProcessingTimeout = true;
-    clearInterval(timerInterval);
-    markButtons('used', correctDotsSet);
-    await audioEngine.playEffect('correctSound');
-    score++;
-    await audioEngine.playEffect('tSound');
-    currentQ++;
-    if (currentQ < TOTAL_QUESTIONS) {
-        announceQuestion();
-    }
-    nextQuestion();
-}
-
-async function handleWrong() {
-    attempted = true;
-    isProcessingTimeout = true;
-    clearInterval(timerInterval);
-    markButtons('wrong', pressedDots);
-    await audioEngine.playEffect('wrongSound');
-    await audioEngine.playEffect('fSound');
-    currentQ++;
-    if (currentQ < TOTAL_QUESTIONS) {
-        announceQuestion();
-    }
-    nextQuestion();
 }
 
 function selectLetter(bt, dot) {
@@ -643,13 +611,13 @@ function selectLetter(bt, dot) {
 
 async function endGame() {
     clearInterval(timerInterval);
+    clearTimeout(seqTimeout);
     audioEngine.stopBGM();
     gameDiv.style.display = 'none';
     resultDiv.style.display = 'block';
     backBtn.style.display = 'block';
     deactivateApplicationMode();
 
-    // ล้างทุกอย่างที่เกี่ยวข้องกับคำถามก่อนแสดงผลสรุป
     questionElem.innerHTML = '';
     spellingDisplay.textContent = '_ _ _ _ _ _';
     lettersDiv.innerHTML = '';
@@ -659,7 +627,7 @@ async function endGame() {
     const msg = document.getElementById('resultMsg');
     const scoreDiv = document.getElementById('score');
 
-    const points = score * 100; // ข้อละ 100 คะแนน
+    const points = score * 100;
 
     scoreDiv.textContent = points + " คะแนน";
 
@@ -706,6 +674,48 @@ async function endGame() {
 
 window.addEventListener('beforeunload', () => audioEngine.stopBGM());
 
+// === Keydown Handler (Windows: simultaneous, iOS Safari: sequential) ===
+document.addEventListener('keydown', (e) => {
+    if (gameDiv.style.display !== 'block' || attempted || isProcessingTimeout) return;
+
+    const key = e.key.toLowerCase();
+    if (!(key in keyToDot)) return;
+
+    if (isSequentialMode) {
+        // iOS Safari → ใช้ Sequential mode
+        e.preventDefault();
+        handleSequentialKey(key);
+    } else {
+        // Windows / อื่น ๆ → ใช้ logic เดิม (simultaneous chord)
+        const dot = keyToDot[key];
+        if (!pressedDots.has(dot)) {
+            pressedDots.add(dot);
+            timestamps[dot] = Date.now();
+            updateDisplay();
+            const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
+            if (btn) btn.classList.add('used');
+
+            if (pressedDots.size > correctDotsSet.size) {
+                handleWrong();
+                return;
+            }
+
+            if (pressedDots.size === correctDotsSet.size) {
+                setTimeout(() => {
+                    if (attempted) return;
+                    const tsValues = Object.values(timestamps);
+                    const minTs = Math.min(...tsValues);
+                    const maxTs = Math.max(...tsValues);
+                    if (maxTs - minTs <= 200 && setEquals(pressedDots, correctDotsSet)) {
+                        handleCorrect();
+                    } else {
+                        handleWrong();
+                    }
+                }, 0);
+            }
+        }
+    }
+});
 </script>
 </body>
 </html>
