@@ -337,6 +337,7 @@ let currentLetterIndex = 0;       // ตัวอักษรที่กำล�
 let currentDisplay = [];          // array ของ string เช่น ["1","1 3 4 5","2 3 4 5"]
 
 let pressedDots = new Set();
+let currentlyPressedDots = new Set();
 let timestamps = {};
 let attemptedThisLetter = false;
 
@@ -358,13 +359,13 @@ function setEquals(setA, setB) {
 async function startGame(level) {
     if (level === 'easy') {
         TOTAL_QUESTIONS = 5;
-        timePerQuestion = 20;
+        timePerQuestion = 10;
     } else if (level === 'medium') {
         TOTAL_QUESTIONS = 7;
-        timePerQuestion = 14;
+        timePerQuestion = 7;
     } else if (level === 'hard') {
         TOTAL_QUESTIONS = 10;
-        timePerQuestion = 8;
+        timePerQuestion = 4;
     }
 
     levelSelect.style.display = 'none';
@@ -447,7 +448,8 @@ async function nextQuestion(isFirst = false) {
 
     isProcessingTimeout = false;
     attemptedThisLetter = false;
-    pressedDots = new Set();
+    pressedDots.clear();
+    currentlyPressedDots.clear();
     timestamps = {};
     currentDisplay = [];
     spellingDisplay.textContent = '_ _ _ _ _ _';
@@ -500,7 +502,7 @@ function resetAllButtons() {
                 btn.setAttribute('aria-label', 'จุด ' + dot);
                 btn.style.gridRow = positions[dot].row;
                 btn.style.gridColumn = positions[dot].col;
-                btn.onclick = () => selectLetter(btn, dot); // คงไว้เพื่อรองรับ touch
+                btn.onclick = () => selectLetter(btn, dot);
                 lettersDiv.appendChild(btn);
             });
             questionElem.focus();
@@ -518,7 +520,9 @@ function announceQuestion() {
 }
 
 function updateDisplay() {
-    spellingDisplay.textContent = currentDisplay.join('   ') || '_ _ _ _ _ _';
+    const completed = currentDisplay.join('   ');
+    const currentPressedStr = Array.from(pressedDots).sort((a,b)=>a-b).join(' ');
+    spellingDisplay.textContent = [completed, currentPressedStr].filter(s => s).join('   ') || '_ _ _ _ _ _';
 }
 
 function markButtonsUsed(dotsSet) {
@@ -569,9 +573,11 @@ async function handleCorrectLetter(isLastLetter) {
     } else {
         // รอตัวอักษรต่อไป
         pressedDots.clear();
+        currentlyPressedDots.clear();
         timestamps = {};
         attemptedThisLetter = false;
         clearButtonStates();
+        updateDisplay();
     }
 }
 
@@ -589,58 +595,102 @@ async function handleWrongLetter() {
     nextQuestion();
 }
 
-document.addEventListener('keydown', (e) => {
+function handleKeyDown(e) {
     if (gameDiv.style.display !== 'block' || attemptedThisLetter || isProcessingTimeout) return;
 
     const key = e.key.toLowerCase();
     if (key in keyToDot) {
         const dot = keyToDot[key];
-        if (!pressedDots.has(dot)) {
-            pressedDots.add(dot);
-            timestamps[dot] = Date.now();
-
-            const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
-            if (btn) btn.classList.add('used');
-
-            // ตรวจสอบเมื่อปล่อยคีย์ทั้งหมดที่กดในจังหวะนี้
-            if (e.type === 'keydown') return; // รอจนกว่าจะมีการปล่อยเพื่อนับเป็น 1 จังหวะ
-
-            // ใช้ logic เดิม: เมื่อกดครบจำนวนจุดของตัวอักษรนั้น
+        if (!currentlyPressedDots.has(dot)) {
+            currentlyPressedDots.add(dot);
+            if (!pressedDots.has(dot)) {
+                pressedDots.add(dot);
+                timestamps[dot] = Date.now();
+                const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
+                if (btn) btn.classList.add('used');
+                updateDisplay();
+            }
+        }
+    } else if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        if (pressedDots.size > 0) {
+            // no time check for manual submit
             const currentLetter = currentWord.word[currentLetterIndex].toLowerCase();
             const correctDotsStr = letterMap[currentLetter];
-            const correctDotsSet = new Set(correctDotsStr.split(',').map(d => d.trim()));
+            if (correctDotsStr) {
+                const correctDotsSet = new Set(correctDotsStr.split(',').map(d => d.trim()));
+                if (setEquals(pressedDots, correctDotsSet)) {
+                    currentDisplay.push(Array.from(pressedDots).sort((a,b)=>a-b).join(' '));
+                    updateDisplay();
+                    const isLast = currentLetterIndex === currentWord.word.length - 1;
+                    handleCorrectLetter(isLast);
+                } else {
+                    handleWrongLetter();
+                }
+            } else {
+                handleWrongLetter();
+            }
+            // reset
+            pressedDots.clear();
+            currentlyPressedDots.clear();
+            timestamps = {};
+            clearButtonStates();
+        }
+    }
+}
 
-            if (pressedDots.size === correctDotsSet.size) {
-                setTimeout(() => {
-                    if (attemptedThisLetter) return;
-                    const tsValues = Object.values(timestamps);
-                    const minTs = Math.min(...tsValues);
-                    const maxTs = Math.max(...tsValues);
-
-                    if (maxTs - minTs <= 200 && setEquals(pressedDots, correctDotsSet)) {
-                        // ถูก
-                        currentDisplay.push(Array.from(pressedDots).sort().join(' '));
+function handleKeyUp(e) {
+    const key = e.key.toLowerCase();
+    if (key in keyToDot) {
+        const dot = keyToDot[key];
+        currentlyPressedDots.delete(dot);
+        if (currentlyPressedDots.size === 0 && pressedDots.size > 0) {
+            // check chord
+            const tsValues = Object.values(timestamps);
+            const minTs = Math.min(...tsValues);
+            const maxTs = Math.max(...tsValues);
+            if (maxTs - minTs <= 200) {
+                const currentLetter = currentWord.word[currentLetterIndex].toLowerCase();
+                const correctDotsStr = letterMap[currentLetter];
+                if (correctDotsStr) {
+                    const correctDotsSet = new Set(correctDotsStr.split(',').map(d => d.trim()));
+                    if (setEquals(pressedDots, correctDotsSet)) {
+                        currentDisplay.push(Array.from(pressedDots).sort((a,b)=>a-b).join(' '));
                         updateDisplay();
-                        markButtonsUsed(pressedDots);
-
                         const isLast = currentLetterIndex === currentWord.word.length - 1;
                         handleCorrectLetter(isLast);
                     } else {
-                        // ผิด
                         handleWrongLetter();
                     }
-                }, 0);
-            } else if (pressedDots.size > correctDotsSet.size) {
-                // กดจุดเกิน
+                } else {
+                    handleWrongLetter();
+                }
+            } else {
                 handleWrongLetter();
             }
+            // reset
+            pressedDots.clear();
+            currentlyPressedDots.clear();
+            timestamps = {};
+            clearButtonStates();
         }
     }
-});
+}
+
+document.addEventListener('keydown', handleKeyDown);
+document.addEventListener('keyup', handleKeyUp);
 
 // สำหรับ touch (คลิกปุ่มจุด)
 function selectLetter(btn, dot) {
-    // ไม่ใช้ในโหมดคำ (ต้องกดพร้อมกันด้วยคีย์บอร์ดจริง) แต่คงไว้เพื่อไม่ให้ error
+    if (attemptedThisLetter || isProcessingTimeout) return;
+    if (btn.classList.contains('used')) {
+        btn.classList.remove('used');
+        pressedDots.delete(dot);
+    } else {
+        btn.classList.add('used');
+        pressedDots.add(dot);
+    }
+    updateDisplay();
 }
 
 async function endGame() {
