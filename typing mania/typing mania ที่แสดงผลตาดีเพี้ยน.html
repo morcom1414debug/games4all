@@ -43,7 +43,7 @@
         }
         .typing-display {
             font-size: 4.5rem; font-weight: bold; min-height: 120px;
-            margin: 40px 20px; color: #ff6b9d;
+            margin: 40px 20px; letter-spacing: 8px; color: #ff6b9d;
             background: rgba(255,255,255,0.4); padding: 30px; border-radius: 30px;
             box-shadow: 0 8px 25px rgba(0,0,0,0.15);
         }
@@ -277,7 +277,7 @@ async function startGame(level) {
     backBtn.style.display = 'none';
 
     questionElem.innerHTML = '';
-    typingDisplay.textContent = '';
+    typingDisplay.textContent = '_ _ _ _ _ _ _ _';
     questionLive.textContent = '';
 
     await audioEngine.startBGM();
@@ -308,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         levelSelect.style.display = 'block';
         backBtn.style.display = 'block';
         questionElem.innerHTML = '';
-        typingDisplay.textContent = '';
+        typingDisplay.textContent = '_ _ _ _ _ _ _ _';
         questionLive.textContent = '';
     };
 
@@ -350,7 +350,7 @@ async function nextQuestion(isFirst = false) {
     questionElem.innerHTML = questionText;
 
     clearInterval(timerInterval);
-    updateTypingDisplay();   // จะแสดงส่วนที่พิมพ์ถูก + ขีดล่างส่วนที่เหลือ
+    updateTypingDisplay();
 
     let timeLeft = timePerQuestion;
     document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
@@ -368,33 +368,28 @@ async function nextQuestion(isFirst = false) {
         }
     }, 1000);
 
+    // ปรับตรงนี้: ล้างก่อนแล้วค่อยตั้งค่าใหม่ เพื่อให้ screen reader ประกาศเฉพาะข้อใหม่เท่านั้น
     questionLive.textContent = '';
     requestAnimationFrame(() => {
         questionLive.textContent = questionText;
     });
 
+    // === เพิ่มเติม: ให้ focus กลับไปที่หัวข้อคำถามทุกครั้งที่มีคำถามใหม่ ===
     setTimeout(() => {
         questionElem.focus();
     }, 100);
 }
 
-// ปรับส่วนการแสดงผลให้แสดงตามการเรนเดอร์ภาษาไทยจริง ๆ
 function updateTypingDisplay() {
-    const typedPart = currentWord.slice(0, typedSoFar.length);        // ส่วนที่พิมพ์ถูกแล้ว
-    const remainingPart = currentWord.slice(typedSoFar.length);       // ส่วนที่ยังไม่ได้พิมพ์
-
-    // แปลงส่วนที่เหลือเป็นขีดล่าง โดยคงจำนวนตัวอักษรเดิม (ไม่รวมสระ/วรรณยุกต์ที่ลอย)
-    let underscores = '';
-    for (let i = 0; i < remainingPart.length; i++) {
-        const code = remainingPart.charCodeAt(i);
-        // ถ้าเป็นสระลอยหรือวรรณยุกต์ (Unicode 0x0E34-0x0E3A, 0x0E47-0x0E4E) ให้ข้ามไม่นับเป็น underscore แยก
-        if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) {
-            continue;
+    const displayParts = [];
+    for (let i = 0; i < currentWord.length; i++) {
+        if (i < typedSoFar.length) {
+            displayParts.push(currentWord[i]);
+        } else {
+            displayParts.push('_');
         }
-        underscores += '_';
     }
-
-    typingDisplay.textContent = typedPart + underscores;
+    typingDisplay.textContent = displayParts.join(' ');
 }
 
 // ตรวจจับการพิมพ์
@@ -444,7 +439,7 @@ async function endGame() {
     deactivateApplicationMode();
 
     questionElem.innerHTML = '';
-    typingDisplay.textContent = '';
+    typingDisplay.textContent = '_ _ _ _ _ _ _ _';
     questionLive.textContent = '';
 
     const title = document.getElementById('resultTitle');
