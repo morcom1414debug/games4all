@@ -332,17 +332,14 @@ let isProcessingTimeout = false;
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, spellingDisplay, lettersDiv, questionLive;
 
 // ตัวแปรใหม่สำหรับการพิมพ์คำ
-let currentWord = null;           
-let currentLetterIndex = 0;       
-let currentDisplay = [];          
+let currentWord = null;           // {word, th}
+let currentLetterIndex = 0;       // ตัวอักษรที่กำลังพิมพ์ (0-based)
+let currentDisplay = [];          // array ของ string เช่น ["1","1 3 4 5","2 3 4 5"]
 
 let pressedDots = new Set();
 let currentlyPressedDots = new Set();
 let timestamps = {};
 let attemptedThisLetter = false;
-
-// เพิ่มตัวแปรล็อก input
-let inputLocked = false;
 
 function shuffle(array) {
     const arr = [...array];
@@ -362,13 +359,13 @@ function setEquals(setA, setB) {
 async function startGame(level) {
     if (level === 'easy') {
         TOTAL_QUESTIONS = 5;
-        timePerQuestion = 20;
+        timePerQuestion = 30;
     } else if (level === 'medium') {
         TOTAL_QUESTIONS = 7;
-        timePerQuestion = 15;
+        timePerQuestion = 20;
     } else if (level === 'hard') {
         TOTAL_QUESTIONS = 10;
-        timePerQuestion = 10;
+        timePerQuestion = 14;
     }
 
     levelSelect.style.display = 'none';
@@ -476,13 +473,9 @@ async function nextQuestion(isFirst = false) {
             clearInterval(timerInterval);
             audioEngine.playEffect('wrongSound');
             audioEngine.playEffect('fSound').then(() => {
-                inputLocked = true;
-                setTimeout(() => {
-                    inputLocked = false;
-                    currentQ++;
-                    if (currentQ < TOTAL_QUESTIONS) announceQuestion();
-                    nextQuestion();
-                }, 400);
+                currentQ++;
+                if (currentQ < TOTAL_QUESTIONS) announceQuestion();
+                nextQuestion();
             });
         }
     }, 1000);
@@ -562,23 +555,23 @@ function clearButtonStates() {
 async function handleCorrectLetter(isLastLetter) {
     attemptedThisLetter = true;
 
+    // เล่นเสียงยืนยัน
     if (isLastLetter) {
         await audioEngine.playEffect('tSound');
     } else {
         await audioEngine.playEffect('t2Sound');
     }
 
+    // ไปตัวอักษรถัดไป หรือจบข้อ
     currentLetterIndex++;
     if (currentLetterIndex >= currentWord.word.length) {
+        // ตอบถูกทั้งคำ
         score++;
         currentQ++;
         if (currentQ < TOTAL_QUESTIONS) announceQuestion();
-        inputLocked = true;
-        setTimeout(() => {
-            inputLocked = false;
-            nextQuestion();
-        }, 400);
+        nextQuestion();
     } else {
+        // รอตัวอักษรต่อไป
         pressedDots.clear();
         currentlyPressedDots.clear();
         timestamps = {};
@@ -599,15 +592,11 @@ async function handleWrongLetter() {
 
     currentQ++;
     if (currentQ < TOTAL_QUESTIONS) announceQuestion();
-    inputLocked = true;
-    setTimeout(() => {
-        inputLocked = false;
-        nextQuestion();
-    }, 400);
+    nextQuestion();
 }
 
 function handleKeyDown(e) {
-    if (gameDiv.style.display !== 'block' || attemptedThisLetter || isProcessingTimeout || inputLocked) return;
+    if (gameDiv.style.display !== 'block' || attemptedThisLetter || isProcessingTimeout) return;
 
     const key = e.key.toLowerCase();
     if (key in keyToDot) {
@@ -625,6 +614,7 @@ function handleKeyDown(e) {
     } else if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         if (pressedDots.size > 0) {
+            // no time check for manual submit
             const currentLetter = currentWord.word[currentLetterIndex].toLowerCase();
             const correctDotsStr = letterMap[currentLetter];
             if (correctDotsStr) {
@@ -640,6 +630,7 @@ function handleKeyDown(e) {
             } else {
                 handleWrongLetter();
             }
+            // reset
             pressedDots.clear();
             currentlyPressedDots.clear();
             timestamps = {};
@@ -649,13 +640,12 @@ function handleKeyDown(e) {
 }
 
 function handleKeyUp(e) {
-    if (inputLocked) return;
-
     const key = e.key.toLowerCase();
     if (key in keyToDot) {
         const dot = keyToDot[key];
         currentlyPressedDots.delete(dot);
         if (currentlyPressedDots.size === 0 && pressedDots.size > 0) {
+            // check chord
             const tsValues = Object.values(timestamps);
             const minTs = Math.min(...tsValues);
             const maxTs = Math.max(...tsValues);
@@ -678,6 +668,7 @@ function handleKeyUp(e) {
             } else {
                 handleWrongLetter();
             }
+            // reset
             pressedDots.clear();
             currentlyPressedDots.clear();
             timestamps = {};
@@ -689,8 +680,9 @@ function handleKeyUp(e) {
 document.addEventListener('keydown', handleKeyDown);
 document.addEventListener('keyup', handleKeyUp);
 
+// สำหรับ touch (คลิกปุ่มจุด)
 function selectLetter(btn, dot) {
-    if (attemptedThisLetter || isProcessingTimeout || inputLocked) return;
+    if (attemptedThisLetter || isProcessingTimeout) return;
     if (btn.classList.contains('used')) {
         btn.classList.remove('used');
         pressedDots.delete(dot);
