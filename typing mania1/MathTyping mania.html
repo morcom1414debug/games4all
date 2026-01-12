@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>คณิตคิดไว - Math Typing</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800;900&display=swap');
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: 'Kanit', sans-serif;
+            background: linear-gradient(135deg, #ffe066 0%, #ff9a8b 100%);
+            height: 100vh; color: #333; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .container { width: 100%; max-width: 480px; padding: 15px; position: relative; }
+        #backToMenu {
+            position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.5);
+            padding: 8px 20px; border: none; border-radius: 50px; color: #333; font-weight: 600;
+            font-size: 1rem; cursor: pointer; backdrop-filter: blur(12px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2); z-index: 1000; transition: all 0.3s;
+        }
+        #backToMenu:hover { background: rgba(255,255,255,0.7); }
+        #levelSelect { text-align: center; }
+        h1 { font-size: 2.6rem; margin: 0 0 10px; text-shadow: 0 4px 15px rgba(0,0,0,0.2); color: #d35400; }
+        .subtitle { font-size: 1.3rem; margin-bottom: 12px; opacity: 0.9; color: #444; }
+        .friendly-msg {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #e67e22;
+            margin: 0 0 30px 0;
+            text-shadow: 0 2px 8px rgba(230,126,34,0.3);
+        }
+        .level-buttons { display: flex; flex-direction: column; gap: 18px; align-items: center; }
+        .level-btn {
+            width: 80%; max-width: 320px; padding: 20px; font-size: 1.8rem; font-weight: 800;
+            border: none; border-radius: 30px; cursor: pointer;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.2); transition: all 0.3s; color: white;
+        }
+        .level-btn:hover { transform: translateY(-8px) scale(1.05); }
+        #easy { background: #ffaa33; }
+        #medium { background: #ff8533; }
+        #hard { background: #ff6b33; }
+        #game { display: none; text-align: center; position: relative; }
+        .question-heading {
+            font-size: 2.4rem; font-weight: 900; margin: 40px 20px 20px;
+            padding: 20px; background: rgba(255,255,255,0.55);
+            border-radius: 30px; backdrop-filter: blur(10px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15); color: #d35400;
+        }
+        .typing-display {
+            font-size: 4.5rem; font-weight: bold; min-height: 120px;
+            margin: 40px 20px; color: #e67e22;
+            background: rgba(255,255,255,0.5); padding: 30px; border-radius: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .timer { display: none !important; }
+
+        /* Success Celebration Overlay */
+        #success-celebration {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6rem;
+            opacity: 0;
+            transform: scale(0.6);
+            transition: all 0.7s ease-out;
+            z-index: 10;
+        }
+        #success-celebration.show {
+            opacity: 0.92;
+            transform: scale(1.4) rotate(10deg);
+        }
+
+        /* Fail Celebration Overlay (X สีแดง) */
+        #fail-celebration {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 7rem;
+            color: #e74c3c;
+            opacity: 0;
+            transform: scale(0.5) rotate(-15deg);
+            transition: all 0.7s ease-out;
+            z-index: 10;
+            text-shadow: 0 0 15px rgba(231,76,60,0.7);
+        }
+        #fail-celebration.show {
+            opacity: 0.9;
+            transform: scale(1.3) rotate(0deg);
+        }
+
+        #result { display: none; text-align: center; }
+        #result h2 { font-size: 3.8rem; margin: 40px 0 20px; color: #d35400; }
+        #resultMsg { font-size: 2rem; line-height: 1.6; margin: 30px 0; color: #444; }
+        #score { font-size: 5rem; font-weight: 900; margin: 40px 0; color: #e67e22; }
+        .btn-restart {
+            padding: 18px 60px; font-size: 1.8rem; background: #ffaa33;
+            border: none; border-radius: 50px; color: white; cursor: pointer;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        .btn-restart:hover { transform: translateY(-6px); }
+
+        /* aria-live */
+        #question-live {
+            position: absolute;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <button id="backToMenu">กลับเมนูหลัก</button>
+
+    <div id="levelSelect">
+        <h1>คณิตคิดไว - Math Typing</h1>
+        <p class="subtitle">ต้องเล่นร่วมกับแป้นพิมพ์จริงเท่านั้น! คำนวณแล้วพิมพ์คำตอบให้ถูกต้องทุกหลัก<br>ฝึกเร็ว แม่น ภายในเวลาจำกัด!</p>
+        <p class="friendly-msg">พร้อมแล้ว ลุยเลย!</p>
+        
+        <div class="level-buttons">
+            <button class="level-btn" id="easy">ฝึกพื้นฐานเซียน 🐶</button>
+            <button class="level-btn" id="medium">ระดับเซียน 🐱</button>
+            <button class="level-btn" id="hard">ปราบเซียน 🐰</button>
+        </div>
+    </div>
+
+    <div id="game">
+        <div id="success-celebration">🎉✨⭐</div>
+        <div id="fail-celebration">❌</div>
+        <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
+        <div class="typing-display" id="typingDisplay">_ _ _ _ _ _ _ _</div>
+    </div>
+
+    <!-- aria-live element -->
+    <div id="question-live" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="result">
+        <h2 id="resultTitle" tabindex="-1">สุดยอดมาก!</h2>
+        <div id="resultMsg" style="font-size: 2.4rem; margin: 40px 0; line-height: 1.6;"></div>
+        <div id="score">1000 คะแนน</div>
+        <button class="btn-restart" id="restartBtn">เริ่มเล่นใหม่</button>
+    </div>
+</div>
+
+<script>
+// ======== Web Audio API Engine ======== (เหมือนเดิมทุกประการ)
+class AudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.isUnlocked = false;
+    this.bgmSource = null;
+    this.bgmGain = null;
+    this.bgmBuffer = null;
+    this.currentEndPromise = null;
+
+    this.sounds = {
+      correctSound: "https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3",
+      wrongSound: "https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3",
+      bgm: "audio/b5.mp3",
+      doorSound: "audio/door.mp3",
+      t1Sound: "audio/t1.mp3",
+      tSound: "audio/t.mp3",
+      t2Sound: "audio/t2.mp3",
+      fSound: "audio/f.mp3",
+      endSound: "audio/end.mp3",
+      end1Sound: "audio/end1.mp3"
+    };
+
+    this.buffers = {};
+  }
+
+  async initContext() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await this.loadAllBuffers();
+  }
+
+  async loadAllBuffers() {
+    const promises = Object.entries(this.sounds).map(async ([key, url]) => {
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+        this.buffers[key] = audioBuffer;
+      } catch (e) {
+        console.warn(`Failed to load sound: ${key} - ${url}`, e);
+      }
+    });
+    await Promise.all(promises);
+  }
+
+  async unlockAll() {
+    if (this.isUnlocked) return;
+    await this.initContext();
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.ctx.createBuffer(1, 1, 22050);
+    source.connect(this.ctx.destination);
+    source.start(0);
+    this.isUnlocked = true;
+  }
+
+  async startBGM() {
+    if (!this.buffers.bgm || this.bgmSource) return;
+    await this.unlockAll();
+
+    this.bgmSource = this.ctx.createBufferSource();
+    this.bgmSource.buffer = this.buffers.bgm;
+    this.bgmSource.loop = true;
+
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 0.6;
+
+    this.bgmSource.connect(this.bgmGain);
+    this.bgmGain.connect(this.ctx.destination);
+
+    this.bgmSource.start(0);
+  }
+
+  stopBGM() {
+    if (this.bgmSource) {
+      this.bgmSource.stop();
+      this.bgmSource = null;
+      this.bgmGain = null;
+    }
+  }
+
+  async playEffect(key) {
+    if (!this.buffers[key]) return;
+    await this.unlockAll();
+
+    if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
+      return this.currentEndPromise;
+    }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers[key];
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = key.includes('end') || key === 'bgm' ? 0.8 : 0.8;
+
+    source.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+
+    const p = new Promise(resolve => {
+      source.onended = () => resolve();
+      setTimeout(resolve, 4000);
+    });
+
+    source.start(0);
+
+    if (key === 'endSound' || key === 'end1Sound') {
+      this.currentEndPromise = p;
+      p.finally(() => { this.currentEndPromise = null; });
+    }
+
+    return p;
+  }
+}
+
+const audioEngine = new AudioEngine();
+
+let hasUserInteracted = false;
+async function unlockAudio(){
+  if (hasUserInteracted) return;
+  hasUserInteracted = true;
+  await audioEngine.unlockAll();
+  await audioEngine.startBGM();
+}
+document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
+document.addEventListener("click", unlockAudio, {once:true});
+
+// ชุดคำถาม-คำตอบใหม่ทั้ง 300 ชุด (hint = โจทย์, answer = คำตอบตัวเลข)
+const riddles = [
+  { answer: "18", hint: "9 บวก 9 เท่ากับ" },
+  { answer: "64", hint: "120 ลบ 56 เท่ากับ" },
+  { answer: "40", hint: "15 บวก 25 เท่ากับ" },
+  { answer: "56", hint: "8 คูณ 7 เท่ากับ" },
+  { answer: "9", hint: "45 หารด้วย 5 เท่ากับ" },
+  { answer: "32", hint: "18 บวก 14 เท่ากับ" },
+  { answer: "35", hint: "60 ลบ 25 เท่ากับ" },
+  { answer: "48", hint: "12 คูณ 4 เท่ากับ" },
+  { answer: "9", hint: "81 หารด้วย 9 เท่ากับ" },
+  { answer: "50", hint: "33 บวก 17 เท่ากับ" },
+  { answer: "32", hint: "50 ลบ 18 เท่ากับ" },
+  { answer: "54", hint: "6 คูณ 9 เท่ากับ" },
+  { answer: "25", hint: "100 หารด้วย 4 เท่ากับ" },
+  { answer: "60", hint: "22 บวก 38 เท่ากับ" },
+  { answer: "46", hint: "75 ลบ 29 เท่ากับ" },
+  { answer: "121", hint: "11 คูณ 11 เท่ากับ" },
+  { answer: "12", hint: "144 หารด้วย 12 เท่ากับ" },
+  { answer: "60", hint: "46 บวก 14 เท่ากับ" },
+  { answer: "45", hint: "90 ลบ 45 เท่ากับ" },
+  { answer: "39", hint: "13 คูณ 3 เท่ากับ" },
+  { answer: "8", hint: "64 หารด้วย 8 เท่ากับ" },
+  { answer: "100", hint: "55 บวก 45 เท่ากับ" },
+  { answer: "75", hint: "110 ลบ 35 เท่ากับ" },
+  { answer: "60", hint: "15 คูณ 4 เท่ากับ" },
+  { answer: "12", hint: "120 หารด้วย 10 เท่ากับ" },
+  { answer: "40", hint: "19 บวก 21 เท่ากับ" },
+  { answer: "44", hint: "88 ลบ 44 เท่ากับ" },
+  { answer: "42", hint: "7 คูณ 6 เท่ากับ" },
+  { answer: "8", hint: "56 หารด้วย 7 เท่ากับ" },
+  { answer: "40", hint: "27 บวก 13 เท่ากับ" },
+  { answer: "45", hint: "62 ลบ 17 เท่ากับ" },
+  { answer: "60", hint: "5 คูณ 12 เท่ากับ" },
+  { answer: "8", hint: "48 หารด้วย 6 เท่ากับ" },
+  { answer: "70", hint: "35 บวก 35 เท่ากับ" },
+  { answer: "75", hint: "200 ลบ 125 เท่ากับ" },
+  { answer: "100", hint: "20 คูณ 5 เท่ากับ" },
+  { answer: "30", hint: "90 หารด้วย 3 เท่ากับ" },
+  { answer: "32", hint: "16 บวก 16 เท่ากับ" },
+  { answer: "24", hint: "43 ลบ 19 เท่ากับ" },
+  { answer: "64", hint: "8 คูณ 8 เท่ากับ" },
+  { answer: "12", hint: "72 หารด้วย 6 เท่ากับ" },
+  { answer: "90", hint: "67 บวก 23 เท่ากับ" },
+  { answer: "85", hint: "150 ลบ 65 เท่ากับ" },
+  { answer: "27", hint: "9 คูณ 3 เท่ากับ" },
+  { answer: "9", hint: "36 หารด้วย 4 เท่ากับ" },
+  { answer: "40", hint: "14 บวก 26 เท่ากับ" },
+  { answer: "50", hint: "84 ลบ 34 เท่ากับ" },
+  { answer: "60", hint: "12 คูณ 5 เท่ากับ" },
+  { answer: "55", hint: "110 หารด้วย 2 เท่ากับ" },
+  { answer: "50", hint: "31 บวก 19 เท่ากับ" },
+  { answer: "55", hint: "95 ลบ 40 เท่ากับ" },
+  { answer: "60", hint: "4 คูณ 15 เท่ากับ" },
+  { answer: "14", hint: "42 หารด้วย 3 เท่ากับ" },
+  { answer: "70", hint: "52 บวก 18 เท่ากับ" },
+  { answer: "60", hint: "130 ลบ 70 เท่ากับ" },
+  { answer: "42", hint: "6 คูณ 7 เท่ากับ" },
+  { answer: "12", hint: "60 หารด้วย 5 เท่ากับ" },
+  { answer: "50", hint: "28 บวก 22 เท่ากับ" },
+  { answer: "25", hint: "80 ลบ 55 เท่ากับ" },
+  { answer: "28", hint: "14 คูณ 2 เท่ากับ" },
+  { answer: "11", hint: "121 หารด้วย 11 เท่ากับ" },
+  { answer: "60", hint: "47 บวก 13 เท่ากับ" },
+  { answer: "18", hint: "100 ลบ 82 เท่ากับ" },
+  { answer: "45", hint: "9 คูณ 5 เท่ากับ" },
+  { answer: "5", hint: "40 หารด้วย 8 เท่ากับ" },
+  { answer: "80", hint: "12 บวก 68 เท่ากับ" },
+  { answer: "27", hint: "54 ลบ 27 เท่ากับ" },
+  { answer: "75", hint: "3 คูณ 25 เท่ากับ" },
+  { answer: "30", hint: "150 หารด้วย 5 เท่ากับ" },
+  { answer: "50", hint: "39 บวก 11 เท่ากับ" },
+  { answer: "55", hint: "77 ลบ 22 เท่ากับ" },
+  { answer: "32", hint: "8 คูณ 4 เท่ากับ" },
+  { answer: "9", hint: "63 หารด้วย 7 เท่ากับ" },
+  { answer: "34", hint: "17 บวก 17 เท่ากับ" },
+  { answer: "65", hint: "115 ลบ 50 เท่ากับ" },
+  { answer: "36", hint: "12 คูณ 3 เท่ากับ" },
+  { answer: "12", hint: "48 หารด้วย 4 เท่ากับ" },
+  { answer: "80", hint: "24 บวก 56 เท่ากับ" },
+  { answer: "80", hint: "160 ลบ 80 เท่ากับ" },
+  { answer: "70", hint: "5 คูณ 14 เท่ากับ" },
+  { answer: "11", hint: "99 หารด้วย 9 เท่ากับ" },
+  { answer: "60", hint: "41 บวก 19 เท่ากับ" },
+  { answer: "50", hint: "85 ลบ 35 เท่ากับ" },
+  { answer: "63", hint: "7 คูณ 9 เท่ากับ" },
+  { answer: "9", hint: "72 หารด้วย 8 เท่ากับ" },
+  { answer: "60", hint: "29 บวก 31 เท่ากับ" },
+  { answer: "75", hint: "140 ลบ 65 เท่ากับ" },
+  { answer: "45", hint: "15 คูณ 3 เท่ากับ" },
+  { answer: "20", hint: "100 หารด้วย 5 เท่ากับ" },
+  { answer: "80", hint: "58 บวก 22 เท่ากับ" },
+  { answer: "100", hint: "125 ลบ 25 เท่ากับ" },
+  { answer: "16", hint: "4 คูณ 4 เท่ากับ" },
+  { answer: "16", hint: "32 หารด้วย 2 เท่ากับ" },
+  { answer: "100", hint: "13 บวก 87 เท่ากับ" },
+  { answer: "50", hint: "92 ลบ 42 เท่ากับ" },
+  { answer: "66", hint: "11 คูณ 6 เท่ากับ" },
+  { answer: "9", hint: "54 หารด้วย 6 เท่ากับ" },
+  { answer: "80", hint: "37 บวก 43 เท่ากับ" },
+  { answer: "90", hint: "180 ลบ 90 เท่ากับ" },
+  { answer: "72", hint: "8 คูณ 9 เท่ากับ" },
+  { answer: "30", hint: "120 หารด้วย 4 เท่ากับ" },
+  { answer: "50", hint: "26 บวก 24 เท่ากับ" },
+  { answer: "30", hint: "68 ลบ 38 เท่ากับ" },
+  { answer: "65", hint: "13 คูณ 5 เท่ากับ" },
+  { answer: "7", hint: "49 หารด้วย 7 เท่ากับ" },
+  { answer: "70", hint: "55 บวก 15 เท่ากับ" },
+  { answer: "65", hint: "110 ลบ 45 เท่ากับ" },
+  { answer: "66", hint: "6 คูณ 11 เท่ากับ" },
+  { answer: "11", hint: "88 หารด้วย 8 เท่ากับ" },
+  { answer: "90", hint: "18 บวก 72 เท่ากับ" },
+  { answer: "50", hint: "200 ลบ 150 เท่ากับ" },
+  { answer: "84", hint: "7 คูณ 12 เท่ากับ" },
+  { answer: "24", hint: "144 หารด้วย 6 เท่ากับ" },
+  { answer: "100", hint: "45 บวก 55 เท่ากับ" },
+  { answer: "49", hint: "98 ลบ 49 เท่ากับ" },
+  { answer: "81", hint: "9 คูณ 9 เท่ากับ" },
+  { answer: "13", hint: "65 หารด้วย 5 เท่ากับ" },
+  { answer: "100", hint: "34 บวก 66 เท่ากับ" },
+  { answer: "85", hint: "130 ลบ 45 เท่ากับ" },
+  { answer: "42", hint: "14 คูณ 3 เท่ากับ" },
+  { answer: "18", hint: "72 หารด้วย 4 เท่ากับ" },
+  { answer: "70", hint: "25 บวก 45 เท่ากับ" },
+  { answer: "65", hint: "150 ลบ 85 เท่ากับ" },
+  { answer: "48", hint: "8 คูณ 6 เท่ากับ" },
+  { answer: "32", hint: "96 หารด้วย 3 เท่ากับ" },
+  { answer: "24", hint: "12 บวก 12 เท่ากับ" },
+  { answer: "44", hint: "77 ลบ 33 เท่ากับ" },
+  { answer: "55", hint: "5 คูณ 11 เท่ากับ" },
+  { answer: "7", hint: "42 หารด้วย 6 เท่ากับ" },
+  { answer: "80", hint: "59 บวก 21 เท่ากับ" },
+  { answer: "25", hint: "120 ลบ 95 เท่ากับ" },
+  { answer: "72", hint: "12 คูณ 6 เท่ากับ" },
+  { answer: "22", hint: "110 หารด้วย 5 เท่ากับ" },
+  { answer: "50", hint: "17 บวก 33 เท่ากับ" },
+  { answer: "38", hint: "80 ลบ 42 เท่ากับ" },
+  { answer: "48", hint: "4 คูณ 12 เท่ากับ" },
+  { answer: "12", hint: "84 หารด้วย 7 เท่ากับ" },
+  { answer: "70", hint: "28 บวก 42 เท่ากับ" },
+  { answer: "32", hint: "90 ลบ 58 เท่ากับ" },
+  { answer: "49", hint: "7 คูณ 7 เท่ากับ" },
+  { answer: "15", hint: "30 หารด้วย 2 เท่ากับ" },
+  { answer: "100", hint: "66 บวก 34 เท่ากับ" },
+  { answer: "90", hint: "115 ลบ 25 เท่ากับ" },
+  { answer: "36", hint: "9 คูณ 4 เท่ากับ" },
+  { answer: "12", hint: "108 หารด้วย 9 เท่ากับ" },
+  { answer: "88", hint: "44 บวก 44 เท่ากับ" },
+  { answer: "90", hint: "200 ลบ 110 เท่ากับ" },
+  { answer: "75", hint: "15 คูณ 5 เท่ากับ" },
+  { answer: "14", hint: "56 หารด้วย 4 เท่ากับ" },
+  { answer: "50", hint: "35 บวก 15 เท่ากับ" },
+  { answer: "35", hint: "70 ลบ 35 เท่ากับ" },
+  { answer: "24", hint: "8 คูณ 3 เท่ากับ" },
+  { answer: "15", hint: "90 หารด้วย 6 เท่ากับ" },
+  { answer: "50", hint: "23 บวก 27 เท่ากับ" },
+  { answer: "60", hint: "140 ลบ 80 เท่ากับ" },
+  { answer: "24", hint: "12 คูณ 2 เท่ากับ" },
+  { answer: "24", hint: "48 หารด้วย 2 เท่ากับ" },
+  { answer: "80", hint: "62 บวก 18 เท่ากับ" },
+  { answer: "36", hint: "100 ลบ 64 เท่ากับ" },
+  { answer: "36", hint: "6 คูณ 6 เท่ากับ" },
+  { answer: "25", hint: "75 หารด้วย 3 เท่ากับ" },
+  { answer: "60", hint: "49 บวก 11 เท่ากับ" },
+  { answer: "50", hint: "125 ลบ 75 เท่ากับ" },
+  { answer: "72", hint: "9 คูณ 8 เท่ากับ" },
+  { answer: "25", hint: "50 หารด้วย 2 เท่ากับ" },
+  { answer: "50", hint: "16 บวก 34 เท่ากับ" },
+  { answer: "40", hint: "85 ลบ 45 เท่ากับ" },
+  { answer: "35", hint: "7 คูณ 5 เท่ากับ" },
+  { answer: "12", hint: "96 หารด้วย 8 เท่ากับ" },
+  { answer: "80", hint: "38 บวก 42 เท่ากับ" },
+  { answer: "85", hint: "110 ลบ 25 เท่ากับ" },
+  { answer: "26", hint: "13 คูณ 2 เท่ากับ" },
+  { answer: "15", hint: "120 หารด้วย 8 เท่ากับ" },
+  { answer: "80", hint: "55 บวก 25 เท่ากับ" },
+  { answer: "57", hint: "90 ลบ 33 เท่ากับ" },
+  { answer: "80", hint: "4 คูณ 20 เท่ากับ" },
+  { answer: "22", hint: "66 หารด้วย 3 เท่ากับ" },
+  { answer: "80", hint: "41 บวก 39 เท่ากับ" },
+  { answer: "105", hint: "150 ลบ 45 เท่ากับ" },
+  { answer: "80", hint: "8 คูณ 10 เท่ากับ" },
+  { answer: "10", hint: "40 หารด้วย 4 เท่ากับ" },
+  { answer: "50", hint: "29 บวก 21 เท่ากับ" },
+  { answer: "58", hint: "70 ลบ 12 เท่ากับ" },
+  { answer: "33", hint: "11 คูณ 3 เท่ากับ" },
+  { answer: "5", hint: "100 หารด้วย 20 เท่ากับ" },
+  { answer: "90", hint: "73 บวก 17 เท่ากับ" },
+  { answer: "120", hint: "180 ลบ 60 เท่ากับ" },
+  { answer: "18", hint: "9 คูณ 2 เท่ากับ" },
+  { answer: "10", hint: "110 หารด้วย 11 เท่ากับ" },
+  { answer: "60", hint: "24 บวก 36 เท่ากับ" },
+  { answer: "40", hint: "95 ลบ 55 เท่ากับ" },
+  { answer: "48", hint: "6 คูณ 8 เท่ากับ" },
+  { answer: "6", hint: "54 หารด้วย 9 เท่ากับ" },
+  { answer: "70", hint: "57 บวก 13 เท่ากับ" },
+  { answer: "50", hint: "130 ลบ 80 เท่ากับ" },
+  { answer: "84", hint: "12 คูณ 7 เท่ากับ" },
+  { answer: "12", hint: "144 หารด้วย 12 เท่ากับ" },
+  { answer: "100", hint: "15 บวก 85 เท่ากับ" },
+  { answer: "63", hint: "100 ลบ 37 เท่ากับ" },
+  { answer: "28", hint: "7 คูณ 4 เท่ากับ" },
+  { answer: "27", hint: "81 หารด้วย 3 เท่ากับ" },
+  { answer: "70", hint: "42 บวก 28 เท่ากับ" },
+  { answer: "75", hint: "90 ลบ 15 เท่ากับ" },
+  { answer: "45", hint: "5 คูณ 9 เท่ากับ" },
+  { answer: "15", hint: "60 หารด้วย 4 เท่ากับ" },
+  { answer: "90", hint: "31 บวก 59 เท่ากับ" },
+  { answer: "55", hint: "120 ลบ 65 เท่ากับ" },
+  { answer: "56", hint: "14 คูณ 4 เท่ากับ" },
+  { answer: "14", hint: "70 หารด้วย 5 เท่ากับ" },
+  { answer: "100", hint: "26 บวก 74 เท่ากับ" },
+  { answer: "66", hint: "110 ลบ 44 เท่ากับ" },
+  { answer: "96", hint: "8 คูณ 12 เท่ากับ" },
+  { answer: "10", hint: "90 หารด้วย 9 เท่ากับ" },
+  { answer: "80", hint: "63 บวก 17 เท่ากับ" },
+  { answer: "30", hint: "150 ลบ 120 เท่ากับ" },
+  { answer: "63", hint: "9 คูณ 7 เท่ากับ" },
+  { answer: "16", hint: "48 หารด้วย 3 เท่ากับ" },
+  { answer: "60", hint: "19 บวก 41 เท่ากับ" },
+  { answer: "52", hint: "80 ลบ 28 เท่ากับ" },
+  { answer: "55", hint: "11 คูณ 5 เท่ากับ" },
+  { answer: "11", hint: "121 หารด้วย 11 เท่ากับ" },
+  { answer: "100", hint: "52 บวก 48 เท่ากับ" },
+  { answer: "41", hint: "100 ลบ 59 เท่ากับ" },
+  { answer: "72", hint: "6 คูณ 12 เท่ากับ" },
+  { answer: "16", hint: "64 หารด้วย 4 เท่ากับ" },
+  { answer: "60", hint: "37 บวก 23 เท่ากับ" },
+  { answer: "49", hint: "90 ลบ 41 เท่ากับ" },
+  { answer: "52", hint: "13 คูณ 4 เท่ากับ" },
+  { answer: "16", hint: "80 หารด้วย 5 เท่ากับ" },
+  { answer: "60", hint: "44 บวก 16 เท่ากับ" },
+  { answer: "85", hint: "120 ลบ 35 เท่ากับ" },
+  { answer: "56", hint: "7 คูณ 8 เท่ากับ" },
+  { answer: "33", hint: "99 หารด้วย 3 เท่ากับ" },
+  { answer: "100", hint: "25 บวก 75 เท่ากับ" },
+  { answer: "55", hint: "150 ลบ 95 เท่ากับ" },
+  { answer: "30", hint: "15 คูณ 2 เท่ากับ" },
+  { answer: "10", hint: "100 หารด้วย 10 เท่ากับ" },
+  { answer: "80", hint: "68 บวก 12 เท่ากับ" },
+  { answer: "53", hint: "85 ลบ 32 เท่ากับ" },
+  { answer: "96", hint: "12 คูณ 8 เท่ากับ" },
+  { answer: "36", hint: "72 หารด้วย 2 เท่ากับ" },
+  { answer: "100", hint: "14 บวก 86 เท่ากับ" },
+  { answer: "95", hint: "110 ลบ 15 เท่ากับ" },
+  { answer: "75", hint: "5 คูณ 15 เท่ากับ" },
+  { answer: "5", hint: "60 หารด้วย 12 เท่ากับ" },
+  { answer: "100", hint: "49 บวก 51 เท่ากับ" },
+  { answer: "18", hint: "90 ลบ 72 เท่ากับ" },
+  { answer: "54", hint: "9 คูณ 6 เท่ากับ" },
+  { answer: "18", hint: "144 หารด้วย 8 เท่ากับ" },
+  { answer: "44", hint: "22 บวก 22 เท่ากับ" },
+  { answer: "12", hint: "100 ลบ 88 เท่ากับ" },
+  { answer: "88", hint: "11 คูณ 8 เท่ากับ" },
+  { answer: "20", hint: "80 หารด้วย 4 เท่ากับ" },
+  { answer: "80", hint: "39 บวก 41 เท่ากับ" },
+  { answer: "75", hint: "130 ลบ 55 เท่ากับ" },
+  { answer: "88", hint: "8 คูณ 11 เท่ากับ" },
+  { answer: "15", hint: "45 หารด้วย 3 เท่ากับ" },
+  { answer: "70", hint: "56 บวก 14 เท่ากับ" },
+  { answer: "64", hint: "90 ลบ 26 เท่ากับ" },
+  { answer: "70", hint: "7 คูณ 10 เท่ากับ" },
+  { answer: "50", hint: "100 หารด้วย 2 เท่ากับ" },
+  { answer: "60", hint: "17 บวก 43 เท่ากับ" },
+  { answer: "40", hint: "150 ลบ 110 เท่ากับ" },
+  { answer: "108", hint: "12 คูณ 9 เท่ากับ" },
+  { answer: "11", hint: "66 หารด้วย 6 เท่ากับ" },
+  { answer: "60", hint: "45 บวก 15 เท่ากับ" },
+  { answer: "31", hint: "80 ลบ 49 เท่ากับ" },
+  { answer: "30", hint: "6 คูณ 5 เท่ากับ" },
+  { answer: "21", hint: "84 หารด้วย 4 เท่ากับ" },
+  { answer: "100", hint: "33 บวก 67 เท่ากับ" },
+  { answer: "11", hint: "110 ลบ 99 เท่ากับ" },
+  { answer: "70", hint: "14 คูณ 5 เท่ากับ" },
+  { answer: "24", hint: "120 หารด้วย 5 เท่ากับ" },
+  { answer: "40", hint: "28 บวก 12 เท่ากับ" },
+  { answer: "27", hint: "90 ลบ 63 เท่ากับ" },
+  { answer: "40", hint: "8 คูณ 5 เท่ากับ" },
+  { answer: "15", hint: "75 หารด้วย 5 เท่ากับ" },
+  { answer: "80", hint: "61 บวก 19 เท่ากับ" },
+  { answer: "53", hint: "100 ลบ 47 เท่ากับ" },
+  { answer: "22", hint: "11 คูณ 2 เท่ากับ" },
+  { answer: "9", hint: "108 หารด้วย 12 เท่ากับ" },
+  { answer: "80", hint: "43 บวก 37 เท่ากับ" },
+  { answer: "125", hint: "150 ลบ 25 เท่ากับ" },
+  { answer: "90", hint: "15 คูณ 6 เท่ากับ" },
+  { answer: "16", hint: "96 หารด้วย 6 เท่ากับ" },
+  { answer: "80", hint: "26 บวก 54 เท่ากับ" },
+  { answer: "72", hint: "90 ลบ 18 เท่ากับ" },
+  { answer: "21", hint: "7 คูณ 3 เท่ากับ" },
+  { answer: "20", hint: "120 หารด้วย 6 เท่ากับ" },
+  { answer: "90", hint: "55 บวก 35 เท่ากับ" },
+  { answer: "24", hint: "100 ลบ 76 เท่ากับ" },
+  { answer: "120", hint: "12 คูณ 10 เท่ากับ" },
+  { answer: "36", hint: "144 หารด้วย 4 เท่ากับ" },
+  { answer: "100", hint: "18 บวก 82 เท่ากับ" },
+  { answer: "54", hint: "110 ลบ 56 เท่ากับ" },
+  { answer: "99", hint: "9 คูณ 11 เท่ากับ" },
+  { answer: "40", hint: "80 หารด้วย 2 เท่ากับ" },
+  { answer: "80", hint: "36 บวก 44 เท่ากับ" },
+  { answer: "35", hint: "130 ลบ 95 เท่ากับ" },
+  { answer: "78", hint: "13 คูณ 6 เท่ากับ" },
+  { answer: "20", hint: "60 หารด้วย 3 เท่ากับ" },
+  { answer: "70", hint: "59 บวก 11 เท่ากับ" },
+  { answer: "53", hint: "90 ลบ 37 เท่ากับ" },
+  { answer: "32", hint: "8 คูณ 4 เท่ากับ" },
+  { answer: "4", hint: "100 หารด้วย 25 เท่ากับ" },
+  { answer: "100", hint: "47 บวก 53 เท่ากับ" },
+  { answer: "15", hint: "150 ลบ 135 เท่ากับ" },
+  { answer: "99", hint: "11 คูณ 9 เท่ากับ" },
+  { answer: "24", hint: "72 หารด้วย 3 เท่ากับ" },
+  { answer: "28", hint: "14 บวก 14 เท่ากับ" },
+  { answer: "18", hint: "80 ลบ 62 เท่ากับ" },
+  { answer: "132", hint: "12 คูณ 11 เท่ากับ" },
+  { answer: "18", hint: "90 หารด้วย 5 เท่ากับ" },
+  { answer: "100", hint: "65 บวก 35 เท่ากับ" },
+  { answer: "88", hint: "110 ลบ 22 เท่ากับ" },
+  { answer: "60", hint: "6 คูณ 10 เท่ากับ" },
+  { answer: "11", hint: "121 หารด้วย 11 เท่ากับ" },
+  { answer: "90", hint: "27 บวก 63 เท่ากับ" },
+  { answer: "89", hint: "100 ลบ 11 เท่ากับ" },
+  { answer: "60", hint: "15 คูณ 4 เท่ากับ" },
+  { answer: "42", hint: "84 หารด้วย 2 เท่ากับ" },
+  { answer: "60", hint: "12 บวก 48 เท่ากับ" },
+  { answer: "70", hint: "105 ลบ 35 เท่ากับ" },
+  { answer: "108", hint: "9 คูณ 12 เท่ากับ" },
+  { answer: "24", hint: "96 หารด้วย 4 เท่ากับ" },
+  { answer: "66", hint: "33 บวก 33 เท่ากับ" },
+  { answer: "85", hint: "140 ลบ 55 เท่ากับ" },
+  { answer: "77", hint: "7 คูณ 11 เท่ากับ" },
+  { answer: "30", hint: "60 หารด้วย 2 เท่ากับ" },
+  { answer: "38", hint: "19 บวก 19 เท่ากับ" },
+  { answer: "70", hint: "115 ลบ 45 เท่ากับ" },
+  { answer: "39", hint: "13 คูณ 3 เท่ากับ" },
+  { answer: "25", hint: "100 หารด้วย 4 เท่ากับ" }
+];
+
+let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
+let TOTAL_QUESTIONS = 10;
+let isProcessingTimeout = false;
+let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, questionLive;
+
+let currentAnswer = "";
+let currentHint = "";
+let typedSoFar = "";
+
+function shuffle(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+async function startGame(level) {
+    if (level === 'easy') {
+        TOTAL_QUESTIONS = 5;
+        timePerQuestion = 18;
+    } else if (level === 'medium') {
+        TOTAL_QUESTIONS = 7;
+        timePerQuestion = 12;
+    } else if (level === 'hard') {
+        TOTAL_QUESTIONS = 10;
+        timePerQuestion = 8;
+    }
+
+    levelSelect.style.display = 'none';
+    gameDiv.style.display = 'block';
+    resultDiv.style.display = 'none';
+    backBtn.style.display = 'none';
+
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    questionLive.textContent = '';
+
+    await audioEngine.startBGM();
+
+    currentQuestions = shuffle(riddles).slice(0, TOTAL_QUESTIONS);
+    currentQ = 0; score = 0;
+    typedSoFar = "";
+    activateApplicationMode();
+    nextQuestion(true);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    backBtn = document.getElementById('backToMenu');
+    levelSelect = document.getElementById('levelSelect');
+    gameDiv = document.getElementById('game');
+    resultDiv = document.getElementById('result');
+    questionElem = document.getElementById('question');
+    typingDisplay = document.getElementById('typingDisplay');
+    questionLive = document.getElementById('question-live');
+
+    document.getElementById('easy').onclick = () => startGame('easy');
+    document.getElementById('medium').onclick = () => startGame('medium');
+    document.getElementById('hard').onclick = () => startGame('hard');
+
+    document.getElementById('restartBtn').onclick = async () => {
+        await audioEngine.playEffect('doorSound');
+        resultDiv.style.display = 'none';
+        levelSelect.style.display = 'block';
+        backBtn.style.display = 'block';
+        questionElem.innerHTML = '';
+        typingDisplay.textContent = '';
+        questionLive.textContent = '';
+    };
+
+    backBtn.onclick = async () => {
+        audioEngine.stopBGM();
+        await audioEngine.playEffect('doorSound');
+        location.href = '../index.html';
+    };
+});
+
+function activateApplicationMode() {
+    levelSelect.setAttribute('aria-hidden', 'true');
+    gameDiv.setAttribute('aria-hidden', 'false');
+    gameDiv.setAttribute('role', 'application');
+    gameDiv.setAttribute('tabindex', '0');
+    try { gameDiv.focus(); } catch (e) {}
+}
+
+function deactivateApplicationMode() {
+    gameDiv.setAttribute('aria-hidden', 'true');
+    gameDiv.removeAttribute('role');
+    gameDiv.removeAttribute('tabindex');
+    levelSelect.setAttribute('aria-hidden', 'false');
+    resultDiv.setAttribute('aria-hidden', 'false');
+}
+
+async function nextQuestion(isFirst = false) {
+    if (currentQ >= TOTAL_QUESTIONS) { 
+        endGame(); 
+        return; 
+    }
+
+    isProcessingTimeout = false;
+    typedSoFar = "";
+
+    const item = currentQuestions[currentQ];
+    currentAnswer = item.answer;
+    currentHint = item.hint;
+
+    const questionText = `ข้อ ${currentQ + 1} : ${currentHint}`;
+    questionElem.innerHTML = questionText;
+
+    clearInterval(timerInterval);
+    updateTypingDisplay();   
+
+    let timeLeft = timePerQuestion;
+    document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+        if (timeLeft <= 0 && !isProcessingTimeout) {
+            isProcessingTimeout = true;
+            clearInterval(timerInterval);
+            audioEngine.playEffect('wrongSound');
+            audioEngine.playEffect('fSound').then(() => {
+                currentQ++;
+                nextQuestion();
+            });
+        }
+    }, 1000);
+
+    questionLive.textContent = '';
+    requestAnimationFrame(() => {
+        questionLive.textContent = questionText;
+    });
+
+    setTimeout(() => {
+        questionElem.focus();
+    }, 100);
+}
+
+function updateTypingDisplay() {
+    const typedPart = currentAnswer.slice(0, typedSoFar.length);        
+    const remainingPart = currentAnswer.slice(typedSoFar.length);       
+
+    let underscores = '';
+    for (let i = 0; i < remainingPart.length; i++) {
+        const code = remainingPart.charCodeAt(i);
+        if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) {
+            continue;
+        }
+        underscores += '_ ';
+    }
+
+    typingDisplay.textContent = typedPart + underscores.trim();
+}
+
+// ตรวจจับการพิมพ์ + celebration ทั้งถูกและผิด
+document.addEventListener('keydown', (e) => {
+    if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
+
+    const char = e.key;
+    if (char.length === 1) { 
+        const expectedChar = currentAnswer[typedSoFar.length];
+        if (char === expectedChar) {
+            typedSoFar += char;
+            updateTypingDisplay();
+            if (typedSoFar === currentAnswer) {
+                // Success visual
+                const celeb = document.getElementById('success-celebration');
+                celeb.classList.add('show');
+                setTimeout(() => celeb.classList.remove('show'), 700);
+
+                score++;
+                currentQ++;
+                audioEngine.playEffect('tSound');
+                setTimeout(() => nextQuestion(), 800);
+            } else {
+                audioEngine.playEffect('t2Sound');
+            }
+        } else {
+            handleWrong();
+        }
+        e.preventDefault();
+    } else if (e.key === 'Backspace') {
+        e.preventDefault(); 
+    }
+});
+
+async function handleWrong() {
+    isProcessingTimeout = true;
+    clearInterval(timerInterval);
+
+    // Fail visual (X สีแดงลอยขึ้น)
+    const failCeleb = document.getElementById('fail-celebration');
+    failCeleb.classList.add('show');
+    setTimeout(() => failCeleb.classList.remove('show'), 700);
+
+    await audioEngine.playEffect('wrongSound');
+    await audioEngine.playEffect('fSound');
+    currentQ++;
+    nextQuestion();
+}
+
+async function endGame() {
+    clearInterval(timerInterval);
+    audioEngine.stopBGM();
+    gameDiv.style.display = 'none';
+    resultDiv.style.display = 'block';
+    backBtn.style.display = 'block';
+    deactivateApplicationMode();
+
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    questionLive.textContent = '';
+
+    const title = document.getElementById('resultTitle');
+    const msg = document.getElementById('resultMsg');
+    const scoreDiv = document.getElementById('score');
+
+    const points = score * 100;
+    scoreDiv.textContent = points + " คะแนน";
+
+    const perfectEncourages = [
+        "สุดยอดไปเลย! ตอบถูกหมดทุกข้อเลยนะ 💖",
+        "เก่งมาก ๆ เลยจ้า! เป็นเซียนคณิตศาสตร์แล้ว ✨",
+        "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆",
+        "เยี่ยมมาก! ทำได้สมบูรณ์แบบเลย ภูมิใจในตัวเองได้เลยนะ 😊"
+    ];
+
+    const goodEncourages = [
+        "เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪",
+        "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ❤️",
+        "ทำได้ดีมากเลย! เหลืออีกนิดเดียวเอง สู้ ๆ นะ 🌟",
+        "สุดยอดมาก! คะแนนดีแบบนี้ แสดงว่าฝึกมาดีแน่ ๆ 👍"
+    ];
+
+    const normalEncourages = [
+        "ไม่เป็นไรนะจ๊ะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕",
+        "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้เก่งขึ้นเรื่อย ๆ 😘",
+        "พยายามเข้าไว้จ้า! ทุกครั้งที่เล่น เราจะเก่งขึ้นแน่นอน 🌈",
+        "อย่ายอมแพ้นะ สู้ ๆ ! เดี๋ยวก็เป็นเซียนคณิตศาสตร์เองแหละ 💖",
+        "เยี่ยมแล้วที่เล่นจนจบ! ครั้งหน้าต้องดีกว่านี้แน่นอนเลยน้า 🚀"
+    ];
+
+    if (score === TOTAL_QUESTIONS) {
+        title.textContent = "สุดยอดมาก!";
+        msg.innerHTML = perfectEncourages[Math.floor(Math.random() * perfectEncourages.length)];
+        await audioEngine.playEffect('endSound');
+    } else if (score >= Math.ceil(TOTAL_QUESTIONS * 0.8)) {
+        title.textContent = "เก่งมากเลย!";
+        msg.innerHTML = goodEncourages[Math.floor(Math.random() * goodEncourages.length)];
+        await audioEngine.playEffect('endSound');
+    } else {
+        title.textContent = "สู้ต่อไปนะ!";
+        msg.innerHTML = normalEncourages[Math.floor(Math.random() * normalEncourages.length)];
+        await audioEngine.playEffect('end1Sound');
+    }
+
+    setTimeout(() => {
+      try { title.focus(); } catch(e) {}
+    }, 50);
+}
+
+window.addEventListener('beforeunload', () => audioEngine.stopBGM());
+</script>
+</body>
+</html>
