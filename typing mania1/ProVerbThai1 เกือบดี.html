@@ -58,22 +58,6 @@
             min-height: 2.4rem; font-weight: 600;
         }
         .timer { display: none !important; }
-
-        /* เพิ่ม style สำหรับ visual cue การพูด */
-        #speakCue {
-            position: absolute;
-            bottom: 90px; left: 50%; transform: translateX(-50%);
-            font-size: 3.5rem;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.4s ease;
-            text-shadow: 0 0 15px rgba(255, 193, 7, 0.8);
-            z-index: 5;
-        }
-        #speakCue.show {
-            opacity: 1;
-        }
-
         #voiceInputBtn {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             padding: 10px 20px; font-size: 1.5rem; background: #4CAF50; color: white;
@@ -162,9 +146,6 @@
     <div id="game">
         <div id="success-celebration">🎉✨⭐</div>
         <div id="fail-celebration">❌</div>
-        <!-- เพิ่ม element สำหรับแสดง visual cue ว่าให้พูด -->
-        <div id="speakCue">🗣️ พูดเลย!</div>
-
         <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
         <div class="typing-display" id="typingDisplay">_ _ _ _ _ _ _ _</div>
         <div id="typedByPlayer">ผู้เล่นพิมพ์อะไรลงไป : -</div>
@@ -183,7 +164,7 @@
 </div>
 
 <script>
-// ======== Web Audio API Engine ========
+// ======== Web Audio API Engine ======== (เหมือนเดิมทุกประการ)
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -203,8 +184,7 @@ class AudioEngine {
       t2Sound: "audio/t2.mp3",
       fSound: "audio/f.mp3",
       endSound: "audio/end.mp3",
-      end1Sound: "audio/end1.mp3",
-      speak: "audio/speak.mp3"   // เพิ่มไฟล์เสียงเตือนให้พูด
+      end1Sound: "audio/end1.mp3"
     };
 
     this.buffers = {};
@@ -311,7 +291,7 @@ document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
 
 // ────────────────────────────────────────────────
-//              ชุดสุภาษิต/สำนวน/คำพังเพย ครบถ้วน
+//              ชุดสุภาษิต/สำนวน/คำพังเพย ใหม่
 // ────────────────────────────────────────────────
 const proverbs = [
   { answer: "กะลาครอบ", hint: "กบใน" },
@@ -470,7 +450,7 @@ const proverbs = [
   { answer: "บาดตาย", hint: "คอขาด" },
   { answer: "น้ำลดมดกินปลา", hint: "น้ำมาปลากินมด" },
   { answer: "ทีไล่", hint: "ทางหนี" }
-];
+]
 
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
 let TOTAL_QUESTIONS = 10;
@@ -577,6 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         recognition.onerror = function(event) {
             console.error('Speech recognition error', event.error);
+            // ถ้าผิดพลาด ไม่ต้องทำอะไรเพิ่ม (ผู้เล่นเห็นข้อความแล้ว)
         };
 
         recognition.onspeechend = function() {
@@ -658,18 +639,7 @@ async function nextQuestion(isFirst = false) {
     setTimeout(() => {
         questionElem.focus();
         // เริ่มรับเสียงอัตโนมัติ หลังจาก aria-live อ่านจบ (หน่วงเล็กน้อย)
-        setTimeout(async () => {
-            // เล่นเสียงเตือนสั้น ๆ ก่อนให้พูด
-            await audioEngine.playEffect('speak');
-
-            // แสดง visual cue ให้ผู้เล่นเห็น (หายเองหลัง 1.5 วินาที)
-            const cue = document.getElementById('speakCue');
-            cue.classList.add('show');
-            setTimeout(() => cue.classList.remove('show'), 1500);
-
-            // เริ่มรับเสียงหลังเสียงเตือนเล็กน้อย
-            setTimeout(startVoiceRecognitionAuto, 400);
-        }, 1200);
+        setTimeout(startVoiceRecognitionAuto, 1200);
     }, 100);
 }
 
