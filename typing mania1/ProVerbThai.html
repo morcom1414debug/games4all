@@ -25,7 +25,10 @@
         h1 { font-size: 2.6rem; margin: 0 0 10px; text-shadow: 0 4px 15px rgba(0,0,0,0.2); color: #555; }
         .subtitle { font-size: 1.3rem; margin-bottom: 12px; opacity: 0.9; color: #444; }
         .friendly-msg {
-            font-size: 1.4rem; font-weight: 600; color: #e91e63; margin: 0 0 30px 0;
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #e91e63;
+            margin: 0 0 30px 0;
             text-shadow: 0 2px 8px rgba(233,30,99,0.3);
         }
         .level-buttons { display: flex; flex-direction: column; gap: 18px; align-items: center; }
@@ -53,22 +56,45 @@
         }
         .timer { display: none !important; }
 
+        /* Success Celebration Overlay */
         #success-celebration {
-            position: absolute; inset: 0; pointer-events: none;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 6rem; opacity: 0; transform: scale(0.6);
-            transition: all 0.7s ease-out; z-index: 10;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6rem;
+            opacity: 0;
+            transform: scale(0.6);
+            transition: all 0.7s ease-out;
+            z-index: 10;
         }
-        #success-celebration.show { opacity: 0.92; transform: scale(1.4) rotate(10deg); }
+        #success-celebration.show {
+            opacity: 0.92;
+            transform: scale(1.4) rotate(10deg);
+        }
 
+        /* Fail Celebration Overlay (X สีแดง) */
         #fail-celebration {
-            position: absolute; inset: 0; pointer-events: none;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 7rem; color: #e74c3c; opacity: 0; transform: scale(0.5) rotate(-15deg);
-            transition: all 0.7s ease-out; z-index: 10;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 7rem;
+            color: #e74c3c;
+            opacity: 0;
+            transform: scale(0.5) rotate(-15deg);
+            transition: all 0.7s ease-out;
+            z-index: 10;
             text-shadow: 0 0 15px rgba(231,76,60,0.7);
         }
-        #fail-celebration.show { opacity: 0.9; transform: scale(1.3) rotate(0deg); }
+        #fail-celebration.show {
+            opacity: 0.9;
+            transform: scale(1.3) rotate(0deg);
+        }
 
         #result { display: none; text-align: center; }
         #result h2 { font-size: 3.8rem; margin: 40px 0 20px; color: #555; }
@@ -81,23 +107,14 @@
         }
         .btn-restart:hover { transform: translateY(-6px); }
 
-        /* Mobile input */
-        #mobile-input-area {
-            display: none; position: fixed; bottom: 0; left: 0; right: 0;
-            background: rgba(255,255,255,0.92); backdrop-filter: blur(10px);
-            padding: 12px 16px; box-shadow: 0 -4px 16px rgba(0,0,0,0.15); z-index: 999;
+        /* aria-live */
+        #question-live {
+            position: absolute;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
         }
-        #mobile-input-area.show { display: block; }
-        #answer-input {
-            width: 100%; padding: 14px 18px; font-size: 1.3rem;
-            font-family: 'Kanit', sans-serif; border: 2px solid #aaa; border-radius: 12px;
-            outline: none; background: white;
-        }
-        #answer-input:focus {
-            border-color: #ff6b9d; box-shadow: 0 0 0 3px rgba(255,107,157,0.3);
-        }
-
-        #question-live { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
     </style>
 </head>
 <body>
@@ -124,10 +141,7 @@
         <div class="typing-display" id="typingDisplay">_ _ _ _ _ _ _ _</div>
     </div>
 
-    <div id="mobile-input-area">
-        <input type="text" id="answer-input" placeholder="พิมพ์คำตอบที่นี่ แล้วกด Enter" autocomplete="off" autocorrect="off" spellcheck="false">
-    </div>
-
+    <!-- aria-live element -->
     <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
     <div id="result">
@@ -139,13 +153,14 @@
 </div>
 
 <script>
-// ======== Web Audio API Engine ========
+// ======== Web Audio API Engine ======== (เหมือนเดิมทุกประการ)
 class AudioEngine {
   constructor() {
     this.ctx = null;
     this.isUnlocked = false;
     this.bgmSource = null;
     this.bgmGain = null;
+    this.bgmBuffer = null;
     this.currentEndPromise = null;
 
     this.sounds = {
@@ -197,13 +212,17 @@ class AudioEngine {
   async startBGM() {
     if (!this.buffers.bgm || this.bgmSource) return;
     await this.unlockAll();
+
     this.bgmSource = this.ctx.createBufferSource();
     this.bgmSource.buffer = this.buffers.bgm;
     this.bgmSource.loop = true;
+
     this.bgmGain = this.ctx.createGain();
     this.bgmGain.gain.value = 0.6;
+
     this.bgmSource.connect(this.bgmGain);
     this.bgmGain.connect(this.ctx.destination);
+
     this.bgmSource.start(0);
   }
 
@@ -218,24 +237,32 @@ class AudioEngine {
   async playEffect(key) {
     if (!this.buffers[key]) return;
     await this.unlockAll();
+
     if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
       return this.currentEndPromise;
     }
+
     const source = this.ctx.createBufferSource();
     source.buffer = this.buffers[key];
+
     const gainNode = this.ctx.createGain();
     gainNode.gain.value = key.includes('end') || key === 'bgm' ? 0.8 : 0.8;
+
     source.connect(gainNode);
     gainNode.connect(this.ctx.destination);
+
     const p = new Promise(resolve => {
       source.onended = () => resolve();
       setTimeout(resolve, 4000);
     });
+
     source.start(0);
+
     if (key === 'endSound' || key === 'end1Sound') {
       this.currentEndPromise = p;
       p.finally(() => { this.currentEndPromise = null; });
     }
+
     return p;
   }
 }
@@ -253,7 +280,8 @@ document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
 
 // ────────────────────────────────────────────────
-//              ชุดสุภาษิต/สำนวน/คำพังเพย (ครบทุกข้อเหมือนเดิม)
+//              ชุดสุภาษิต/สำนวน/คำพังเพย ใหม่
+// ────────────────────────────────────────────────
 const proverbs = [
   { answer: "กะลาครอบ", hint: "กบใน" },
   { answer: "จันทร์", hint: "กระต่ายหมาย" },
@@ -411,289 +439,267 @@ const proverbs = [
   { answer: "บาดตาย", hint: "คอขาด" },
   { answer: "น้ำลดมดกินปลา", hint: "น้ำมาปลากินมด" },
   { answer: "ทีไล่", hint: "ทางหนี" }
-];
-
+]
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
 let TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, questionLive;
-let mobileInputArea, answerInput;
 
 let currentAnswer = "";
 let currentHint = "";
 let typedSoFar = "";
 
-function shouldShowMobileInput() {
-  const ua = navigator.userAgent || navigator.vendor || window.opera;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
-  const isAndroid = /android/i.test(ua);
-
-  if (!isIOS && !isAndroid) return false;
-  if ('ontouchstart' in window === false) return false;
-  if (window.innerWidth > window.innerHeight * 1.5) return false;
-  if (navigator.keyboard && navigator.keyboard.lock) return false;
-
-  return true;
-}
-
 function shuffle(array) {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
 }
 
 async function startGame(level) {
-  if (level === 'easy') { TOTAL_QUESTIONS = 5; timePerQuestion = 20; }
-  else if (level === 'medium') { TOTAL_QUESTIONS = 7; timePerQuestion = 15; }
-  else if (level === 'hard') { TOTAL_QUESTIONS = 10; timePerQuestion = 10; }
+    if (level === 'easy') {
+        TOTAL_QUESTIONS = 5;      // ปรับจำนวนตามความเหมาะสมได้
+        timePerQuestion = 20;
+    } else if (level === 'medium') {
+        TOTAL_QUESTIONS = 7;
+        timePerQuestion = 15;
+    } else if (level === 'hard') {
+        TOTAL_QUESTIONS = 10;
+        timePerQuestion = 10;
+    }
 
-  levelSelect.style.display = 'none';
-  gameDiv.style.display = 'block';
-  resultDiv.style.display = 'none';
-  backBtn.style.display = 'none';
-
-  questionElem.innerHTML = '';
-  typingDisplay.textContent = '';
-  questionLive.textContent = '';
-
-  await audioEngine.startBGM();
-
-  currentQuestions = shuffle(proverbs).slice(0, TOTAL_QUESTIONS);
-  currentQ = 0; score = 0;
-  typedSoFar = "";
-
-  if (shouldShowMobileInput()) {
-    mobileInputArea.classList.add('show');
-    answerInput.value = "";
-    answerInput.focus();
-  }
-
-  activateApplicationMode();
-  nextQuestion(true);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  backBtn = document.getElementById('backToMenu');
-  levelSelect = document.getElementById('levelSelect');
-  gameDiv = document.getElementById('game');
-  resultDiv = document.getElementById('result');
-  questionElem = document.getElementById('question');
-  typingDisplay = document.getElementById('typingDisplay');
-  questionLive = document.getElementById('question-live');
-  mobileInputArea = document.getElementById('mobile-input-area');
-  answerInput = document.getElementById('answer-input');
-
-  document.getElementById('easy').onclick = () => startGame('easy');
-  document.getElementById('medium').onclick = () => startGame('medium');
-  document.getElementById('hard').onclick = () => startGame('hard');
-
-  document.getElementById('restartBtn').onclick = async () => {
-    await audioEngine.playEffect('doorSound');
+    levelSelect.style.display = 'none';
+    gameDiv.style.display = 'block';
     resultDiv.style.display = 'none';
-    levelSelect.style.display = 'block';
-    backBtn.style.display = 'block';
-    mobileInputArea.classList.remove('show');
+    backBtn.style.display = 'none';
+
     questionElem.innerHTML = '';
     typingDisplay.textContent = '';
     questionLive.textContent = '';
-  };
 
-  backBtn.onclick = async () => {
-    audioEngine.stopBGM();
-    await audioEngine.playEffect('doorSound');
-    location.href = '../index.html';
-  };
+    await audioEngine.startBGM();
 
-  answerInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
-      const inputVal = answerInput.value.trim();
-      answerInput.value = "";
-      if (inputVal === currentAnswer) {
-        const celeb = document.getElementById('success-celebration');
-        celeb.classList.add('show');
-        setTimeout(() => celeb.classList.remove('show'), 700);
-        score++;
-        currentQ++;
-        audioEngine.playEffect('tSound');
-        setTimeout(() => nextQuestion(), 800);
-      } else {
-        handleWrong();
-      }
-    }
-  });
+    currentQuestions = shuffle(proverbs).slice(0, TOTAL_QUESTIONS);
+    currentQ = 0; score = 0;
+    typedSoFar = "";
+    activateApplicationMode();
+    nextQuestion(true);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    backBtn = document.getElementById('backToMenu');
+    levelSelect = document.getElementById('levelSelect');
+    gameDiv = document.getElementById('game');
+    resultDiv = document.getElementById('result');
+    questionElem = document.getElementById('question');
+    typingDisplay = document.getElementById('typingDisplay');
+    questionLive = document.getElementById('question-live');
+
+    document.getElementById('easy').onclick = () => startGame('easy');
+    document.getElementById('medium').onclick = () => startGame('medium');
+    document.getElementById('hard').onclick = () => startGame('hard');
+
+    document.getElementById('restartBtn').onclick = async () => {
+        await audioEngine.playEffect('doorSound');
+        resultDiv.style.display = 'none';
+        levelSelect.style.display = 'block';
+        backBtn.style.display = 'block';
+        questionElem.innerHTML = '';
+        typingDisplay.textContent = '';
+        questionLive.textContent = '';
+    };
+
+    backBtn.onclick = async () => {
+        audioEngine.stopBGM();
+        await audioEngine.playEffect('doorSound');
+        location.href = '../index.html';
+    };
 });
 
 function activateApplicationMode() {
-  levelSelect.setAttribute('aria-hidden', 'true');
-  gameDiv.setAttribute('aria-hidden', 'false');
-  gameDiv.setAttribute('role', 'application');
-  gameDiv.setAttribute('tabindex', '0');
-  try { gameDiv.focus(); } catch (e) {}
+    levelSelect.setAttribute('aria-hidden', 'true');
+    gameDiv.setAttribute('aria-hidden', 'false');
+    gameDiv.setAttribute('role', 'application');
+    gameDiv.setAttribute('tabindex', '0');
+    try { gameDiv.focus(); } catch (e) {}
 }
 
 function deactivateApplicationMode() {
-  gameDiv.setAttribute('aria-hidden', 'true');
-  gameDiv.removeAttribute('role');
-  gameDiv.removeAttribute('tabindex');
-  levelSelect.setAttribute('aria-hidden', 'false');
-  resultDiv.setAttribute('aria-hidden', 'false');
+    gameDiv.setAttribute('aria-hidden', 'true');
+    gameDiv.removeAttribute('role');
+    gameDiv.removeAttribute('tabindex');
+    levelSelect.setAttribute('aria-hidden', 'false');
+    resultDiv.setAttribute('aria-hidden', 'false');
 }
 
 async function nextQuestion(isFirst = false) {
-  if (currentQ >= TOTAL_QUESTIONS) { endGame(); return; }
-
-  isProcessingTimeout = false;
-  typedSoFar = "";
-
-  const item = currentQuestions[currentQ];
-  currentAnswer = item.answer;
-  currentHint = item.hint;
-
-  const questionText = `ข้อ ${currentQ + 1} : ${currentHint}`;
-  questionElem.innerHTML = questionText;
-
-  clearInterval(timerInterval);
-  updateTypingDisplay();
-
-  let timeLeft = timePerQuestion;
-  timerInterval = setInterval(() => {
-    timeLeft--;
-    if (timeLeft <= 0 && !isProcessingTimeout) {
-      isProcessingTimeout = true;
-      clearInterval(timerInterval);
-      audioEngine.playEffect('wrongSound');
-      audioEngine.playEffect('fSound').then(() => {
-        currentQ++;
-        nextQuestion();
-      });
+    if (currentQ >= TOTAL_QUESTIONS) { 
+        endGame(); 
+        return; 
     }
-  }, 1000);
 
-  questionLive.textContent = '';
-  requestAnimationFrame(() => { questionLive.textContent = questionText; });
+    isProcessingTimeout = false;
+    typedSoFar = "";
 
-  setTimeout(() => {
-    questionElem.focus();
-    if (mobileInputArea.classList.contains('show')) answerInput.focus();
-  }, 100);
+    const item = currentQuestions[currentQ];
+    currentAnswer = item.answer;
+    currentHint = item.hint;
+
+    const questionText = `ข้อ ${currentQ + 1} : ${currentHint}`;
+    questionElem.innerHTML = questionText;
+
+    clearInterval(timerInterval);
+    updateTypingDisplay();   
+
+    let timeLeft = timePerQuestion;
+    document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+        if (timeLeft <= 0 && !isProcessingTimeout) {
+            isProcessingTimeout = true;
+            clearInterval(timerInterval);
+            audioEngine.playEffect('wrongSound');
+            audioEngine.playEffect('fSound').then(() => {
+                currentQ++;
+                nextQuestion();
+            });
+        }
+    }, 1000);
+
+    questionLive.textContent = '';
+    requestAnimationFrame(() => {
+        questionLive.textContent = questionText;
+    });
+
+    setTimeout(() => {
+        questionElem.focus();
+    }, 100);
 }
 
 function updateTypingDisplay() {
-  const typedPart = currentAnswer.slice(0, typedSoFar.length);
-  const remainingPart = currentAnswer.slice(typedSoFar.length);
-  let underscores = '';
-  for (let i = 0; i < remainingPart.length; i++) {
-    const code = remainingPart.charCodeAt(i);
-    if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) continue;
-    underscores += '_ ';
-  }
-  typingDisplay.textContent = typedPart + underscores.trim();
+    const typedPart = currentAnswer.slice(0, typedSoFar.length);        
+    const remainingPart = currentAnswer.slice(typedSoFar.length);       
+
+    let underscores = '';
+    for (let i = 0; i < remainingPart.length; i++) {
+        const code = remainingPart.charCodeAt(i);
+        if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) {
+            continue;  // ข้ามวรรณยุกต์ สระบน/ล่าง ไม่นับเป็นช่อง
+        }
+        underscores += '_ ';
+    }
+
+    typingDisplay.textContent = typedPart + underscores.trim();
 }
 
+// ตรวจจับการพิมพ์ + celebration ทั้งถูกและผิด
 document.addEventListener('keydown', (e) => {
-  if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
-  if (mobileInputArea.classList.contains('show')) return; // ให้ช่อง input จัดการเอง
+    if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
 
-  const char = e.key;
-  if (char.length === 1) {
-    const expectedChar = currentAnswer[typedSoFar.length];
-    if (char === expectedChar) {
-      typedSoFar += char;
-      updateTypingDisplay();
-      if (typedSoFar === currentAnswer) {
-        const celeb = document.getElementById('success-celebration');
-        celeb.classList.add('show');
-        setTimeout(() => celeb.classList.remove('show'), 700);
-        score++;
-        currentQ++;
-        audioEngine.playEffect('tSound');
-        setTimeout(() => nextQuestion(), 800);
-      } else {
-        audioEngine.playEffect('t2Sound');
-      }
-    } else {
-      handleWrong();
+    const char = e.key;
+    if (char.length === 1) { 
+        const expectedChar = currentAnswer[typedSoFar.length];
+        if (char === expectedChar) {
+            typedSoFar += char;
+            updateTypingDisplay();
+            if (typedSoFar === currentAnswer) {
+                // Success visual
+                const celeb = document.getElementById('success-celebration');
+                celeb.classList.add('show');
+                setTimeout(() => celeb.classList.remove('show'), 700);
+
+                score++;
+                currentQ++;
+                audioEngine.playEffect('tSound');
+                setTimeout(() => nextQuestion(), 800);
+            } else {
+                audioEngine.playEffect('t2Sound');
+            }
+        } else {
+            handleWrong();
+        }
+        e.preventDefault();
+    } else if (e.key === 'Backspace') {
+        e.preventDefault(); 
     }
-    e.preventDefault();
-  } else if (e.key === 'Backspace') {
-    e.preventDefault();
-  }
 });
 
 async function handleWrong() {
-  isProcessingTimeout = true;
-  clearInterval(timerInterval);
-  const failCeleb = document.getElementById('fail-celebration');
-  failCeleb.classList.add('show');
-  setTimeout(() => failCeleb.classList.remove('show'), 700);
-  await audioEngine.playEffect('wrongSound');
-  await audioEngine.playEffect('fSound');
-  currentQ++;
-  nextQuestion();
+    isProcessingTimeout = true;
+    clearInterval(timerInterval);
+
+    // Fail visual (X สีแดงลอยขึ้น)
+    const failCeleb = document.getElementById('fail-celebration');
+    failCeleb.classList.add('show');
+    setTimeout(() => failCeleb.classList.remove('show'), 700);
+
+    await audioEngine.playEffect('wrongSound');
+    await audioEngine.playEffect('fSound');
+    currentQ++;
+    nextQuestion();
 }
 
 async function endGame() {
-  clearInterval(timerInterval);
-  audioEngine.stopBGM();
-  gameDiv.style.display = 'none';
-  resultDiv.style.display = 'block';
-  backBtn.style.display = 'block';
-  mobileInputArea.classList.remove('show');
-  deactivateApplicationMode();
+    clearInterval(timerInterval);
+    audioEngine.stopBGM();
+    gameDiv.style.display = 'none';
+    resultDiv.style.display = 'block';
+    backBtn.style.display = 'block';
+    deactivateApplicationMode();
 
-  questionElem.innerHTML = '';
-  typingDisplay.textContent = '';
-  questionLive.textContent = '';
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    questionLive.textContent = '';
 
-  const title = document.getElementById('resultTitle');
-  const msg = document.getElementById('resultMsg');
-  const scoreDiv = document.getElementById('score');
+    const title = document.getElementById('resultTitle');
+    const msg = document.getElementById('resultMsg');
+    const scoreDiv = document.getElementById('score');
 
-  const points = score * 100;
-  scoreDiv.textContent = points + " คะแนน";
+    const points = score * 100;
+    scoreDiv.textContent = points + " คะแนน";
 
-  const perfectEncourages = [
-    "สุดยอดไปเลย! รู้สุภาษิตเป๊ะทุกข้อเลยนะ 💖",
-    "เก่งมาก ๆ ! เป็นเซียนสำนวนไทยแล้ว ✨",
-    "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆",
-    "เยี่ยมมาก! ทำได้สมบูรณ์แบบ ภูมิใจในตัวเองได้เลย 😊"
-  ];
+    const perfectEncourages = [
+        "สุดยอดไปเลย! รู้สุภาษิตเป๊ะทุกข้อเลยนะ 💖",
+        "เก่งมาก ๆ ! เป็นเซียนสำนวนไทยแล้ว ✨",
+        "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆",
+        "เยี่ยมมาก! ทำได้สมบูรณ์แบบ ภูมิใจในตัวเองได้เลย 😊"
+    ];
 
-  const goodEncourages = [
-    "เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪",
-    "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ๆ ❤️",
-    "ทำได้ดีมากเลย! เหลืออีกนิดเดียว สู้ ๆ นะ 🌟",
-    "สุดยอดมาก! คะแนนดีแบบนี้ แสดงว่าจำสำนวนเก่งแน่ ๆ 👍"
-  ];
+    const goodEncourages = [
+        "เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪",
+        "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ๆ ❤️",
+        "ทำได้ดีมากเลย! เหลืออีกนิดเดียว สู้ ๆ นะ 🌟",
+        "สุดยอดมาก! คะแนนดีแบบนี้ แสดงว่าจำสำนวนเก่งแน่ ๆ 👍"
+    ];
 
-  const normalEncourages = [
-    "ไม่เป็นไรนะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕",
-    "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้จำได้มากขึ้น 😘",
-    "พยายามเข้าไว้จ้า! ยิ่งเล่นยิ่งเก่งแน่นอน 🌈",
-    "อย่ายอมแพ้นะ สู้ ๆ ! เดี๋ยวก็เป็นเซียนสำนวนเองแหละ 💖",
-    "เยี่ยมแล้วที่เล่นจนจบ! ครั้งหน้าต้องดีกว่านี้แน่นอนเลยน้า 🚀"
-  ];
+    const normalEncourages = [
+        "ไม่เป็นไรนะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕",
+        "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้จำได้มากขึ้น 😘",
+        "พยายามเข้าไว้จ้า! ยิ่งเล่นยิ่งเก่งแน่นอน 🌈",
+        "อย่ายอมแพ้นะ สู้ ๆ ! เดี๋ยวก็เป็นเซียนสำนวนเองแหละ 💖",
+        "เยี่ยมแล้วที่เล่นจนจบ! ครั้งหน้าต้องดีกว่านี้แน่นอนเลยน้า 🚀"
+    ];
 
-  if (score === TOTAL_QUESTIONS) {
-    title.textContent = "สุดยอดมาก!";
-    msg.innerHTML = perfectEncourages[Math.floor(Math.random() * perfectEncourages.length)];
-    await audioEngine.playEffect('endSound');
-  } else if (score >= Math.ceil(TOTAL_QUESTIONS * 0.8)) {
-    title.textContent = "เก่งมากเลย!";
-    msg.innerHTML = goodEncourages[Math.floor(Math.random() * goodEncourages.length)];
-    await audioEngine.playEffect('endSound');
-  } else {
-    title.textContent = "สู้ต่อไปนะ!";
-    msg.innerHTML = normalEncourages[Math.floor(Math.random() * normalEncourages.length)];
-    await audioEngine.playEffect('end1Sound');
-  }
+    if (score === TOTAL_QUESTIONS) {
+        title.textContent = "สุดยอดมาก!";
+        msg.innerHTML = perfectEncourages[Math.floor(Math.random() * perfectEncourages.length)];
+        await audioEngine.playEffect('endSound');
+    } else if (score >= Math.ceil(TOTAL_QUESTIONS * 0.8)) {
+        title.textContent = "เก่งมากเลย!";
+        msg.innerHTML = goodEncourages[Math.floor(Math.random() * goodEncourages.length)];
+        await audioEngine.playEffect('endSound');
+    } else {
+        title.textContent = "สู้ต่อไปนะ!";
+        msg.innerHTML = normalEncourages[Math.floor(Math.random() * normalEncourages.length)];
+        await audioEngine.playEffect('end1Sound');
+    }
 
-  setTimeout(() => { try { title.focus(); } catch(e) {} }, 50);
+    setTimeout(() => {
+      try { title.focus(); } catch(e) {}
+    }, 50);
 }
 
 window.addEventListener('beforeunload', () => audioEngine.stopBGM());
