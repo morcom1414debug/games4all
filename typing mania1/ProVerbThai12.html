@@ -59,6 +59,7 @@
         }
         .timer { display: none !important; }
 
+        /* เพิ่ม style สำหรับ visual cue การพูด */
         #speakCue {
             position: absolute;
             bottom: 90px; left: 50%; transform: translateX(-50%);
@@ -81,6 +82,7 @@
         }
         #voiceInputBtn:hover { background: #45a049; transform: translate(-50%, -5px); }
 
+        /* Success Celebration Overlay */
         #success-celebration {
             position: absolute;
             inset: 0;
@@ -99,6 +101,7 @@
             transform: scale(1.4) rotate(10deg);
         }
 
+        /* Fail Celebration Overlay (X สีแดง) */
         #fail-celebration {
             position: absolute;
             inset: 0;
@@ -130,6 +133,7 @@
         }
         .btn-restart:hover { transform: translateY(-6px); }
 
+        /* aria-live */
         #question-live {
             position: absolute;
             left: -9999px;
@@ -158,6 +162,7 @@
     <div id="game">
         <div id="success-celebration">🎉✨⭐</div>
         <div id="fail-celebration">❌</div>
+        <!-- เพิ่ม element สำหรับแสดง visual cue ว่าให้พูด -->
         <div id="speakCue">🗣️ พูดเลย!</div>
 
         <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
@@ -166,6 +171,7 @@
         <button id="voiceInputBtn">พิมพ์ด้วยเสียง</button>
     </div>
 
+    <!-- aria-live element -->
     <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
     <div id="result">
@@ -198,7 +204,7 @@ class AudioEngine {
       fSound: "audio/f.mp3",
       endSound: "audio/end.mp3",
       end1Sound: "audio/end1.mp3",
-      speak: "audio/speak.mp3"
+      speak: "audio/speak.mp3"   // เพิ่มไฟล์เสียงเตือนให้พูด
     };
 
     this.buffers = {};
@@ -305,7 +311,7 @@ document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
 
 // ────────────────────────────────────────────────
-//              ชุดสุภาษิต/สำนวน/คำพังเพย ครบถ้วน (ไม่ตัดทอน)
+//              ชุดสุภาษิต/สำนวน/คำพังเพย ครบถ้วน
 // ────────────────────────────────────────────────
 const proverbs = [
   { answer: "กะลาครอบ", hint: "กบใน" },
@@ -474,38 +480,7 @@ let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, typed
 let currentAnswer = "";
 let currentHint = "";
 let typedSoFar = "";
-let recognition = null;
-
-// Mapping ตัวเลขอารบิก → คำไทย
-const thaiNumberMap = {
-  '0': 'ศูนย์', '1': 'หนึ่ง', '2': 'สอง', '3': 'สาม',
-  '4': 'สี่',   '5': 'ห้า',   '6': 'หก',   '7': 'เจ็ด',
-  '8': 'แปด',  '9': 'เก้า'
-};
-
-function safeStopRecognition() {
-  if (recognition && recognition.state !== 'inactive') {
-    try {
-      recognition.stop();
-    } catch (err) {
-      console.warn("Cannot stop recognition", err);
-    }
-  }
-}
-
-function cleanAndConvertTranscript(text) {
-  // ขั้นที่ 1: แปลงตัวเลขอารบิกเป็นคำไทยก่อน
-  let converted = '';
-  for (let char of text) {
-    converted += thaiNumberMap[char] || char;
-  }
-
-  // ขั้นที่ 2: เก็บเฉพาะตัวอักษรไทย + ช่องว่าง (ลบภาษาอังกฤษ สัญลักษณ์อื่น ๆ)
-  const thaiOnly = converted.replace(/[^\u0E00-\u0E7F\s]/g, '');
-
-  // ลบช่องว่างซ้ำ
-  return thaiOnly.replace(/\s+/g, ' ').trim();
-}
+let recognition = null;           // เก็บตัวแปร recognition ระดับ global เพื่อควบคุม stop ได้
 
 function shuffle(array) {
     const arr = [...array];
@@ -574,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
         location.href = '../index.html';
     };
 
-    // เตรียม SpeechRecognition ตัวเดียว (reuse)
+    // เตรียม recognition ตัวเดียว (จะ reuse)
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
@@ -583,14 +558,11 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.maxAlternatives = 1;
 
         recognition.onresult = function(event) {
-            let transcript = event.results[0][0].transcript.trim();
-            
-            // ประมวลผล transcript ให้เหลือเฉพาะภาษาไทย + แปลงเลข
-            transcript = cleanAndConvertTranscript(transcript);
-
-            // แสดงผลที่ typingDisplay
+            const transcript = event.results[0][0].transcript.trim();
+            // แสดง transcript ที่ typingDisplay แทน _ _ _
             typingDisplay.textContent = transcript;
 
+            // typedByPlayer 不再ใช้แสดงผล → ล้างหรือคงค่าเดิมไว้เฉย ๆ
             typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
 
             if (transcript === currentAnswer) {
@@ -608,11 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         recognition.onerror = function(event) {
-            console.warn('Speech recognition error:', event.error);
-            // ถ้า error บางอย่าง (เช่น no-speech, aborted) → ข้ามไปข้อถัดไปได้
-            if (event.error !== 'no-speech' && event.error !== 'aborted') {
-                handleWrong();
-            }
+            console.error('Speech recognition error', event.error);
         };
 
         recognition.onspeechend = function() {
@@ -642,11 +610,10 @@ function startVoiceRecognitionAuto() {
         typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : (เบราเซอร์ไม่รองรับเสียง)";
         return;
     }
-    safeStopRecognition(); // ป้องกัน already started
     try {
         recognition.start();
     } catch (e) {
-        console.warn("Cannot start recognition", e);
+        console.warn("Cannot start recognition again", e);
     }
 }
 
@@ -668,15 +635,18 @@ async function nextQuestion(isFirst = false) {
     questionElem.innerHTML = questionText;
 
     clearInterval(timerInterval);
+    // รีเซ็ต typingDisplay กลับไปเป็น underscore (กรณีพิมพ์ด้วยคีย์บอร์ด)
     updateTypingDisplay();   
 
     let timeLeft = timePerQuestion;
+    document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
     timerInterval = setInterval(() => {
         timeLeft--;
+        document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
         if (timeLeft <= 0 && !isProcessingTimeout) {
             isProcessingTimeout = true;
             clearInterval(timerInterval);
-            safeStopRecognition();   // หยุดรับเสียงทันทีเมื่อหมดเวลา
+            if (recognition) recognition.stop();
             audioEngine.playEffect('wrongSound');
             audioEngine.playEffect('fSound').then(() => {
                 currentQ++;
@@ -692,13 +662,17 @@ async function nextQuestion(isFirst = false) {
 
     setTimeout(() => {
         questionElem.focus();
+        // เริ่มรับเสียงอัตโนมัติ หลังจาก aria-live อ่านจบ (หน่วงเล็กน้อย)
         setTimeout(async () => {
+            // เล่นเสียงเตือนสั้น ๆ ก่อนให้พูด
             await audioEngine.playEffect('speak');
 
+            // แสดง visual cue ให้ผู้เล่นเห็น (หายเองหลัง 1.5 วินาที)
             const cue = document.getElementById('speakCue');
             cue.classList.add('show');
             setTimeout(() => cue.classList.remove('show'), 1500);
 
+            // เริ่มรับเสียงหลังเสียงเตือนเล็กน้อย
             setTimeout(startVoiceRecognitionAuto, 400);
         }, 1200);
     }, 100);
@@ -712,7 +686,7 @@ function updateTypingDisplay() {
     for (let i = 0; i < remainingPart.length; i++) {
         const code = remainingPart.charCodeAt(i);
         if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) {
-            continue;
+            continue;  // ข้ามวรรณยุกต์ สระบน/ล่าง ไม่นับเป็นช่อง
         }
         underscores += '_ ';
     }
@@ -720,14 +694,12 @@ function updateTypingDisplay() {
     typingDisplay.textContent = typedPart + underscores.trim();
 }
 
+// ตรวจจับการพิมพ์ + celebration ทั้งถูกและผิด + อัพเดต typedByPlayer
 document.addEventListener('keydown', (e) => {
     if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
 
     const char = e.key;
     if (char.length === 1) { 
-        // เมื่อเริ่มพิมพ์ → หยุด speech recognition ทันที
-        safeStopRecognition();
-
         const expectedChar = currentAnswer[typedSoFar.length];
         typedByPlayerDiv.textContent = `ผู้เล่นพิมพ์อะไรลงไป : ${typedSoFar + char}`;
 
@@ -742,7 +714,7 @@ document.addEventListener('keydown', (e) => {
                 score++;
                 currentQ++;
                 audioEngine.playEffect('tSound');
-                safeStopRecognition();
+                if (recognition) recognition.stop();
                 setTimeout(() => nextQuestion(), 800);
             } else {
                 audioEngine.playEffect('t2Sound');
@@ -759,7 +731,7 @@ document.addEventListener('keydown', (e) => {
 async function handleWrong() {
     isProcessingTimeout = true;
     clearInterval(timerInterval);
-    safeStopRecognition();   // หยุดเสียงทันทีเมื่อผิด
+    if (recognition) recognition.stop();
 
     const failCeleb = document.getElementById('fail-celebration');
     failCeleb.classList.add('show');
@@ -773,7 +745,7 @@ async function handleWrong() {
 
 async function endGame() {
     clearInterval(timerInterval);
-    safeStopRecognition();
+    if (recognition) recognition.stop();
     audioEngine.stopBGM();
     gameDiv.style.display = 'none';
     resultDiv.style.display = 'block';
@@ -834,7 +806,7 @@ async function endGame() {
 }
 
 window.addEventListener('beforeunload', () => {
-    safeStopRecognition();
+    if (recognition) recognition.stop();
     audioEngine.stopBGM();
 });
 </script>
