@@ -53,6 +53,10 @@
             background: rgba(255,255,255,0.4); padding: 30px; border-radius: 30px;
             box-shadow: 0 8px 25px rgba(0,0,0,0.15);
         }
+        #typedByPlayer {
+            font-size: 1.8rem; color: #d81b60; margin: 20px 20px 60px;
+            min-height: 2.4rem; font-weight: 600;
+        }
         .timer { display: none !important; }
         #voiceInputBtn {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -144,6 +148,7 @@
         <div id="fail-celebration">❌</div>
         <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
         <div class="typing-display" id="typingDisplay">_ _ _ _ _ _ _ _</div>
+        <div id="typedByPlayer">ผู้เล่นพิมพ์อะไรลงไป : -</div>
         <button id="voiceInputBtn">พิมพ์ด้วยเสียง</button>
     </div>
 
@@ -446,14 +451,16 @@ const proverbs = [
   { answer: "น้ำลดมดกินปลา", hint: "น้ำมาปลากินมด" },
   { answer: "ทีไล่", hint: "ทางหนี" }
 ]
+
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
 let TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
-let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, questionLive;
+let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, typedByPlayerDiv, questionLive;
 
 let currentAnswer = "";
 let currentHint = "";
 let typedSoFar = "";
+let recognition = null;           // เก็บตัวแปร recognition ระดับ global เพื่อควบคุม stop ได้
 
 function shuffle(array) {
     const arr = [...array];
@@ -480,6 +487,7 @@ async function startGame(level) {
 
     questionElem.innerHTML = '';
     typingDisplay.textContent = '';
+    typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
     questionLive.textContent = '';
 
     await audioEngine.startBGM();
@@ -498,6 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
     resultDiv = document.getElementById('result');
     questionElem = document.getElementById('question');
     typingDisplay = document.getElementById('typingDisplay');
+    typedByPlayerDiv = document.getElementById('typedByPlayer');
     questionLive = document.getElementById('question-live');
 
     document.getElementById('easy').onclick = () => startGame('easy');
@@ -510,6 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
         backBtn.style.display = 'block';
         questionElem.innerHTML = '';
         typingDisplay.textContent = '';
+        typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
         questionLive.textContent = '';
     };
 
@@ -519,26 +529,19 @@ document.addEventListener('DOMContentLoaded', () => {
         location.href = '../index.html';
     };
 
-    const voiceBtn = document.getElementById('voiceInputBtn');
-    voiceBtn.onclick = function() {
-        if (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window)) {
-            alert('เบราเซอร์นี้ไม่รองรับการพิมพ์ด้วยเสียง');
-            return;
-        }
-        if (isProcessingTimeout) return;
-
+    // เตรียม recognition ตัวเดียว (จะ reuse)
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recognition = new SpeechRecognition();
+        recognition = new SpeechRecognition();
         recognition.lang = 'th-TH';
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
 
-        recognition.start();
-
         recognition.onresult = function(event) {
             const transcript = event.results[0][0].transcript.trim();
+            typedByPlayerDiv.textContent = `ผู้เล่นพิมพ์อะไรลงไป : ${transcript}`;
+
             if (transcript === currentAnswer) {
-                // Success visual
                 const celeb = document.getElementById('success-celebration');
                 celeb.classList.add('show');
                 setTimeout(() => celeb.classList.remove('show'), 700);
@@ -552,14 +555,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        recognition.onerror = function(event) {
+            console.error('Speech recognition error', event.error);
+            // ถ้าผิดพลาด ไม่ต้องทำอะไรเพิ่ม (ผู้เล่นเห็นข้อความแล้ว)
+        };
+
         recognition.onspeechend = function() {
             recognition.stop();
         };
-
-        recognition.onerror = function(event) {
-            console.error('Speech recognition error', event.error);
-        };
-    };
+    }
 });
 
 function activateApplicationMode() {
@@ -578,6 +582,18 @@ function deactivateApplicationMode() {
     resultDiv.setAttribute('aria-hidden', 'false');
 }
 
+function startVoiceRecognitionAuto() {
+    if (!recognition) {
+        typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : (เบราเซอร์ไม่รองรับเสียง)";
+        return;
+    }
+    try {
+        recognition.start();
+    } catch (e) {
+        console.warn("Cannot start recognition again", e);
+    }
+}
+
 async function nextQuestion(isFirst = false) {
     if (currentQ >= TOTAL_QUESTIONS) { 
         endGame(); 
@@ -586,6 +602,7 @@ async function nextQuestion(isFirst = false) {
 
     isProcessingTimeout = false;
     typedSoFar = "";
+    typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : -";
 
     const item = currentQuestions[currentQ];
     currentAnswer = item.answer;
@@ -605,6 +622,7 @@ async function nextQuestion(isFirst = false) {
         if (timeLeft <= 0 && !isProcessingTimeout) {
             isProcessingTimeout = true;
             clearInterval(timerInterval);
+            if (recognition) recognition.stop();
             audioEngine.playEffect('wrongSound');
             audioEngine.playEffect('fSound').then(() => {
                 currentQ++;
@@ -620,6 +638,8 @@ async function nextQuestion(isFirst = false) {
 
     setTimeout(() => {
         questionElem.focus();
+        // เริ่มรับเสียงอัตโนมัติ หลังจาก aria-live อ่านจบ (หน่วงเล็กน้อย)
+        setTimeout(startVoiceRecognitionAuto, 1200);
     }, 100);
 }
 
@@ -639,18 +659,19 @@ function updateTypingDisplay() {
     typingDisplay.textContent = typedPart + underscores.trim();
 }
 
-// ตรวจจับการพิมพ์ + celebration ทั้งถูกและผิด
+// ตรวจจับการพิมพ์ + celebration ทั้งถูกและผิด + อัพเดต typedByPlayer
 document.addEventListener('keydown', (e) => {
     if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
 
     const char = e.key;
     if (char.length === 1) { 
         const expectedChar = currentAnswer[typedSoFar.length];
+        typedByPlayerDiv.textContent = `ผู้เล่นพิมพ์อะไรลงไป : ${typedSoFar + char}`;
+
         if (char === expectedChar) {
             typedSoFar += char;
             updateTypingDisplay();
             if (typedSoFar === currentAnswer) {
-                // Success visual
                 const celeb = document.getElementById('success-celebration');
                 celeb.classList.add('show');
                 setTimeout(() => celeb.classList.remove('show'), 700);
@@ -658,6 +679,7 @@ document.addEventListener('keydown', (e) => {
                 score++;
                 currentQ++;
                 audioEngine.playEffect('tSound');
+                if (recognition) recognition.stop();
                 setTimeout(() => nextQuestion(), 800);
             } else {
                 audioEngine.playEffect('t2Sound');
@@ -674,8 +696,8 @@ document.addEventListener('keydown', (e) => {
 async function handleWrong() {
     isProcessingTimeout = true;
     clearInterval(timerInterval);
+    if (recognition) recognition.stop();
 
-    // Fail visual (X สีแดงลอยขึ้น)
     const failCeleb = document.getElementById('fail-celebration');
     failCeleb.classList.add('show');
     setTimeout(() => failCeleb.classList.remove('show'), 700);
@@ -688,6 +710,7 @@ async function handleWrong() {
 
 async function endGame() {
     clearInterval(timerInterval);
+    if (recognition) recognition.stop();
     audioEngine.stopBGM();
     gameDiv.style.display = 'none';
     resultDiv.style.display = 'block';
@@ -696,6 +719,7 @@ async function endGame() {
 
     questionElem.innerHTML = '';
     typingDisplay.textContent = '';
+    typedByPlayerDiv.textContent = '';
     questionLive.textContent = '';
 
     const title = document.getElementById('resultTitle');
@@ -746,7 +770,10 @@ async function endGame() {
     }, 50);
 }
 
-window.addEventListener('beforeunload', () => audioEngine.stopBGM());
+window.addEventListener('beforeunload', () => {
+    if (recognition) recognition.stop();
+    audioEngine.stopBGM();
+});
 </script>
 </body>
 </html>
