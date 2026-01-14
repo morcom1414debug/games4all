@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ฝึกพิมพ์สัมผัส - สุภาษิต สำนวน คำพังเพย</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800;900&display=swap');
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: 'Kanit', sans-serif;
+            background: linear-gradient(135deg, #a8e6cf 0%, #dcedc1 100%);
+            height: 100vh; color: #333; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .container { width: 100%; max-width: 480px; padding: 15px; position: relative; }
+        #backToMenu {
+            position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.4);
+            padding: 8px 20px; border: none; border-radius: 50px; color: #333; font-weight: 600;
+            font-size: 1rem; cursor: pointer; backdrop-filter: blur(12px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2); z-index: 1000; transition: all 0.3s;
+        }
+        #backToMenu:hover { background: rgba(255,255,255,0.6); }
+        #levelSelect { text-align: center; }
+        h1 { font-size: 2.6rem; margin: 0 0 10px; text-shadow: 0 4px 15px rgba(0,0,0,0.2); color: #555; }
+        .subtitle { font-size: 1.3rem; margin-bottom: 12px; opacity: 0.9; color: #444; }
+        .friendly-msg {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #e91e63;
+            margin: 0 0 30px 0;
+            text-shadow: 0 2px 8px rgba(233,30,99,0.3);
+        }
+        .level-buttons { display: flex; flex-direction: column; gap: 18px; align-items: center; }
+        .level-btn {
+            width: 80%; max-width: 320px; padding: 20px; font-size: 1.8rem; font-weight: 800;
+            border: none; border-radius: 30px; cursor: pointer;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.2); transition: all 0.3s; color: white;
+        }
+        .level-btn:hover { transform: translateY(-8px) scale(1.05); }
+        #easy { background: #81deae; }
+        #medium { background: #ffdd79; color: #333; }
+        #hard { background: #ff9f9f; }
+        #game { display: none; text-align: center; position: relative; }
+        .question-heading {
+            font-size: 2.4rem; font-weight: 900; margin: 40px 20px 20px;
+            padding: 20px; background: rgba(255,255,255,0.5);
+            border-radius: 30px; backdrop-filter: blur(10px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15); color: #444;
+        }
+        .typing-display {
+            font-size: 4.5rem; font-weight: bold; min-height: 120px;
+            margin: 40px 20px; color: #ff6b9d;
+            background: rgba(255,255,255,0.4); padding: 30px; border-radius: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .timer { display: none !important; }
+
+        /* Success Celebration Overlay */
+        #success-celebration {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6rem;
+            opacity: 0;
+            transform: scale(0.6);
+            transition: all 0.7s ease-out;
+            z-index: 10;
+        }
+        #success-celebration.show {
+            opacity: 0.92;
+            transform: scale(1.4) rotate(10deg);
+        }
+
+        /* Fail Celebration Overlay (X สีแดง) */
+        #fail-celebration {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 7rem;
+            color: #e74c3c;
+            opacity: 0;
+            transform: scale(0.5) rotate(-15deg);
+            transition: all 0.7s ease-out;
+            z-index: 10;
+            text-shadow: 0 0 15px rgba(231,76,60,0.7);
+        }
+        #fail-celebration.show {
+            opacity: 0.9;
+            transform: scale(1.3) rotate(0deg);
+        }
+
+        #result { display: none; text-align: center; }
+        #result h2 { font-size: 3.8rem; margin: 40px 0 20px; color: #555; }
+        #resultMsg { font-size: 2rem; line-height: 1.6; margin: 30px 0; color: #444; }
+        #score { font-size: 5rem; font-weight: 900; margin: 40px 0; color: #ff6b9d; }
+        .btn-restart {
+            padding: 18px 60px; font-size: 1.8rem; background: #95e1d3;
+            border: none; border-radius: 50px; color: white; cursor: pointer;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        .btn-restart:hover { transform: translateY(-6px); }
+
+        /* aria-live */
+        #question-live {
+            position: absolute;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <button id="backToMenu">กลับเมนูหลัก</button>
+
+    <div id="levelSelect">
+        <h1>สุภาษิต สำนวน คำพังเพย</h1>
+        <p class="subtitle">ฝึกพิมพ์สัมผัส พิมพ์ต่อให้ครบตามคำใบ้<br>ให้ถูกต้องทุกตัวอักษร</p>
+        <p class="friendly-msg">พร้อมแล้ว ลุยเลย!</p>
+        
+        <div class="level-buttons">
+            <button class="level-btn" id="easy">ฝึกพื้นฐานเซียน 🐶</button>
+            <button class="level-btn" id="medium">ระดับเซียน 🐱</button>
+            <button class="level-btn" id="hard">ปราบเซียน 🐰</button>
+            <button class="level-btn" id="noKeyboard">โหมดเพื่อคนไม่มีแป้นพิมพ์จริง 🐻</button>
+        </div>
+    </div>
+
+    <div id="game">
+        <div id="success-celebration">🎉✨⭐</div>
+        <div id="fail-celebration">❌</div>
+        <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
+        <div class="typing-display" id="typingDisplay">_ _ _ _ _ _ _ _</div>
+    </div>
+
+    <!-- aria-live element -->
+    <div id="question-live" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="result">
+        <h2 id="resultTitle" tabindex="-1">สุดยอดมาก!</h2>
+        <div id="resultMsg" style="font-size: 2.4rem; margin: 40px 0; line-height: 1.6;"></div>
+        <div id="score">1000 คะแนน</div>
+        <button class="btn-restart" id="restartBtn">เริ่มเล่นใหม่</button>
+    </div>
+</div>
+
+<script>
+// ======== Web Audio API Engine ======== (เหมือนเดิมทุกประการ)
+class AudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.isUnlocked = false;
+    this.bgmSource = null;
+    this.bgmGain = null;
+    this.bgmBuffer = null;
+    this.currentEndPromise = null;
+
+    this.sounds = {
+      correctSound: "https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3",
+      wrongSound: "https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3",
+      bgm: "audio/b3.mp3",
+      doorSound: "audio/door.mp3",
+      t1Sound: "audio/t1.mp3",
+      tSound: "audio/t.mp3",
+      t2Sound: "audio/t2.mp3",
+      fSound: "audio/f.mp3",
+      endSound: "audio/end.mp3",
+      end1Sound: "audio/end1.mp3"
+    };
+
+    this.buffers = {};
+  }
+
+  async initContext() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await this.loadAllBuffers();
+  }
+
+  async loadAllBuffers() {
+    const promises = Object.entries(this.sounds).map(async ([key, url]) => {
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+        this.buffers[key] = audioBuffer;
+      } catch (e) {
+        console.warn(`Failed to load sound: ${key} - ${url}`, e);
+      }
+    });
+    await Promise.all(promises);
+  }
+
+  async unlockAll() {
+    if (this.isUnlocked) return;
+    await this.initContext();
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.ctx.createBuffer(1, 1, 22050);
+    source.connect(this.ctx.destination);
+    source.start(0);
+    this.isUnlocked = true;
+  }
+
+  async startBGM() {
+    if (!this.buffers.bgm || this.bgmSource) return;
+    await this.unlockAll();
+
+    this.bgmSource = this.ctx.createBufferSource();
+    this.bgmSource.buffer = this.buffers.bgm;
+    this.bgmSource.loop = true;
+
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 0.6;
+
+    this.bgmSource.connect(this.bgmGain);
+    this.bgmGain.connect(this.ctx.destination);
+
+    this.bgmSource.start(0);
+  }
+
+  stopBGM() {
+    if (this.bgmSource) {
+      this.bgmSource.stop();
+      this.bgmSource = null;
+      this.bgmGain = null;
+    }
+  }
+
+  async playEffect(key) {
+    if (!this.buffers[key]) return;
+    await this.unlockAll();
+
+    if ((key === 'endSound' || key === 'end1Sound') && this.currentEndPromise) {
+      return this.currentEndPromise;
+    }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers[key];
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = key.includes('end') || key === 'bgm' ? 0.8 : 0.8;
+
+    source.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+
+    const p = new Promise(resolve => {
+      source.onended = () => resolve();
+      setTimeout(resolve, 4000);
+    });
+
+    source.start(0);
+
+    if (key === 'endSound' || key === 'end1Sound') {
+      this.currentEndPromise = p;
+      p.finally(() => { this.currentEndPromise = null; });
+    }
+
+    return p;
+  }
+}
+
+const audioEngine = new AudioEngine();
+
+let hasUserInteracted = false;
+async function unlockAudio(){
+  if (hasUserInteracted) return;
+  hasUserInteracted = true;
+  await audioEngine.unlockAll();
+  await audioEngine.startBGM();
+}
+document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
+document.addEventListener("click", unlockAudio, {once:true});
+
+// ────────────────────────────────────────────────
+//              ชุดสุภาษิต/สำนวน/คำพังเพย ใหม่
+// ────────────────────────────────────────────────
+const proverbs = [
+  { answer: "กะลาครอบ", hint: "กบใน" },
+  { answer: "จันทร์", hint: "กระต่ายหมาย" },
+  { answer: "ประตูมีช่อง", hint: "กำแพงมีหู" },
+  { answer: "ร้อนท้อง", hint: "กินปูน" },
+  { answer: "ใต้ศอก", hint: "กินน้ำ" },
+  { answer: "คนงามเพราะแต่ง", hint: "ไก่งามเพราะขน" },
+  { answer: "งูเห็นนมไก่", hint: "ไก่เห็นตีนงู" },
+  { answer: "ซาก", hint: "ขวานผ่า" },
+  { answer: "จับตั๊กแตน", hint: "ขี่ช้าง" },
+  { answer: "ถากด้วยตา", hint: "ขุดด้วยปาก" },
+  { answer: "ขึ้นภูเขา", hint: "เข็นครก" },
+  { answer: "ต้องหลิ่วตาตาม", hint: "เข้าเมืองตาหลิ่ว" },
+  { answer: "ข้างในต๊ะติ๊งโหน่ง", hint: "ข้างนอกขรุขระ" },
+  { answer: "ชนแกะ", hint: "จับแพะ" },
+  { answer: "ใส่กระด้ง", hint: "จับปู" },
+  { answer: "สู้เสือ", hint: "ใจดี" },
+  { answer: "ดีเจ็ดหน", hint: "ชั่วเจ็ดที" },
+  { answer: "เอาใบบัวปิดไม่มิด", hint: "ช้างตายทั้งตัว" },
+  { answer: "ชี้ไม้เป็นไม้", hint: "ชี้นกเป็นนก" },
+  { answer: "หางหมู", hint: "ดินพอก" },
+  { answer: "ดูนางให้ดูแม่", hint: "ดูช้างให้ดูหาง" },
+  { answer: "หมาไม่กัด", hint: "เดินตามหลังผู้ใหญ่" },
+  { answer: "ลูบหลัง", hint: "ตบหัวแล้ว" },
+  { answer: "สาวความยืด", hint: "ต่อความยาว" },
+  { answer: "ละลายแม่น้ำ", hint: "ตำน้ำพริก" },
+  { answer: "หลังหัก", hint: "ตีงูให้" },
+  { answer: "เก่า", hint: "ถ่านไฟ" },
+  { answer: "หลังคน", hint: "ทำนาบน" },
+  { answer: "ให้รีบตัก", hint: "น้ำขึ้น" },
+  { answer: "อย่าขวางเรือ", hint: "น้ำเชี่ยว" },
+  { answer: "เสือพึ่งป่า", hint: "น้ำพึ่งเรือ" },
+  { answer: "แพ้ไฟ", hint: "น้ำน้อย" },
+  { answer: "น้ำไม่ให้ขุ่น", hint: "บัวไม่ให้ช้ำ" },
+  { answer: "น้ำใจเชือดคอ", hint: "ปากปราศรัย" },
+  { answer: "หลังพระ", hint: "ปิดทอง" },
+  { answer: "โรยหน้า", hint: "ผักชี" },
+  { answer: "ข่มท่าน", hint: "ยกตน" },
+  { answer: "ออกจากอก", hint: "ยกภูเขา" },
+  { answer: "ได้นกสองตัว", hint: "ยิงปืนนัดเดียว" },
+  { answer: "ขาย", hint: "ย้อมแมว" },
+  { answer: "ยื่นแมว", hint: "ยื่นหมู" },
+  { answer: "รักลูกให้ตี", hint: "รักวัวให้ผูก" },
+  { answer: "รักชั่วหามเสา", hint: "รักดีหามจั่ว" },
+  { answer: "โทษปี่โทษกลอง", hint: "รำไม่ดี" },
+  { answer: "นอนเสื่อ", hint: "ล้มหมอน" },
+  { answer: "ไม่ไกลต้น", hint: "ลูกไม้หล่น" },
+  { answer: "ล้อมคอก", hint: "วัวหาย" },
+  { answer: "อิเหนาเป็นเอง", hint: "ว่าแต่เขา" },
+  { answer: "ว่ายน้ำ", hint: "สอนจระเข้" },
+  { answer: "จูบไม่หอม", hint: "สวยแต่รูป" },
+  { answer: "เผากิน", hint: "สุกเอา" },
+  { answer: "ภูเขา", hint: "เส้นผมบัง" },
+  { answer: "อยู่ถ้ำเดียวกันไม่ได้", hint: "เสือสองตัว" },
+  { answer: "หลังหลอก", hint: "หน้าไหว้" },
+  { answer: "ใจเสือ", hint: "หน้าเนื้อ" },
+  { answer: "จระเข้", hint: "หนีเสือปะ" },
+  { answer: "ไก่มา", hint: "หมูไป" },
+  { answer: "ใบตองแห้ง", hint: "หมาเห่า" },
+  { answer: "ปั้นมือ", hint: "หมายมั่น" },
+  { answer: "ได้ผลเช่นนั้น", hint: "หว่านพืชเช่นไร" },
+  { answer: "ได้หวี", hint: "หัวล้าน" },
+  { answer: "เป็นดอกบัว", hint: "เห็นกงจักร" },
+  { answer: "ขี้ตามช้าง", hint: "เห็นช้างขี้" },
+  { answer: "ปากช้าง", hint: "อ้อยเข้า" },
+  { answer: "ไปขายสวน", hint: "เอามะพร้าวห้าว" },
+  { answer: "ใบหยก", hint: "กิ่งทอง" },
+  { answer: "ไม่พ้นคอ", hint: "ขว้างงู" },
+  { answer: "ถอนโคน", hint: "ขุดราก" },
+  { answer: "ความควายเข้ามาแทรก", hint: "ความวัวไม่ทันหาย" },
+  { answer: "คาเขา", hint: "คาหนัง" },
+  { answer: "กินหญ้าอ่อน", hint: "โคแก่" },
+  { answer: "ในมหาสมุทร", hint: "งมเข็ม" },
+  { answer: "ตำตอ", hint: "จุดไต้" },
+  { answer: "ให้เรือเสีย", hint: "ชักใบ" },
+  { answer: "ทั้งห้า", hint: "ชักแม่น้ำ" },
+  { answer: "ให้กระรอก", hint: "ชี้โพรง" },
+  { answer: "ให้ลิงดู", hint: "เชือดไก่" },
+  { answer: "คดกินไม่นาน", hint: "ซื่อกินไม่หมด" },
+  { answer: "สะเทือนถึงดวงดาว", hint: "เด็ดดอกไม้" },
+  { answer: "ขี่แพะไล่", hint: "ได้ที" },
+  { answer: "พลอยโจร", hint: "ตกกระได" },
+  { answer: "ทั้งเป็น", hint: "ตกนรก" },
+  { answer: "ได้แว่น", hint: "ตาบอด" },
+  { answer: "ไปก่อนไข้", hint: "ตีตน" },
+  { answer: "ถอดเล็บ", hint: "ถอดเขี้ยว" },
+  { answer: "เข้าคลอง", hint: "ถอยหลัง" },
+  { answer: "ทำรังแต่พอตัว", hint: "นกน้อย" },
+  { answer: "หน้าขวาน", hint: "หน้าสิ่ว" },
+  { answer: "ถังข้าวสาร", hint: "หนูตก" },
+  { answer: "ตาบาน", hint: "หน้าชื่น" },
+  { answer: "ผักบุ้งโหรงเหรง", hint: "น้ำท่วมทุ่ง" },
+  { answer: "ไหลลึก", hint: "น้ำนิ่ง" },
+  { answer: "บ่อทราย", hint: "น้ำซึม" },
+  { answer: "น้ำเย็นปลาตาย", hint: "น้ำร้อนปลาเป็น" },
+  { answer: "ก็ตัดทิ้ง", hint: "นิ้วไหนร้าย" },
+  { answer: "ได้น้ำ", hint: "ปลากระดี่" },
+  { answer: "ก้นเปรี้ยว", hint: "ปากหวาน" },
+  { answer: "ห่อทอง", hint: "ผ้าขี้ริ้ว" },
+  { answer: "ไว้กับแมว", hint: "ฝากปลาย่าง" },
+  { answer: "เป็นหลังมือ", hint: "พลิกหน้ามือ" },
+  { answer: "ปากถือศีล", hint: "มือถือสาก" },
+  { answer: "ชีวิต", hint: "แมวเก้า" },
+  { answer: "หายใจ", hint: "ยืมจมูกคนอื่น" },
+  { answer: "เสียดายน้อง", hint: "รักพี่" },
+  { answer: "ในกำมือ", hint: "ลูกไก่" },
+  { answer: "ตัว", hint: "วัวลืม" },
+  { answer: "สังฆราช", hint: "สอนหนังสือ" },
+  { answer: "ตา", hint: "สู้ยิบ" },
+  { answer: "สิงห์สนามซ้อม", hint: "หมูสนามจริง" },
+  { answer: "เข้าหากัน", hint: "หันหน้า" },
+  { answer: "หัวแหวน", hint: "หัวแก้ว" },
+  { answer: "งัดไม้ซุง", hint: "ไม้ซีก" },
+  { answer: "หนูร่าเริง", hint: "แมวไม่อยู่" },
+  { answer: "ได้แก้ว", hint: "วานร" },
+  { answer: "นรกในใจ", hint: "สวรรค์ในอก" },
+  { answer: "เอาตัวไม่รอด", hint: "ความรู้ท่วมหัว" },
+  { answer: "ถี่เหนียว", hint: "ตระหนี่" },
+  { answer: "กรอกหม้อ", hint: "ตำข้าวสาร" },
+  { answer: "น้ำใสไว้นอก", hint: "น้ำขุ่นไว้ใน" },
+  { answer: "เข้าปาก", hint: "ปอกกล้วย" },
+  { answer: "เที่ยง", hint: "ไกลปืน" },
+  { answer: "ออกตามประตู", hint: "เข้าตามตรอก" },
+  { answer: "น้ำลดมดกินปลา", hint: "น้ำมาปลากินมด" },
+];
+let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
+let TOTAL_QUESTIONS = 10;
+let isProcessingTimeout = false;
+let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, questionLive;
+
+let currentAnswer = "";
+let currentHint = "";
+let typedSoFar = "";
+
+function shuffle(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+async function startGame(level) {
+    if (level === 'easy') {
+        TOTAL_QUESTIONS = 5;      
+        timePerQuestion = 20;
+    } else if (level === 'medium') {
+        TOTAL_QUESTIONS = 7;
+        timePerQuestion = 15;
+    } else if (level === 'hard') {
+        TOTAL_QUESTIONS = 10;
+        timePerQuestion = 10;
+    }
+
+    levelSelect.style.display = 'none';
+    gameDiv.style.display = 'block';
+    resultDiv.style.display = 'none';
+    backBtn.style.display = 'none';
+
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    questionLive.textContent = '';
+
+    await audioEngine.startBGM();
+
+    currentQuestions = shuffle(proverbs).slice(0, TOTAL_QUESTIONS);
+    currentQ = 0; score = 0;
+    typedSoFar = "";
+    activateApplicationMode();
+    nextQuestion(true);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    backBtn = document.getElementById('backToMenu');
+    levelSelect = document.getElementById('levelSelect');
+    gameDiv = document.getElementById('game');
+    resultDiv = document.getElementById('result');
+    questionElem = document.getElementById('question');
+    typingDisplay = document.getElementById('typingDisplay');
+    questionLive = document.getElementById('question-live');
+
+    document.getElementById('easy').onclick = () => startGame('easy');
+    document.getElementById('medium').onclick = () => startGame('medium');
+    document.getElementById('hard').onclick = () => startGame('hard');
+    document.getElementById('noKeyboard').onclick = () => { location.href = 'ProVerbThai1.html'; };
+
+    document.getElementById('restartBtn').onclick = async () => {
+        await audioEngine.playEffect('doorSound');
+        resultDiv.style.display = 'none';
+        levelSelect.style.display = 'block';
+        backBtn.style.display = 'block';
+        questionElem.innerHTML = '';
+        typingDisplay.textContent = '';
+        questionLive.textContent = '';
+    };
+
+    backBtn.onclick = async () => {
+        audioEngine.stopBGM();
+        await audioEngine.playEffect('doorSound');
+        location.href = '../index.html';
+    };
+});
+
+function activateApplicationMode() {
+    levelSelect.setAttribute('aria-hidden', 'true');
+    gameDiv.setAttribute('aria-hidden', 'false');
+    gameDiv.setAttribute('role', 'application');
+    gameDiv.setAttribute('tabindex', '0');
+    try { gameDiv.focus(); } catch (e) {}
+}
+
+function deactivateApplicationMode() {
+    gameDiv.setAttribute('aria-hidden', 'true');
+    gameDiv.removeAttribute('role');
+    gameDiv.removeAttribute('tabindex');
+    levelSelect.setAttribute('aria-hidden', 'false');
+    resultDiv.setAttribute('aria-hidden', 'false');
+}
+
+async function nextQuestion(isFirst = false) {
+    if (currentQ >= TOTAL_QUESTIONS) { 
+        endGame(); 
+        return; 
+    }
+
+    isProcessingTimeout = false;
+    typedSoFar = "";
+
+    const item = currentQuestions[currentQ];
+    currentAnswer = item.answer;
+    currentHint = item.hint;
+
+    const questionText = `ข้อ ${currentQ + 1} : ${currentHint}`;
+    questionElem.innerHTML = questionText;
+
+    clearInterval(timerInterval);
+    updateTypingDisplay();   
+
+    let timeLeft = timePerQuestion;
+    document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+        if (timeLeft <= 0 && !isProcessingTimeout) {
+            isProcessingTimeout = true;
+            clearInterval(timerInterval);
+            audioEngine.playEffect('wrongSound');
+            audioEngine.playEffect('fSound').then(() => {
+                currentQ++;
+                nextQuestion();
+            });
+        }
+    }, 1000);
+
+    questionLive.textContent = '';
+    requestAnimationFrame(() => {
+        questionLive.textContent = questionText;
+    });
+
+    setTimeout(() => {
+        questionElem.focus();
+    }, 100);
+}
+
+function updateTypingDisplay() {
+    const typedPart = currentAnswer.slice(0, typedSoFar.length);        
+    const remainingPart = currentAnswer.slice(typedSoFar.length);       
+
+    let underscores = '';
+    for (let i = 0; i < remainingPart.length; i++) {
+        const code = remainingPart.charCodeAt(i);
+        if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) {
+            continue;  // ข้ามวรรณยุกต์ สระบน/ล่าง ไม่นับเป็นช่อง
+        }
+        underscores += '_ ';
+    }
+
+    typingDisplay.textContent = typedPart + underscores.trim();
+}
+
+// ตรวจจับการพิมพ์ + celebration ทั้งถูกและผิด
+document.addEventListener('keydown', (e) => {
+    if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
+
+    const char = e.key;
+    if (char.length === 1) { 
+        const expectedChar = currentAnswer[typedSoFar.length];
+        if (char === expectedChar) {
+            typedSoFar += char;
+            updateTypingDisplay();
+            if (typedSoFar === currentAnswer) {
+                // Success visual
+                const celeb = document.getElementById('success-celebration');
+                celeb.classList.add('show');
+                setTimeout(() => celeb.classList.remove('show'), 700);
+
+                score++;
+                currentQ++;
+                audioEngine.playEffect('tSound');
+                setTimeout(() => nextQuestion(), 800);
+            } else {
+                audioEngine.playEffect('t2Sound');
+            }
+        } else {
+            handleWrong();
+        }
+        e.preventDefault();
+    } else if (e.key === 'Backspace') {
+        e.preventDefault(); 
+    }
+});
+
+async function handleWrong() {
+    isProcessingTimeout = true;
+    clearInterval(timerInterval);
+
+    // Fail visual (X สีแดงลอยขึ้น)
+    const failCeleb = document.getElementById('fail-celebration');
+    failCeleb.classList.add('show');
+    setTimeout(() => failCeleb.classList.remove('show'), 700);
+
+    await audioEngine.playEffect('wrongSound');
+    await audioEngine.playEffect('fSound');
+    currentQ++;
+    nextQuestion();
+}
+
+async function endGame() {
+    clearInterval(timerInterval);
+    audioEngine.stopBGM();
+    gameDiv.style.display = 'none';
+    resultDiv.style.display = 'block';
+    backBtn.style.display = 'block';
+    deactivateApplicationMode();
+
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    questionLive.textContent = '';
+
+    const title = document.getElementById('resultTitle');
+    const msg = document.getElementById('resultMsg');
+    const scoreDiv = document.getElementById('score');
+
+    const points = score * 100;
+    scoreDiv.textContent = points + " คะแนน";
+
+    const perfectEncourages = [
+        "สุดยอดไปเลย! รู้สุภาษิตเป๊ะทุกข้อเลยนะ 💖",
+        "เก่งมาก ๆ ! เป็นเซียนสำนวนไทยแล้ว ✨",
+        "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆",
+        "เยี่ยมมาก! ทำได้สมบูรณ์แบบ ภูมิใจในตัวเองได้เลย 😊"
+    ];
+
+    const goodEncourages = [
+        "เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪",
+        "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ๆ ❤️",
+        "ทำได้ดีมากเลย! เหลืออีกนิดเดียว สู้ ๆ นะ 🌟",
+        "สุดยอดมาก! คะแนนดีแบบนี้ แสดงว่าจำสำนวนเก่งแน่ ๆ 👍"
+    ];
+
+    const normalEncourages = [
+        "ไม่เป็นไรนะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕",
+        "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้จำได้มากขึ้น 😘",
+        "พยายามเข้าไว้จ้า! ยิ่งเล่นยิ่งเก่งแน่นอน 🌈",
+        "อย่ายอมแพ้นะ สู้ ๆ ! เดี๋ยวก็เป็นเซียนสำนวนเองแหละ 💖",
+        "เยี่ยมแล้วที่เล่นจนจบ! ครั้งหน้าต้องดีกว่านี้แน่นอนเลยน้า 🚀"
+    ];
+
+    if (score === TOTAL_QUESTIONS) {
+        title.textContent = "สุดยอดมาก!";
+        msg.innerHTML = perfectEncourages[Math.floor(Math.random() * perfectEncourages.length)];
+        await audioEngine.playEffect('endSound');
+    } else if (score >= Math.ceil(TOTAL_QUESTIONS * 0.8)) {
+        title.textContent = "เก่งมากเลย!";
+        msg.innerHTML = goodEncourages[Math.floor(Math.random() * goodEncourages.length)];
+        await audioEngine.playEffect('endSound');
+    } else {
+        title.textContent = "สู้ต่อไปนะ!";
+        msg.innerHTML = normalEncourages[Math.floor(Math.random() * normalEncourages.length)];
+        await audioEngine.playEffect('end1Sound');
+    }
+
+    setTimeout(() => {
+      try { title.focus(); } catch(e) {}
+    }, 50);
+}
+
+window.addEventListener('beforeunload', () => audioEngine.stopBGM());
+</script>
+</body>
+</html>
