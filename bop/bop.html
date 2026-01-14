@@ -44,7 +44,7 @@
             font-size: 3.2rem; font-weight: bold; min-height: 70px;
             margin: 20px 0; letter-spacing: 10px; color: #ffd93d;
         }
-        .timer { display: none; } /* Hide timer display as in bop style */
+        .timer { display: none; }
         .letters {
             display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, auto); gap: 14px;
             margin: 30px 10px 20px; aria-live: polite; aria-atomic: false;
@@ -72,7 +72,6 @@
         }
         .btn-restart:hover { transform: translateY(-6px); }
 
-        /* Additional styles for bop-like buttons */
         .game-btn {
             padding: 12px 24px; font-size: 1.4rem; background: rgba(255,255,255,0.25);
             border: none; border-radius: 50px; color: white; font-weight: 600;
@@ -83,7 +82,6 @@
         .game-btn:hover { background: rgba(255,255,255,0.4); }
         .game-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* aria-live สำหรับประกาศคำถาม */
         #question-live {
             position: absolute;
             left: -9999px;
@@ -119,7 +117,6 @@
         </div>
     </div>
 
-    <!-- aria-live element -->
     <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
     <div id="result">
@@ -127,97 +124,114 @@
         <div id="resultMsg" style="font-size: 2.4rem; margin: 30px 0; line-height: 1.6;"></div>
         <div id="score">1000 คะแนน</div>
         <button class="btn-restart" id="restartBtn">เริ่มเล่นใหม่</button>
+        <button class="btn-restart" id="newModeBtn" style="margin-top: 15px; background: #667eea;">เลือกโหมดใหม่</button>
     </div>
 </div>
 
-<!-- Audio files from bop.html -->
-<audio id="snd-1" preload="auto" src="sounds/1.mp3"></audio>
-<audio id="snd-2" preload="auto" src="sounds/2.mp3"></audio>
-<audio id="snd-3" preload="auto" src="sounds/3.mp3"></audio>
-<audio id="snd-4" preload="auto" src="sounds/4.mp3"></audio>
-<audio id="snd-5" preload="auto" src="sounds/5.mp3"></audio>
-<audio id="snd-6" preload="auto" src="sounds/6.mp3"></audio>
-<audio id="snd-7" preload="auto" src="sounds/7.mp3"></audio>
-<audio id="snd-8" preload="auto" src="sounds/8.mp3"></audio>
-<audio id="snd-9" preload="auto" src="sounds/9.mp3"></audio>
-
-<audio id="snd-correct" preload="auto" src="sounds/correct.mp3"></audio>
-<audio id="snd-wrong"   preload="auto" src="sounds/wrong.mp3"></audio>
-<audio id="snd-tick"    preload="auto" src="sounds/tick.mp3"></audio>
-<audio id="snd-start"   preload="auto" src="sounds/start.mp3"></audio>
-<audio id="snd-gameover" preload="auto" src="sounds/gameover.mp3"></audio>
-<audio id="snd-bgm" preload="auto" src="audio/b2.mp3"></audio> <!-- From BasicPerkin -->
-
 <script>
-// ======== Audio Engine (Simplified from BasicPerkin + bop) ========
-const audioBank = {
-    1: document.getElementById('snd-1'),
-    2: document.getElementById('snd-2'),
-    3: document.getElementById('snd-3'),
-    4: document.getElementById('snd-4'),
-    5: document.getElementById('snd-5'),
-    6: document.getElementById('snd-6'),
-    7: document.getElementById('snd-7'),
-    8: document.getElementById('snd-8'),
-    9: document.getElementById('snd-9'),
-    correct: document.getElementById('snd-correct'),
-    wrong: document.getElementById('snd-wrong'),
-    tick: document.getElementById('snd-tick'),
-    start: document.getElementById('snd-start'),
-    gameover: document.getElementById('snd-gameover'),
-    bgm: document.getElementById('snd-bgm')
-};
+// ────────────────────────────────────────────────
+// Web Audio API Setup
+// ────────────────────────────────────────────────
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
 
+const soundBuffers = {};
+const bgmSource = { node: null, isPlaying: false };
+
+let audioMode = 'file'; // 'file' หรือ 'off'
+
+async function loadSound(name, url) {
+    try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        soundBuffers[name] = await audioCtx.decodeAudioData(arrayBuffer);
+    } catch (err) {
+        console.warn(`โหลดเสียง ${name} ไม่สำเร็จ`, err);
+    }
+}
+
+// โหลดเสียงทั้งหมด (เรียกครั้งเดียวตอนเริ่ม)
+const soundsToLoad = [
+    ['1',     'sounds/1.mp3'],
+    ['2',     'sounds/2.mp3'],
+    ['3',     'sounds/3.mp3'],
+    ['4',     'sounds/4.mp3'],
+    ['5',     'sounds/5.mp3'],
+    ['6',     'sounds/6.mp3'],
+    ['7',     'sounds/7.mp3'],
+    ['8',     'sounds/8.mp3'],
+    ['9',     'sounds/9.mp3'],
+    ['correct','sounds/correct.mp3'],
+    ['wrong',  'sounds/wrong.mp3'],
+    ['tick',   'sounds/tick.mp3'],
+    ['start',  'sounds/start.mp3'],
+    ['gameover','sounds/gameover.mp3'],
+    ['bgm',    'audio/b2.mp3'],      // bgm เดิม (ถ้ามี)
+    ['time',   'sounds/time.mp3']    // bgm ใหม่ที่ขอมา
+];
+
+Promise.all(soundsToLoad.map(([name, url]) => loadSound(name, url)))
+    .then(() => console.log("โหลดเสียงทั้งหมดเรียบร้อยแล้ว"))
+    .catch(err => console.warn("บางไฟล์เสียงโหลดไม่สำเร็จ", err));
+
+// ฟังก์ชันเล่นเสียง effect (ไม่ loop)
+function play(name, volume = 1.0) {
+    if (audioMode === 'off' || !soundBuffers[name]) return;
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = soundBuffers[name];
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = volume;
+    source.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    source.start(0);
+}
+
+// เริ่มเล่น BGM time.mp3 แบบวนลูป
+function startBackgroundBGM() {
+    if (bgmSource.isPlaying || !soundBuffers['time'] || audioMode === 'off') return;
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = soundBuffers['time'];
+    source.loop = true;
+
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0.40; // เบาๆ เพราะเป็นพื้นหลัง
+
+    source.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    source.start(0);
+
+    bgmSource.node = source;
+    bgmSource.isPlaying = true;
+}
+
+// หยุด BGM ทันที
+function stopBackgroundBGM() {
+    if (bgmSource.node && bgmSource.isPlaying) {
+        bgmSource.node.stop();
+        bgmSource.node = null;
+        bgmSource.isPlaying = false;
+    }
+}
+
+// ปลดล็อก AudioContext (สำคัญมากบนมือถือ)
 let hasUserInteracted = false;
-async function unlockAudio() {
-    if (hasUserInteracted) return;
+function unlockAudio() {
+    if (hasUserInteracted || audioCtx.state === 'running') return;
     hasUserInteracted = true;
-    Object.values(audioBank).forEach(a => {
-        if (a) { a.play().catch(() => {}); a.pause(); a.currentTime = 0; }
+    audioCtx.resume().then(() => {
+        console.log("AudioContext is running");
     });
 }
+
 document.addEventListener("touchstart", unlockAudio, {once: true, passive: true});
 document.addEventListener("click", unlockAudio, {once: true});
 
-function play(name) {
-    if (audioMode === 'off') return;
-    if (audioMode === 'tts') {
-        if (name >=1 && name <=9) speakThai(`กด ${name}`);
-        else if (name === 'correct') speakThai('ถูกต้อง');
-        else if (name === 'wrong') speakThai('ผิด');
-        return;
-    }
-    const a = audioBank[name];
-    if (a) {
-        a.currentTime = 0;
-        a.play().catch(() => {});
-    }
-}
-
-function startBGM() {
-    play('bgm');
-    audioBank.bgm.loop = true;
-}
-
-function stopBGM() {
-    if (audioBank.bgm) {
-        audioBank.bgm.pause();
-        audioBank.bgm.currentTime = 0;
-    }
-}
-
-function speakThai(text) {
-    if (audioMode !== 'tts' || !text) return;
-    try {
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'th-TH';
-        u.rate = 1.1;
-        speechSynthesis.cancel();
-        speechSynthesis.speak(u);
-    } catch {}
-}
-
-// ชุดคำสั่งจาก bop.html (patterns num1-9)
+// ────────────────────────────────────────────────
+// ตัวแปรเกม (เหมือนเดิม)
+// ────────────────────────────────────────────────
 const patterns = [
     { num:1, dots:"1"      },
     { num:2, dots:"1,2"    },
@@ -234,12 +248,11 @@ let currentPattern = null;
 let score = 0, timerInterval, timeLimit = 5000;
 let isProcessingTimeout = false;
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, spellingDisplay, lettersDiv, questionLive, stopBtn, audioModeBtn;
-let audioMode = 'file'; // file | tts | off
 let running = false;
 let pressedDots = new Set();
 let timestamps = {};
 let correctDotsSet = new Set();
-let timer = null;
+let currentLevel = null;
 
 function setEquals(setA, setB) {
     if (setA.size !== setB.size) return false;
@@ -266,13 +279,10 @@ function deactivateApplicationMode() {
 }
 
 async function startGame(level) {
-    if (level === 'easy') {
-        timeLimit = 3900; // Start slow as in bop easy (3.9s)
-    } else if (level === 'medium') {
-        timeLimit = 3000;
-    } else if (level === 'hard') {
-        timeLimit = 2000;
-    }
+    currentLevel = level;
+    if (level === 'easy')        timeLimit = 3900;
+    else if (level === 'medium') timeLimit = 3000;
+    else if (level === 'hard')   timeLimit = 2000;
 
     levelSelect.style.display = 'none';
     gameDiv.style.display = 'block';
@@ -284,7 +294,7 @@ async function startGame(level) {
     lettersDiv.innerHTML = '';
     questionLive.textContent = '';
 
-    startBGM();
+    startBackgroundBGM();           // เริ่ม BGM time.mp3
 
     score = 0;
     running = true;
@@ -296,34 +306,44 @@ async function startGame(level) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    backBtn = document.getElementById('backToMenu');
-    levelSelect = document.getElementById('levelSelect');
-    gameDiv = document.getElementById('game');
-    resultDiv = document.getElementById('result');
-    questionElem = document.getElementById('question');
-    spellingDisplay = document.getElementById('spellingDisplay');
-    lettersDiv = document.getElementById('letters');
-    questionLive = document.getElementById('question-live');
-    stopBtn = document.getElementById('stopBtn');
-    audioModeBtn = document.getElementById('audioModeBtn');
+    backBtn        = document.getElementById('backToMenu');
+    levelSelect    = document.getElementById('levelSelect');
+    gameDiv        = document.getElementById('game');
+    resultDiv      = document.getElementById('result');
+    questionElem   = document.getElementById('question');
+    spellingDisplay= document.getElementById('spellingDisplay');
+    lettersDiv     = document.getElementById('letters');
+    questionLive   = document.getElementById('question-live');
+    stopBtn        = document.getElementById('stopBtn');
+    audioModeBtn   = document.getElementById('audioModeBtn');
 
-    document.getElementById('easy').onclick = () => startGame('easy');
-    document.getElementById('medium').onclick = () => startGame('medium');
-    document.getElementById('hard').onclick = () => startGame('hard');
+    document.getElementById('easy').onclick    = () => startGame('easy');
+    document.getElementById('medium').onclick  = () => startGame('medium');
+    document.getElementById('hard').onclick    = () => startGame('hard');
 
     document.getElementById('restartBtn').onclick = async () => {
         resultDiv.style.display = 'none';
+        if (currentLevel) {
+            startGame(currentLevel);
+        } else {
+            levelSelect.style.display = 'block';
+            backBtn.style.display = 'block';
+        }
+    };
+
+    document.getElementById('newModeBtn').onclick = async () => {
+        resultDiv.style.display = 'none';
         levelSelect.style.display = 'block';
         backBtn.style.display = 'block';
-
         questionElem.innerHTML = '';
         spellingDisplay.textContent = '_ _ _ _ _ _';
         lettersDiv.innerHTML = '';
         questionLive.textContent = '';
+        stopBackgroundBGM();
     };
 
     backBtn.onclick = async () => {
-        stopBGM();
+        stopBackgroundBGM();
         location.href = '../index.html';
     };
 
@@ -333,14 +353,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     audioModeBtn.onclick = () => {
         if (audioMode === 'file') {
-            audioMode = 'tts';
-            audioModeBtn.textContent = 'โหมดเสียง: TTS';
-        } else if (audioMode === 'tts') {
             audioMode = 'off';
             audioModeBtn.textContent = 'โหมดเสียง: ปิด';
+            stopBackgroundBGM();
         } else {
             audioMode = 'file';
             audioModeBtn.textContent = 'โหมดเสียง: File';
+            if (running) startBackgroundBGM();
         }
     };
 });
@@ -363,10 +382,8 @@ async function nextQuestion() {
     const correctDots = currentPattern.dots.split(',').map(d => d.trim());
     correctDotsSet = new Set(correctDots);
 
-    const questionText = `${num}`;
-    questionElem.innerHTML = questionText;
-
-    play(num);
+    questionElem.innerHTML = `${num}`;
+    play(num.toString());
 
     clearInterval(timerInterval);
 
@@ -465,7 +482,7 @@ function fail(reason) {
 }
 
 async function endGame(reason = '') {
-    stopBGM();
+    stopBackgroundBGM();           // หยุด BGM ทันทีเมื่อจบเกม
     gameDiv.style.display = 'none';
     resultDiv.style.display = 'block';
     backBtn.style.display = 'block';
@@ -477,11 +494,10 @@ async function endGame(reason = '') {
     questionLive.textContent = '';
 
     const title = document.getElementById('resultTitle');
-    const msg = document.getElementById('resultMsg');
+    const msg   = document.getElementById('resultMsg');
     const scoreDiv = document.getElementById('score');
 
     const points = score * 100;
-
     scoreDiv.textContent = points + " คะแนน";
 
     const perfectEncourages = [
@@ -521,7 +537,7 @@ async function endGame(reason = '') {
     }, 50);
 }
 
-window.addEventListener('beforeunload', () => stopBGM());
+window.addEventListener('beforeunload', () => stopBackgroundBGM());
 
 document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout) return;
