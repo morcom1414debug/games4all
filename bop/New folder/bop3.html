@@ -78,21 +78,10 @@
   </section>
 
   <!-- ── หน้าจอเกม ── -->
-  <section id="game-container" class="card hidden" aria-labelledby="title" tabindex="0">
+  <section id="game-container" class="card hidden" aria-labelledby="title" role="application" tabindex="0">
     <h1 id="title">เกมฝึกกด Braille Chord (Perkins Style)</h1>
     <p>กดจุดเบรลล์พร้อมกันตามที่ได้ยิน / อ่าน</p>
     
-    <div class="grid mt-6">
-      <div class="panel">
-        <div id="prompt" class="prompt text-center" role="status" aria-live="assertive">เตรียมตัว...</div>
-        <div id="sr-aria" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
-        <div class="flex gap-4 flex-wrap justify-center mt-6">
-          <button id="stopBtn" class="btn" disabled>⏹ หยุดเกม</button>
-          <button id="audioModeBtn" class="btn">โหมดเสียง: Audio</button>
-        </div>
-      </div>
-    </div>
-
     <div class="status mt-4" aria-live="polite" aria-atomic="true">
       <div class="pill" id="scorePill" role="status">คะแนน: <strong id="score">0</strong></div>
       <div class="pill">สถิติสูงสุด: <strong id="best">0</strong></div>
@@ -112,9 +101,19 @@
       </div>
     </div>
 
+    <div class="grid mt-6">
+      <div class="panel">
+        <div id="prompt" class="prompt text-center" role="status" aria-live="assertive">เตรียมตัว...</div>
+        <div id="sr-aria" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+        <div class="flex gap-4 flex-wrap justify-center mt-6">
+          <button id="stopBtn" class="btn" disabled>⏹ หยุดเกม</button>
+          <button id="audioModeBtn" class="btn">โหมดเสียง: Audio</button>
+        </div>
+      </div>
+    </div>
+
     <div class="mt-8 text-center">
       <button id="restartBtn" class="btn big hidden">▶️ เล่นใหม่ (โหมดเดิม)</button>
-      <button id="backMenuBtn" class="btn big hidden">◀️ กลับเมนูหลัก</button>
     </div>
   </section>
 
@@ -142,7 +141,6 @@
   const qs = sel => document.querySelector(sel);
 
   // Elements
-  const topBackBtn      = qs('.mb-6');
   const modeSelect      = qs('#modeSelect');
   const gameContainer   = qs('#game-container');
   const promptEl        = qs('#prompt');
@@ -158,12 +156,6 @@
   const confirmYes      = qs('#confirmClearYes');
   const confirmNo       = qs('#confirmClearNo');
   const restartBtn      = qs('#restartBtn');
-  const backMenuBtn     = qs('#backMenuBtn');
-  const titleEl         = qs('#title');
-  const descP           = gameContainer.querySelector('p');
-  const statusDiv       = qs('.status');
-  const statsActions    = qs('.stats-actions');
-  const gameButtons     = gameContainer.querySelector('.flex.gap-4.flex-wrap.justify-center.mt-6');
 
   // Audio
   const audioBank = {
@@ -214,15 +206,13 @@
   function enterApplicationMode() {
     gameContainer.setAttribute('role', 'application');
     gameContainer.setAttribute('tabindex', '0');
-    // Use setTimeout to ensure focus after DOM visibility changes
-    setTimeout(() => {
-      gameContainer.focus();
-    }, 0);
+    gameContainer.focus();
   }
 
   function exitApplicationMode() {
     gameContainer.removeAttribute('role');
     gameContainer.removeAttribute('tabindex');
+    restartBtn.focus();
   }
 
   // ── Audio Helpers ──
@@ -332,18 +322,11 @@
     clearInterval(timer);
     stopAllSounds();
     play('gameover');
+    setPrompt(`จบเกม: ${reason}`, 'bad');
     vibrate([120,60,120]);
 
-    // Clean end game screen
-    setPrompt(`จบเกม: ${reason}\nคะแนน: ${score}\nสถิติสูงสุด: ${best}`, 'bad');
-    titleEl.classList.add('hidden');
-    descP.classList.add('hidden');
-    statusDiv.classList.add('hidden');
-    statsActions.classList.add('hidden');
-    gameButtons.classList.add('hidden');
     stopBtn.disabled = true;
     restartBtn.classList.remove('hidden');
-    backMenuBtn.classList.remove('hidden');
 
     if (score > best) {
       best = score;
@@ -352,7 +335,6 @@
     }
 
     exitApplicationMode();
-    restartBtn.focus();
   }
 
   function startGame(mode) {
@@ -369,15 +351,6 @@
       isAudioUnlocked = true;
     }
 
-    // Reset visibility for game start
-    titleEl.classList.remove('hidden');
-    descP.classList.remove('hidden');
-    statusDiv.classList.remove('hidden');
-    statsActions.classList.remove('hidden');
-    gameButtons.classList.remove('hidden');
-    restartBtn.classList.add('hidden');
-    backMenuBtn.classList.add('hidden');
-
     play('start');
     running = true;
     score = 0; round = 0;
@@ -386,8 +359,8 @@
     speedEl.textContent = difficultyLabel(timeLimit);
 
     stopBtn.disabled = false;
+    restartBtn.classList.add('hidden');
 
-    topBackBtn.classList.add('hidden');
     modeSelect.classList.add('hidden');
     gameContainer.classList.remove('hidden');
 
@@ -422,22 +395,11 @@
     }
   }
 
-  function backToMenu() {
-    running = false;
-    clearInterval(timer);
-    stopAllSounds();
-    topBackBtn.classList.remove('hidden');
-    gameContainer.classList.add('hidden');
-    modeSelect.classList.remove('hidden');
-    exitApplicationMode();
-  }
-
   // ── Event Listeners ──
   qs('#btnEasy').addEventListener('click', () => startGame('easy'));
   qs('#btnHard').addEventListener('click', () => startGame('hard'));
 
   restartBtn.addEventListener('click', restartSameMode);
-  backMenuBtn.addEventListener('click', backToMenu);
   stopBtn.addEventListener('click', stopGame);
   audioModeBtn.addEventListener('click', toggleAudioMode);
 
@@ -452,9 +414,9 @@
   });
   confirmNo.addEventListener('click', () => confirmClear.classList.add('hidden'));
 
-  // Chord input with strict mode check
+  // Chord input
   window.addEventListener('keydown', e => {
-    if (!running || !awaitingInput || !gameContainer.hasAttribute('role')) return;
+    if (!running || !awaitingInput) return;
     const key = e.key.toLowerCase();
     if (!(key in keyToDot)) return;
     e.preventDefault();
@@ -466,7 +428,7 @@
   });
 
   window.addEventListener('keyup', e => {
-    if (!running || !awaitingInput || !gameContainer.hasAttribute('role')) return;
+    if (!running || !awaitingInput) return;
     const key = e.key.toLowerCase();
     if (!(key in keyToDot)) return;
     pressed.delete(keyToDot[key]);
