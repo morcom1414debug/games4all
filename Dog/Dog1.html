@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>หมูหมาแมว - ฝึกพูดตาม</title>
+    <title>หมูหมาแมว - เกมพูดตาม</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800;900&display=swap');
         * { box-sizing: border-box; }
@@ -46,16 +46,24 @@
         }
         .typing-display {
             font-size: 4.2rem; font-weight: bold; min-height: 110px;
-            margin: 30px 20px; color: #e91e63;
-            background: rgba(255,255,255,0.45); padding: 28px; border-radius: 28px;
+            margin: 30px 20px; 
+            background: rgba(255,255,255,0.55); padding: 28px; border-radius: 28px;
             box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            transition: color 0.4s ease, background 0.4s ease;
         }
-        #typedByPlayer {
-            font-size: 1.7rem; color: #ad1457; margin: 20px 20px 50px;
-            min-height: 2.2rem; font-weight: 600;
+        .typing-display.correct {
+            color: #2e7d32;  /* เขียวเข้ม */
+            background: rgba(200, 230, 201, 0.75);
         }
+        .typing-display.incorrect {
+            color: #c62828;  /* แดงเข้ม */
+            background: rgba(255, 205, 210, 0.75);
+        }
+
         #lives {
-            font-size: 2.4rem; margin: 10px 0 20px; color: #d32f2f;
+            font-size: 1.8rem;
+            margin: 8px 0 16px; 
+            color: #d32f2f;
             font-weight: 900; text-shadow: 0 2px 6px rgba(211,47,47,0.4);
         }
 
@@ -69,7 +77,8 @@
 
         #voiceInputBtn {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            padding: 12px 28px; font-size: 1.7rem; background: #4CAF50; color: white;
+            padding: 10px 24px; font-size: 1.4rem;
+            background: #4CAF50; color: white;
             border: none; border-radius: 50px; cursor: pointer;
             box-shadow: 0 6px 18px rgba(0,0,0,0.25); transition: all 0.3s;
         }
@@ -107,7 +116,7 @@
     <div id="levelSelect">
         <h1>หมูหมาแมว</h1>
         <p class="subtitle">พูดตามให้เป๊ะ! อย่าให้สัตว์งงนะ</p>
-        <p class="friendly-msg">พร้อมร้องตามแล้วรึยังว~</p>
+        <p class="friendly-msg">พร้อมร้องตามแล้วรึยัง~</p>
         <button class="start-btn" id="startGame">เริ่มเกม</button>
     </div>
 
@@ -117,15 +126,15 @@
         <div id="speakCue">🗣️ พูดเลย!</div>
 
         <div id="lives">❤️❤️❤️</div>
-        <h2 class="question-heading" id="question">ข้อ 1 : ...</h2>
+        <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
         <div class="typing-display" id="typingDisplay">_ _ _ _</div>
-        <div id="typedByPlayer">เสียงที่ตรวจจับได้ : -</div>
+
         <button id="voiceInputBtn">พูดอีกครั้ง</button>
     </div>
 
     <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
-    <div id="result">
+    <div id="result" aria-hidden="true" tabindex="-1">
         <h2 id="resultTitle">สุดยอดมาก!</h2>
         <div id="resultMsg"></div>
         <div id="score">0 คะแนน</div>
@@ -134,7 +143,7 @@
 </div>
 
 <script>
-// ========== AUDIO ENGINE (คงเดิม) ==========
+// ========== AUDIO ENGINE (ไม่แตะต้อง) ==========
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -245,6 +254,10 @@ let score = 0;
 let recognition = null;
 let isListening = false;
 
+// ── เพิ่มตัวแปรสำหรับ Timer ──
+let roundTimer = null;
+const TIME_LIMIT = 7; // ✅ ข้อ 2: ลดเวลาจาก 10 เป็น 7 วินาที
+
 const elements = {
   backBtn: document.getElementById('backToMenu'),
   levelSelect: document.getElementById('levelSelect'),
@@ -252,7 +265,6 @@ const elements = {
   resultDiv: document.getElementById('result'),
   questionElem: document.getElementById('question'),
   typingDisplay: document.getElementById('typingDisplay'),
-  typedByPlayer: document.getElementById('typedByPlayer'),
   livesElem: document.getElementById('lives'),
   questionLive: document.getElementById('question-live'),
   successCeleb: document.getElementById('success-celebration'),
@@ -295,6 +307,26 @@ function updateLivesDisplay() {
   elements.livesElem.textContent = "❤️".repeat(lives) + "♡".repeat(3-lives);
 }
 
+function clearTimer() {
+  if (roundTimer) {
+    clearTimeout(roundTimer);
+    roundTimer = null;
+  }
+}
+
+function startTimer() {
+  clearTimer(); // ป้องกัน timer ซ้อน
+  roundTimer = setTimeout(() => {
+    if (isListening) {
+      recognition.stop(); // หยุดการฟังทันทีถ้ายังฟังอยู่
+    }
+    elements.typingDisplay.textContent = "(หมดเวลา)";
+    elements.typingDisplay.classList.add('incorrect');
+    elements.typingDisplay.classList.remove('correct');
+    handleWrong();
+  }, TIME_LIMIT * 1000);
+}
+
 async function startNewGame() {
   currentRound = 0;
   lives = 3;
@@ -304,7 +336,14 @@ async function startNewGame() {
   elements.gameDiv.style.display = 'block';
   elements.resultDiv.style.display = 'none';
   elements.backBtn.style.display = 'none';
-  elements.speakCue.style.display = 'block'; // เปิดใช้งาน hint กลับมาในเกม
+  elements.speakCue.style.display = 'block';
+
+  // สำหรับ accessibility – ซ่อน result screen จาก screen reader
+  elements.resultDiv.setAttribute('aria-hidden', 'true');
+  elements.resultDiv.setAttribute('tabindex', '-1');
+
+  // แสดง game ให้ screen reader อ่านได้
+  elements.gameDiv.setAttribute('aria-hidden', 'false');
 
   await audioEngine.startBGM();
   nextRound(true);
@@ -322,20 +361,27 @@ function nextRound(isFirst = false) {
 
   elements.questionElem.textContent = `รอบ ${currentRound} : ${currentQuestion}`;
   elements.typingDisplay.textContent = currentQuestion.split("").map(()=>"_").join(" ");
-  elements.typedByPlayer.textContent = "เสียงที่ตรวจจับได้ : -";
+  elements.typingDisplay.classList.remove('correct','incorrect');
 
   elements.questionLive.textContent = '';
   setTimeout(() => {
     elements.questionLive.textContent = elements.questionElem.textContent;
   }, 50);
 
+  // บังคับ focus ไปที่คำถามเพื่อให้ VoiceOver อ่านต่อเนื่อง
+  elements.questionElem.focus();
+
+  // ✅ ข้อ 3: เพิ่มเวลาหน่วงเป็น 1000 ms ก่อนแสดง Speak Cue และเริ่มฟัง
   setTimeout(async () => {
-    elements.questionElem.focus();
     await audioEngine.playEffect('speak');
     elements.speakCue.classList.add('show');
     setTimeout(() => elements.speakCue.classList.remove('show'), 1000);
-    setTimeout(startListening, 600); // ลดลง ~200ms + รวมแล้วใกล้เคียง 1 วินาทีที่กดดันมากขึ้น
-  }, 200); // ลด delay เริ่มต้นจาก 300 → 200 ms
+
+    // ✅ ข้อ 4: เริ่มนับถอยหลัง 7 วินาที พร้อมกับแสดงป้าย "พูดเลย!"
+    startTimer();
+
+    setTimeout(startListening, 600);
+  }, 1000); // เปลี่ยนจาก 200 เป็น 1000
 }
 
 function startListening() {
@@ -359,12 +405,16 @@ function initSpeechRecognition() {
 
   recognition.onresult = (event) => {
     isListening = false;
+    clearTimer(); // หยุด timer ทันทีที่ได้ผลลัพธ์ (ถูกหรือผิดก็ตาม)
+
     let transcript = event.results[0][0].transcript || "";
     let cleaned = transcript.replace(/[^\u0E00-\u0E7F]/g, '').trim();
 
-    elements.typedByPlayer.textContent = "เสียงที่ตรวจจับได้ : " + (cleaned || "(ไม่ได้ยิน)");
-
     if (cleaned === currentQuestion) {
+      elements.typingDisplay.textContent = cleaned;
+      elements.typingDisplay.classList.add('correct');
+      elements.typingDisplay.classList.remove('incorrect');
+
       elements.successCeleb.classList.add('show');
       setTimeout(() => elements.successCeleb.classList.remove('show'), 900);
       audioEngine.playEffect('correctSound');
@@ -373,19 +423,30 @@ function initSpeechRecognition() {
       const pts = getPointsForRound(currentRound);
       score += pts;
 
-      setTimeout(nextRound, 800); // ลดจาก 1000 → 800 ms
+      // ✅ ข้อ 1: ปรับเวลาหน่วงเป็น 1300 ms (กรณีตอบถูก)
+      setTimeout(nextRound, 1300);
     } else {
+      elements.typingDisplay.textContent = cleaned || "(ไม่ได้ยิน)";
+      elements.typingDisplay.classList.add('incorrect');
+      elements.typingDisplay.classList.remove('correct');
+
       handleWrong();
     }
   };
 
   recognition.onerror = () => {
     isListening = false;
+    clearTimer();
+    elements.typingDisplay.textContent = "(ตรวจจับไม่ได้)";
+    elements.typingDisplay.classList.add('incorrect');
+    elements.typingDisplay.classList.remove('correct');
     handleWrong();
   };
 }
 
 function handleWrong() {
+  clearTimer(); // หยุด timer เมื่อผิด
+
   lives--;
   updateLivesDisplay();
   elements.failCeleb.classList.add('show');
@@ -397,16 +458,24 @@ function handleWrong() {
   if (lives <= 0 || currentRound >= 20) {
     endGame(false);
   } else {
-    setTimeout(nextRound, 1000); // ลดจาก 1200 → 1000 ms
+    // ✅ ข้อ 1: ปรับเวลาหน่วงเป็น 1300 ms (กรณีตอบผิด)
+    setTimeout(nextRound, 1300);
   }
 }
 
 async function endGame(isWin) {
+  clearTimer(); // ป้องกัน timer ค้าง
+
   audioEngine.stopBGM();
   elements.gameDiv.style.display = 'none';
   elements.resultDiv.style.display = 'block';
   elements.backBtn.style.display = 'block';
-  elements.speakCue.style.display = 'none'; // ซ่อน hint ในหน้าผล
+  elements.speakCue.style.display = 'none';
+  elements.questionLive.textContent = '';
+
+  // Accessibility: ซ่อน game แสดง result ให้ screen reader
+  elements.gameDiv.setAttribute('aria-hidden', 'true');
+  elements.resultDiv.setAttribute('aria-hidden', 'false');
 
   const title = document.getElementById('resultTitle');
   const msg = document.getElementById('resultMsg');
@@ -419,8 +488,8 @@ async function endGame(isWin) {
     msg.innerHTML = "สุดยอดมาก! ผ่าน 20 รอบแบบเป๊ะ ๆ เลยนะ 🐶🐱🐷✨<br>เป็นตำนานแห่งการพูดตามแล้ว!";
     await audioEngine.playEffect('endSound');
   } else if (score >= 20000) {
-    title.textContent = "เก่งมากกก!";
-    msg.innerHTML = "ผ่านมาจนเกือบสุดทางแล้วนะ<br>คะแนนสูงขนาดนี้ เกือบเป็นเซียนแล้ว! 💪🐾";
+    title.textContent = "เก่งมากๆ!";
+    msg.innerHTML = "ผ่านมาจนเกือบสุดทางแล้วนะ<br>คะแนนสูงขนาดนี้ เกือบเป็นเซียนแล้ว! 💪🏾";
     await audioEngine.playEffect('endSound');
   } else if (score >= 8000) {
     title.textContent = "เยี่ยมเลย!";
@@ -443,7 +512,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('restartBtn').onclick = () => {
     audioEngine.playEffect('doorSound');
-    // รีเซ็ตเหมือน startNewGame แต่ไม่ต้องโชว์ levelSelect
     currentRound = 0;
     lives = 3;
     score = 0;
@@ -452,6 +520,9 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.gameDiv.style.display = 'block';
     elements.backBtn.style.display = 'none';
     elements.speakCue.style.display = 'block';
+
+    elements.resultDiv.setAttribute('aria-hidden', 'true');
+    elements.gameDiv.setAttribute('aria-hidden', 'false');
 
     nextRound(true);
   };

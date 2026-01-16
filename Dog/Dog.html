@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -164,7 +165,8 @@ class AudioEngine {
       fSound: "audio/f.mp3",
       endSound: "audio/end.mp3",
       end1Sound: "audio/end1.mp3",
-      speak: "audio/speak.mp3"
+      speak: "audio/speak.mp3",
+      start: "audio/start.mp3"   // เพิ่มไฟล์ใหม่
     };
 
     this.buffers = {};
@@ -229,6 +231,13 @@ class AudioEngine {
     source.connect(gainNode);
     gainNode.connect(this.ctx.destination);
     source.start(0);
+    return new Promise(resolve => {
+      source.onended = resolve;
+    });
+  }
+
+  async playStartSound() {
+    await this.playEffect('start');
   }
 }
 
@@ -254,9 +263,8 @@ let score = 0;
 let recognition = null;
 let isListening = false;
 
-// ── เพิ่มตัวแปรสำหรับ Timer ──
 let roundTimer = null;
-const TIME_LIMIT = 7; // ✅ ข้อ 2: ลดเวลาจาก 10 เป็น 7 วินาที
+const TIME_LIMIT = 7;
 
 const elements = {
   backBtn: document.getElementById('backToMenu'),
@@ -269,7 +277,8 @@ const elements = {
   questionLive: document.getElementById('question-live'),
   successCeleb: document.getElementById('success-celebration'),
   failCeleb: document.getElementById('fail-celebration'),
-  speakCue: document.getElementById('speakCue')
+  speakCue: document.getElementById('speakCue'),
+  resultTitle: document.getElementById('resultTitle')
 };
 
 function randomNoAdjacentRepeat(length) {
@@ -315,16 +324,37 @@ function clearTimer() {
 }
 
 function startTimer() {
-  clearTimer(); // ป้องกัน timer ซ้อน
+  clearTimer();
   roundTimer = setTimeout(() => {
     if (isListening) {
-      recognition.stop(); // หยุดการฟังทันทีถ้ายังฟังอยู่
+      recognition.stop();
     }
     elements.typingDisplay.textContent = "(หมดเวลา)";
     elements.typingDisplay.classList.add('incorrect');
     elements.typingDisplay.classList.remove('correct');
     handleWrong();
   }, TIME_LIMIT * 1000);
+}
+
+const encourageWords2 = ["เกือบดีแล้ว", "นิดเดียวเอง", "ตั้งสติใหม่นะ", "อีกนิดเดียวเอง", "ใกล้แล้วนะ"];
+const encourageWords1 = ["ใจเย็นๆ นะ", "ตาต้องไวหูต้องไว", "ฮึบเข้าไว้", "สู้ๆ อีกนิด", "อย่าเพิ่งท้อ"];
+const comfortWords   = ["เสียดายจัง", "สู้ต่อไปนะ", "อย่าท้อนะ", "ลองอีกครั้ง", "ครั้งหน้าต้องดีกว่า"];
+
+function announceLivesLeft() {
+  let message = "";
+  if (lives === 2) {
+    const word = encourageWords2[Math.floor(Math.random() * encourageWords2.length)];
+    message = `ผิด 1 ครั้ง ${word} เหลือ 2 ชีวิต`;
+  } else if (lives === 1) {
+    const word = encourageWords1[Math.floor(Math.random() * encourageWords1.length)];
+    message = `ผิด 2 ครั้ง ${word} เหลือชีวิตเดียว`;
+  } else if (lives <= 0) {
+    const word = comfortWords[Math.floor(Math.random() * comfortWords.length)];
+    message = `ผิดครบ 3 ครั้ง ${word}`;
+  }
+  if (message) {
+    elements.questionLive.textContent = message;
+  }
 }
 
 async function startNewGame() {
@@ -338,18 +368,16 @@ async function startNewGame() {
   elements.backBtn.style.display = 'none';
   elements.speakCue.style.display = 'block';
 
-  // สำหรับ accessibility – ซ่อน result screen จาก screen reader
   elements.resultDiv.setAttribute('aria-hidden', 'true');
   elements.resultDiv.setAttribute('tabindex', '-1');
-
-  // แสดง game ให้ screen reader อ่านได้
   elements.gameDiv.setAttribute('aria-hidden', 'false');
 
+  await audioEngine.playStartSound();           // เล่น start.mp3 ก่อน
   await audioEngine.startBGM();
   nextRound(true);
 }
 
-function nextRound(isFirst = false) {
+async function nextRound(isFirst = false) {
   currentRound++;
   if (currentRound > 20) {
     endGame(true);
@@ -368,20 +396,16 @@ function nextRound(isFirst = false) {
     elements.questionLive.textContent = elements.questionElem.textContent;
   }, 50);
 
-  // บังคับ focus ไปที่คำถามเพื่อให้ VoiceOver อ่านต่อเนื่อง
   elements.questionElem.focus();
 
-  // ✅ ข้อ 3: เพิ่มเวลาหน่วงเป็น 1000 ms ก่อนแสดง Speak Cue และเริ่มฟัง
   setTimeout(async () => {
     await audioEngine.playEffect('speak');
     elements.speakCue.classList.add('show');
     setTimeout(() => elements.speakCue.classList.remove('show'), 1000);
 
-    // ✅ ข้อ 4: เริ่มนับถอยหลัง 7 วินาที พร้อมกับแสดงป้าย "พูดเลย!"
     startTimer();
-
     setTimeout(startListening, 600);
-  }, 1000); // เปลี่ยนจาก 200 เป็น 1000
+  }, 1000);
 }
 
 function startListening() {
@@ -405,7 +429,7 @@ function initSpeechRecognition() {
 
   recognition.onresult = (event) => {
     isListening = false;
-    clearTimer(); // หยุด timer ทันทีที่ได้ผลลัพธ์ (ถูกหรือผิดก็ตาม)
+    clearTimer();
 
     let transcript = event.results[0][0].transcript || "";
     let cleaned = transcript.replace(/[^\u0E00-\u0E7F]/g, '').trim();
@@ -423,7 +447,6 @@ function initSpeechRecognition() {
       const pts = getPointsForRound(currentRound);
       score += pts;
 
-      // ✅ ข้อ 1: ปรับเวลาหน่วงเป็น 1300 ms (กรณีตอบถูก)
       setTimeout(nextRound, 1300);
     } else {
       elements.typingDisplay.textContent = cleaned || "(ไม่ได้ยิน)";
@@ -445,8 +468,7 @@ function initSpeechRecognition() {
 }
 
 function handleWrong() {
-  clearTimer(); // หยุด timer เมื่อผิด
-
+  clearTimer();
   lives--;
   updateLivesDisplay();
   elements.failCeleb.classList.add('show');
@@ -455,16 +477,18 @@ function handleWrong() {
   audioEngine.playEffect('wrongSound');
   audioEngine.playEffect('fSound');
 
+  // เพิ่มการประกาศสถานะชีวิตผ่าน aria-live
+  announceLivesLeft();
+
   if (lives <= 0 || currentRound >= 20) {
     endGame(false);
   } else {
-    // ✅ ข้อ 1: ปรับเวลาหน่วงเป็น 1300 ms (กรณีตอบผิด)
     setTimeout(nextRound, 1300);
   }
 }
 
 async function endGame(isWin) {
-  clearTimer(); // ป้องกัน timer ค้าง
+  clearTimer();
 
   audioEngine.stopBGM();
   elements.gameDiv.style.display = 'none';
@@ -473,7 +497,6 @@ async function endGame(isWin) {
   elements.speakCue.style.display = 'none';
   elements.questionLive.textContent = '';
 
-  // Accessibility: ซ่อน game แสดง result ให้ screen reader
   elements.gameDiv.setAttribute('aria-hidden', 'true');
   elements.resultDiv.setAttribute('aria-hidden', 'false');
 
@@ -501,16 +524,21 @@ async function endGame(isWin) {
     await audioEngine.playEffect('end1Sound');
   }
 
-  setTimeout(() => { title.focus(); }, 100);
+  // ข้อ 1: โฟกัส heading หลักของหน้าสรุปผล
+  setTimeout(() => { title.focus(); }, 300);
 }
 
 // ========== EVENT LISTENERS ==========
 document.addEventListener('DOMContentLoaded', () => {
   initSpeechRecognition();
 
-  document.getElementById('startGame').onclick = startNewGame;
+  document.getElementById('startGame').onclick = async () => {
+    await audioEngine.playStartSound();
+    startNewGame();
+  };
 
-  document.getElementById('restartBtn').onclick = () => {
+  document.getElementById('restartBtn').onclick = async () => {
+    await audioEngine.playStartSound();
     audioEngine.playEffect('doorSound');
     currentRound = 0;
     lives = 3;
