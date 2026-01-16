@@ -304,6 +304,7 @@ async function startNewGame() {
   elements.gameDiv.style.display = 'block';
   elements.resultDiv.style.display = 'none';
   elements.backBtn.style.display = 'none';
+  elements.speakCue.style.display = 'block'; // เปิดใช้งาน hint กลับมาในเกม
 
   await audioEngine.startBGM();
   nextRound(true);
@@ -312,7 +313,7 @@ async function startNewGame() {
 function nextRound(isFirst = false) {
   currentRound++;
   if (currentRound > 20) {
-    endGame(true); // ชนะครบ 20
+    endGame(true);
     return;
   }
 
@@ -332,9 +333,9 @@ function nextRound(isFirst = false) {
     elements.questionElem.focus();
     await audioEngine.playEffect('speak');
     elements.speakCue.classList.add('show');
-    setTimeout(() => elements.speakCue.classList.remove('show'), 1200);
-    setTimeout(startListening, 800);
-  }, 300);
+    setTimeout(() => elements.speakCue.classList.remove('show'), 1000);
+    setTimeout(startListening, 600); // ลดลง ~200ms + รวมแล้วใกล้เคียง 1 วินาทีที่กดดันมากขึ้น
+  }, 200); // ลด delay เริ่มต้นจาก 300 → 200 ms
 }
 
 function startListening() {
@@ -359,7 +360,6 @@ function initSpeechRecognition() {
   recognition.onresult = (event) => {
     isListening = false;
     let transcript = event.results[0][0].transcript || "";
-    // กรองเอาแต่ตัวอักษรไทย + ไม่มีช่องว่าง
     let cleaned = transcript.replace(/[^\u0E00-\u0E7F]/g, '').trim();
 
     elements.typedByPlayer.textContent = "เสียงที่ตรวจจับได้ : " + (cleaned || "(ไม่ได้ยิน)");
@@ -373,7 +373,7 @@ function initSpeechRecognition() {
       const pts = getPointsForRound(currentRound);
       score += pts;
 
-      setTimeout(nextRound, 1000);
+      setTimeout(nextRound, 800); // ลดจาก 1000 → 800 ms
     } else {
       handleWrong();
     }
@@ -397,7 +397,7 @@ function handleWrong() {
   if (lives <= 0 || currentRound >= 20) {
     endGame(false);
   } else {
-    setTimeout(nextRound, 1200);
+    setTimeout(nextRound, 1000); // ลดจาก 1200 → 1000 ms
   }
 }
 
@@ -406,6 +406,7 @@ async function endGame(isWin) {
   elements.gameDiv.style.display = 'none';
   elements.resultDiv.style.display = 'block';
   elements.backBtn.style.display = 'block';
+  elements.speakCue.style.display = 'none'; // ซ่อน hint ในหน้าผล
 
   const title = document.getElementById('resultTitle');
   const msg = document.getElementById('resultMsg');
@@ -442,9 +443,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('restartBtn').onclick = () => {
     audioEngine.playEffect('doorSound');
+    // รีเซ็ตเหมือน startNewGame แต่ไม่ต้องโชว์ levelSelect
+    currentRound = 0;
+    lives = 3;
+    score = 0;
+    updateLivesDisplay();
     elements.resultDiv.style.display = 'none';
-    elements.levelSelect.style.display = 'block';
-    elements.backBtn.style.display = 'block';
+    elements.gameDiv.style.display = 'block';
+    elements.backBtn.style.display = 'none';
+    elements.speakCue.style.display = 'block';
+
+    nextRound(true);
   };
 
   document.getElementById('backToMenu').onclick = async () => {
