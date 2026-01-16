@@ -178,7 +178,6 @@
 
 <script>
 // ======== Web Audio API Engine ========
-// (ส่วน AudioEngine คงเดิมทั้งหมด ไม่มีการเปลี่ยนแปลง)
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -319,7 +318,7 @@ const proverbs = [
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
 let TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
-let isListening = false;
+let isListening = false;   // เพิ่ม flag ช่วย track การ listen
 
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, typedByPlayerDiv, questionLive;
 
@@ -343,7 +342,7 @@ function forceStopRecognition() {
         recognition.stop();
         isListening = false;
     } catch (err) {
-        // ignore
+        // ignore if already stopped or not started
     }
 }
 
@@ -425,12 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         recognition.onresult = function(event) {
             isListening = false;
-            
-            // ──── แก้ไขตรงนี้ ────
-            let transcript = event.results[0][0].transcript.trim();
-            // ลบช่องว่างทั้งหมดออก (แก้ปัญหา Edge เติม space อัตโนมัติ)
-            transcript = transcript.replace(/\s+/g, '');
-
+            const transcript = event.results[0][0].transcript.trim();
             typingDisplay.textContent = transcript;
             typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
 
@@ -451,6 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.onerror = function(event) {
             isListening = false;
             console.warn('Speech recognition error:', event.error);
+            // ถ้า error บางอย่าง อาจเริ่มใหม่ได้ แต่ที่นี่ให้ข้ามไปข้อถัดไปเลย
             if (!isProcessingTimeout) {
                 handleWrong();
             }
@@ -484,7 +479,7 @@ function startVoiceRecognitionSafe() {
         typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : (เบราเซอร์ไม่รองรับเสียง)";
         return;
     }
-    forceStopRecognition();
+    forceStopRecognition();  // ป้องกัน double start
     try {
         recognition.start();
     } catch (e) {
@@ -503,6 +498,7 @@ async function nextQuestion(isFirst = false) {
     typedSoFar = "";
     typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : -";
 
+    // **หยุดการรับเสียงทันที** ก่อนเริ่มคำถามใหม่
     forceStopRecognition();
 
     const item = currentQuestions[currentQ];
