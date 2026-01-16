@@ -61,7 +61,7 @@
         }
 
         #lives {
-            font-size: 1.8rem;
+            font-size: 1.8rem;          /* ลดจาก 2.4rem ≈ 25% */
             margin: 8px 0 16px; 
             color: #d32f2f;
             font-weight: 900; text-shadow: 0 2px 6px rgba(211,47,47,0.4);
@@ -77,7 +77,7 @@
 
         #voiceInputBtn {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            padding: 10px 24px; font-size: 1.4rem;
+            padding: 10px 24px; font-size: 1.4rem;          /* ลดจาก 1.7rem ≈ 18-20% */
             background: #4CAF50; color: white;
             border: none; border-radius: 50px; cursor: pointer;
             box-shadow: 0 6px 18px rgba(0,0,0,0.25); transition: all 0.3s;
@@ -126,15 +126,16 @@
         <div id="speakCue">🗣️ พูดเลย!</div>
 
         <div id="lives">❤️❤️❤️</div>
-        <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
+        <h2 class="question-heading" id="question">ข้อ 1 : ...</h2>
         <div class="typing-display" id="typingDisplay">_ _ _ _</div>
+        <!-- ลบ #typedByPlayer ออกตามข้อ 1 -->
 
         <button id="voiceInputBtn">พูดอีกครั้ง</button>
     </div>
 
     <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
-    <div id="result" aria-hidden="true" tabindex="-1">
+    <div id="result">
         <h2 id="resultTitle">สุดยอดมาก!</h2>
         <div id="resultMsg"></div>
         <div id="score">0 คะแนน</div>
@@ -143,7 +144,7 @@
 </div>
 
 <script>
-// ========== AUDIO ENGINE (ไม่แตะต้อง) ==========
+// ========== AUDIO ENGINE (คงเดิม) ==========
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -254,10 +255,6 @@ let score = 0;
 let recognition = null;
 let isListening = false;
 
-// ── เพิ่มตัวแปรสำหรับ Timer ──
-let roundTimer = null;
-const TIME_LIMIT = 10; // วินาที
-
 const elements = {
   backBtn: document.getElementById('backToMenu'),
   levelSelect: document.getElementById('levelSelect'),
@@ -307,26 +304,6 @@ function updateLivesDisplay() {
   elements.livesElem.textContent = "❤️".repeat(lives) + "♡".repeat(3-lives);
 }
 
-function clearTimer() {
-  if (roundTimer) {
-    clearTimeout(roundTimer);
-    roundTimer = null;
-  }
-}
-
-function startTimer() {
-  clearTimer(); // ป้องกัน timer ซ้อน
-  roundTimer = setTimeout(() => {
-    if (isListening) {
-      recognition.stop(); // หยุดการฟังทันทีถ้ายังฟังอยู่
-    }
-    elements.typingDisplay.textContent = "(หมดเวลา)";
-    elements.typingDisplay.classList.add('incorrect');
-    elements.typingDisplay.classList.remove('correct');
-    handleWrong();
-  }, TIME_LIMIT * 1000);
-}
-
 async function startNewGame() {
   currentRound = 0;
   lives = 3;
@@ -337,13 +314,6 @@ async function startNewGame() {
   elements.resultDiv.style.display = 'none';
   elements.backBtn.style.display = 'none';
   elements.speakCue.style.display = 'block';
-
-  // สำหรับ accessibility – ซ่อน result screen จาก screen reader
-  elements.resultDiv.setAttribute('aria-hidden', 'true');
-  elements.resultDiv.setAttribute('tabindex', '-1');
-
-  // แสดง game ให้ screen reader อ่านได้
-  elements.gameDiv.setAttribute('aria-hidden', 'false');
 
   await audioEngine.startBGM();
   nextRound(true);
@@ -361,24 +331,18 @@ function nextRound(isFirst = false) {
 
   elements.questionElem.textContent = `รอบ ${currentRound} : ${currentQuestion}`;
   elements.typingDisplay.textContent = currentQuestion.split("").map(()=>"_").join(" ");
-  elements.typingDisplay.classList.remove('correct','incorrect');
+  elements.typingDisplay.classList.remove('correct','incorrect');  // รีเซ็ตสี
 
   elements.questionLive.textContent = '';
   setTimeout(() => {
     elements.questionLive.textContent = elements.questionElem.textContent;
   }, 50);
 
-  // บังคับ focus ไปที่คำถามเพื่อให้ VoiceOver อ่านต่อเนื่อง
-  elements.questionElem.focus();
-
   setTimeout(async () => {
+    elements.questionElem.focus();
     await audioEngine.playEffect('speak');
     elements.speakCue.classList.add('show');
     setTimeout(() => elements.speakCue.classList.remove('show'), 1000);
-
-    // เริ่มนับถอยหลังทันทีที่ให้พูด
-    startTimer();
-
     setTimeout(startListening, 600);
   }, 200);
 }
@@ -404,11 +368,10 @@ function initSpeechRecognition() {
 
   recognition.onresult = (event) => {
     isListening = false;
-    clearTimer(); // หยุด timer ทันทีที่ได้ผลลัพธ์ (ถูกหรือผิดก็ตาม)
-
     let transcript = event.results[0][0].transcript || "";
     let cleaned = transcript.replace(/[^\u0E00-\u0E7F]/g, '').trim();
 
+    // แสดงผลใน typingDisplay แทน
     if (cleaned === currentQuestion) {
       elements.typingDisplay.textContent = cleaned;
       elements.typingDisplay.classList.add('correct');
@@ -434,7 +397,6 @@ function initSpeechRecognition() {
 
   recognition.onerror = () => {
     isListening = false;
-    clearTimer();
     elements.typingDisplay.textContent = "(ตรวจจับไม่ได้)";
     elements.typingDisplay.classList.add('incorrect');
     elements.typingDisplay.classList.remove('correct');
@@ -443,8 +405,6 @@ function initSpeechRecognition() {
 }
 
 function handleWrong() {
-  clearTimer(); // หยุด timer เมื่อผิด
-
   lives--;
   updateLivesDisplay();
   elements.failCeleb.classList.add('show');
@@ -461,18 +421,12 @@ function handleWrong() {
 }
 
 async function endGame(isWin) {
-  clearTimer(); // ป้องกัน timer ค้าง
-
   audioEngine.stopBGM();
   elements.gameDiv.style.display = 'none';
   elements.resultDiv.style.display = 'block';
   elements.backBtn.style.display = 'block';
   elements.speakCue.style.display = 'none';
   elements.questionLive.textContent = '';
-
-  // Accessibility: ซ่อน game แสดง result ให้ screen reader
-  elements.gameDiv.setAttribute('aria-hidden', 'true');
-  elements.resultDiv.setAttribute('aria-hidden', 'false');
 
   const title = document.getElementById('resultTitle');
   const msg = document.getElementById('resultMsg');
@@ -517,9 +471,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.gameDiv.style.display = 'block';
     elements.backBtn.style.display = 'none';
     elements.speakCue.style.display = 'block';
-
-    elements.resultDiv.setAttribute('aria-hidden', 'true');
-    elements.gameDiv.setAttribute('aria-hidden', 'false');
 
     nextRound(true);
   };
