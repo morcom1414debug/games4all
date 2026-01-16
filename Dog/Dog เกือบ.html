@@ -177,6 +177,8 @@
 </div>
 
 <script>
+// ======== Web Audio API Engine ========
+// (ส่วน AudioEngine คงเดิมทั้งหมด ไม่มีการเปลี่ยนแปลง)
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -303,6 +305,9 @@ async function unlockAudio(){
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
 
+// ────────────────────────────────────────────────
+//              ชุดสุภาษิต/สำนวน/คำพังเพย ครบถ้วน
+// ────────────────────────────────────────────────
 const proverbs = [
   { answer: "หมูหมาแมวกาไก่", hint: "หมูหมาแมวกาไก่" },
   { answer: "ไก่หมูแมวหมากา", hint: "ไก่หมูแมวหมากา" },
@@ -337,7 +342,9 @@ function forceStopRecognition() {
     try {
         recognition.stop();
         isListening = false;
-    } catch (err) { }
+    } catch (err) {
+        // ignore
+    }
 }
 
 async function startGame(level) {
@@ -400,6 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
         location.href = '../index.html';
     };
 
+    // เตรียม recognition
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
@@ -407,22 +415,29 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
 
-        recognition.onstart = () => { isListening = true; };
-        recognition.onend = () => { isListening = true; };
+        recognition.onstart = () => {
+            isListening = true;
+        };
 
-        // === จุดที่แก้ไข: กรองช่องว่างและสัญลักษณ์สำหรับ Microsoft Edge ===
+        recognition.onend = () => {
+            isListening = false;
+        };
+
         recognition.onresult = function(event) {
             isListening = false;
-            let transcript = event.results[0][0].transcript;
             
-            // กรองเอาเฉพาะตัวอักษรไทย (ก-ฮ, สระ, วรรณยุกต์) และตัวเลขเท่านั้น
-            // ตัดช่องว่างและเครื่องหมายวรรคตอนทิ้งทั้งหมด
-            let cleanedTranscript = transcript.replace(/[^\u0E01-\u0E3A\u0E40-\u0E4E0-9]/g, '');
+            let transcript = event.results[0][0].transcript.trim();
+            
+            // ล้างทุกอย่างที่ไม่ใช่ตัวอักษรไทย + ตัวเลข + ช่องว่าง (เผื่อกรณีผสม)
+            // แล้วตามด้วยการลบช่องว่างทั้งหมด
+            transcript = transcript
+                .replace(/[\u0E00-\u0E7F0-9\s]+/g, match => match.replace(/[^ก-๙0-9]/g, ''))
+                .replace(/\s+/g, '');
 
-            typingDisplay.textContent = cleanedTranscript;
-            typedByPlayerDiv.textContent = 'เสียงที่ตรวจจับได้ : ' + cleanedTranscript;
+            typingDisplay.textContent = transcript;
+            typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
 
-            if (cleanedTranscript === currentAnswer) {
+            if (transcript === currentAnswer) {
                 const celeb = document.getElementById('success-celebration');
                 celeb.classList.add('show');
                 setTimeout(() => celeb.classList.remove('show'), 700);
@@ -438,7 +453,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         recognition.onerror = function(event) {
             isListening = false;
-            if (!isProcessingTimeout) { handleWrong(); }
+            console.warn('Speech recognition error:', event.error);
+            if (!isProcessingTimeout) {
+                handleWrong();
+            }
         };
 
         recognition.onspeechend = function() {
@@ -473,16 +491,21 @@ function startVoiceRecognitionSafe() {
     try {
         recognition.start();
     } catch (e) {
+        console.warn("Cannot start recognition", e);
         isListening = false;
     }
 }
 
 async function nextQuestion(isFirst = false) {
-    if (currentQ >= TOTAL_QUESTIONS) { endGame(); return; }
+    if (currentQ >= TOTAL_QUESTIONS) { 
+        endGame(); 
+        return; 
+    }
 
     isProcessingTimeout = false;
     typedSoFar = "";
     typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : -";
+
     forceStopRecognition();
 
     const item = currentQuestions[currentQ];
@@ -496,8 +519,10 @@ async function nextQuestion(isFirst = false) {
     updateTypingDisplay();   
 
     let timeLeft = timePerQuestion;
+    document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
     timerInterval = setInterval(() => {
         timeLeft--;
+        document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
         if (timeLeft <= 0 && !isProcessingTimeout) {
             isProcessingTimeout = true;
             clearInterval(timerInterval);
@@ -511,15 +536,19 @@ async function nextQuestion(isFirst = false) {
     }, 1000);
 
     questionLive.textContent = '';
-    requestAnimationFrame(() => { questionLive.textContent = questionText; });
+    requestAnimationFrame(() => {
+        questionLive.textContent = questionText;
+    });
 
     setTimeout(() => {
         questionElem.focus();
         setTimeout(async () => {
             await audioEngine.playEffect('speak');
+
             const cue = document.getElementById('speakCue');
             cue.classList.add('show');
             setTimeout(() => cue.classList.remove('show'), 1000);
+
             setTimeout(startVoiceRecognitionSafe, 200);
         }, 1200);
     }, 100);
@@ -532,9 +561,12 @@ function updateTypingDisplay() {
     let underscores = '';
     for (let i = 0; i < remainingPart.length; i++) {
         const code = remainingPart.charCodeAt(i);
-        if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) { continue; }
+        if (code >= 0x0E34 && code <= 0x0E3A || code >= 0x0E47 && code <= 0x0E4E) {
+            continue;
+        }
         underscores += '_ ';
     }
+
     typingDisplay.textContent = typedPart + underscores.trim();
 }
 
@@ -553,6 +585,7 @@ document.addEventListener('keydown', (e) => {
                 const celeb = document.getElementById('success-celebration');
                 celeb.classList.add('show');
                 setTimeout(() => celeb.classList.remove('show'), 700);
+
                 score++;
                 currentQ++;
                 audioEngine.playEffect('tSound');
@@ -594,6 +627,11 @@ async function endGame() {
     backBtn.style.display = 'block';
     deactivateApplicationMode();
 
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    typedByPlayerDiv.textContent = '';
+    questionLive.textContent = '';
+
     const title = document.getElementById('resultTitle');
     const msg = document.getElementById('resultMsg');
     const scoreDiv = document.getElementById('score');
@@ -601,9 +639,27 @@ async function endGame() {
     const points = score * 100;
     scoreDiv.textContent = points + " คะแนน";
 
-    const perfectEncourages = ["สุดยอดไปเลย! รู้สุภาษิตเป๊ะทุกข้อเลยนะ 💖", "เก่งมาก ๆ ! เป็นเซียนสำนวนไทยแล้ว ✨"];
-    const goodEncourages = ["เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪", "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ๆ ❤️"];
-    const normalEncourages = ["ไม่เป็นไรนะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕", "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้จำได้มากขึ้น 😘"];
+    const perfectEncourages = [
+        "สุดยอดไปเลย! รู้สุภาษิตเป๊ะทุกข้อเลยนะ 💖",
+        "เก่งมาก ๆ ! เป็นเซียนสำนวนไทยแล้ว ✨",
+        "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆",
+        "เยี่ยมมาก! ทำได้สมบูรณ์แบบ ภูมิใจในตัวเองได้เลย 😊"
+    ];
+
+    const goodEncourages = [
+        "เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪",
+        "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ๆ ❤️",
+        "ทำได้ดีมากเลย! เหลืออีกนิดเดียว สู้ ๆ นะ 🌟",
+        "สุดยอดมาก! คะแนนดีแบบนี้ แสดงว่าจำสำนวนเก่งแน่ ๆ 👍"
+    ];
+
+    const normalEncourages = [
+        "ไม่เป็นไรนะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕",
+        "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้จำได้มากขึ้น 😘",
+        "พยายามเข้าไว้จ้า! ยิ่งเล่นยิ่งเก่งแน่นอน 🌈",
+        "อย่ายอมแพ้นะ สู้ ๆ ! เดี๋ยวก็เป็นเซียนสำนวนเองแหละ 💖",
+        "เยี่ยมแล้วที่เล่นจนจบ! ครั้งหน้าต้องดีกว่านี้แน่นอนเลยน้า 🚀"
+    ];
 
     if (score === TOTAL_QUESTIONS) {
         title.textContent = "สุดยอดมาก!";
@@ -618,7 +674,10 @@ async function endGame() {
         msg.innerHTML = normalEncourages[Math.floor(Math.random() * normalEncourages.length)];
         await audioEngine.playEffect('end1Sound');
     }
-    setTimeout(() => { try { title.focus(); } catch(e) {} }, 50);
+
+    setTimeout(() => {
+      try { title.focus(); } catch(e) {}
+    }, 50);
 }
 
 window.addEventListener('beforeunload', () => {
