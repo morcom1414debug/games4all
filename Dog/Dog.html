@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -107,6 +106,15 @@
         .btn-restart:hover { transform: translateY(-8px); }
 
         #question-live { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+        
+        /* เพิ่มสำหรับ aria-live ประกาศสรุปผลให้ screen reader */
+        #sr-announce {
+            position: absolute;
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body>
@@ -141,6 +149,9 @@
         <div id="score">0 คะแนน</div>
         <button class="btn-restart" id="restartBtn">เล่นใหม่</button>
     </div>
+
+    <!-- สำหรับ screen reader เท่านั้น -->
+    <div id="sr-announce" aria-live="assertive" aria-atomic="true"></div>
 </div>
 
 <script>
@@ -166,7 +177,7 @@ class AudioEngine {
       endSound: "audio/end.mp3",
       end1Sound: "audio/end1.mp3",
       speak: "audio/speak.mp3",
-      start: "audio/start.mp3"   // เพิ่มไฟล์ใหม่
+      start: "audio/start.mp3"   // ← เพิ่ม start.mp3
     };
 
     this.buffers = {};
@@ -236,6 +247,7 @@ class AudioEngine {
     });
   }
 
+  // ฟังก์ชันใหม่สำหรับเล่น start.mp3 และรอจบ
   async playStartSound() {
     await this.playEffect('start');
   }
@@ -278,7 +290,10 @@ const elements = {
   successCeleb: document.getElementById('success-celebration'),
   failCeleb: document.getElementById('fail-celebration'),
   speakCue: document.getElementById('speakCue'),
-  resultTitle: document.getElementById('resultTitle')
+  resultTitle: document.getElementById('resultTitle'),
+  resultMsg: document.getElementById('resultMsg'),
+  scoreDiv: document.getElementById('score'),
+  srAnnounce: document.getElementById('sr-announce')
 };
 
 function randomNoAdjacentRepeat(length) {
@@ -336,27 +351,6 @@ function startTimer() {
   }, TIME_LIMIT * 1000);
 }
 
-const encourageWords2 = ["เกือบดีแล้ว", "นิดเดียวเอง", "ตั้งสติใหม่นะ", "อีกนิดเดียวเอง", "ใกล้แล้วนะ"];
-const encourageWords1 = ["ใจเย็นๆ นะ", "ตาต้องไวหูต้องไว", "ฮึบเข้าไว้", "สู้ๆ อีกนิด", "อย่าเพิ่งท้อ"];
-const comfortWords   = ["เสียดายจัง", "สู้ต่อไปนะ", "อย่าท้อนะ", "ลองอีกครั้ง", "ครั้งหน้าต้องดีกว่า"];
-
-function announceLivesLeft() {
-  let message = "";
-  if (lives === 2) {
-    const word = encourageWords2[Math.floor(Math.random() * encourageWords2.length)];
-    message = `ผิด 1 ครั้ง ${word} เหลือ 2 ชีวิต`;
-  } else if (lives === 1) {
-    const word = encourageWords1[Math.floor(Math.random() * encourageWords1.length)];
-    message = `ผิด 2 ครั้ง ${word} เหลือชีวิตเดียว`;
-  } else if (lives <= 0) {
-    const word = comfortWords[Math.floor(Math.random() * comfortWords.length)];
-    message = `ผิดครบ 3 ครั้ง ${word}`;
-  }
-  if (message) {
-    elements.questionLive.textContent = message;
-  }
-}
-
 async function startNewGame() {
   currentRound = 0;
   lives = 3;
@@ -372,12 +366,16 @@ async function startNewGame() {
   elements.resultDiv.setAttribute('tabindex', '-1');
   elements.gameDiv.setAttribute('aria-hidden', 'false');
 
-  await audioEngine.playStartSound();           // เล่น start.mp3 ก่อน
+  await audioEngine.unlockAll();
   await audioEngine.startBGM();
+
+  // เล่น start.mp3 และรอให้จบก่อนเริ่มเกมจริง
+  await audioEngine.playStartSound();
+
   nextRound(true);
 }
 
-async function nextRound(isFirst = false) {
+function nextRound(isFirst = false) {
   currentRound++;
   if (currentRound > 20) {
     endGame(true);
@@ -404,6 +402,7 @@ async function nextRound(isFirst = false) {
     setTimeout(() => elements.speakCue.classList.remove('show'), 1000);
 
     startTimer();
+
     setTimeout(startListening, 600);
   }, 1000);
 }
@@ -469,6 +468,7 @@ function initSpeechRecognition() {
 
 function handleWrong() {
   clearTimer();
+
   lives--;
   updateLivesDisplay();
   elements.failCeleb.classList.add('show');
@@ -476,9 +476,6 @@ function handleWrong() {
 
   audioEngine.playEffect('wrongSound');
   audioEngine.playEffect('fSound');
-
-  // เพิ่มการประกาศสถานะชีวิตผ่าน aria-live
-  announceLivesLeft();
 
   if (lives <= 0 || currentRound >= 20) {
     endGame(false);
@@ -500,9 +497,9 @@ async function endGame(isWin) {
   elements.gameDiv.setAttribute('aria-hidden', 'true');
   elements.resultDiv.setAttribute('aria-hidden', 'false');
 
-  const title = document.getElementById('resultTitle');
-  const msg = document.getElementById('resultMsg');
-  const scoreDiv = document.getElementById('score');
+  const title = elements.resultTitle;
+  const msg = elements.resultMsg;
+  const scoreDiv = elements.scoreDiv;
 
   scoreDiv.textContent = score + " คะแนน";
 
@@ -524,22 +521,25 @@ async function endGame(isWin) {
     await audioEngine.playEffect('end1Sound');
   }
 
-  // ข้อ 1: โฟกัส heading หลักของหน้าสรุปผล
-  setTimeout(() => { title.focus(); }, 300);
+  // 1. โฟกัส heading หลักทันที
+  title.focus();
+
+  // 2. ประกาศสรุปผลผ่าน aria-live เฉพาะ screen reader
+  const announcement = `${title.textContent} ได้ ${score} คะแนน ${msg.textContent.replace(/<br>/g, ' ')}`;
+  elements.srAnnounce.textContent = announcement;
+
+  setTimeout(() => { title.focus(); }, 100);
 }
 
 // ========== EVENT LISTENERS ==========
 document.addEventListener('DOMContentLoaded', () => {
   initSpeechRecognition();
 
-  document.getElementById('startGame').onclick = async () => {
-    await audioEngine.playStartSound();
-    startNewGame();
-  };
+  document.getElementById('startGame').onclick = startNewGame;
 
   document.getElementById('restartBtn').onclick = async () => {
-    await audioEngine.playStartSound();
     audioEngine.playEffect('doorSound');
+
     currentRound = 0;
     lives = 3;
     score = 0;
@@ -551,6 +551,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.resultDiv.setAttribute('aria-hidden', 'true');
     elements.gameDiv.setAttribute('aria-hidden', 'false');
+
+    // เล่น start.mp3 และรอจบก่อนเริ่มรอบใหม่
+    await audioEngine.playStartSound();
 
     nextRound(true);
   };
