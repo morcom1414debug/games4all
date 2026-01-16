@@ -46,24 +46,16 @@
         }
         .typing-display {
             font-size: 4.2rem; font-weight: bold; min-height: 110px;
-            margin: 30px 20px; 
-            background: rgba(255,255,255,0.55); padding: 28px; border-radius: 28px;
+            margin: 30px 20px; color: #e91e63;
+            background: rgba(255,255,255,0.45); padding: 28px; border-radius: 28px;
             box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-            transition: color 0.4s ease, background 0.4s ease;
         }
-        .typing-display.correct {
-            color: #2e7d32;  /* เขียวเข้ม */
-            background: rgba(200, 230, 201, 0.75);
+        #typedByPlayer {
+            font-size: 1.7rem; color: #ad1457; margin: 20px 20px 50px;
+            min-height: 2.2rem; font-weight: 600;
         }
-        .typing-display.incorrect {
-            color: #c62828;  /* แดงเข้ม */
-            background: rgba(255, 205, 210, 0.75);
-        }
-
         #lives {
-            font-size: 1.8rem;          /* ลดจาก 2.4rem ≈ 25% */
-            margin: 8px 0 16px; 
-            color: #d32f2f;
+            font-size: 2.4rem; margin: 10px 0 20px; color: #d32f2f;
             font-weight: 900; text-shadow: 0 2px 6px rgba(211,47,47,0.4);
         }
 
@@ -77,8 +69,7 @@
 
         #voiceInputBtn {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            padding: 10px 24px; font-size: 1.4rem;          /* ลดจาก 1.7rem ≈ 18-20% */
-            background: #4CAF50; color: white;
+            padding: 12px 28px; font-size: 1.7rem; background: #4CAF50; color: white;
             border: none; border-radius: 50px; cursor: pointer;
             box-shadow: 0 6px 18px rgba(0,0,0,0.25); transition: all 0.3s;
         }
@@ -128,8 +119,7 @@
         <div id="lives">❤️❤️❤️</div>
         <h2 class="question-heading" id="question">ข้อ 1 : ...</h2>
         <div class="typing-display" id="typingDisplay">_ _ _ _</div>
-        <!-- ลบ #typedByPlayer ออกตามข้อ 1 -->
-
+        <div id="typedByPlayer">เสียงที่ตรวจจับได้ : -</div>
         <button id="voiceInputBtn">พูดอีกครั้ง</button>
     </div>
 
@@ -262,6 +252,7 @@ const elements = {
   resultDiv: document.getElementById('result'),
   questionElem: document.getElementById('question'),
   typingDisplay: document.getElementById('typingDisplay'),
+  typedByPlayer: document.getElementById('typedByPlayer'),
   livesElem: document.getElementById('lives'),
   questionLive: document.getElementById('question-live'),
   successCeleb: document.getElementById('success-celebration'),
@@ -331,7 +322,7 @@ function nextRound(isFirst = false) {
 
   elements.questionElem.textContent = `รอบ ${currentRound} : ${currentQuestion}`;
   elements.typingDisplay.textContent = currentQuestion.split("").map(()=>"_").join(" ");
-  elements.typingDisplay.classList.remove('correct','incorrect');  // รีเซ็ตสี
+  elements.typedByPlayer.textContent = "เสียงที่ตรวจจับได้ : -";
 
   elements.questionLive.textContent = '';
   setTimeout(() => {
@@ -371,12 +362,9 @@ function initSpeechRecognition() {
     let transcript = event.results[0][0].transcript || "";
     let cleaned = transcript.replace(/[^\u0E00-\u0E7F]/g, '').trim();
 
-    // แสดงผลใน typingDisplay แทน
-    if (cleaned === currentQuestion) {
-      elements.typingDisplay.textContent = cleaned;
-      elements.typingDisplay.classList.add('correct');
-      elements.typingDisplay.classList.remove('incorrect');
+    elements.typedByPlayer.textContent = "เสียงที่ตรวจจับได้ : " + (cleaned || "(ไม่ได้ยิน)");
 
+    if (cleaned === currentQuestion) {
       elements.successCeleb.classList.add('show');
       setTimeout(() => elements.successCeleb.classList.remove('show'), 900);
       audioEngine.playEffect('correctSound');
@@ -387,19 +375,12 @@ function initSpeechRecognition() {
 
       setTimeout(nextRound, 800);
     } else {
-      elements.typingDisplay.textContent = cleaned || "(ไม่ได้ยิน)";
-      elements.typingDisplay.classList.add('incorrect');
-      elements.typingDisplay.classList.remove('correct');
-
       handleWrong();
     }
   };
 
   recognition.onerror = () => {
     isListening = false;
-    elements.typingDisplay.textContent = "(ตรวจจับไม่ได้)";
-    elements.typingDisplay.classList.add('incorrect');
-    elements.typingDisplay.classList.remove('correct');
     handleWrong();
   };
 }
@@ -426,7 +407,7 @@ async function endGame(isWin) {
   elements.resultDiv.style.display = 'block';
   elements.backBtn.style.display = 'block';
   elements.speakCue.style.display = 'none';
-  elements.questionLive.textContent = '';
+  elements.questionLive.textContent = '';   // ← เพิ่มบรรทัดนี้เพื่อล้าง aria-live หยุด VoiceOver อ่านรอบเก่า
 
   const title = document.getElementById('resultTitle');
   const msg = document.getElementById('resultMsg');
