@@ -426,7 +426,7 @@ function initSpeechRecognition() {
   recognition.onstart = () => { isListening = true; };
   recognition.onend = () => { isListening = false; };
 
-  recognition.onresult = (event) => {
+  recognition.onresult = async (event) => {
     isListening = false;
     clearTimer();
 
@@ -440,13 +440,15 @@ function initSpeechRecognition() {
 
       elements.successCeleb.classList.add('show');
       setTimeout(() => elements.successCeleb.classList.remove('show'), 900);
-      audioEngine.playEffect('correctSound');
-      audioEngine.playEffect('tSound');
+      await audioEngine.playEffect('correctSound');
+      await audioEngine.playEffect('tSound');
 
       const pts = getPointsForRound(currentRound);
       score += pts;
 
-      setTimeout(nextRound, 1300);
+      setTimeout(() => {
+        nextRound();
+      }, 1300);
     } else {
       elements.typingDisplay.textContent = cleaned || "(ไม่ได้ยิน)";
       elements.typingDisplay.classList.add('incorrect');
@@ -466,7 +468,7 @@ function initSpeechRecognition() {
   };
 }
 
-function handleWrong() {
+async function handleWrong() {
   clearTimer();
 
   lives--;
@@ -474,8 +476,8 @@ function handleWrong() {
   elements.failCeleb.classList.add('show');
   setTimeout(() => elements.failCeleb.classList.remove('show'), 900);
 
-  audioEngine.playEffect('wrongSound');
-  audioEngine.playEffect('fSound');
+  await audioEngine.playEffect('wrongSound');
+  await audioEngine.playEffect('fSound');
 
   if (lives <= 0 || currentRound >= 20) {
     endGame(false);
@@ -493,6 +495,7 @@ async function endGame(isWin) {
   elements.backBtn.style.display = 'block';
   elements.speakCue.style.display = 'none';
   elements.questionLive.textContent = '';
+  elements.questionLive.setAttribute('aria-hidden', 'true'); // ซ่อนจาก screen reader เพื่อไม่ให้ VoiceOver อ่านข้อความเก่า
 
   elements.gameDiv.setAttribute('aria-hidden', 'true');
   elements.resultDiv.setAttribute('aria-hidden', 'false');
