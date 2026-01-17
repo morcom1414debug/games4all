@@ -135,7 +135,7 @@
     <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
     <div id="result" aria-hidden="true" tabindex="-1">
-        <h2 id="resultTitle">สุดยอดมาก!</h2>
+        <h2 id="resultTitle" tabindex="-1">สุดยอดมาก!</h2>
         <div id="resultMsg"></div>
         <div id="score">0 คะแนน</div>
         <button class="btn-restart" id="restartBtn">เล่นใหม่</button>
@@ -339,8 +339,6 @@ async function startNewGame() {
   elements.speakCue.style.display = 'block';
 
   elements.resultDiv.setAttribute('aria-hidden', 'true');
-  elements.resultDiv.setAttribute('tabindex', '-1');
-
   elements.gameDiv.setAttribute('aria-hidden', 'false');
 
   await audioEngine.startBGM();
@@ -457,44 +455,51 @@ function handleWrong() {
 }
 
 async function endGame(isWin) {
-  clearTimer();
+    // 1. ล้างสถานะเก่าทันที ป้องกัน screen reader อ่านค้าง
+    elements.typingDisplay.textContent = "";
+    elements.questionLive.textContent = "";
 
-  audioEngine.stopBGM();
-  elements.gameDiv.style.display = 'none';
-  elements.resultDiv.style.display = 'block';
-  elements.backBtn.style.display = 'block';
-  elements.speakCue.style.display = 'none';
-  elements.questionLive.textContent = '';
+    clearTimer();
+    audioEngine.stopBGM();
 
-  elements.gameDiv.setAttribute('aria-hidden', 'true');
-  elements.resultDiv.setAttribute('aria-hidden', 'false');
+    // 2. สลับหน้าให้เรียบร้อย + อัปเดต aria ก่อน
+    elements.gameDiv.style.display = 'none';
+    elements.resultDiv.style.display = 'block';
+    elements.backBtn.style.display = 'block';
+    elements.speakCue.style.display = 'none';
 
-  const title = document.getElementById('resultTitle');
-  const msg = document.getElementById('resultMsg');
-  const scoreDiv = document.getElementById('score');
+    elements.gameDiv.setAttribute('aria-hidden', 'true');
+    elements.resultDiv.setAttribute('aria-hidden', 'false');
 
-  scoreDiv.textContent = score + " คะแนน";
+    // เตรียมเนื้อหา
+    const title = document.getElementById('resultTitle');
+    const msg = document.getElementById('resultMsg');
+    const scoreDiv = document.getElementById('score');
 
-  if (isWin) {
-    title.textContent = "เซียนหมูหมาแมวตัวจริง!";
-    msg.innerHTML = "สุดยอดมาก! ผ่าน 20 รอบแบบเป๊ะ ๆ เลยนะ 🐶🐱🐷✨<br>เป็นตำนานแห่งการพูดตามแล้ว!";
-    await audioEngine.playEffect('endSound');
-  } else if (score >= 20000) {
-    title.textContent = "เก่งมากๆ!";
-    msg.innerHTML = "ผ่านมาจนเกือบสุดทางแล้วนะ<br>คะแนนสูงขนาดนี้ เกือบเป็นเซียนแล้ว! 💪🏾";
-    await audioEngine.playEffect('endSound');
-  } else if (score >= 8000) {
-    title.textContent = "เยี่ยมเลย!";
-    msg.innerHTML = `ได้ ${score} คะแนน แบบนี้ต้องภูมิใจมาก ๆ เลยนะ 🐶❤️`;
-    await audioEngine.playEffect('endSound');
-  } else {
-    title.textContent = "อย่าเพิ่งท้อ!";
-    msg.innerHTML = "สนุกใช่ไหมล่ะ มาใหม่กันอีกนะ ครั้งหน้าต้องเป๊ะกว่านี้แน่ 🐱💕";
-    await audioEngine.playEffect('end1Sound');
-  }
+    scoreDiv.textContent = score + " คะแนน";
 
-  // จุดที่ปรับ → Focus ไปที่ h2 สรุปผลทันที (ให้ screen reader อ่าน)
-  setTimeout(() => { title.focus(); }, 100);
+    if (isWin) {
+        title.textContent = "เซียนหมูหมาแมวตัวจริง!";
+        msg.innerHTML = "สุดยอดมาก! ผ่าน 20 รอบแบบเป๊ะ ๆ เลยนะ 🐶🐱🐷✨<br>เป็นตำนานแห่งการพูดตามแล้ว!";
+        await audioEngine.playEffect('endSound');
+    } else if (score >= 20000) {
+        title.textContent = "เก่งมากๆ!";
+        msg.innerHTML = "ผ่านมาจนเกือบสุดทางแล้วนะ<br>คะแนนสูงขนาดนี้ เกือบเป็นเซียนแล้ว! 💪🏾";
+        await audioEngine.playEffect('endSound');
+    } else if (score >= 8000) {
+        title.textContent = "เยี่ยมเลย!";
+        msg.innerHTML = `ได้ ${score} คะแนน แบบนี้ต้องภูมิใจมาก ๆ เลยนะ 🐶❤️`;
+        await audioEngine.playEffect('endSound');
+    } else {
+        title.textContent = "อย่าเพิ่งท้อ!";
+        msg.innerHTML = "สนุกใช่ไหมล่ะ มาใหม่กันอีกนะ ครั้งหน้าต้องเป๊ะกว่านี้แน่ 🐱💕";
+        await audioEngine.playEffect('end1Sound');
+    }
+
+    // 3. Focus หัวข้อสรุปผล หน่วงเวลาให้ UI เสร็จสมบูรณ์
+    setTimeout(() => {
+        title.focus();
+    }, 200);
 }
 
 // ========== EVENT LISTENERS ==========
