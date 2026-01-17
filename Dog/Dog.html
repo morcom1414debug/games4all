@@ -143,7 +143,6 @@
 </div>
 
 <script>
-// ========== AUDIO ENGINE (Async Version from Dog.html) ==========
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -233,7 +232,6 @@ class AudioEngine {
 
 const audioEngine = new AudioEngine();
 
-// ========== GAME LOGIC (Merged) ==========
 const syllables = ["ไก่","กา","แกะ","กบ","หมู","หมา","แมว","หมี"];
 let currentQuestion = "";
 let currentRound = 0;
@@ -325,17 +323,19 @@ function nextRound() {
   elements.typingDisplay.textContent = currentQuestion.split("").map(()=>"_").join(" ");
   elements.typingDisplay.classList.remove('correct','incorrect');
 
+  // ปรับการประกาศ ARIA ให้ไวขึ้น
   elements.questionLive.textContent = '';
-  setTimeout(() => { elements.questionLive.textContent = elements.questionElem.textContent; }, 50);
+  setTimeout(() => { elements.questionLive.textContent = elements.questionElem.textContent; }, 30);
   elements.questionElem.focus();
 
+  // ปรับ Timing ให้กระชับ: แสดงคำสั่งพูดหลังจากแสดงคำถาม 0.5 วินาที
   setTimeout(async () => {
     await audioEngine.playEffect('speak');
     elements.speakCue.classList.add('show');
-    setTimeout(() => elements.speakCue.classList.remove('show'), 1000);
+    setTimeout(() => elements.speakCue.classList.remove('show'), 800);
     startTimer();
-    setTimeout(startListening, 600);
-  }, 1000); // คงความหน่วง 1000ms ตาม Dog1.html
+    setTimeout(startListening, 400); // เปิดไมค์หลังจากสัญญาณพูดจบพอดี
+  }, 500); 
 }
 
 function startListening() {
@@ -362,7 +362,7 @@ function initSpeechRecognition() {
       elements.typingDisplay.textContent = cleaned;
       elements.typingDisplay.classList.add('correct');
       elements.successCeleb.classList.add('show');
-      setTimeout(() => elements.successCeleb.classList.remove('show'), 900);
+      setTimeout(() => elements.successCeleb.classList.remove('show'), 800);
       
       await audioEngine.playEffect('correctSound');
       await audioEngine.playEffect('tSound');
@@ -371,7 +371,8 @@ function initSpeechRecognition() {
       if (currentRound >= 20) {
         await endGame(true);
       } else {
-        setTimeout(nextRound, 1300); // หน่วงเวลาตาม Dog1.html
+        // ลดระยะห่างก่อนเริ่มรอบถัดไปให้เหลือ 1 วินาที
+        setTimeout(nextRound, 1000); 
       }
     } else {
       elements.typingDisplay.textContent = cleaned || "(ไม่ได้ยิน)";
@@ -393,7 +394,7 @@ async function handleWrong() {
   lives--;
   updateLivesDisplay();
   elements.failCeleb.classList.add('show');
-  setTimeout(() => elements.failCeleb.classList.remove('show'), 900);
+  setTimeout(() => elements.failCeleb.classList.remove('show'), 800);
 
   await audioEngine.playEffect('wrongSound');
   await audioEngine.playEffect('fSound');
@@ -401,12 +402,12 @@ async function handleWrong() {
   if (lives <= 0 || currentRound >= 20) {
     await endGame(false);
   } else {
-    setTimeout(nextRound, 1300); // หน่วงเวลาตาม Dog1.html
+    // ลดระยะห่างก่อนเริ่มรอบถัดไปให้เหลือ 1 วินาที
+    setTimeout(nextRound, 1000); 
   }
 }
 
 async function endGame(isWin) {
-  // Clear UI instantly (from Dog.html)
   elements.typingDisplay.textContent = "";
   elements.questionLive.textContent = "";
   clearTimer();
@@ -442,7 +443,6 @@ async function endGame(isWin) {
   setTimeout(() => { title.focus(); }, 200);
 }
 
-// ========== EVENT LISTENERS ==========
 document.addEventListener('DOMContentLoaded', () => {
   initSpeechRecognition();
   document.getElementById('startGame').onclick = startNewGame;
@@ -460,7 +460,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 });
 
-// Unlock audio
 const unlock = async () => { await audioEngine.unlockAll(); await audioEngine.startBGM(); };
 document.addEventListener("touchstart", unlock, {once:true, passive:true});
 document.addEventListener("click", unlock, {once:true});
