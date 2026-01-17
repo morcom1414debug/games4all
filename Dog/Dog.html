@@ -52,11 +52,11 @@
             transition: color 0.4s ease, background 0.4s ease;
         }
         .typing-display.correct {
-            color: #2e7d32;  /* เขียวเข้ม */
+            color: #2e7d32;
             background: rgba(200, 230, 201, 0.75);
         }
         .typing-display.incorrect {
-            color: #c62828;  /* แดงเข้ม */
+            color: #c62828;
             background: rgba(255, 205, 210, 0.75);
         }
 
@@ -95,7 +95,7 @@
         #fail-celebration.show { opacity: 0.92; transform: scale(1.4) rotate(-10deg); }
 
         #result { display: none; text-align: center; }
-        #result h2 { font-size: 3.8rem; margin: 30px 0 20px; color: #c2185b; }
+        #result h2 { font-size: 3.8rem; margin: 30px 0 20px; color: #c2185b; outline: none; }
         #resultMsg { font-size: 2.1rem; line-height: 1.6; margin: 30px 0; color: #444; }
         #score { font-size: 4.8rem; font-weight: 900; margin: 30px 0; color: #e91e63; }
         .btn-restart {
@@ -135,7 +135,7 @@
     <div id="question-live" aria-live="polite" aria-atomic="true"></div>
 
     <div id="result" aria-hidden="true" tabindex="-1">
-        <h2 id="resultTitle">สุดยอดมาก!</h2>
+        <h2 id="resultTitle" tabindex="-1">สุดยอดมาก!</h2>
         <div id="resultMsg"></div>
         <div id="score">0 คะแนน</div>
         <button class="btn-restart" id="restartBtn">เล่นใหม่</button>
@@ -143,16 +143,14 @@
 </div>
 
 <script>
-// ========== AUDIO ENGINE (ไม่แตะต้อง) ==========
+// ========== AUDIO ENGINE (Async Version from Dog.html) ==========
 class AudioEngine {
   constructor() {
     this.ctx = null;
     this.isUnlocked = false;
     this.bgmSource = null;
     this.bgmGain = null;
-    this.bgmBuffer = null;
-    this.currentEndPromise = null;
-
+    this.buffers = {};
     this.sounds = {
       correctSound: "https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-reward-952.mp3",
       wrongSound: "https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-fail-946.mp3",
@@ -166,8 +164,6 @@ class AudioEngine {
       end1Sound: "audio/end1.mp3",
       speak: "audio/speak.mp3"
     };
-
-    this.buffers = {};
   }
 
   async initContext() {
@@ -182,9 +178,7 @@ class AudioEngine {
         const response = await fetch(url);
         const arrayBuffer = await response.arrayBuffer();
         this.buffers[key] = await this.ctx.decodeAudioData(arrayBuffer);
-      } catch (e) {
-        console.warn(`Failed to load sound: ${key}`, e);
-      }
+      } catch (e) { console.warn(`Failed to load sound: ${key}`, e); }
     });
     await Promise.all(promises);
   }
@@ -219,44 +213,36 @@ class AudioEngine {
     }
   }
 
-  async playEffect(key) {
-    if (!this.buffers[key]) return;
-    await this.unlockAll();
-    const source = this.ctx.createBufferSource();
-    source.buffer = this.buffers[key];
-    const gainNode = this.ctx.createGain();
-    gainNode.gain.value = 0.8;
-    source.connect(gainNode);
-    gainNode.connect(this.ctx.destination);
-    source.start(0);
+  playEffect(key) {
+    if (!this.buffers[key]) return Promise.resolve();
+    return (async () => {
+      await this.unlockAll();
+      const source = this.ctx.createBufferSource();
+      source.buffer = this.buffers[key];
+      const gainNode = this.ctx.createGain();
+      gainNode.gain.value = 0.8;
+      source.connect(gainNode);
+      gainNode.connect(this.ctx.destination);
+      return new Promise(resolve => {
+        source.onended = () => resolve();
+        source.start(0);
+      });
+    })();
   }
 }
 
 const audioEngine = new AudioEngine();
 
-let hasUserInteracted = false;
-async function unlockAudioOnInteract() {
-  if (hasUserInteracted) return;
-  hasUserInteracted = true;
-  await audioEngine.unlockAll();
-  await audioEngine.startBGM();
-}
-document.addEventListener("touchstart", unlockAudioOnInteract, {once:true, passive:true});
-document.addEventListener("click", unlockAudioOnInteract, {once:true});
-
-// ========== GAME LOGIC ==========
+// ========== GAME LOGIC (Merged) ==========
 const syllables = ["ไก่","กา","แกะ","กบ","หมู","หมา","แมว","หมี"];
-
 let currentQuestion = "";
 let currentRound = 0;
 let lives = 3;
 let score = 0;
 let recognition = null;
 let isListening = false;
-
-// ── เพิ่มตัวแปรสำหรับ Timer ──
 let roundTimer = null;
-const TIME_LIMIT = 7; // ✅ ข้อ 2: ลดเวลาจาก 10 เป็น 7 วินาที
+const TIME_LIMIT = 7;
 
 const elements = {
   backBtn: document.getElementById('backToMenu'),
@@ -273,14 +259,10 @@ const elements = {
 };
 
 function randomNoAdjacentRepeat(length) {
-  if (length < 1) return "";
   let result = [syllables[Math.floor(Math.random()*syllables.length)]];
   while (result.length < length) {
-    let candidate;
-    do {
-      candidate = syllables[Math.floor(Math.random()*syllables.length)];
-    } while (candidate === result[result.length-1]);
-    result.push(candidate);
+    let candidate = syllables[Math.floor(Math.random()*syllables.length)];
+    if (candidate !== result[result.length-1]) result.push(candidate);
   }
   return result.join("");
 }
@@ -289,8 +271,8 @@ function getPointsForRound(round) {
   if (round <= 3) return 100;
   if (round <= 6) return 200;
   if (round <= 9) return 400;
-  if (round <=12) return 800;
-  if (round <=15) return 1600;
+  if (round <= 12) return 800;
+  if (round <= 15) return 1600;
   return 3200;
 }
 
@@ -298,8 +280,8 @@ function getLengthForRound(round) {
   if (round <= 3) return 4;
   if (round <= 6) return 5;
   if (round <= 9) return 6;
-  if (round <=12) return 7;
-  if (round <=15) return 8;
+  if (round <= 12) return 7;
+  if (round <= 15) return 8;
   return 10;
 }
 
@@ -308,54 +290,34 @@ function updateLivesDisplay() {
 }
 
 function clearTimer() {
-  if (roundTimer) {
-    clearTimeout(roundTimer);
-    roundTimer = null;
-  }
+  if (roundTimer) { clearTimeout(roundTimer); roundTimer = null; }
 }
 
 function startTimer() {
-  clearTimer(); // ป้องกัน timer ซ้อน
+  clearTimer();
   roundTimer = setTimeout(() => {
-    if (isListening) {
-      recognition.stop(); // หยุดการฟังทันทีถ้ายังฟังอยู่
-    }
+    if (isListening) recognition.stop();
     elements.typingDisplay.textContent = "(หมดเวลา)";
     elements.typingDisplay.classList.add('incorrect');
-    elements.typingDisplay.classList.remove('correct');
     handleWrong();
   }, TIME_LIMIT * 1000);
 }
 
 async function startNewGame() {
-  currentRound = 0;
-  lives = 3;
-  score = 0;
+  currentRound = 0; lives = 3; score = 0;
   updateLivesDisplay();
   elements.levelSelect.style.display = 'none';
   elements.gameDiv.style.display = 'block';
   elements.resultDiv.style.display = 'none';
   elements.backBtn.style.display = 'none';
-  elements.speakCue.style.display = 'block';
-
-  // สำหรับ accessibility – ซ่อน result screen จาก screen reader
   elements.resultDiv.setAttribute('aria-hidden', 'true');
-  elements.resultDiv.setAttribute('tabindex', '-1');
-
-  // แสดง game ให้ screen reader อ่านได้
   elements.gameDiv.setAttribute('aria-hidden', 'false');
-
   await audioEngine.startBGM();
-  nextRound(true);
+  nextRound();
 }
 
-function nextRound(isFirst = false) {
+function nextRound() {
   currentRound++;
-  if (currentRound > 20) {
-    endGame(true);
-    return;
-  }
-
   const len = getLengthForRound(currentRound);
   currentQuestion = randomNoAdjacentRepeat(len);
 
@@ -364,128 +326,101 @@ function nextRound(isFirst = false) {
   elements.typingDisplay.classList.remove('correct','incorrect');
 
   elements.questionLive.textContent = '';
-  setTimeout(() => {
-    elements.questionLive.textContent = elements.questionElem.textContent;
-  }, 50);
-
-  // บังคับ focus ไปที่คำถามเพื่อให้ VoiceOver อ่านต่อเนื่อง
+  setTimeout(() => { elements.questionLive.textContent = elements.questionElem.textContent; }, 50);
   elements.questionElem.focus();
 
-  // ✅ ข้อ 3: เพิ่มเวลาหน่วงเป็น 1000 ms ก่อนแสดง Speak Cue และเริ่มฟัง
   setTimeout(async () => {
     await audioEngine.playEffect('speak');
     elements.speakCue.classList.add('show');
     setTimeout(() => elements.speakCue.classList.remove('show'), 1000);
-
-    // ✅ ข้อ 4: เริ่มนับถอยหลัง 7 วินาที พร้อมกับแสดงป้าย "พูดเลย!"
     startTimer();
-
     setTimeout(startListening, 600);
-  }, 1000); // เปลี่ยนจาก 200 เป็น 1000
+  }, 1000); // คงความหน่วง 1000ms ตาม Dog1.html
 }
 
 function startListening() {
   if (!recognition) return;
-  try {
-    recognition.start();
-  } catch(e){}
+  try { recognition.start(); } catch(e){}
 }
 
 function initSpeechRecognition() {
   if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) return;
-
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SpeechRecognition();
   recognition.lang = 'th-TH';
   recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-
   recognition.onstart = () => { isListening = true; };
   recognition.onend = () => { isListening = false; };
 
-  recognition.onresult = (event) => {
+  recognition.onresult = async (event) => {
     isListening = false;
-    clearTimer(); // หยุด timer ทันทีที่ได้ผลลัพธ์ (ถูกหรือผิดก็ตาม)
-
+    clearTimer();
     let transcript = event.results[0][0].transcript || "";
     let cleaned = transcript.replace(/[^\u0E00-\u0E7F]/g, '').trim();
 
     if (cleaned === currentQuestion) {
       elements.typingDisplay.textContent = cleaned;
       elements.typingDisplay.classList.add('correct');
-      elements.typingDisplay.classList.remove('incorrect');
-
       elements.successCeleb.classList.add('show');
       setTimeout(() => elements.successCeleb.classList.remove('show'), 900);
-      audioEngine.playEffect('correctSound');
-      audioEngine.playEffect('tSound');
+      
+      await audioEngine.playEffect('correctSound');
+      await audioEngine.playEffect('tSound');
 
-      const pts = getPointsForRound(currentRound);
-      score += pts;
-
-      // ✅ ข้อ 1: ปรับเวลาหน่วงเป็น 1300 ms (กรณีตอบถูก)
-      setTimeout(nextRound, 1300);
+      score += getPointsForRound(currentRound);
+      if (currentRound >= 20) {
+        await endGame(true);
+      } else {
+        setTimeout(nextRound, 1300); // หน่วงเวลาตาม Dog1.html
+      }
     } else {
       elements.typingDisplay.textContent = cleaned || "(ไม่ได้ยิน)";
       elements.typingDisplay.classList.add('incorrect');
-      elements.typingDisplay.classList.remove('correct');
-
-      handleWrong();
+      await handleWrong();
     }
   };
 
-  recognition.onerror = () => {
-    isListening = false;
-    clearTimer();
+  recognition.onerror = async () => {
+    isListening = false; clearTimer();
     elements.typingDisplay.textContent = "(ตรวจจับไม่ได้)";
     elements.typingDisplay.classList.add('incorrect');
-    elements.typingDisplay.classList.remove('correct');
-    handleWrong();
+    await handleWrong();
   };
 }
 
-function handleWrong() {
-  clearTimer(); // หยุด timer เมื่อผิด
-
+async function handleWrong() {
+  clearTimer();
   lives--;
   updateLivesDisplay();
   elements.failCeleb.classList.add('show');
   setTimeout(() => elements.failCeleb.classList.remove('show'), 900);
 
-  audioEngine.playEffect('wrongSound');
-  audioEngine.playEffect('fSound');
+  await audioEngine.playEffect('wrongSound');
+  await audioEngine.playEffect('fSound');
 
   if (lives <= 0 || currentRound >= 20) {
-    endGame(false);
+    await endGame(false);
   } else {
-    // ✅ ข้อ 1: ปรับเวลาหน่วงเป็น 1300 ms (กรณีตอบผิด)
-    setTimeout(nextRound, 1300);
+    setTimeout(nextRound, 1300); // หน่วงเวลาตาม Dog1.html
   }
 }
 
 async function endGame(isWin) {
-  // 1. ล้างสถานะเก่าทันที ป้องกัน screen reader อ่านค้าง
+  // Clear UI instantly (from Dog.html)
   elements.typingDisplay.textContent = "";
   elements.questionLive.textContent = "";
-
   clearTimer();
   audioEngine.stopBGM();
 
-  // 2. สลับหน้าให้เรียบร้อย + อัปเดต aria ก่อน
   elements.gameDiv.style.display = 'none';
   elements.resultDiv.style.display = 'block';
   elements.backBtn.style.display = 'block';
-  elements.speakCue.style.display = 'none';
-
   elements.gameDiv.setAttribute('aria-hidden', 'true');
   elements.resultDiv.setAttribute('aria-hidden', 'false');
 
-  // เตรียมเนื้อหา
   const title = document.getElementById('resultTitle');
   const msg = document.getElementById('resultMsg');
-  const scoreDiv = document.getElementById('score');
-
-  scoreDiv.textContent = score + " คะแนน";
+  document.getElementById('score').textContent = score + " คะแนน";
 
   if (isWin) {
     title.textContent = "เซียนหมูหมาแมวตัวจริง!";
@@ -504,50 +439,31 @@ async function endGame(isWin) {
     msg.innerHTML = "สนุกใช่ไหมล่ะ มาใหม่กันอีกนะ ครั้งหน้าต้องเป๊ะกว่านี้แน่ 🐱💕";
     await audioEngine.playEffect('end1Sound');
   }
-
-  // 3. Focus หัวข้อสรุปผล หน่วงเวลาให้ UI เสร็จสมบูรณ์
-  setTimeout(() => {
-    title.focus();
-  }, 200);
+  setTimeout(() => { title.focus(); }, 200);
 }
 
 // ========== EVENT LISTENERS ==========
 document.addEventListener('DOMContentLoaded', () => {
   initSpeechRecognition();
-
   document.getElementById('startGame').onclick = startNewGame;
-
-  document.getElementById('restartBtn').onclick = () => {
-    audioEngine.playEffect('doorSound');
-    currentRound = 0;
-    lives = 3;
-    score = 0;
-    updateLivesDisplay();
-    elements.resultDiv.style.display = 'none';
-    elements.gameDiv.style.display = 'block';
-    elements.backBtn.style.display = 'none';
-    elements.speakCue.style.display = 'block';
-
-    elements.resultDiv.setAttribute('aria-hidden', 'true');
-    elements.gameDiv.setAttribute('aria-hidden', 'false');
-
-    nextRound(true);
+  document.getElementById('restartBtn').onclick = async () => {
+    await audioEngine.playEffect('doorSound');
+    startNewGame();
   };
-
   document.getElementById('backToMenu').onclick = async () => {
     audioEngine.stopBGM();
     await audioEngine.playEffect('doorSound');
     location.href = '../index.html';
   };
-
   document.getElementById('voiceInputBtn').onclick = () => {
     if (recognition && !isListening) startListening();
   };
 });
 
-window.addEventListener('beforeunload', () => {
-  audioEngine.stopBGM();
-});
+// Unlock audio
+const unlock = async () => { await audioEngine.unlockAll(); await audioEngine.startBGM(); };
+document.addEventListener("touchstart", unlock, {once:true, passive:true});
+document.addEventListener("click", unlock, {once:true});
 </script>
 </body>
 </html>
