@@ -219,23 +219,16 @@ class AudioEngine {
     }
   }
 
-  playEffect(key) {
-    if (!this.buffers[key]) return Promise.resolve();
-    return (async () => {
-      await this.unlockAll();
-      const source = this.ctx.createBufferSource();
-      source.buffer = this.buffers[key];
-      const gainNode = this.ctx.createGain();
-      gainNode.gain.value = 0.8;
-      source.connect(gainNode);
-      gainNode.connect(this.ctx.destination);
-      return new Promise(resolve => {
-        source.onended = () => {
-          resolve();
-        };
-        source.start(0);
-      });
-    })();
+  async playEffect(key) {
+    if (!this.buffers[key]) return;
+    await this.unlockAll();
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers[key];
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = 0.8;
+    source.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+    source.start(0);
   }
 }
 
@@ -354,6 +347,11 @@ async function startNewGame() {
 
 function nextRound(isFirst = false) {
   currentRound++;
+  if (currentRound > 20) {
+    endGame(true);
+    return;
+  }
+
   const len = getLengthForRound(currentRound);
   currentQuestion = randomNoAdjacentRepeat(len);
 
@@ -398,7 +396,7 @@ function initSpeechRecognition() {
   recognition.onstart = () => { isListening = true; };
   recognition.onend = () => { isListening = false; };
 
-  recognition.onresult = async (event) => {
+  recognition.onresult = (event) => {
     isListening = false;
     clearTimer();
 
@@ -412,37 +410,33 @@ function initSpeechRecognition() {
 
       elements.successCeleb.classList.add('show');
       setTimeout(() => elements.successCeleb.classList.remove('show'), 900);
-      await audioEngine.playEffect('correctSound');
-      await audioEngine.playEffect('tSound');
+      audioEngine.playEffect('correctSound');
+      audioEngine.playEffect('tSound');
 
       const pts = getPointsForRound(currentRound);
       score += pts;
 
-      if (currentRound >= 20) {
-        await endGame(true);
-      } else {
-        setTimeout(nextRound, 1300);
-      }
+      setTimeout(nextRound, 1300);
     } else {
       elements.typingDisplay.textContent = cleaned || "(ไม่ได้ยิน)";
       elements.typingDisplay.classList.add('incorrect');
       elements.typingDisplay.classList.remove('correct');
 
-      await handleWrong();
+      handleWrong();
     }
   };
 
-  recognition.onerror = async () => {
+  recognition.onerror = () => {
     isListening = false;
     clearTimer();
     elements.typingDisplay.textContent = "(ตรวจจับไม่ได้)";
     elements.typingDisplay.classList.add('incorrect');
     elements.typingDisplay.classList.remove('correct');
-    await handleWrong();
+    handleWrong();
   };
 }
 
-async function handleWrong() {
+function handleWrong() {
   clearTimer();
 
   lives--;
@@ -450,62 +444,62 @@ async function handleWrong() {
   elements.failCeleb.classList.add('show');
   setTimeout(() => elements.failCeleb.classList.remove('show'), 900);
 
-  await audioEngine.playEffect('wrongSound');
-  await audioEngine.playEffect('fSound');
+  audioEngine.playEffect('wrongSound');
+  audioEngine.playEffect('fSound');
 
   if (lives <= 0 || currentRound >= 20) {
-    await endGame(false);
+    endGame(false);
   } else {
     setTimeout(nextRound, 1300);
   }
 }
 
 async function endGame(isWin) {
-  // 1. ล้างสถานะเก่าทันที ป้องกัน screen reader อ่านค้าง
-  elements.typingDisplay.textContent = "";
-  elements.questionLive.textContent = "";
+    // 1. ล้างสถานะเก่าทันที ป้องกัน screen reader อ่านค้าง
+    elements.typingDisplay.textContent = "";
+    elements.questionLive.textContent = "";
 
-  clearTimer();
-  audioEngine.stopBGM();
+    clearTimer();
+    audioEngine.stopBGM();
 
-  // 2. สลับหน้าให้เรียบร้อย + อัปเดต aria ก่อน
-  elements.gameDiv.style.display = 'none';
-  elements.resultDiv.style.display = 'block';
-  elements.backBtn.style.display = 'block';
-  elements.speakCue.style.display = 'none';
+    // 2. สลับหน้าให้เรียบร้อย + อัปเดต aria ก่อน
+    elements.gameDiv.style.display = 'none';
+    elements.resultDiv.style.display = 'block';
+    elements.backBtn.style.display = 'block';
+    elements.speakCue.style.display = 'none';
 
-  elements.gameDiv.setAttribute('aria-hidden', 'true');
-  elements.resultDiv.setAttribute('aria-hidden', 'false');
+    elements.gameDiv.setAttribute('aria-hidden', 'true');
+    elements.resultDiv.setAttribute('aria-hidden', 'false');
 
-  // เตรียมเนื้อหา
-  const title = document.getElementById('resultTitle');
-  const msg = document.getElementById('resultMsg');
-  const scoreDiv = document.getElementById('score');
+    // เตรียมเนื้อหา
+    const title = document.getElementById('resultTitle');
+    const msg = document.getElementById('resultMsg');
+    const scoreDiv = document.getElementById('score');
 
-  scoreDiv.textContent = score + " คะแนน";
+    scoreDiv.textContent = score + " คะแนน";
 
-  if (isWin) {
-    title.textContent = "เซียนหมูหมาแมวตัวจริง!";
-    msg.innerHTML = "สุดยอดมาก! ผ่าน 20 รอบแบบเป๊ะ ๆ เลยนะ 🐶🐱🐷✨<br>เป็นตำนานแห่งการพูดตามแล้ว!";
-    await audioEngine.playEffect('endSound');
-  } else if (score >= 20000) {
-    title.textContent = "เก่งมากๆ!";
-    msg.innerHTML = "ผ่านมาจนเกือบสุดทางแล้วนะ<br>คะแนนสูงขนาดนี้ เกือบเป็นเซียนแล้ว! 💪🏾";
-    await audioEngine.playEffect('endSound');
-  } else if (score >= 8000) {
-    title.textContent = "เยี่ยมเลย!";
-    msg.innerHTML = `ได้ ${score} คะแนน แบบนี้ต้องภูมิใจมาก ๆ เลยนะ 🐶❤️`;
-    await audioEngine.playEffect('endSound');
-  } else {
-    title.textContent = "อย่าเพิ่งท้อ!";
-    msg.innerHTML = "สนุกใช่ไหมล่ะ มาใหม่กันอีกนะ ครั้งหน้าต้องเป๊ะกว่านี้แน่ 🐱💕";
-    await audioEngine.playEffect('end1Sound');
-  }
+    if (isWin) {
+        title.textContent = "เซียนหมูหมาแมวตัวจริง!";
+        msg.innerHTML = "สุดยอดมาก! ผ่าน 20 รอบแบบเป๊ะ ๆ เลยนะ 🐶🐱🐷✨<br>เป็นตำนานแห่งการพูดตามแล้ว!";
+        await audioEngine.playEffect('endSound');
+    } else if (score >= 20000) {
+        title.textContent = "เก่งมากๆ!";
+        msg.innerHTML = "ผ่านมาจนเกือบสุดทางแล้วนะ<br>คะแนนสูงขนาดนี้ เกือบเป็นเซียนแล้ว! 💪🏾";
+        await audioEngine.playEffect('endSound');
+    } else if (score >= 8000) {
+        title.textContent = "เยี่ยมเลย!";
+        msg.innerHTML = `ได้ ${score} คะแนน แบบนี้ต้องภูมิใจมาก ๆ เลยนะ 🐶❤️`;
+        await audioEngine.playEffect('endSound');
+    } else {
+        title.textContent = "อย่าเพิ่งท้อ!";
+        msg.innerHTML = "สนุกใช่ไหมล่ะ มาใหม่กันอีกนะ ครั้งหน้าต้องเป๊ะกว่านี้แน่ 🐱💕";
+        await audioEngine.playEffect('end1Sound');
+    }
 
-  // 3. Focus หัวข้อสรุปผล หน่วงเวลาให้ UI เสร็จสมบูรณ์
-  setTimeout(() => {
-    title.focus();
-  }, 200);
+    // 3. Focus หัวข้อสรุปผล หน่วงเวลาให้ UI เสร็จสมบูรณ์
+    setTimeout(() => {
+        title.focus();
+    }, 200);
 }
 
 // ========== EVENT LISTENERS ==========
