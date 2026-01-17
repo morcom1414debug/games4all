@@ -159,8 +159,6 @@ class AudioEngine {
       tSound: "audio/t.mp3",
       t2Sound: "audio/t2.mp3",
       fSound: "audio/f.mp3",
-      f1Sound: "audio/f1.mp3",
-      f2Sound: "audio/f2.mp3",
       endSound: "audio/end.mp3",
       end1Sound: "audio/end1.mp3",
       speak: "audio/speak.mp3"
@@ -325,15 +323,18 @@ function nextRound() {
   elements.typingDisplay.textContent = currentQuestion.split("").map(()=>"_").join(" ");
   elements.typingDisplay.classList.remove('correct','incorrect');
 
+  // ปรับการประกาศ ARIA ให้เกือบจะทันที (5ms) เพื่อความกระชับ
   elements.questionLive.textContent = '';
   setTimeout(() => { elements.questionLive.textContent = elements.questionElem.textContent; }, 5);
   elements.questionElem.focus();
 
+  // ปรับ Timing ให้กระชับขึ้น: แสดงสัญญาณและเสียงที่ 400ms หลังเปลี่ยนรอบ
   setTimeout(async () => {
     await audioEngine.playEffect('speak');
     elements.speakCue.classList.add('show');
     setTimeout(() => elements.speakCue.classList.remove('show'), 600);
     startTimer();
+    // เปิดไมค์ที่ 300ms หลังจากสัญญาณเริ่มทำงาน เพื่อความต่อเนื่อง
     setTimeout(startListening, 300); 
   }, 400); 
 }
@@ -371,6 +372,7 @@ function initSpeechRecognition() {
       if (currentRound >= 20) {
         await endGame(true);
       } else {
+        // ลดระยะห่างก่อนเริ่มรอบถัดไปให้เหลือ 700ms เพื่อความต่อเนื่อง
         setTimeout(nextRound, 700); 
       }
     } else {
@@ -390,29 +392,18 @@ function initSpeechRecognition() {
 
 async function handleWrong() {
   clearTimer();
-  
-  // เก็บจำนวนชีวิตเดิมไว้เพื่อเลือกเสียง
-  const previousLives = lives;
   lives--;
   updateLivesDisplay();
-  
   elements.failCeleb.classList.add('show');
   setTimeout(() => elements.failCeleb.classList.remove('show'), 800);
 
   await audioEngine.playEffect('wrongSound');
-  
-  // เลือกเล่นไฟล์เสียงตามลำดับการตอบผิด
-  if (previousLives === 3) {
-    await audioEngine.playEffect('fSound'); // ผิดครั้งที่ 1
-  } else if (previousLives === 2) {
-    await audioEngine.playEffect('f1Sound'); // ผิดครั้งที่ 2
-  } else if (previousLives === 1) {
-    await audioEngine.playEffect('f2Sound'); // ผิดครั้งที่ 3 (ชีวิตหมดพอดี)
-  }
+  await audioEngine.playEffect('fSound');
 
   if (lives <= 0 || currentRound >= 20) {
     await endGame(false);
   } else {
+    // ลดระยะห่างก่อนเริ่มรอบถัดไปให้เหลือ 700ms เพื่อความต่อเนื่อง
     setTimeout(nextRound, 700); 
   }
 }
