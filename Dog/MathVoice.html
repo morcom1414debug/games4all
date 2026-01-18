@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>คณิตคิดไวตอบเร็ว!</title>
+    <title>คณิตศาสตร์ พูดตอบไว</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800;900&display=swap');
         * { box-sizing: border-box; }
@@ -115,7 +115,7 @@
     <button id="backToMenu">กลับเมนูหลัก</button>
 
     <div id="levelSelect">
-        <h1>คณิตคิดไวตอบเร็ว!</h1>
+        <h1>คณิตศาสตร์ พูดตอบไว</h1>
         <p class="subtitle">ฟังโจทย์แล้วพูดคำตอบให้ตรงตัวเลข!</p>
         <p class="friendly-msg">ผิดได้ 3 ครั้ง พร้อมกดอนุญาตไมค์หรือยัง?<br>พร้อมคำนวณเร็ว ๆ แล้วรึยัง 🧮⚡</p>
         <button class="start-btn" id="startGame">เริ่มเกม</button>
@@ -144,9 +144,6 @@
 </div>
 
 <script>
-// ------------------------------------------------------------------
-//                   ส่วน AudioEngine เหมือนเดิม
-// ------------------------------------------------------------------
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -171,19 +168,73 @@ class AudioEngine {
     };
   }
 
-  async initContext() { /* เหมือนเดิม */ }
-  async loadAllBuffers() { /* เหมือนเดิม */ }
-  async unlockAll() { /* เหมือนเดิม */ }
-  async startBGM() { /* เหมือนเดิม */ }
-  stopBGM() { /* เหมือนเดิม */ }
-  playEffect(key) { /* เหมือนเดิม */ }
+  async initContext() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await this.loadAllBuffers();
+  }
+
+  async loadAllBuffers() {
+    const promises = Object.entries(this.sounds).map(async ([key, url]) => {
+      try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        this.buffers[key] = await this.ctx.decodeAudioData(arrayBuffer);
+      } catch (e) { console.warn(`Failed to load sound: ${key}`, e); }
+    });
+    await Promise.all(promises);
+  }
+
+  async unlockAll() {
+    if (this.isUnlocked) return;
+    await this.initContext();
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.ctx.createBuffer(1,1,22050);
+    source.connect(this.ctx.destination);
+    source.start(0);
+    this.isUnlocked = true;
+  }
+
+  async startBGM() {
+    if (!this.buffers.bgm || this.bgmSource) return;
+    await this.unlockAll();
+    this.bgmSource = this.ctx.createBufferSource();
+    this.bgmSource.buffer = this.buffers.bgm;
+    this.bgmSource.loop = true;
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 0.55;
+    this.bgmSource.connect(this.bgmGain);
+    this.bgmGain.connect(this.ctx.destination);
+    this.bgmSource.start(0);
+  }
+
+  stopBGM() {
+    if (this.bgmSource) {
+      this.bgmSource.stop();
+      this.bgmSource = null;
+    }
+  }
+
+  playEffect(key) {
+    if (!this.buffers[key]) return Promise.resolve();
+    return (async () => {
+      await this.unlockAll();
+      const source = this.ctx.createBufferSource();
+      source.buffer = this.buffers[key];
+      const gainNode = this.ctx.createGain();
+      gainNode.gain.value = 0.8;
+      source.connect(gainNode);
+      gainNode.connect(this.ctx.destination);
+      return new Promise(resolve => {
+        source.onended = () => resolve();
+        source.start(0);
+      });
+    })();
+  }
 }
 
 const audioEngine = new AudioEngine();
 
-// ------------------------------------------------------------------
-//                   ชุดโจทย์คณิตศาสตร์ (เริ่มต้น)
-// ------------------------------------------------------------------
 const mathProblems = [
   { answer: "18", hint: "9 บวก 9 เท่ากับ" },
   { answer: "64", hint: "120 ลบ 56 เท่ากับ" },
@@ -520,8 +571,8 @@ const mathProblems = [
   { answer: "25", hint: "100 หารด้วย 4 เท่ากับ" }
 ];
 
-let currentQuestion = "";       // คำตอบที่ถูก (string ตัวเลข เช่น "18")
-let currentHint = "";           // โจทย์ที่แสดง
+let currentQuestion = "";       
+let currentHint = "";           
 let currentRound = 0;
 let lives = 3;
 let score = 0;
@@ -583,11 +634,9 @@ function startTimer() {
   }, TIME_LIMIT * 1000);
 }
 
-// ฟังก์ชันแปลงคำพูดตัวเลขไทย → ตัวเลขอารบิก
 function thaiNumberToArabic(text) {
   if (!text) return "";
 
-  // แทนที่คำไทยเป็นตัวเลข
   const map = {
     'ศูนย์': '0', 'หนึ่ง': '1', 'สอง': '2', 'สาม': '3', 'สี่': '4',
     'ห้า': '5', 'หก': '6', 'เจ็ด': '7', 'แปด': '8', 'เก้า': '9',
@@ -597,16 +646,14 @@ function thaiNumberToArabic(text) {
   };
 
   let cleaned = text
-    .replace(/\s+/g, '')           // ลบช่องว่าง
-    .replace(/[๐-๙]/g, m => '0123456789'['๐๑๒๓๔๕๖๗๘๙'.indexOf(m)]); // เปลี่ยนเลขอักษรไทย
+    .replace(/\s+/g, '')           
+    .replace(/[๐-๙]/g, m => '0123456789'['๐๑๒๓๔๕๖๗๘๙'.indexOf(m)]); 
 
-  // แทนที่คำตัวเลขไทย
   for (const [thai, num] of Object.entries(map)) {
     const regex = new RegExp(thai, 'g');
     cleaned = cleaned.replace(regex, num);
   }
 
-  // กรองเอาแต่ตัวเลข
   cleaned = cleaned.replace(/[^\d]/g, '');
 
   return cleaned;
@@ -669,7 +716,6 @@ function initSpeechRecognition() {
     clearTimer();
     let transcript = event.results[0][0].transcript || "";
     
-    // แปลงคำพูดเป็นตัวเลข
     let spokenNumber = thaiNumberToArabic(transcript);
 
     if (spokenNumber === currentQuestion) {
@@ -713,9 +759,13 @@ async function handleWrong() {
 
   await audioEngine.playEffect('wrongSound');
   
-  if (previousLives === 3) await audioEngine.playEffect('fSound');
-  else if (previousLives === 2) await audioEngine.playEffect('f1Sound');
-  else if (previousLives === 1) await audioEngine.playEffect('f2Sound');
+  if (previousLives === 3) {
+    await audioEngine.playEffect('fSound');
+  } else if (previousLives === 2) {
+    await audioEngine.playEffect('f1Sound');
+  } else if (previousLives === 1) {
+    await audioEngine.playEffect('f2Sound');
+  }
 
   if (lives <= 0 || currentRound >= 20) {
     await endGame(false);
