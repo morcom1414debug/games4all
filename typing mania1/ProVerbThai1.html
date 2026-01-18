@@ -278,7 +278,7 @@ class AudioEngine {
 
     const p = new Promise(resolve => {
       source.onended = () => resolve();
-      setTimeout(resolve, 2500); // safety timeout
+      setTimeout(resolve, 2500);
     });
 
     source.start(0);
@@ -434,7 +434,7 @@ const proverbs = [
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
 let TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
-let isListening = false;
+let isListening = false;   // เพิ่ม flag ช่วย track การ listen
 
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, typedByPlayerDiv, questionLive;
 
@@ -458,7 +458,7 @@ function forceStopRecognition() {
         recognition.stop();
         isListening = false;
     } catch (err) {
-        // ignore
+        // ignore if already stopped or not started
     }
 }
 
@@ -530,8 +530,13 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
 
-        recognition.onstart = () => { isListening = true; };
-        recognition.onend = () => { isListening = false; };
+        recognition.onstart = () => {
+            isListening = true;
+        };
+
+        recognition.onend = () => {
+            isListening = false;
+        };
 
         recognition.onresult = function(event) {
             isListening = false;
@@ -556,6 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.onerror = function(event) {
             isListening = false;
             console.warn('Speech recognition error:', event.error);
+            // ถ้า error บางอย่าง อาจเริ่มใหม่ได้ แต่ที่นี่ให้ข้ามไปข้อถัดไปเลย
             if (!isProcessingTimeout) {
                 handleWrong();
             }
@@ -589,7 +595,7 @@ function startVoiceRecognitionSafe() {
         typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : (เบราเซอร์ไม่รองรับเสียง)";
         return;
     }
-    forceStopRecognition();
+    forceStopRecognition();  // ป้องกัน double start
     try {
         recognition.start();
     } catch (e) {
@@ -608,6 +614,7 @@ async function nextQuestion(isFirst = false) {
     typedSoFar = "";
     typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : -";
 
+    // **หยุดการรับเสียงทันที** ก่อนเริ่มคำถามใหม่
     forceStopRecognition();
 
     const item = currentQuestions[currentQ];
@@ -617,45 +624,43 @@ async function nextQuestion(isFirst = false) {
     const questionText = `ข้อ ${currentQ + 1} : ${currentHint}`;
     questionElem.innerHTML = questionText;
 
-    updateTypingDisplay();   
     clearInterval(timerInterval);
+    updateTypingDisplay();   
+
+    let timeLeft = timePerQuestion;
+    document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+        if (timeLeft <= 0 && !isProcessingTimeout) {
+            isProcessingTimeout = true;
+            clearInterval(timerInterval);
+            forceStopRecognition();
+            audioEngine.playEffect('wrongSound');
+            audioEngine.playEffect('fSound').then(() => {
+                currentQ++;
+                nextQuestion();
+            });
+        }
+    }, 1000);
 
     questionLive.textContent = '';
     requestAnimationFrame(() => {
         questionLive.textContent = questionText;
     });
 
-    questionElem.focus();
-
-    // ── จังหวะหลัก ────────────────────────────────────────
-    await audioEngine.playEffect('speak');
-
-    const cue = document.getElementById('speakCue');
-    cue.classList.add('show');
-
-    setTimeout(startVoiceRecognitionSafe, 180);
-
     setTimeout(() => {
-        let timeLeft = timePerQuestion;
+        questionElem.focus();
+        setTimeout(async () => {
+            await audioEngine.playEffect('speak');
 
-        timerInterval = setInterval(() => {
-            timeLeft--;
-            if (timeLeft <= 0 && !isProcessingTimeout) {
-                isProcessingTimeout = true;
-                clearInterval(timerInterval);
-                forceStopRecognition();
-                audioEngine.playEffect('wrongSound');
-                audioEngine.playEffect('fSound').then(() => {
-                    currentQ++;
-                    nextQuestion();
-                });
-            }
-        }, 1000);
-    }, 220);
+            const cue = document.getElementById('speakCue');
+            cue.classList.add('show');
+            setTimeout(() => cue.classList.remove('show'), 1000);
 
-    setTimeout(() => {
-        cue.classList.remove('show');
-    }, 900);
+            setTimeout(startVoiceRecognitionSafe, 200);
+        }, 1200);
+    }, 100);
 }
 
 function updateTypingDisplay() {
