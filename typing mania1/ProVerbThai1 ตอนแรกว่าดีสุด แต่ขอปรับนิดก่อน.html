@@ -57,7 +57,7 @@
             font-size: 1.8rem; color: #d81b60; margin: 20px 20px 60px;
             min-height: 2.4rem; font-weight: 600;
         }
-        .timer { display: block; font-size: 1.5rem; color: #555; margin-bottom: 10px; }
+        .timer { display: none !important; }
 
         #speakCue {
             position: absolute;
@@ -137,7 +137,6 @@
             height: 1px;
             overflow: hidden;
         }
-        #timerDisplay { font-size: 1.8rem; font-weight: 800; color: #e91e63; }
     </style>
 </head>
 <body>
@@ -160,8 +159,6 @@
         <div id="success-celebration">🎉✨⭐</div>
         <div id="fail-celebration">❌</div>
         <div id="speakCue">🗣️ พูดเลย!</div>
-        
-        <div id="timerDisplay">เวลา: <span id="timer">0</span></div>
 
         <h2 class="question-heading" id="question" tabindex="-1">ข้อ 1 : ...</h2>
         <div class="typing-display" id="typingDisplay">_ _ _ _ _ _ _ _</div>
@@ -437,7 +434,7 @@ const proverbs = [
 let currentQuestions = [], currentQ = 0, score = 0, timerInterval, timePerQuestion = 20;
 let TOTAL_QUESTIONS = 10;
 let isProcessingTimeout = false;
-let isListening = false;
+let isListening = false;   // เพิ่ม flag ช่วย track การ listen
 
 let backBtn, levelSelect, gameDiv, resultDiv, questionElem, typingDisplay, typedByPlayerDiv, questionLive;
 
@@ -460,7 +457,9 @@ function forceStopRecognition() {
     try {
         recognition.stop();
         isListening = false;
-    } catch (err) {}
+    } catch (err) {
+        // ignore if already stopped or not started
+    }
 }
 
 async function startGame(level) {
@@ -477,10 +476,16 @@ async function startGame(level) {
     resultDiv.style.display = 'none';
     backBtn.style.display = 'none';
 
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
+    questionLive.textContent = '';
+
     await audioEngine.startBGM();
 
     currentQuestions = shuffle(proverbs).slice(0, TOTAL_QUESTIONS);
     currentQ = 0; score = 0;
+    typedSoFar = "";
     activateApplicationMode();
     nextQuestion(true);
 }
@@ -503,6 +508,10 @@ document.addEventListener('DOMContentLoaded', () => {
         resultDiv.style.display = 'none';
         levelSelect.style.display = 'block';
         backBtn.style.display = 'block';
+        questionElem.innerHTML = '';
+        typingDisplay.textContent = '';
+        typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
+        questionLive.textContent = '';
         forceStopRecognition();
     };
 
@@ -513,6 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
         location.href = '../index.html';
     };
 
+    // เตรียม recognition
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
@@ -520,14 +530,19 @@ document.addEventListener('DOMContentLoaded', () => {
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
 
-        recognition.onstart = () => { isListening = true; };
-        recognition.onend = () => { isListening = false; };
+        recognition.onstart = () => {
+            isListening = true;
+        };
+
+        recognition.onend = () => {
+            isListening = false;
+        };
 
         recognition.onresult = function(event) {
             isListening = false;
             const transcript = event.results[0][0].transcript.trim();
             typingDisplay.textContent = transcript;
-            typedByPlayerDiv.textContent = 'ผู้เล่นพูดว่า : ' + transcript;
+            typedByPlayerDiv.textContent = 'ผู้เล่นพิมพ์อะไรลงไป : -';
 
             if (transcript === currentAnswer) {
                 const celeb = document.getElementById('success-celebration');
@@ -537,7 +552,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 score++;
                 currentQ++;
                 audioEngine.playEffect('tSound');
-                clearInterval(timerInterval); // หยุดเวลาเมื่อตอบถูก
                 setTimeout(() => nextQuestion(), 800);
             } else {
                 handleWrong();
@@ -546,9 +560,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         recognition.onerror = function(event) {
             isListening = false;
+            console.warn('Speech recognition error:', event.error);
+            // ถ้า error บางอย่าง อาจเริ่มใหม่ได้ แต่ที่นี่ให้ข้ามไปข้อถัดไปเลย
             if (!isProcessingTimeout) {
                 handleWrong();
             }
+        };
+
+        recognition.onspeechend = function() {
+            recognition.stop();
+            isListening = false;
         };
     }
 });
@@ -565,19 +586,24 @@ function deactivateApplicationMode() {
     gameDiv.setAttribute('aria-hidden', 'true');
     gameDiv.removeAttribute('role');
     gameDiv.removeAttribute('tabindex');
+    levelSelect.setAttribute('aria-hidden', 'false');
+    resultDiv.setAttribute('aria-hidden', 'false');
 }
 
 function startVoiceRecognitionSafe() {
-    if (!recognition) return;
-    forceStopRecognition();
+    if (!recognition) {
+        typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : (เบราเซอร์ไม่รองรับเสียง)";
+        return;
+    }
+    forceStopRecognition();  // ป้องกัน double start
     try {
         recognition.start();
     } catch (e) {
+        console.warn("Cannot start recognition", e);
         isListening = false;
     }
 }
 
-// ======== ปรับปรุงฟังก์ชัน NextQuestion (Timing เดียวกับ Dog.html) ========
 async function nextQuestion(isFirst = false) {
     if (currentQ >= TOTAL_QUESTIONS) { 
         endGame(); 
@@ -586,9 +612,10 @@ async function nextQuestion(isFirst = false) {
 
     isProcessingTimeout = false;
     typedSoFar = "";
-    typedByPlayerDiv.textContent = "ผู้เล่นพูดว่า : -";
+    typedByPlayerDiv.textContent = "ผู้เล่นพิมพ์อะไรลงไป : -";
+
+    // **หยุดการรับเสียงทันที** ก่อนเริ่มคำถามใหม่
     forceStopRecognition();
-    clearInterval(timerInterval); // เคลียร์ตัวเก่าออกก่อน
 
     const item = currentQuestions[currentQ];
     currentAnswer = item.answer;
@@ -596,52 +623,44 @@ async function nextQuestion(isFirst = false) {
 
     const questionText = `ข้อ ${currentQ + 1} : ${currentHint}`;
     questionElem.innerHTML = questionText;
+
+    clearInterval(timerInterval);
     updateTypingDisplay();   
+
+    let timeLeft = timePerQuestion;
+    document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timer') && (document.getElementById('timer').textContent = timeLeft);
+        if (timeLeft <= 0 && !isProcessingTimeout) {
+            isProcessingTimeout = true;
+            clearInterval(timerInterval);
+            forceStopRecognition();
+            audioEngine.playEffect('wrongSound');
+            audioEngine.playEffect('fSound').then(() => {
+                currentQ++;
+                nextQuestion();
+            });
+        }
+    }, 1000);
 
     questionLive.textContent = '';
     requestAnimationFrame(() => {
         questionLive.textContent = questionText;
     });
 
-    // 1. Focus โจทย์ให้เร็วขึ้น
     setTimeout(() => {
         questionElem.focus();
-    }, 50);
+        setTimeout(async () => {
+            await audioEngine.playEffect('speak');
 
-    // 2. เริ่มกระบวนการเล่นเสียงและเปิดไมค์ (Timing เลียนแบบ Dog.html)
-    setTimeout(async () => {
-        // เล่นเสียงแจ้งเตือน "Speak"
-        await audioEngine.playEffect('speak');
+            const cue = document.getElementById('speakCue');
+            cue.classList.add('show');
+            setTimeout(() => cue.classList.remove('show'), 1000);
 
-        // แสดง Visual Cue สั้นลง (Snappy)
-        const cue = document.getElementById('speakCue');
-        cue.classList.add('show');
-        setTimeout(() => cue.classList.remove('show'), 800);
-
-        // เริ่มต้น Timer ตรงนี้ เพื่อให้สัมพันธ์กับจังหวะที่เริ่มพูดได้
-        let timeLeft = timePerQuestion;
-        const timerElem = document.getElementById('timer');
-        if(timerElem) timerElem.textContent = timeLeft;
-        
-        timerInterval = setInterval(() => {
-            timeLeft--;
-            if(timerElem) timerElem.textContent = timeLeft;
-            if (timeLeft <= 0 && !isProcessingTimeout) {
-                isProcessingTimeout = true;
-                clearInterval(timerInterval);
-                forceStopRecognition();
-                audioEngine.playEffect('wrongSound');
-                audioEngine.playEffect('fSound').then(() => {
-                    currentQ++;
-                    nextQuestion();
-                });
-            }
-        }, 1000);
-
-        // เริ่มดักฟังเสียงเกือบทันที (Delay สั้นลง)
-        setTimeout(startVoiceRecognitionSafe, 200);
-
-    }, 400); // รอโจทย์ขึ้นแป๊บเดียวแล้วเริ่มเลย เหมือน Dog.html
+            setTimeout(startVoiceRecognitionSafe, 200);
+        }, 1200);
+    }, 100);
 }
 
 function updateTypingDisplay() {
@@ -656,8 +675,42 @@ function updateTypingDisplay() {
         }
         underscores += '_ ';
     }
+
     typingDisplay.textContent = typedPart + underscores.trim();
 }
+
+document.addEventListener('keydown', (e) => {
+    if (gameDiv.style.display !== 'block' || isProcessingTimeout) return;
+
+    const char = e.key;
+    if (char.length === 1) { 
+        const expectedChar = currentAnswer[typedSoFar.length];
+        typedByPlayerDiv.textContent = `ผู้เล่นพิมพ์อะไรลงไป : ${typedSoFar + char}`;
+
+        if (char === expectedChar) {
+            typedSoFar += char;
+            updateTypingDisplay();
+            if (typedSoFar === currentAnswer) {
+                const celeb = document.getElementById('success-celebration');
+                celeb.classList.add('show');
+                setTimeout(() => celeb.classList.remove('show'), 700);
+
+                score++;
+                currentQ++;
+                audioEngine.playEffect('tSound');
+                forceStopRecognition();
+                setTimeout(() => nextQuestion(), 800);
+            } else {
+                audioEngine.playEffect('t2Sound');
+            }
+        } else {
+            handleWrong();
+        }
+        e.preventDefault();
+    } else if (e.key === 'Backspace') {
+        e.preventDefault(); 
+    }
+});
 
 async function handleWrong() {
     isProcessingTimeout = true;
@@ -683,6 +736,11 @@ async function endGame() {
     backBtn.style.display = 'block';
     deactivateApplicationMode();
 
+    questionElem.innerHTML = '';
+    typingDisplay.textContent = '';
+    typedByPlayerDiv.textContent = '';
+    questionLive.textContent = '';
+
     const title = document.getElementById('resultTitle');
     const msg = document.getElementById('resultMsg');
     const scoreDiv = document.getElementById('score');
@@ -693,17 +751,23 @@ async function endGame() {
     const perfectEncourages = [
         "สุดยอดไปเลย! รู้สุภาษิตเป๊ะทุกข้อเลยนะ 💖",
         "เก่งมาก ๆ ! เป็นเซียนสำนวนไทยแล้ว ✨",
-        "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆"
+        "ว้าว! เต็มเลย เก่งสุด ๆ ไปเลยน้าาา 🏆",
+        "เยี่ยมมาก! ทำได้สมบูรณ์แบบ ภูมิใจในตัวเองได้เลย 😊"
     ];
 
     const goodEncourages = [
         "เก่งมากเลยนะ! ตอบถูกไปตั้ง " + score + " ข้อเลย 💪",
-        "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ❤️"
+        "เยี่ยมมากจ้า! ใกล้เต็มแล้ว ครั้งหน้าต้องได้เต็มแน่ ๆ ❤️",
+        "ทำได้ดีมากเลย! เหลืออีกนิดเดียว สู้ ๆ นะ 🌟",
+        "สุดยอดมาก! คะแนนดีแบบนี้ แสดงว่าจำสำนวนเก่งแน่ ๆ 👍"
     ];
 
     const normalEncourages = [
         "ไม่เป็นไรนะ ครั้งหน้าต้องเก่งกว่านี้แน่เลย 💕",
-        "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ 😘"
+        "สนุกดีเนอะ! มาเล่นใหม่กันอีกนะ จะได้จำได้มากขึ้น 😘",
+        "พยายามเข้าไว้จ้า! ยิ่งเล่นยิ่งเก่งแน่นอน 🌈",
+        "อย่ายอมแพ้นะ สู้ ๆ ! เดี๋ยวก็เป็นเซียนสำนวนเองแหละ 💖",
+        "เยี่ยมแล้วที่เล่นจนจบ! ครั้งหน้าต้องดีกว่านี้แน่นอนเลยน้า 🚀"
     ];
 
     if (score === TOTAL_QUESTIONS) {
@@ -724,10 +788,6 @@ async function endGame() {
       try { title.focus(); } catch(e) {}
     }, 50);
 }
-
-document.getElementById('voiceInputBtn').onclick = () => {
-    if(recognition && !isListening) startVoiceRecognitionSafe();
-};
 
 window.addEventListener('beforeunload', () => {
     forceStopRecognition();
