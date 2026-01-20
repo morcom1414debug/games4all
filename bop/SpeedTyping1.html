@@ -216,27 +216,27 @@
         }
 
         #result {
-            padding: 1.8rem 1.4rem;
+            padding: 1.8rem 1.4rem;          /* ลดจากเดิม */
             max-height: 85vh;
             overflow-y: auto;
         }
 
         #result h2 {
-            font-size: 2.6rem;
+            font-size: 2.6rem;               /* ลดจาก 3.4rem */
             margin: 0.4rem 0 1rem;
             text-shadow: 0 9px 28px rgba(0,0,0,0.55);
             text-align: center;
         }
 
         #resultMsg {
-            font-size: 1.9rem;
+            font-size: 1.9rem;               /* ลดจาก 2.4rem */
             margin: 1.4rem 0;
             line-height: 1.45;
             text-align: center;
         }
 
         #score {
-            font-size: 4.2rem;
+            font-size: 4.2rem;               /* ลดจาก 5.6rem */
             font-weight: 900;
             margin: 1.4rem 0 2rem;
             color: #ffe066;
@@ -267,6 +267,7 @@
             transform: translateY(-4px) scale(0.95);
         }
 
+        /* จัดปุ่มให้ responsive ดีขึ้น */
         .button-container {
             display: flex;
             flex-wrap: wrap;
@@ -275,6 +276,7 @@
             margin-top: 1.2rem;
         }
 
+        /* Screen Shake + Red Flash */
         @keyframes screenShake {
             0%,100% { transform: translate(0,0); }
             10%,30%,50%,70%,90% { transform: translate(-5px, 4px); }
@@ -315,50 +317,7 @@
         .game-btn:hover:not(:disabled) { background: rgba(255,255,255,0.35); transform: translateY(-3px); }
         .game-btn:disabled { opacity: 0.4; }
 
-        /* ----------------- เพิ่มสไตล์สำหรับเลือกเสียง ----------------- */
-        .sound-select-container {
-            background: rgba(255,255,255,0.12);
-            border-radius: 20px;
-            padding: 1.4rem 1.8rem;
-            margin-bottom: 2.2rem;
-            border: 1px solid rgba(255,255,255,0.18);
-            backdrop-filter: blur(10px);
-        }
-
-        .sound-select-container label {
-            display: flex;
-            align-items: center;
-            font-size: 1.18rem;
-            margin: 0.9rem 0;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .sound-select-container input[type="radio"] {
-            width: 1.4rem;
-            height: 1.4rem;
-            margin-right: 1rem;
-            accent-color: #ffe066;
-        }
-
-        .sound-select-title {
-            font-size: 1.4rem;
-            font-weight: 700;
-            margin-bottom: 1.1rem;
-            text-align: center;
-            opacity: 0.95;
-        }
-
-        @media (max-width: 480px) {
-            .sound-select-container {
-                padding: 1.1rem 1.4rem;
-                margin-bottom: 1.8rem;
-            }
-            .sound-select-title { font-size: 1.28rem; }
-            .sound-select-container label { font-size: 1.08rem; }
-        }
-        /* ------------------------------------------------------------- */
-
+        /* ปรับสำหรับมือถือ */
         @media (max-width: 480px) {
             h1                { font-size: 2.3rem; }
             .question-heading { font-size: 2.1rem; }
@@ -416,21 +375,6 @@
     <div id="levelSelect">
         <h1>Speed Typing Eng</h1>
         <p class="subtitle">พิมพ์ตัวอักษรภาษาอังกฤษที่โผล่ขึ้นมาทันที! ต้องเล่นร่วมกับแป้นพิมพ์จริง<br>ยิ่งตอบเร็ว ยิ่งได้คะแนนดี เวลาจะสั้นลงเรื่อย ๆ<br>กดตัวอักษรผิดหรือช้าเกินไป = เกมจบ เล่นจนกว่าจะแพ้!</p>
-
-        <!-- === ส่วนเลือกเสียง - เพิ่มใหม่ === -->
-        <div class="sound-select-container">
-            <div class="sound-select-title">เลือกเสียงที่จะเล่น</div>
-            <label>
-                <input type="radio" name="soundPack" value="a1" checked>
-                เสียง 1 (ผู้หญิง)
-            </label>
-            <label>
-                <input type="radio" name="soundPack" value="a">
-                เสียง 2 (ผู้ชาย)
-            </label>
-        </div>
-        <!-- ================================= -->
-
         <div class="level-buttons">
             <button class="level-btn" id="easy">ฝึกพื้นฐาน</button>
             <button class="level-btn" id="medium">ระดับเซียน</button>
@@ -467,7 +411,7 @@
 <div id="flashOverlay" class="flash-red"></div>
 
 <script>
-// Web Audio API Setup
+// Web Audio API Setup (เหมือนเดิม)
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioContext();
 
@@ -475,40 +419,6 @@ const soundBuffers = {};
 const bgmSource = { node: null, isPlaying: false };
 
 let audioMode = 'file';
-
-// ตัวแปรใหม่: เก็บ folder ที่เลือก (default = a1)
-let selectedSoundFolder = 'a1';   // ค่าเริ่มต้น
-
-// อัพเดท folder ตาม radio ที่เลือก
-function updateSoundFolder() {
-    const selected = document.querySelector('input[name="soundPack"]:checked');
-    if (selected) {
-        selectedSoundFolder = selected.value;
-    }
-}
-
-// โหลดเสียงตัวอักษร a-z ตาม folder ที่เลือก ณ ขณะนั้น
-async function loadLetterSounds() {
-    // ลบ buffer เก่าของ a-z ก่อน (ป้องกันทับซ้อน)
-    alphabet.forEach(letter => {
-        delete soundBuffers[letter];
-    });
-
-    const promises = alphabet.map(letter => {
-        const url = `${selectedSoundFolder}/${letter}.mp3`;
-        return fetch(url)
-            .then(response => response.arrayBuffer())
-            .then(arrayBuffer => audioCtx.decodeAudioData(arrayBuffer))
-            .then(buffer => {
-                soundBuffers[letter] = buffer;
-            })
-            .catch(err => {
-                console.warn(`โหลดเสียง ${letter} จาก ${selectedSoundFolder} ไม่สำเร็จ`, err);
-            });
-    });
-
-    await Promise.all(promises);
-}
 
 async function loadSound(name, url) {
     try {
@@ -521,22 +431,24 @@ async function loadSound(name, url) {
 }
 
 const soundsToLoad = [
+    ['a', 'a/a.mp3'], ['b', 'a/b.mp3'], ['c', 'a/c.mp3'],
+    ['d', 'a/d.mp3'], ['e', 'a/e.mp3'], ['f', 'a/f.mp3'],
+    ['g', 'a/g.mp3'], ['h', 'a/h.mp3'], ['i', 'a/i.mp3'],
+    ['j', 'a/j.mp3'], ['k', 'a/k.mp3'], ['l', 'a/l.mp3'],
+    ['m', 'a/m.mp3'], ['n', 'a/n.mp3'], ['o', 'a/o.mp3'],
+    ['p', 'a/p.mp3'], ['q', 'a/q.mp3'], ['r', 'a/r.mp3'],
+    ['s', 'a/s.mp3'], ['t', 'a/t.mp3'], ['u', 'a/u.mp3'],
+    ['v', 'a/v.mp3'], ['w', 'a/w.mp3'], ['x', 'a/x.mp3'],
+    ['y', 'a/y.mp3'], ['z', 'a/z.mp3'],
     ['correct', 'sounds/correct.mp3'], ['wrong', 'sounds/wrong.mp3'],
     ['tick',    'sounds/tick.mp3'],    ['start',  'sounds/start.mp3'],
     ['gameover','sounds/gameover.mp3'], ['bgm',    'audio/b2.mp3'],
     ['time',    'sounds/time.mp3']
-    // ไม่ใส่ a-z ตรงนี้แล้ว เพราะจะโหลดแยกตาม folder ที่เลือก
 ];
 
-let hasUserInteracted = false;
-function unlockAudio() {
-    if (hasUserInteracted || audioCtx.state === 'running') return;
-    hasUserInteracted = true;
-    audioCtx.resume().then(() => console.log("AudioContext is running"));
-}
-
-document.addEventListener("touchstart", unlockAudio, {once: true, passive: true});
-document.addEventListener("click", unlockAudio, {once: true});
+Promise.all(soundsToLoad.map(([name, url]) => loadSound(name, url)))
+    .then(() => console.log("โหลดเสียงทั้งหมดเรียบร้อยแล้ว"))
+    .catch(err => console.warn("บางไฟล์เสียงโหลดไม่สำเร็จ", err));
 
 function play(name, volume = 1.0) {
     if (audioMode === 'off' || !soundBuffers[name]) return;
@@ -571,7 +483,17 @@ function stopBackgroundBGM() {
     }
 }
 
-// ตัวแปรเกม (เหมือนเดิม)
+let hasUserInteracted = false;
+function unlockAudio() {
+    if (hasUserInteracted || audioCtx.state === 'running') return;
+    hasUserInteracted = true;
+    audioCtx.resume().then(() => console.log("AudioContext is running"));
+}
+
+document.addEventListener("touchstart", unlockAudio, {once: true, passive: true});
+document.addEventListener("click", unlockAudio, {once: true});
+
+// ตัวแปรเกม
 const alphabet = "abcdefghijklmnopqrstuvwxyz".split("");
 
 let currentLetter = null;
@@ -602,9 +524,6 @@ async function startGame(level) {
     else if (level === 'medium') timeLimit = 3000;
     else if (level === 'hard')   timeLimit = 2000;
 
-    // โหลดเสียง a-z ตาม folder ที่เลือก ณ ตอนเริ่มเกม
-    await loadLetterSounds();
-
     levelSelect.style.display = 'none';
     gameDiv.style.display = 'block';
     resultDiv.style.display = 'none';
@@ -624,7 +543,7 @@ async function startGame(level) {
     setTimeout(nextQuestion, 1400);
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     backBtn         = document.getElementById('backToMenu');
     levelSelect     = document.getElementById('levelSelect');
     gameDiv         = document.getElementById('game');
@@ -633,19 +552,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     questionElem    = document.getElementById('question');
     stopBtn         = document.getElementById('stopBtn');
     audioModeBtn    = document.getElementById('audioModeBtn');
-
-    // โหลดเสียงพื้นฐาน (ไม่รวม a-z)
-    await Promise.all(soundsToLoad.map(([name, url]) => loadSound(name, url)));
-
-    // เมื่อเปลี่ยน radio → อัพเดท folder (แต่ยังไม่โหลดทันที)
-    document.querySelectorAll('input[name="soundPack"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-            updateSoundFolder();
-        });
-    });
-
-    // อัพเดท folder เริ่มต้น
-    updateSoundFolder();
 
     document.getElementById('easy').onclick   = () => startGame('easy');
     document.getElementById('medium').onclick = () => startGame('medium');
@@ -694,7 +600,7 @@ async function nextQuestion() {
 
     currentLetter = alphabet[Math.floor(Math.random() * alphabet.length)];
     questionElem.textContent = currentLetter.toUpperCase();
-    play(currentLetter);   // จะใช้ buffer จาก folder ที่เลือกมาแล้ว
+    play(currentLetter);
 
     clearInterval(timerInterval);
 
