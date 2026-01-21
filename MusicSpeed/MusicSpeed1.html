@@ -79,7 +79,7 @@
         }
         #backToMenu:hover { background: rgba(255,255,255,0.3); transform: translateY(-3px); }
 
-        #levelSelect, #game, #result, #soundTest {
+        #levelSelect, #game, #result {
             background: rgba(255,255,255,0.08);
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
@@ -114,7 +114,7 @@
             align-items: center;
         }
 
-        .level-btn, .test-btn {
+        .level-btn {
             width: 100%;
             max-width: 380px;
             padding: 1.5rem 2.2rem;
@@ -129,7 +129,7 @@
             position: relative;
             overflow: hidden;
         }
-        .level-btn::before, .test-btn::before {
+        .level-btn::before {
             content: '';
             position: absolute;
             inset: 0;
@@ -137,14 +137,13 @@
             transform: translateX(-120%);
             transition: transform 0.7s;
         }
-        .level-btn:hover::before, .test-btn:hover::before { transform: translateX(120%); }
-        .level-btn:hover, .test-btn:hover { transform: translateY(-12px) scale(1.05); }
-        .level-btn:active, .test-btn:active { transform: translateY(-5px) scale(0.96); }
+        .level-btn:hover::before { transform: translateX(120%); }
+        .level-btn:hover { transform: translateY(-12px) scale(1.05); }
+        .level-btn:active { transform: translateY(-5px) scale(0.96); }
 
         #easy   { background: linear-gradient(135deg, #51cf66, #40c057); color: white; }
         #medium { background: linear-gradient(135deg, #ffd43b, #fcc419); color: #111; }
         #hard   { background: linear-gradient(135deg, #ff6b6b, #fa5252); color: white; }
-        #soundTestBtn { background: linear-gradient(135deg, #9f7aea, #7f58af); color: white; }
 
         .question-heading {
             font-size: 2.5rem;
@@ -316,30 +315,6 @@
         .game-btn:hover:not(:disabled) { background: rgba(255,255,255,0.35); transform: translateY(-3px); }
         .game-btn:disabled { opacity: 0.4; }
 
-        #testArea {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-
-        #testNote {
-            font-size: 9rem;
-            font-weight: 900;
-            color: #a5d8ff;
-            text-shadow: 0 10px 30px rgba(0,0,0,0.6);
-            margin: 1rem 0;
-            min-height: 120px;
-        }
-
-        #testInstruction {
-            font-size: 1.4rem;
-            opacity: 0.9;
-            margin-bottom: 2rem;
-        }
-
         @media (max-width: 480px) {
             h1                { font-size: 2.3rem; }
             .question-heading { font-size: 2.1rem; }
@@ -374,8 +349,6 @@
             .button-container {
                 gap: 0.8rem;
             }
-
-            #testNote { font-size: 7rem; }
         }
 
         @media (max-width: 360px) {
@@ -404,21 +377,6 @@
             <button class="level-btn" id="easy">ฝึกพื้นฐาน</button>
             <button class="level-btn" id="medium">ระดับเซียน</button>
             <button class="level-btn" id="hard">ปราบเซียน</button>
-            <button class="test-btn" id="soundTestBtn">กดเพื่อทดสอบเสียง</button>
-        </div>
-    </div>
-
-    <!-- ส่วนทดสอบเสียง -->
-    <div id="soundTest" style="display:none">
-        <h1>ทดสอบเสียงโน้ต</h1>
-        <p id="testInstruction" class="subtitle">กดปุ่ม a s d f j k l ; เพื่อฟังเสียงโน้ต<br><strong>กด f + j พร้อมกัน</strong> เพื่อกลับหน้าเลือกโหมด</p>
-        
-        <div id="testArea">
-            <div id="testNote">—</div>
-        </div>
-
-        <div style="margin-top:2rem;">
-            <button id="backFromTest" class="game-btn">กลับหน้าเลือกโหมด</button>
         </div>
     </div>
 
@@ -461,18 +419,6 @@ const bgmSource = { node: null, isPlaying: false };
 let audioMode = 'file';
 
 // โหลดเสียงโน้ต โด-โดสูง จาก folder d
-const notes = ["โด", "เร", "มี", "ฟา", "ซอล", "ลา", "ที", "โดสูง"];
-const keyMap = {
-    'a': "โด",
-    's': "เร",
-    'd': "มี",
-    'f': "ฟา",
-    'j': "ซอล",
-    'k': "ลา",
-    'l': "ที",
-    ';': "โดสูง"
-};
-
 async function loadLetterSounds() {
     // ลบ buffer เก่าของโน้ตก่อน (ป้องกันทับซ้อน)
     notes.forEach(note => {
@@ -556,16 +502,24 @@ function stopBackgroundBGM() {
 }
 
 // ตัวแปรเกม
+const notes = ["โด", "เร", "มี", "ฟา", "ซอล", "ลา", "ที", "โดสูง"];
+const keyMap = {
+    'a': "โด",
+    's': "เร",
+    'd': "มี",
+    'f': "ฟา",
+    'j': "ซอล",
+    'k': "ลา",
+    'l': "ที",
+    ';': "โดสูง"
+};
+
 let currentLetter = null;
 let score = 0, timerInterval, timeLimit = 5000;
 let isProcessingTimeout = false;
 let backBtn, levelSelect, gameDiv, resultDiv, questionHeading, questionElem, stopBtn, audioModeBtn;
 let running = false;
 let currentLevel = null;
-let inSoundTest = false;
-
-// DOM elements for sound test
-let soundTestDiv, testNoteElem, backFromTestBtn;
 
 function activateApplicationMode() {
     levelSelect.setAttribute('aria-hidden', 'true');
@@ -588,6 +542,7 @@ async function startGame(level) {
     else if (level === 'medium') timeLimit = 3000;
     else if (level === 'hard')   timeLimit = 2000;
 
+    // โหลดเสียงโน้ตจาก folder d
     await loadLetterSounds();
 
     levelSelect.style.display = 'none';
@@ -609,23 +564,6 @@ async function startGame(level) {
     setTimeout(nextQuestion, 1400);
 }
 
-function startSoundTest() {
-    inSoundTest = true;
-    levelSelect.style.display = 'none';
-    soundTestDiv.style.display = 'block';
-    backBtn.style.display = 'none';
-
-    testNoteElem.textContent = "—";
-    play('start'); // เสียงเริ่มต้นเบา ๆ
-}
-
-function exitSoundTest() {
-    inSoundTest = false;
-    soundTestDiv.style.display = 'none';
-    levelSelect.style.display = 'block';
-    backBtn.style.display = 'block';
-}
-
 document.addEventListener('DOMContentLoaded', async () => {
     backBtn         = document.getElementById('backToMenu');
     levelSelect     = document.getElementById('levelSelect');
@@ -636,25 +574,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     stopBtn         = document.getElementById('stopBtn');
     audioModeBtn    = document.getElementById('audioModeBtn');
 
-    soundTestDiv    = document.getElementById('soundTest');
-    testNoteElem    = document.getElementById('testNote');
-    backFromTestBtn = document.getElementById('backFromTest');
-
     // โหลดเสียงพื้นฐาน (ไม่รวมโน้ต)
     await Promise.all(soundsToLoad.map(([name, url]) => loadSound(name, url)));
 
     document.getElementById('easy').onclick   = () => startGame('easy');
     document.getElementById('medium').onclick = () => startGame('medium');
     document.getElementById('hard').onclick   = () => startGame('hard');
-
-    // ปุ่มทดสอบเสียง
-    document.getElementById('soundTestBtn').onclick = () => {
-        startSoundTest();
-    };
-
-    backFromTestBtn.onclick = () => {
-        exitSoundTest();
-    };
 
     document.getElementById('restartBtn').onclick = () => {
         resultDiv.style.display = 'none';
@@ -699,7 +624,7 @@ async function nextQuestion() {
 
     currentLetter = notes[Math.floor(Math.random() * notes.length)];
     questionElem.textContent = currentLetter;
-    play(currentLetter);
+    play(currentLetter);   // จะใช้ buffer จาก d
 
     clearInterval(timerInterval);
 
@@ -838,56 +763,12 @@ async function endGame(reason = '') {
 
 window.addEventListener('beforeunload', () => stopBackgroundBGM());
 
-// ระบบจัดการกดปุ่มหลัก (ทั้งเกมและโหมดทดสอบ)
 document.addEventListener('keydown', (e) => {
+    if (!running || isProcessingTimeout) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
 
     const key = e.key.toLowerCase();
-
-    // โหมดทดสอบเสียง
-    if (inSoundTest) {
-        if (keyMap[key]) {
-            // เล่นเสียงทันทีเมื่อกดปุ่มที่แมปได้
-            play(keyMap[key]);
-            testNoteElem.textContent = keyMap[key];
-        }
-
-        // ตรวจจับกด f + j พร้อมกัน
-        if (key === 'f' || key === 'j') {
-            const fPressed = e.getModifierState ? false : document.querySelector(':active')?.id === 'f'; // fallback
-            if ((key === 'f' && e.getModifierState?.('Shift') === false) || (key === 'j')) {
-                // ใช้ setTimeout เพื่อตรวจจับการกดคู่
-                setTimeout(() => {
-                    if (document.querySelector('body[data-fj-exit="true"]')) {
-                        exitSoundTest();
-                        document.body.removeAttribute('data-fj-exit');
-                    }
-                }, 50);
-            }
-        }
-
-        // วิธีตรวจ f+j ง่าย ๆ (กด f แล้วกด j ภายในเวลาสั้น ๆ หรือกดพร้อมกัน)
-        if (key === 'f') {
-            document.body.setAttribute('data-f-pressed', 'true');
-            setTimeout(() => document.body.removeAttribute('data-f-pressed'), 300);
-        }
-        if (key === 'j' && document.body.hasAttribute('data-f-pressed')) {
-            document.body.setAttribute('data-fj-exit', 'true');
-            setTimeout(() => {
-                if (document.body.hasAttribute('data-fj-exit')) {
-                    exitSoundTest();
-                    document.body.removeAttribute('data-fj-exit');
-                }
-            }, 100);
-        }
-
-        return;
-    }
-
-    // โหมดเกมปกติ
-    if (!running || isProcessingTimeout) return;
-
-    if ('asdfjkl;'.includes(key)) {
+    if (key.length === 1 && 'asdfjkl;'.includes(key)) {
         if (keyMap[key] === currentLetter) {
             handleCorrect();
         } else {
@@ -895,7 +776,6 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
-
 </script>
 </body>
 </html>
