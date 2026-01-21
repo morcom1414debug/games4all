@@ -103,26 +103,8 @@
             font-size: 1.25rem;
             line-height: 1.6;
             opacity: 0.9;
-            margin-bottom: 1.8rem;
+            margin-bottom: 2.5rem;
             text-align: center;
-        }
-
-        .sound-pack-select {
-            margin: 1.5rem 0 2.5rem;
-            text-align: center;
-        }
-
-        .sound-pack-select label {
-            display: block;
-            margin: 0.9rem 0;
-            font-size: 1.3rem;
-            font-weight: 500;
-            cursor: pointer;
-        }
-
-        .sound-pack-select input[type="radio"] {
-            margin-right: 0.8rem;
-            transform: scale(1.4);
         }
 
         .level-buttons {
@@ -164,7 +146,6 @@
         #hard   { background: linear-gradient(135deg, #ff6b6b, #fa5252); color: white; }
         #practice { background: linear-gradient(135deg, #4ade80, #22c55e); color: white; }
 
-        /* ส่วนที่เหลือของ CSS เหมือนเดิมทั้งหมด */
         .question-heading {
             font-size: 2.5rem;
             font-weight: 900;
@@ -393,14 +374,6 @@
         <h1>Music Speed Typing</h1>
         <p class="subtitle">กดแป้นพิมพ์ตามโน้ตดนตรีที่โผล่ขึ้นมาทันที! ต้องเล่นร่วมกับแป้นพิมพ์จริง<br>shortcut: a(ฟ)=โด, s(ห)=เร, d(ก)=มี, f(ด)=ฟา, j(่)=ซอล, k(า)=ลา, l(ส)=ที, ;(ว)=โดสูง<br>ยิ่งตอบเร็ว ยิ่งได้คะแนนดี เวลาจะสั้นลงเรื่อย ๆ<br>กดผิดหรือช้าเกินไป = เกมจบ เล่นจนกว่าจะแพ้!</p>
 
-        <!-- เพิ่มตัวเลือกชุดเสียง -->
-        <div class="sound-pack-select">
-            <h3 style="margin-bottom:1.2rem; font-size:1.5rem;">เลือกชุดเสียงโน้ต</h3>
-            <label><input type="radio" name="soundPack" value="d" checked> เสียง 1 (d)</label>
-            <label><input type="radio" name="soundPack" value="d1"> เสียง 2 (d1)</label>
-            <label><input type="radio" name="soundPack" value="d2"> เสียง 3 (d2)</label>
-        </div>
-
         <div class="level-buttons">
             <button class="level-btn" id="easy">ฝึกพื้นฐาน</button>
             <button class="level-btn" id="medium">ระดับเซียน</button>
@@ -447,25 +420,15 @@ const bgmSource = { node: null, isPlaying: false };
 
 let audioMode = 'file';
 
-// ตัวแปรใหม่ — ชุดเสียงที่เลือก
-let selectedSoundPack = 'd';   // default
-
-// อัปเดต selectedSoundPack เมื่อผู้ใช้เปลี่ยน radio
-document.querySelectorAll('input[name="soundPack"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-        selectedSoundPack = e.target.value;
-    });
-});
-
-// ปรับฟังก์ชัน loadLetterSounds ให้ใช้ selectedSoundPack
+// โหลดเสียงโน้ต โด-โดสูง จาก folder d
 async function loadLetterSounds() {
-    // ลบ buffer เก่าของโน้ตก่อน
+    // ลบ buffer เก่าของโน้ตก่อน (ป้องกันทับซ้อน)
     notes.forEach(note => {
         delete soundBuffers[note];
     });
 
     const promises = notes.map(note => {
-        const url = `${selectedSoundPack}/${note}.mp3`;
+        const url = `d/${note}.mp3`;
         return fetch(url)
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => audioCtx.decodeAudioData(arrayBuffer))
@@ -473,7 +436,7 @@ async function loadLetterSounds() {
                 soundBuffers[note] = buffer;
             })
             .catch(err => {
-                console.warn(`โหลดเสียง ${note} จาก ${selectedSoundPack} ไม่สำเร็จ`, err);
+                console.warn(`โหลดเสียง ${note} จาก d ไม่สำเร็จ`, err);
             });
     });
 
@@ -540,7 +503,7 @@ function stopBackgroundBGM() {
     }
 }
 
-// ตัวแปรเกม (เหมือนเดิม)
+// ตัวแปรเกม
 const notes = ["โด", "เร", "มี", "ฟา", "ซอล", "ลา", "ที", "โดสูง"];
 const keyMap = {
     'a': "โด",
@@ -582,7 +545,7 @@ async function startGame(level) {
     else if (level === 'medium') timeLimit = 3000;
     else if (level === 'hard')   timeLimit = 2000;
 
-    // โหลดเสียงโน้ตตามชุดที่ผู้เล่นเลือก
+    // โหลดเสียงโน้ตจาก folder d
     await loadLetterSounds();
 
     levelSelect.style.display = 'none';
@@ -607,7 +570,7 @@ async function startGame(level) {
 async function startPractice() {
     currentLevel = 'practice';
 
-    // โหลดเสียงตามชุดที่เลือก
+    // โหลดเสียงโน้ตจาก folder d
     await loadLetterSounds();
 
     levelSelect.style.display = 'none';
@@ -698,7 +661,7 @@ async function nextQuestion() {
 
     currentLetter = notes[Math.floor(Math.random() * notes.length)];
     questionElem.textContent = currentLetter;
-    play(currentLetter);
+    play(currentLetter);   // จะใช้ buffer จาก d
 
     clearInterval(timerInterval);
 
