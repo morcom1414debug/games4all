@@ -376,7 +376,7 @@
         <div class="level-buttons">
             <button class="level-btn" id="easy">วิ่งแบบมือสมัครเล่น</button>
             <button class="level-btn" id="hard">วิ่งแบบมืออาชีพ</button>
-            <button class="movement-btn" id="movement">เล่นแบบ Movement (เอียง/เขย่าโทรศัพท์)</button>
+            <button class="movement-btn" id="movement">เล่นแบบ Movement (เอียงโทรศัพท์)</button>
         </div>
     </div>
 
@@ -410,24 +410,16 @@
 
 <script>
 // ────────────────────────────────────────────────
-// Movement system – ปรับใหม่ตามคำขอ (แค่ up & down)
-// up    → เขย่า / สั่นโทรศัพท์
-// down  → เอียงหน้าลง
-// left/right → ยังคงเอียงซ้ายขวาเหมือนเดิม
+// Movement system (ปรับปรุงสำหรับ iOS Safari)
 // ────────────────────────────────────────────────
 
 let useMotion = false;
 let motionListener = null;
+let orientationListener = null;
 let lastMotionDir = null;
 
-// ปรับค่า threshold ให้เหมาะกับการใช้งานจริง
-const TILT_SIDE_THRESHOLD    = 7.0;     // เอียงซ้าย-ขวา (gamma หรือ x)
-const TILT_FORWARD_THRESHOLD = -8.0;    // เอียงหน้าลง (beta หรือ z) → down
-
-// สำหรับเขย่า (shake) → up
-let lastShakeTime = 0;
-const SHAKE_THRESHOLD = 18;          // ความแรง acceleration (ปรับได้)
-const SHAKE_DEBOUNCE  = 450;         // ms ระหว่าง shake แต่ละครั้ง
+const TILT_THRESHOLD        = 6.0;   // แกน x (ซ้าย-ขวา)
+const TILT_FORWARD_THRESHOLD = -7.0; // แกน z / beta (เอียงหน้าลง)
 
 function simulateKey(key) {
     if (!running || isProcessingTimeout || !currentCommand) return;
@@ -448,24 +440,41 @@ function handleDeviceMotion(e) {
 
     let dir = null;
 
-    // ── เอียงซ้าย / ขวา (เหมือนเดิม)
-    if      (acc.x < -TILT_SIDE_THRESHOLD) dir = 'left';
-    else if (acc.x >  TILT_SIDE_THRESHOLD) dir = 'right';
+    // เอียงซ้าย / ขวา (แกน x)
+    if      (acc.x < -TILT_THRESHOLD) dir = 'left';
+    else if (acc.x >  TILT_THRESHOLD) dir = 'right';
 
-    // ── เอียงหน้าลง = DOWN (ก้ม / เก็บเหรียญ)
-    if (acc.z < TILT_FORWARD_THRESHOLD) {
-        dir = 'down';
+    // เอียงหน้า / หลัง (แกน z) มีความสำคัญสูงกว่า
+    if      (acc.z < TILT_FORWARD_THRESHOLD)     dir = 'up';    // เอียงหน้าลง = กระโดด
+    else if (acc.z > -TILT_FORWARD_THRESHOLD + 12) dir = 'down'; // เอียงหลัง = ก้ม
+
+    if (dir && dir !== lastMotionDir) {
+        lastMotionDir = dir;
+        const keyMap = {
+            up:    'ArrowUp',
+            down:  'ArrowDown',
+            left:  'ArrowLeft',
+            right: 'ArrowRight'
+        };
+        simulateKey(keyMap[dir]);
     }
+}
 
-    // ── เขย่าแรง ๆ = UP (กระโดด)
-    const accelMagnitude = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-    const now = performance.now();
-    if (accelMagnitude > SHAKE_THRESHOLD && now - lastShakeTime > SHAKE_DEBOUNCE) {
-        dir = 'up';
-        lastShakeTime = now;
-    }
+function handleDeviceOrientation(e) {
+    if (!useMotion || !running || isProcessingTimeout || !currentCommand) return;
+    if (typeof e.beta !== 'number' || typeof e.gamma !== 'number') return;
 
-    // ส่งคำสั่งเมื่อทิศทางเปลี่ยน (ป้องกัน spam)
+    let dir = null;
+
+    // gamma ≈ แกนซ้าย-ขวา (portrait mode)
+    if      (e.gamma < -TILT_THRESHOLD) dir = 'left';
+    else if (e.gamma >  TILT_THRESHOLD) dir = 'right';
+
+    // beta ≈ แกนหน้า-หลัง (portrait mode)
+    // beta ≈ 0 = วางราบ, beta ลบ = เอียงหน้าลง
+    if      (e.beta < TILT_FORWARD_THRESHOLD)     dir = 'up';
+    else if (e.beta > -TILT_FORWARD_THRESHOLD + 15) dir = 'down';
+
     if (dir && dir !== lastMotionDir) {
         lastMotionDir = dir;
         const keyMap = {
@@ -480,11 +489,17 @@ function handleDeviceMotion(e) {
 
 function startMotionListeners() {
     lastMotionDir = null;
-    lastShakeTime = 0;
 
+    // พยายามใช้ devicemotion ก่อน (แม่นยำกว่า accelerationIncludingGravity)
     if (window.DeviceMotionEvent) {
         motionListener = handleDeviceMotion;
         window.addEventListener('devicemotion', motionListener, { passive: true });
+    }
+
+    // ถ้าไม่มี devicemotion หรือต้องการ fallback → ใช้ deviceorientation
+    if (!motionListener && window.DeviceOrientationEvent) {
+        orientationListener = handleDeviceOrientation;
+        window.addEventListener('deviceorientation', orientationListener, { passive: true });
     }
 }
 
@@ -493,12 +508,17 @@ function removeMotionListeners() {
         window.removeEventListener('devicemotion', motionListener);
         motionListener = null;
     }
+    if (orientationListener) {
+        window.removeEventListener('deviceorientation', orientationListener);
+        orientationListener = null;
+    }
     lastMotionDir = null;
-    lastShakeTime = 0;
 }
 
 async function requestMotionPermissionAndStart() {
+    // ฟังก์ชันนี้ถูกเรียกตรงจาก onclick → user gesture
     if (typeof DeviceMotionEvent.requestPermission !== 'function') {
+        // ไม่ใช่ iOS 13+ หรือ Android ที่ไม่ต้องขอ
         useMotion = true;
         startMotionListeners();
         return true;
@@ -524,7 +544,7 @@ async function requestMotionPermissionAndStart() {
 }
 
 // ────────────────────────────────────────────────
-// ส่วนที่เหลือของเกม (ไม่มีการเปลี่ยนแปลงใด ๆ)
+// โค้ดเกมส่วนที่เหลือ (ไม่เปลี่ยนแปลง)
 // ────────────────────────────────────────────────
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -663,12 +683,13 @@ function deactivateApplicationMode() {
 
 async function startGame(level, isMotion = false) {
     currentLevel = level;
-    useMotion = false;
-    removeMotionListeners();
+    useMotion = false;           // รีเซ็ตก่อน
+    removeMotionListeners();     // ป้องกัน listener เก่าค้าง
 
     if (isMotion) {
         const granted = await requestMotionPermissionAndStart();
         if (!granted) {
+            // ถ้า permission ไม่ผ่าน → เล่นแบบ keyboard แทน
             isMotion = false;
         }
     }
@@ -825,7 +846,6 @@ async function handleCorrect() {
         questionElem.classList.remove('correct-flash');
         timeLimit = Math.max(550, Math.floor(timeLimit * 0.94));
         lastMotionDir = null;
-        lastShakeTime = 0;
         nextQuestion();
     }, 380);
 }
