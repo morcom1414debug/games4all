@@ -114,7 +114,7 @@
             align-items: center;
         }
 
-        .level-btn, .movement-btn {
+        .level-btn {
             width: 100%;
             max-width: 360px;
             padding: 1.35rem 2rem;
@@ -130,7 +130,7 @@
             overflow: hidden;
         }
 
-        .level-btn::before, .movement-btn::before {
+        .level-btn::before {
             content: '';
             position: absolute;
             inset: 0;
@@ -138,15 +138,13 @@
             transform: translateX(-120%);
             transition: transform 0.7s;
         }
-        .level-btn:hover::before, .movement-btn:hover::before { transform: translateX(120%); }
-        .level-btn:hover, .movement-btn:hover { transform: translateY(-12px) scale(1.05); }
-        .level-btn:active, .movement-btn:active { transform: translateY(-5px) scale(0.96); }
+        .level-btn:hover::before { transform: translateX(120%); }
+        .level-btn:hover { transform: translateY(-12px) scale(1.05); }
+        .level-btn:active { transform: translateY(-5px) scale(0.96); }
 
         #easy   { background: linear-gradient(135deg, #51cf66, #40c057); color: white; }
         #hard   { background: linear-gradient(135deg, #ff6b6b, #fa5252); color: white; }
-        #movement { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
 
-        /* ส่วนที่เหลือของ style เดิมยังเหมือนเดิมทั้งหมด */
         .question-heading {
             font-size: 2.5rem;
             font-weight: 900;
@@ -323,7 +321,7 @@
             }
             #levelSelect h1           { font-size: 2.05rem; }
             #levelSelect .subtitle    { font-size: 1.02rem; margin-bottom: 1.5rem; }
-            .level-btn, .movement-btn {
+            .level-btn {
                 padding: 1.2rem 1.8rem;
                 font-size: 1.55rem;
                 max-width: 340px;
@@ -352,7 +350,7 @@
 
         @media (max-width: 360px) {
             #levelSelect h1 { font-size: 1.9rem; }
-            .level-btn, .movement-btn { font-size: 1.45rem; padding: 1.1rem 1.6rem; }
+            .level-btn { font-size: 1.45rem; padding: 1.1rem 1.6rem; }
             #score { font-size: 3.2rem; }
             .btn-restart, .btn-newmode { 
                 font-size: 1.1rem; 
@@ -377,7 +375,6 @@
         <div class="level-buttons">
             <button class="level-btn" id="easy">วิ่งแบบมือสมัครเล่น</button>
             <button class="level-btn" id="hard">วิ่งแบบมืออาชีพ</button>
-            <button class="movement-btn" id="movement">เล่นแบบ Movement (เอียงโทรศัพท์)</button>
         </div>
     </div>
 
@@ -410,89 +407,7 @@
 <div id="flashOverlay" class="flash-red"></div>
 
 <script>
-// ────────────────────────────────────────────────
-// ส่วนที่เพิ่มใหม่สำหรับโหมด Movement
-// ────────────────────────────────────────────────
-
-let useMotion = false;
-let motionListener = null;
-let lastMotionDir = null;
-
-// ค่าความไว (ปรับได้ตามความรู้สึกบนเครื่องจริง)
-const TILT_THRESHOLD = 5.0;          // แกน x (ซ้าย-ขวา)
-const TILT_FORWARD_THRESHOLD = -5.5; // แกน z (หน้า-หลัง) เอียงหน้าลง = ค่าลบ
-
-function startMotionMode() {
-    useMotion = true;
-    lastMotionDir = null;
-
-    const requestPermission = DeviceMotionEvent.requestPermission;
-    if (typeof requestPermission === 'function') {
-        // iOS 13+
-        requestPermission().then(permissionState => {
-            if (permissionState === 'granted') {
-                addMotionListener();
-            } else {
-                alert('ไม่ได้รับอนุญาตให้ใช้เซ็นเซอร์การเคลื่อนไหว\nโหมด Movement จะไม่ทำงาน');
-                useMotion = false;
-            }
-        }).catch(err => {
-            console.error(err);
-            alert('เกิดข้อผิดพลาดในการขอสิทธิ์เซ็นเซอร์');
-        });
-    } else {
-        // Android / อื่น ๆ ที่ไม่ต้องขอ permission
-        addMotionListener();
-    }
-}
-
-function addMotionListener() {
-    motionListener = (e) => {
-        if (!running || isProcessingTimeout || !currentCommand || !useMotion) return;
-
-        const acc = e.accelerationIncludingGravity;
-        if (!acc) return;
-
-        let dir = null;
-
-        // เอียงซ้าย / ขวา (แกน x)
-        if      (acc.x < -TILT_THRESHOLD) dir = 'left';
-        else if (acc.x >  TILT_THRESHOLD) dir = 'right';
-
-        // เอียงหน้า / หลัง (แกน z) มีความสำคัญมากกว่า ถ้าเอียงแรง
-        if      (acc.z < TILT_FORWARD_THRESHOLD) dir = 'up';     // เอียงหน้าลง
-        else if (acc.z > -TILT_FORWARD_THRESHOLD + 10) dir = 'down'; // เอียงหลัง (ค่าบวกมาก)
-
-        if (dir && dir !== lastMotionDir) {
-            lastMotionDir = dir;
-            const simulatedKey = {
-                up:    'ArrowUp',
-                down:  'ArrowDown',
-                left:  'ArrowLeft',
-                right: 'ArrowRight'
-            }[dir];
-
-            // จำลอง keydown เหมือนกดปุ่มจริง
-            const fakeEvent = new KeyboardEvent('keydown', { key: simulatedKey, bubbles: true });
-            document.dispatchEvent(fakeEvent);
-        }
-    };
-
-    window.addEventListener('devicemotion', motionListener, { passive: true });
-}
-
-function removeMotionListener() {
-    if (motionListener) {
-        window.removeEventListener('devicemotion', motionListener);
-        motionListener = null;
-    }
-    lastMotionDir = null;
-}
-
-// ────────────────────────────────────────────────
-// โค้ดเดิม (ปรับเล็กน้อย)
-// ────────────────────────────────────────────────
-
+// Web Audio API Setup
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioContext();
 
@@ -523,8 +438,12 @@ async function loadCommandSounds() {
         return fetch(url)
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => audioCtx.decodeAudioData(arrayBuffer))
-            .then(buffer => { soundBuffers[name] = buffer; })
-            .catch(err => console.warn(`โหลดเสียง ${name} ไม่สำเร็จ`, err));
+            .then(buffer => {
+                soundBuffers[name] = buffer;
+            })
+            .catch(err => {
+                console.warn(`โหลดเสียง ${name} ไม่สำเร็จ`, err);
+            });
     });
 
     await Promise.all(promises);
@@ -591,7 +510,7 @@ function stopBackgroundBGM() {
     }
 }
 
-// Game variables .......................................
+// Game variables
 const obstacleCommands = [
     {name: 'up',    sound: 'กระโดดขึ้น',       key: 'ArrowUp',    symbol: '↑'},
     {name: 'down',  sound: 'ก้มตัว',           key: 'ArrowDown',  symbol: '↓'},
@@ -628,10 +547,8 @@ function deactivateApplicationMode() {
     levelSelect.setAttribute('aria-hidden', 'false');
 }
 
-async function startGame(level, isMotion = false) {
+async function startGame(level) {
     currentLevel = level;
-    useMotion = isMotion;
-
     if (level === 'easy') timeLimit = 3900;
     else if (level === 'hard') timeLimit = 2000;
 
@@ -650,12 +567,7 @@ async function startGame(level, isMotion = false) {
     score = 0;
     running = true;
     activateApplicationMode();
-    stopBtn.disabled = !isMotion;   // ซ่อนปุ่มหยุดเมื่อใช้ motion (ป้องกันกดพลาด)
-
-    if (useMotion) {
-        startMotionMode();
-    }
-
+    stopBtn.disabled = false;
     questionHeading.innerHTML = 'เตรียมตัว...';
     play('start');
     setTimeout(nextQuestion, 1400);
@@ -673,13 +585,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await Promise.all(soundsToLoad.map(([name, url]) => loadSound(name, url)));
 
-    document.getElementById('easy').onclick = () => startGame('easy', false);
-    document.getElementById('hard').onclick = () => startGame('hard', false);
-    document.getElementById('movement').onclick = () => startGame('easy', true); // ใช้ easy เป็น default
+    document.getElementById('easy').onclick = () => startGame('easy');
+    document.getElementById('hard').onclick = () => startGame('hard');
 
     document.getElementById('restartBtn').onclick = () => {
         resultDiv.style.display = 'none';
-        if (currentLevel) startGame(currentLevel, useMotion);
+        if (currentLevel) startGame(currentLevel);
     };
 
     document.getElementById('newModeBtn').onclick = () => {
@@ -690,13 +601,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         questionElem.textContent = '?';
         questionElem.className = '';
         stopBackgroundBGM();
-        removeMotionListener();
-        useMotion = false;
     };
 
     backBtn.onclick = () => {
         stopBackgroundBGM();
-        removeMotionListener();
         location.href = '../index.html';
     };
 
@@ -745,6 +653,7 @@ async function nextQuestion() {
             if (currentCommand.type === 'obstacle') {
                 fail("ช้าไป!");
             } else {
+                // โหมด coin → กดไม่ทัน = แพ้ทันที (ตามที่ขอ)
                 fail("พลาดเหรียญ!");
             }
             return;
@@ -768,6 +677,7 @@ function showJudgment() {
     elem.className = 'judgment';
     elem.textContent = word;
     document.getElementById('gameArea').appendChild(elem);
+
     setTimeout(() => elem.remove(), 1200);
 }
 
@@ -787,7 +697,6 @@ async function handleCorrect() {
     setTimeout(() => {
         questionElem.classList.remove('correct-flash');
         timeLimit = Math.max(550, Math.floor(timeLimit * 0.94));
-        lastMotionDir = null; // reset tilt debounce
         nextQuestion();
     }, 380);
 }
@@ -796,6 +705,7 @@ async function handleWrong() {
     isProcessingTimeout = true;
     clearInterval(timerInterval);
 
+    // ทั้ง obstacle และ coin → กดผิด = แพ้ทันที
     const dieIndex = Math.floor(Math.random() * 3);
     play(`die${dieIndex}`);
 
@@ -815,7 +725,6 @@ function fail(reason) {
     running = false;
     clearInterval(timerInterval);
     play('gameover');
-    removeMotionListener();
 
     document.body.classList.add('shake');
     const flash = document.getElementById('flashOverlay');
@@ -831,7 +740,6 @@ function fail(reason) {
 
 async function endGame(reason = '') {
     stopBackgroundBGM();
-    removeMotionListener();
     gameDiv.style.display = 'none';
     resultDiv.style.display = 'block';
     backBtn.style.display = 'block';
@@ -876,10 +784,7 @@ async function endGame(reason = '') {
     setTimeout(() => { try { title.focus(); } catch(e) {} }, 120);
 }
 
-window.addEventListener('beforeunload', () => {
-    stopBackgroundBGM();
-    removeMotionListener();
-});
+window.addEventListener('beforeunload', () => stopBackgroundBGM());
 
 document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout || !currentCommand) return;
