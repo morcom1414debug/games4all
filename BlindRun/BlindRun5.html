@@ -146,6 +146,7 @@
         #hard   { background: linear-gradient(135deg, #ff6b6b, #fa5252); color: white; }
         #movement { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
 
+        /* ส่วนที่เหลือของ style เดิมยังเหมือนเดิมทั้งหมด */
         .question-heading {
             font-size: 2.5rem;
             font-weight: 900;
@@ -410,141 +411,86 @@
 
 <script>
 // ────────────────────────────────────────────────
-// Movement system (ปรับปรุงสำหรับ iOS Safari)
+// ส่วนที่เพิ่มใหม่สำหรับโหมด Movement
 // ────────────────────────────────────────────────
 
 let useMotion = false;
 let motionListener = null;
-let orientationListener = null;
 let lastMotionDir = null;
 
-const TILT_THRESHOLD        = 6.0;   // แกน x (ซ้าย-ขวา)
-const TILT_FORWARD_THRESHOLD = -7.0; // แกน z / beta (เอียงหน้าลง)
+// ค่าความไว (ปรับได้ตามความรู้สึกบนเครื่องจริง)
+const TILT_THRESHOLD = 5.0;          // แกน x (ซ้าย-ขวา)
+const TILT_FORWARD_THRESHOLD = -5.5; // แกน z (หน้า-หลัง) เอียงหน้าลง = ค่าลบ
 
-function simulateKey(key) {
-    if (!running || isProcessingTimeout || !currentCommand) return;
-    const fakeEvent = new KeyboardEvent('keydown', {
-        key: key,
-        code: key.replace('Arrow',''),
-        bubbles: true,
-        cancelable: true
-    });
-    document.dispatchEvent(fakeEvent);
-}
-
-function handleDeviceMotion(e) {
-    if (!useMotion || !running || isProcessingTimeout || !currentCommand) return;
-
-    const acc = e.accelerationIncludingGravity;
-    if (!acc || typeof acc.x !== 'number') return;
-
-    let dir = null;
-
-    // เอียงซ้าย / ขวา (แกน x)
-    if      (acc.x < -TILT_THRESHOLD) dir = 'left';
-    else if (acc.x >  TILT_THRESHOLD) dir = 'right';
-
-    // เอียงหน้า / หลัง (แกน z) มีความสำคัญสูงกว่า
-    if      (acc.z < TILT_FORWARD_THRESHOLD)     dir = 'up';    // เอียงหน้าลง = กระโดด
-    else if (acc.z > -TILT_FORWARD_THRESHOLD + 12) dir = 'down'; // เอียงหลัง = ก้ม
-
-    if (dir && dir !== lastMotionDir) {
-        lastMotionDir = dir;
-        const keyMap = {
-            up:    'ArrowUp',
-            down:  'ArrowDown',
-            left:  'ArrowLeft',
-            right: 'ArrowRight'
-        };
-        simulateKey(keyMap[dir]);
-    }
-}
-
-function handleDeviceOrientation(e) {
-    if (!useMotion || !running || isProcessingTimeout || !currentCommand) return;
-    if (typeof e.beta !== 'number' || typeof e.gamma !== 'number') return;
-
-    let dir = null;
-
-    // gamma ≈ แกนซ้าย-ขวา (portrait mode)
-    if      (e.gamma < -TILT_THRESHOLD) dir = 'left';
-    else if (e.gamma >  TILT_THRESHOLD) dir = 'right';
-
-    // beta ≈ แกนหน้า-หลัง (portrait mode)
-    // beta ≈ 0 = วางราบ, beta ลบ = เอียงหน้าลง
-    if      (e.beta < TILT_FORWARD_THRESHOLD)     dir = 'up';
-    else if (e.beta > -TILT_FORWARD_THRESHOLD + 15) dir = 'down';
-
-    if (dir && dir !== lastMotionDir) {
-        lastMotionDir = dir;
-        const keyMap = {
-            up:    'ArrowUp',
-            down:  'ArrowDown',
-            left:  'ArrowLeft',
-            right: 'ArrowRight'
-        };
-        simulateKey(keyMap[dir]);
-    }
-}
-
-function startMotionListeners() {
+function startMotionMode() {
+    useMotion = true;
     lastMotionDir = null;
 
-    // พยายามใช้ devicemotion ก่อน (แม่นยำกว่า accelerationIncludingGravity)
-    if (window.DeviceMotionEvent) {
-        motionListener = handleDeviceMotion;
-        window.addEventListener('devicemotion', motionListener, { passive: true });
-    }
-
-    // ถ้าไม่มี devicemotion หรือต้องการ fallback → ใช้ deviceorientation
-    if (!motionListener && window.DeviceOrientationEvent) {
-        orientationListener = handleDeviceOrientation;
-        window.addEventListener('deviceorientation', orientationListener, { passive: true });
+    const requestPermission = DeviceMotionEvent.requestPermission;
+    if (typeof requestPermission === 'function') {
+        // iOS 13+
+        requestPermission().then(permissionState => {
+            if (permissionState === 'granted') {
+                addMotionListener();
+            } else {
+                alert('ไม่ได้รับอนุญาตให้ใช้เซ็นเซอร์การเคลื่อนไหว\nโหมด Movement จะไม่ทำงาน');
+                useMotion = false;
+            }
+        }).catch(err => {
+            console.error(err);
+            alert('เกิดข้อผิดพลาดในการขอสิทธิ์เซ็นเซอร์');
+        });
+    } else {
+        // Android / อื่น ๆ ที่ไม่ต้องขอ permission
+        addMotionListener();
     }
 }
 
-function removeMotionListeners() {
+function addMotionListener() {
+    motionListener = (e) => {
+        if (!running || isProcessingTimeout || !currentCommand || !useMotion) return;
+
+        const acc = e.accelerationIncludingGravity;
+        if (!acc) return;
+
+        let dir = null;
+
+        // เอียงซ้าย / ขวา (แกน x)
+        if      (acc.x < -TILT_THRESHOLD) dir = 'left';
+        else if (acc.x >  TILT_THRESHOLD) dir = 'right';
+
+        // เอียงหน้า / หลัง (แกน z) มีความสำคัญมากกว่า ถ้าเอียงแรง
+        if      (acc.z < TILT_FORWARD_THRESHOLD) dir = 'up';     // เอียงหน้าลง
+        else if (acc.z > -TILT_FORWARD_THRESHOLD + 10) dir = 'down'; // เอียงหลัง (ค่าบวกมาก)
+
+        if (dir && dir !== lastMotionDir) {
+            lastMotionDir = dir;
+            const simulatedKey = {
+                up:    'ArrowUp',
+                down:  'ArrowDown',
+                left:  'ArrowLeft',
+                right: 'ArrowRight'
+            }[dir];
+
+            // จำลอง keydown เหมือนกดปุ่มจริง
+            const fakeEvent = new KeyboardEvent('keydown', { key: simulatedKey, bubbles: true });
+            document.dispatchEvent(fakeEvent);
+        }
+    };
+
+    window.addEventListener('devicemotion', motionListener, { passive: true });
+}
+
+function removeMotionListener() {
     if (motionListener) {
         window.removeEventListener('devicemotion', motionListener);
         motionListener = null;
     }
-    if (orientationListener) {
-        window.removeEventListener('deviceorientation', orientationListener);
-        orientationListener = null;
-    }
     lastMotionDir = null;
 }
 
-async function requestMotionPermissionAndStart() {
-    // ฟังก์ชันนี้ถูกเรียกตรงจาก onclick → user gesture
-    if (typeof DeviceMotionEvent.requestPermission !== 'function') {
-        // ไม่ใช่ iOS 13+ หรือ Android ที่ไม่ต้องขอ
-        useMotion = true;
-        startMotionListeners();
-        return true;
-    }
-
-    try {
-        const permission = await DeviceMotionEvent.requestPermission();
-        if (permission === 'granted') {
-            useMotion = true;
-            startMotionListeners();
-            return true;
-        } else {
-            alert('ไม่ได้รับอนุญาตให้ใช้เซ็นเซอร์การเคลื่อนไหว\nจะเล่นด้วยปุ่มกดแทนได้นะ');
-            useMotion = false;
-            return false;
-        }
-    } catch (err) {
-        console.warn('DeviceMotion permission error:', err);
-        alert('เกิดข้อผิดพลาดในการขอสิทธิ์เซ็นเซอร์');
-        useMotion = false;
-        return false;
-    }
-}
-
 // ────────────────────────────────────────────────
-// โค้ดเกมส่วนที่เหลือ (ไม่เปลี่ยนแปลง)
+// โค้ดเดิม (ปรับเล็กน้อย)
 // ────────────────────────────────────────────────
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -645,6 +591,7 @@ function stopBackgroundBGM() {
     }
 }
 
+// Game variables .......................................
 const obstacleCommands = [
     {name: 'up',    sound: 'กระโดดขึ้น',       key: 'ArrowUp',    symbol: '↑'},
     {name: 'down',  sound: 'ก้มตัว',           key: 'ArrowDown',  symbol: '↓'},
@@ -683,16 +630,7 @@ function deactivateApplicationMode() {
 
 async function startGame(level, isMotion = false) {
     currentLevel = level;
-    useMotion = false;           // รีเซ็ตก่อน
-    removeMotionListeners();     // ป้องกัน listener เก่าค้าง
-
-    if (isMotion) {
-        const granted = await requestMotionPermissionAndStart();
-        if (!granted) {
-            // ถ้า permission ไม่ผ่าน → เล่นแบบ keyboard แทน
-            isMotion = false;
-        }
-    }
+    useMotion = isMotion;
 
     if (level === 'easy') timeLimit = 3900;
     else if (level === 'hard') timeLimit = 2000;
@@ -712,7 +650,11 @@ async function startGame(level, isMotion = false) {
     score = 0;
     running = true;
     activateApplicationMode();
-    stopBtn.disabled = !isMotion;
+    stopBtn.disabled = !isMotion;   // ซ่อนปุ่มหยุดเมื่อใช้ motion (ป้องกันกดพลาด)
+
+    if (useMotion) {
+        startMotionMode();
+    }
 
     questionHeading.innerHTML = 'เตรียมตัว...';
     play('start');
@@ -733,7 +675,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('easy').onclick = () => startGame('easy', false);
     document.getElementById('hard').onclick = () => startGame('hard', false);
-    document.getElementById('movement').onclick = () => startGame('easy', true);
+    document.getElementById('movement').onclick = () => startGame('easy', true); // ใช้ easy เป็น default
 
     document.getElementById('restartBtn').onclick = () => {
         resultDiv.style.display = 'none';
@@ -748,13 +690,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         questionElem.textContent = '?';
         questionElem.className = '';
         stopBackgroundBGM();
-        removeMotionListeners();
+        removeMotionListener();
         useMotion = false;
     };
 
     backBtn.onclick = () => {
         stopBackgroundBGM();
-        removeMotionListeners();
+        removeMotionListener();
         location.href = '../index.html';
     };
 
@@ -845,7 +787,7 @@ async function handleCorrect() {
     setTimeout(() => {
         questionElem.classList.remove('correct-flash');
         timeLimit = Math.max(550, Math.floor(timeLimit * 0.94));
-        lastMotionDir = null;
+        lastMotionDir = null; // reset tilt debounce
         nextQuestion();
     }, 380);
 }
@@ -873,7 +815,7 @@ function fail(reason) {
     running = false;
     clearInterval(timerInterval);
     play('gameover');
-    removeMotionListeners();
+    removeMotionListener();
 
     document.body.classList.add('shake');
     const flash = document.getElementById('flashOverlay');
@@ -889,7 +831,7 @@ function fail(reason) {
 
 async function endGame(reason = '') {
     stopBackgroundBGM();
-    removeMotionListeners();
+    removeMotionListener();
     gameDiv.style.display = 'none';
     resultDiv.style.display = 'block';
     backBtn.style.display = 'block';
@@ -936,7 +878,7 @@ async function endGame(reason = '') {
 
 window.addEventListener('beforeunload', () => {
     stopBackgroundBGM();
-    removeMotionListeners();
+    removeMotionListener();
 });
 
 document.addEventListener('keydown', (e) => {
