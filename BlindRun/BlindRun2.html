@@ -128,6 +128,8 @@
             box-shadow: 0 14px 36px rgba(0,0,0,0.45);
             position: relative;
             overflow: hidden;
+            background: linear-gradient(135deg, #ff6b6b, #fa5252);
+            color: white;
         }
 
         .level-btn::before {
@@ -141,9 +143,6 @@
         .level-btn:hover::before { transform: translateX(120%); }
         .level-btn:hover { transform: translateY(-12px) scale(1.05); }
         .level-btn:active { transform: translateY(-5px) scale(0.96); }
-
-        #easy   { background: linear-gradient(135deg, #51cf66, #40c057); color: white; }
-        #hard   { background: linear-gradient(135deg, #ff6b6b, #fa5252); color: white; }
 
         .question-heading {
             font-size: 2.5rem;
@@ -244,7 +243,7 @@
             text-align: center;
         }
 
-        .btn-restart, .btn-newmode {
+        .btn-restart {
             padding: 1rem 2.6rem;
             font-size: 1.35rem;
             font-weight: 700;
@@ -255,15 +254,13 @@
             margin: 0.7rem 0.6rem;
             transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             box-shadow: 0 14px 38px rgba(0,0,0,0.45);
+            background: linear-gradient(135deg, #4ecdc4, #45b7a7);
         }
 
-        .btn-restart { background: linear-gradient(135deg, #4ecdc4, #45b7a7); }
-        .btn-newmode  { background: linear-gradient(135deg, #667eea, #5a67d8); }
-
-        .btn-restart:hover, .btn-newmode:hover {
+        .btn-restart:hover {
             transform: translateY(-10px) scale(1.07);
         }
-        .btn-restart:active, .btn-newmode:active {
+        .btn-restart:active {
             transform: translateY(-4px) scale(0.95);
         }
 
@@ -339,7 +336,7 @@
             #resultMsg { font-size: 1.65rem; margin: 1.2rem 0; }
             #score     { font-size: 3.6rem; margin: 1.2rem 0 1.8rem; }
 
-            .btn-restart, .btn-newmode {
+            .btn-restart {
                 padding: 0.9rem 2.2rem;
                 font-size: 1.2rem;
                 min-width: 48%;
@@ -352,7 +349,7 @@
             #levelSelect h1 { font-size: 1.9rem; }
             .level-btn { font-size: 1.45rem; padding: 1.1rem 1.6rem; }
             #score { font-size: 3.2rem; }
-            .btn-restart, .btn-newmode { 
+            .btn-restart { 
                 font-size: 1.1rem; 
                 padding: 0.8rem 1.8rem; 
                 min-width: 100%; 
@@ -370,11 +367,10 @@
 
     <div id="levelSelect">
         <h1>Speed Runner</h1>
-        <p class="subtitle">ฟังเสียงคำสั่งแล้วกด arrow key ให้ตรงทันที! หลบอุปสรรคและเก็บเหรียญ<br>ยิ่งตอบเร็ว ยิ่งดี เวลาจะสั้นลงเรื่อย ๆ<br>กดผิดหรือช้า = เกมจบ (ทุกคำสั่ง)</p>
+        <p class="subtitle">ฟังเสียงคำสั่งแล้วกดลูกศรให้ตรงทันที!<br>ทั้งหลบสิ่งกีดขวางและเก็บเหรียญ<br>กดผิด / ช้า = เกมจบทันที<br>ยิ่งตอบเร็ว เวลาจะสั้นลงเรื่อย ๆ</p>
 
         <div class="level-buttons">
-            <button class="level-btn" id="easy">วิ่งแบบมือสมัครเล่น</button>
-            <button class="level-btn" id="hard">วิ่งแบบมืออาชีพ</button>
+            <button class="level-btn" id="hard">เริ่มวิ่งกัน</button>
         </div>
     </div>
 
@@ -392,13 +388,12 @@
     </div>
 
     <div id="result" style="display:none">
-        <h2 id="resultTitle" tabindex="-1">สุดยอดมาก!</h2>
+        <h2 id="resultTitle" tabindex="-1">จบเกม</h2>
         <div id="resultMsg"></div>
         <div id="score">0 คะแนน</div>
         
         <div class="button-container">
-            <button class="btn-restart" id="restartBtn">เริ่มเล่นใหม่</button>
-            <button class="btn-restart btn-newmode" id="newModeBtn">เลือกโหมดใหม่</button>
+            <button class="btn-restart" id="restartBtn">เล่นใหม่</button>
         </div>
     </div>
 
@@ -526,11 +521,10 @@ const coinCommands = [
 ];
 
 let currentCommand = null;
-let score = 0, timerInterval, timeLimit = 5000;
+let score = 0, timerInterval, timeLimit = 2000;
 let isProcessingTimeout = false;
 let backBtn, levelSelect, gameDiv, resultDiv, questionHeading, questionElem, stopBtn, audioModeBtn;
 let running = false;
-let currentLevel = null;
 
 function activateApplicationMode() {
     levelSelect.setAttribute('aria-hidden', 'true');
@@ -547,11 +541,7 @@ function deactivateApplicationMode() {
     levelSelect.setAttribute('aria-hidden', 'false');
 }
 
-async function startGame(level) {
-    currentLevel = level;
-    if (level === 'easy') timeLimit = 3900;
-    else if (level === 'hard') timeLimit = 2000;
-
+async function startGame() {
     await loadCommandSounds();
 
     levelSelect.style.display = 'none';
@@ -585,22 +575,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await Promise.all(soundsToLoad.map(([name, url]) => loadSound(name, url)));
 
-    document.getElementById('easy').onclick = () => startGame('easy');
-    document.getElementById('hard').onclick = () => startGame('hard');
+    document.getElementById('hard').onclick = () => startGame();
 
     document.getElementById('restartBtn').onclick = () => {
         resultDiv.style.display = 'none';
-        if (currentLevel) startGame(currentLevel);
-    };
-
-    document.getElementById('newModeBtn').onclick = () => {
-        resultDiv.style.display = 'none';
-        levelSelect.style.display = 'block';
-        backBtn.style.display = 'block';
-        questionHeading.innerHTML = '';
-        questionElem.textContent = '?';
-        questionElem.className = '';
-        stopBackgroundBGM();
+        startGame();
     };
 
     backBtn.onclick = () => {
@@ -650,12 +629,10 @@ async function nextQuestion() {
         if (remaining <= 0 && !isProcessingTimeout) {
             isProcessingTimeout = true;
             clearInterval(timerInterval);
-            if (currentCommand.type === 'obstacle') {
-                fail("ช้าไป!");
-            } else {
-                // โหมด coin → กดไม่ทัน = แพ้ทันที (ตามที่ขอ)
-                fail("พลาดเหรียญ!");
-            }
+            // ทั้ง obstacle และ coin ถ้าช้า = แพ้
+            const dieIndex = Math.floor(Math.random() * 3);
+            play(`die${dieIndex}`);
+            setTimeout(() => fail("ช้าไป!"), 300);
             return;
         }
 
@@ -677,7 +654,6 @@ function showJudgment() {
     elem.className = 'judgment';
     elem.textContent = word;
     document.getElementById('gameArea').appendChild(elem);
-
     setTimeout(() => elem.remove(), 1200);
 }
 
@@ -705,7 +681,6 @@ async function handleWrong() {
     isProcessingTimeout = true;
     clearInterval(timerInterval);
 
-    // ทั้ง obstacle และ coin → กดผิด = แพ้ทันที
     const dieIndex = Math.floor(Math.random() * 3);
     play(`die${dieIndex}`);
 
