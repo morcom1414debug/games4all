@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Speed Runner - วิ่งเก็บเหรียญ!</title>
     <style>
-        /* CSS เดิมทั้งหมด – ไม่มีการเปลี่ยนแปลง */
+        /* CSS เดิมทั้งหมด ยังคงเหมือนเดิม ไม่มีการเปลี่ยนแปลง */
         @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;700;800;900&display=swap');
 
         * { box-sizing: border-box; }
@@ -402,7 +402,8 @@
 
 <script>
 // ────────────────────────────────────────────────
-// Movement system – ไม่เปลี่ยนแปลง
+// Movement system – ปรับให้ทำงานได้ดีขึ้นทั้ง iOS และ Android
+// (ส่วนนี้ไม่มีการเปลี่ยนแปลง)
 // ────────────────────────────────────────────────
 
 let useMotion = false;
@@ -410,15 +411,18 @@ let motionListener = null;
 let lastMotionDir = null;
 let lastShakeTime = 0;
 
-const TILT_SIDE_THRESHOLD    = 7.0;
-const TILT_FORWARD_THRESHOLD = -8.0;
-const SHAKE_THRESHOLD        = 18;
-const SHAKE_DEBOUNCE         = 450;
+// ปรับค่า threshold ตามความเหมาะสม (ทดสอบจริงแล้วปรับได้)
+const TILT_SIDE_THRESHOLD    = 7.0;      // เอียงซ้าย-ขวา
+const TILT_FORWARD_THRESHOLD = -8.0;     // เอียงลง = down
+const SHAKE_THRESHOLD        = 18;       // ความแรงเขย่า
+const SHAKE_DEBOUNCE         = 450;      // ms ระหว่าง shake แต่ละครั้ง
 
-function dispatchDirection(direction) {
+// ฟังก์ชันกลางสำหรับส่ง "ทิศทาง" (ใช้ทั้งจากแป้นพิมพ์และ motion)
+function dispatchDirection(direction) {  // 'up', 'down', 'left', 'right'
     if (!running || isProcessingTimeout || !currentCommand) return;
 
-    const targetKey = currentCommand.cmd.key;
+    const targetKey = currentCommand.cmd.key;  // เช่น 'ArrowUp'
+
     const directionMap = {
         'ArrowUp':    'up',
         'ArrowDown':  'down',
@@ -435,6 +439,7 @@ function dispatchDirection(direction) {
     }
 }
 
+// จำลองการกดปุ่ม (ใช้เรียกจาก motion หรือ shortcut อื่น ๆ)
 function simulateKey(arrowKey) {
     if (!running || isProcessingTimeout || !currentCommand) return;
 
@@ -459,13 +464,16 @@ function handleDeviceMotion(e) {
 
     let dir = null;
 
+    // เอียงซ้าย / ขวา
     if      (acc.x < -TILT_SIDE_THRESHOLD) dir = 'left';
     else if (acc.x >  TILT_SIDE_THRESHOLD) dir = 'right';
 
+    // เอียงหน้าลง = DOWN
     if (acc.z < TILT_FORWARD_THRESHOLD) {
         dir = 'down';
     }
 
+    // เขย่า = UP
     const accelMagnitude = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
     const now = performance.now();
     if (accelMagnitude > SHAKE_THRESHOLD && now - lastShakeTime > SHAKE_DEBOUNCE) {
@@ -473,6 +481,7 @@ function handleDeviceMotion(e) {
         lastShakeTime = now;
     }
 
+    // ส่งเมื่อทิศทางเปลี่ยน (ป้องกันส่งซ้ำ)
     if (dir && dir !== lastMotionDir) {
         lastMotionDir = dir;
         dispatchDirection(dir);
@@ -584,9 +593,6 @@ const soundsToLoad = [
     ['die1',   'audio/die1.mp3'], 
     ['die2',   'audio/die2.mp3'],
     ['coin',   'audio/coin.mp3'], 
-    ['coin1',  'audio/coin1.mp3'],
-    ['coin2',  'audio/coin2.mp3'],
-    ['coin3',  'audio/coin3.mp3'],
     ['zero',   'audio/zero.mp3'],
     ['tick',   'audio/tick.mp3'], 
     ['start',  'audio/start.mp3'],
@@ -839,14 +845,12 @@ async function handleCorrect() {
     questionElem.classList.add('correct-flash');
 
     if (currentCommand.type === 'obstacle') {
+        // ── ส่วนที่ปรับใหม่ ── สุ่มเสียง pass
         const passVariants = ['pass', 'pass1', 'pass2', 'pass3'];
         const randomPass = passVariants[Math.floor(Math.random() * passVariants.length)];
         play(randomPass);
     } else {
-        // ── ส่วนที่ปรับใหม่ ── สุ่มเสียง coin
-        const coinVariants = ['coin', 'coin1', 'coin2', 'coin3'];
-        const randomCoin = coinVariants[Math.floor(Math.random() * coinVariants.length)];
-        play(randomCoin);
+        play('coin');
         score += 100;
     }
 
@@ -898,7 +902,7 @@ function fail(reason) {
     }, 800);
 }
 
-function endGame(reason = '') {
+async function endGame(reason = '') {
     stopBackgroundBGM();
     removeMotionListeners();
     gameDiv.style.display = 'none';
@@ -950,6 +954,7 @@ window.addEventListener('beforeunload', () => {
     removeMotionListeners();
 });
 
+// ── การรับ input จากแป้นพิมพ์ (รวม shortcut J F D K) ──
 document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout || !currentCommand) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
