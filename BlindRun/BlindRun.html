@@ -157,15 +157,6 @@
             text-align: center;
         }
 
-        #gameArea {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-        }
-
         #question {
             font-size: 10rem;
             font-weight: 900;
@@ -410,34 +401,56 @@
 
 <script>
 // ────────────────────────────────────────────────
-// Movement system – ปรับใหม่ตามคำขอ (แค่ up & down)
-// up    → เขย่า / สั่นโทรศัพท์
-// down  → เอียงหน้าลง
-// left/right → ยังคงเอียงซ้ายขวาเหมือนเดิม
+// Movement system – ปรับให้ทำงานได้ดีขึ้นทั้ง iOS และ Android
 // ────────────────────────────────────────────────
 
 let useMotion = false;
 let motionListener = null;
 let lastMotionDir = null;
 
-// ปรับค่า threshold ให้เหมาะกับการใช้งานจริง
-const TILT_SIDE_THRESHOLD    = 7.0;     // เอียงซ้าย-ขวา (gamma หรือ x)
-const TILT_FORWARD_THRESHOLD = -8.0;    // เอียงหน้าลง (beta หรือ z) → down
+// ปรับค่า threshold ตามความเหมาะสม (ทดสอบจริงแล้วปรับได้)
+const TILT_SIDE_THRESHOLD    = 7.0;      // เอียงซ้าย-ขวา
+const TILT_FORWARD_THRESHOLD = -8.0;     // เอียงลง = down
+const SHAKE_THRESHOLD        = 18;       // ความแรงเขย่า
+const SHAKE_DEBOUNCE         = 450;      // ms ระหว่าง shake แต่ละครั้ง
 
-// สำหรับเขย่า (shake) → up
-let lastShakeTime = 0;
-const SHAKE_THRESHOLD = 18;          // ความแรง acceleration (ปรับได้)
-const SHAKE_DEBOUNCE  = 450;         // ms ระหว่าง shake แต่ละครั้ง
-
-function simulateKey(key) {
+// ฟังก์ชันกลางสำหรับส่ง "ทิศทาง" (ใช้ทั้งจากแป้นพิมพ์และ motion)
+function dispatchDirection(direction) {  // 'up', 'down', 'left', 'right'
     if (!running || isProcessingTimeout || !currentCommand) return;
-    const fakeEvent = new KeyboardEvent('keydown', {
-        key: key,
-        code: key.replace('Arrow',''),
-        bubbles: true,
-        cancelable: true
-    });
-    document.dispatchEvent(fakeEvent);
+
+    const targetKey = currentCommand.cmd.key;  // เช่น 'ArrowUp'
+
+    const directionMap = {
+        'ArrowUp':    'up',
+        'ArrowDown':  'down',
+        'ArrowLeft':  'left',
+        'ArrowRight': 'right'
+    };
+
+    const requiredDirection = directionMap[targetKey];
+
+    if (direction === requiredDirection) {
+        handleCorrect();
+    } else {
+        handleWrong();
+    }
+}
+
+// จำลองการกดปุ่ม (ใช้เรียกจาก motion หรือ shortcut อื่น ๆ)
+function simulateKey(arrowKey) {
+    if (!running || isProcessingTimeout || !currentCommand) return;
+
+    const dirMap = {
+        'ArrowUp':    'up',
+        'ArrowDown':  'down',
+        'ArrowLeft':  'left',
+        'ArrowRight': 'right'
+    };
+
+    const direction = dirMap[arrowKey];
+    if (direction) {
+        dispatchDirection(direction);
+    }
 }
 
 function handleDeviceMotion(e) {
@@ -448,16 +461,16 @@ function handleDeviceMotion(e) {
 
     let dir = null;
 
-    // ── เอียงซ้าย / ขวา (เหมือนเดิม)
+    // เอียงซ้าย / ขวา
     if      (acc.x < -TILT_SIDE_THRESHOLD) dir = 'left';
     else if (acc.x >  TILT_SIDE_THRESHOLD) dir = 'right';
 
-    // ── เอียงหน้าลง = DOWN (ก้ม / เก็บเหรียญ)
+    // เอียงหน้าลง = DOWN
     if (acc.z < TILT_FORWARD_THRESHOLD) {
         dir = 'down';
     }
 
-    // ── เขย่าแรง ๆ = UP (กระโดด)
+    // เขย่า = UP
     const accelMagnitude = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
     const now = performance.now();
     if (accelMagnitude > SHAKE_THRESHOLD && now - lastShakeTime > SHAKE_DEBOUNCE) {
@@ -465,16 +478,10 @@ function handleDeviceMotion(e) {
         lastShakeTime = now;
     }
 
-    // ส่งคำสั่งเมื่อทิศทางเปลี่ยน (ป้องกัน spam)
+    // ส่งเมื่อทิศทางเปลี่ยน (ป้องกันส่งซ้ำ)
     if (dir && dir !== lastMotionDir) {
         lastMotionDir = dir;
-        const keyMap = {
-            up:    'ArrowUp',
-            down:  'ArrowDown',
-            left:  'ArrowLeft',
-            right: 'ArrowRight'
-        };
-        simulateKey(keyMap[dir]);
+        dispatchDirection(dir);
     }
 }
 
@@ -524,7 +531,7 @@ async function requestMotionPermissionAndStart() {
 }
 
 // ────────────────────────────────────────────────
-// ส่วนที่เหลือของเกม
+// ส่วนเกมหลัก (ปรับเล็กน้อยให้ใช้ dispatchDirection)
 // ────────────────────────────────────────────────
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -639,7 +646,6 @@ const coinCommands = [
     {name: 'coin_down',  sound: 'ก้มเก็บเหรียญ',     key: 'ArrowDown',  symbol: '↓'}
 ];
 
-// เพิ่มตรงนี้ ── mapping สำหรับ shortcut + ลูกศร
 const keyCodeMap = {
     'KeyJ':     'ArrowUp',
     'KeyF':     'ArrowDown',
@@ -932,7 +938,7 @@ window.addEventListener('beforeunload', () => {
     removeMotionListeners();
 });
 
-// ── event keydown ที่ปรับแล้ว ──
+// ── การรับ input จากแป้นพิมพ์ (รวม shortcut J F D K) ──
 document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout || !currentCommand) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -940,12 +946,14 @@ document.addEventListener('keydown', (e) => {
     const code = e.code;
     const effectiveKey = keyCodeMap[code];
 
-    if (effectiveKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(effectiveKey)) {
-        if (effectiveKey === currentCommand.cmd.key) {
-            handleCorrect();
-        } else {
-            handleWrong();
-        }
+    if (effectiveKey && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(effectiveKey)) {
+        const dirMap = {
+            'ArrowUp':    'up',
+            'ArrowDown':  'down',
+            'ArrowLeft':  'left',
+            'ArrowRight': 'right'
+        };
+        dispatchDirection(dirMap[effectiveKey]);
         e.preventDefault();
     }
 });
