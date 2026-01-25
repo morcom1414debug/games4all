@@ -407,27 +407,24 @@
 let useMotion = false;
 let motionListener = null;
 let lastMotionDir = null;
-let lastShakeTime = 0;
 
 // ปรับค่า threshold ตามความเหมาะสม (ทดสอบจริงแล้วปรับได้)
 const TILT_SIDE_THRESHOLD    = 7.0;      // เอียงซ้าย-ขวา
 const TILT_FORWARD_THRESHOLD = -8.0;     // เอียงลง = down
-const TILT_BACK_THRESHOLD    = 7.5;      // เอียงหลัง (เข้าหาตัว) ≈ acc.z > +7.5
 const SHAKE_THRESHOLD        = 18;       // ความแรงเขย่า
 const SHAKE_DEBOUNCE         = 450;      // ms ระหว่าง shake แต่ละครั้ง
 
 // ฟังก์ชันกลางสำหรับส่ง "ทิศทาง" (ใช้ทั้งจากแป้นพิมพ์และ motion)
-function dispatchDirection(direction) {  // 'up', 'down', 'left', 'right', 'stop'
+function dispatchDirection(direction) {  // 'up', 'down', 'left', 'right'
     if (!running || isProcessingTimeout || !currentCommand) return;
 
-    const targetKey = currentCommand.cmd.key;
+    const targetKey = currentCommand.cmd.key;  // เช่น 'ArrowUp'
 
     const directionMap = {
         'ArrowUp':    'up',
         'ArrowDown':  'down',
         'ArrowLeft':  'left',
-        'ArrowRight': 'right',
-        'KeyS':       'stop'
+        'ArrowRight': 'right'
     };
 
     const requiredDirection = directionMap[targetKey];
@@ -439,6 +436,7 @@ function dispatchDirection(direction) {  // 'up', 'down', 'left', 'right', 'stop
     }
 }
 
+// จำลองการกดปุ่ม (ใช้เรียกจาก motion หรือ shortcut อื่น ๆ)
 function simulateKey(arrowKey) {
     if (!running || isProcessingTimeout || !currentCommand) return;
 
@@ -446,8 +444,7 @@ function simulateKey(arrowKey) {
         'ArrowUp':    'up',
         'ArrowDown':  'down',
         'ArrowLeft':  'left',
-        'ArrowRight': 'right',
-        'KeyS':       'stop'
+        'ArrowRight': 'right'
     };
 
     const direction = dirMap[arrowKey];
@@ -471,11 +468,6 @@ function handleDeviceMotion(e) {
     // เอียงหน้าลง = DOWN
     if (acc.z < TILT_FORWARD_THRESHOLD) {
         dir = 'down';
-    }
-
-    // เอียงหลัง (เข้าหาตัว) = STOP
-    if (acc.z > TILT_BACK_THRESHOLD) {
-        dir = 'stop';
     }
 
     // เขย่า = UP
@@ -539,7 +531,7 @@ async function requestMotionPermissionAndStart() {
 }
 
 // ────────────────────────────────────────────────
-// ส่วนเกมหลัก
+// ส่วนเกมหลัก (ปรับเล็กน้อยให้ใช้ dispatchDirection)
 // ────────────────────────────────────────────────
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -556,8 +548,7 @@ async function loadCommandSounds() {
         'กระโดดขึ้น.mp3',
         'ก้มตัว.mp3',
         'เบี่ยงซ้าย.mp3',
-        'เบี่ยงขวา.mp3',
-        'หยุด.mp3'               // เพิ่มใหม่
+        'เบี่ยงขวา.mp3'
     ];
     const coinSounds = [
         'เหรียญอยู่ขวา.mp3',
@@ -645,8 +636,7 @@ const obstacleCommands = [
     {name: 'up',    sound: 'กระโดดขึ้น',       key: 'ArrowUp',    symbol: '↑'},
     {name: 'down',  sound: 'ก้มตัว',           key: 'ArrowDown',  symbol: '↓'},
     {name: 'left',  sound: 'เบี่ยงซ้าย',       key: 'ArrowLeft',  symbol: '←'},
-    {name: 'right', sound: 'เบี่ยงขวา',        key: 'ArrowRight', symbol: '→'},
-    {name: 'stop',  sound: 'หยุด',             key: 'KeyS',       symbol: '⏹'}   // เพิ่มใหม่
+    {name: 'right', sound: 'เบี่ยงขวา',        key: 'ArrowRight', symbol: '→'}
 ];
 
 const coinCommands = [
@@ -661,7 +651,6 @@ const keyCodeMap = {
     'KeyF':     'ArrowDown',
     'KeyD':     'ArrowLeft',
     'KeyK':     'ArrowRight',
-    'KeyS':     'KeyS',           // เพิ่มใหม่ — หยุด
     
     'ArrowUp':    'ArrowUp',
     'ArrowDown':  'ArrowDown',
@@ -788,7 +777,7 @@ async function nextQuestion() {
     questionElem.className = '';
     questionElem.style.transform = 'scale(1)';
 
-    const isObstacle = Math.random() < 0.6;  // เพิ่มโอกาสเจอหยุดนิดหน่อย (ปรับได้)
+    const isObstacle = Math.random() < 0.5;
     const commands = isObstacle ? obstacleCommands : coinCommands;
     const cmd = commands[Math.floor(Math.random() * commands.length)];
     currentCommand = { type: isObstacle ? 'obstacle' : 'coin', cmd };
@@ -843,19 +832,12 @@ async function handleCorrect() {
     clearInterval(timerInterval);
 
     questionElem.classList.add('correct-flash');
-
     if (currentCommand.type === 'obstacle') {
-        if (currentCommand.cmd.name === 'stop') {
-            // หยุด → ไม่ได้คะแนน แค่ผ่าน
-            play('pass');
-        } else {
-            play('pass');
-        }
+        play('pass');
     } else {
         play('coin');
         score += 100;
     }
-
     showJudgment();
 
     setTimeout(() => {
@@ -956,7 +938,7 @@ window.addEventListener('beforeunload', () => {
     removeMotionListeners();
 });
 
-// ── การรับ input จากแป้นพิมพ์ (รวม shortcut J F D K S) ──
+// ── การรับ input จากแป้นพิมพ์ (รวม shortcut J F D K) ──
 document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout || !currentCommand) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -964,13 +946,12 @@ document.addEventListener('keydown', (e) => {
     const code = e.code;
     const effectiveKey = keyCodeMap[code];
 
-    if (effectiveKey && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyS'].includes(effectiveKey)) {
+    if (effectiveKey && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(effectiveKey)) {
         const dirMap = {
             'ArrowUp':    'up',
             'ArrowDown':  'down',
             'ArrowLeft':  'left',
-            'ArrowRight': 'right',
-            'KeyS':       'stop'
+            'ArrowRight': 'right'
         };
         dispatchDirection(dirMap[effectiveKey]);
         e.preventDefault();
