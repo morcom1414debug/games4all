@@ -371,7 +371,7 @@
 
     <div id="levelSelect">
         <h1>Speed Runner</h1>
-        <p class="subtitle">ฟังเสียงคำสั่งแล้วกด arrow key หรือ J F D K ให้ตรงทันที!<br>หลบอุปสรรคและเก็บเหรียญ<br>ยิ่งตอบเร็ว ยิ่งดี เวลาจะสั้นลงเรื่อย ๆ<br>กดผิดหรือช้า = เกมจบ (ทุกคำสั่ง)</p>
+        <p class="subtitle">ฟังเสียงคำสั่งแล้วกด arrow key ให้ตรงทันที! หลบอุปสรรคและเก็บเหรียญ<br>ยิ่งตอบเร็ว ยิ่งดี เวลาจะสั้นลงเรื่อย ๆ<br>กดผิดหรือช้า = เกมจบ (ทุกคำสั่ง)</p>
 
         <div class="level-buttons">
             <button class="level-btn" id="easy">วิ่งแบบมือสมัครเล่น</button>
@@ -639,6 +639,19 @@ const coinCommands = [
     {name: 'coin_down',  sound: 'ก้มเก็บเหรียญ',     key: 'ArrowDown',  symbol: '↓'}
 ];
 
+// เพิ่มตรงนี้ ── mapping สำหรับ shortcut + ลูกศร
+const keyCodeMap = {
+    'KeyJ':     'ArrowUp',
+    'KeyF':     'ArrowDown',
+    'KeyD':     'ArrowLeft',
+    'KeyK':     'ArrowRight',
+    
+    'ArrowUp':    'ArrowUp',
+    'ArrowDown':  'ArrowDown',
+    'ArrowLeft':  'ArrowLeft',
+    'ArrowRight': 'ArrowRight'
+};
+
 let currentCommand = null;
 let score = 0, timerInterval, timeLimit = 5000;
 let isProcessingTimeout = false;
@@ -867,7 +880,7 @@ function fail(reason) {
     }, 800);
 }
 
-function endGame(reason = '') {
+async function endGame(reason = '') {
     stopBackgroundBGM();
     removeMotionListeners();
     gameDiv.style.display = 'none';
@@ -919,38 +932,21 @@ window.addEventListener('beforeunload', () => {
     removeMotionListeners();
 });
 
-// ──── ส่วนที่แก้ไข ──── เพิ่ม shortcut J F D K (ใช้ e.code)
+// ── event keydown ที่ปรับแล้ว ──
 document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout || !currentCommand) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
 
-    const pressedCode = e.code;
+    const code = e.code;
+    const effectiveKey = keyCodeMap[code];
 
-    const validCodes = [
-        'ArrowUp', 'KeyJ',      // up
-        'ArrowDown', 'KeyF',    // down
-        'ArrowLeft', 'KeyD',    // left
-        'ArrowRight', 'KeyK'    // right
-    ];
-
-    if (!validCodes.includes(pressedCode)) return;
-
-    let direction;
-    switch (pressedCode) {
-        case 'ArrowUp':
-        case 'KeyJ':     direction = 'up';    break;
-        case 'ArrowDown':
-        case 'KeyF':     direction = 'down';  break;
-        case 'ArrowLeft':
-        case 'KeyD':     direction = 'left';  break;
-        case 'ArrowRight':
-        case 'KeyK':     direction = 'right'; break;
-    }
-
-    if (currentCommand.cmd.key === `Arrow${direction.charAt(0).toUpperCase() + direction.slice(1)}`) {
-        handleCorrect();
-    } else {
-        handleWrong();
+    if (effectiveKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(effectiveKey)) {
+        if (effectiveKey === currentCommand.cmd.key) {
+            handleCorrect();
+        } else {
+            handleWrong();
+        }
+        e.preventDefault();
     }
 });
 </script>
