@@ -371,7 +371,7 @@
 
     <div id="levelSelect">
         <h1>Speed Runner</h1>
-        <p class="subtitle">ฟังเสียงคำสั่งแล้วกด arrow key หรือตัวย่อให้ตรงทันที! หลบอุปสรรคและเก็บเหรียญ<br>ยิ่งตอบเร็ว ยิ่งดี เวลาจะสั้นลงเรื่อย ๆ<br>กดผิดหรือช้า = เกมจบ (ทุกคำสั่ง)</p>
+        <p class="subtitle">ฟังเสียงคำสั่งแล้วกด arrow key ให้ตรงทันที! หลบอุปสรรคและเก็บเหรียญ<br>ยิ่งตอบเร็ว ยิ่งดี เวลาจะสั้นลงเรื่อย ๆ<br>กดผิดหรือช้า = เกมจบ (ทุกคำสั่ง)</p>
 
         <div class="level-buttons">
             <button class="level-btn" id="easy">วิ่งแบบมือสมัครเล่น</button>
@@ -410,11 +410,10 @@
 
 <script>
 // ────────────────────────────────────────────────
-// Movement system – ปรับใหม่ตามคำขอ
+// Movement system – ปรับใหม่ตามคำขอ (แค่ up & down)
 // up    → เขย่า / สั่นโทรศัพท์
 // down  → เอียงหน้าลง
-// left/right → เอียงซ้ายขวา
-// stop  → เอียงหลัง (เข้าหาตัวผู้เล่น) → beta > threshold
+// left/right → ยังคงเอียงซ้ายขวาเหมือนเดิม
 // ────────────────────────────────────────────────
 
 let useMotion = false;
@@ -422,14 +421,13 @@ let motionListener = null;
 let lastMotionDir = null;
 
 // ปรับค่า threshold ให้เหมาะกับการใช้งานจริง
-const TILT_SIDE_THRESHOLD    = 7.0;      // เอียงซ้าย-ขวา (gamma หรือ x)
-const TILT_FORWARD_THRESHOLD = -8.0;     // เอียงหน้าลง (beta หรือ z) → down
-const TILT_BACKWARD_THRESHOLD = 8.0;     // เอียงหลัง (beta หรือ z) → stop
+const TILT_SIDE_THRESHOLD    = 7.0;     // เอียงซ้าย-ขวา (gamma หรือ x)
+const TILT_FORWARD_THRESHOLD = -8.0;    // เอียงหน้าลง (beta หรือ z) → down
 
 // สำหรับเขย่า (shake) → up
 let lastShakeTime = 0;
-const SHAKE_THRESHOLD = 18;          // ความแรง acceleration
-const SHAKE_DEBOUNCE  = 450;         // ms ระหว่าง shake
+const SHAKE_THRESHOLD = 18;          // ความแรง acceleration (ปรับได้)
+const SHAKE_DEBOUNCE  = 450;         // ms ระหว่าง shake แต่ละครั้ง
 
 function simulateKey(key) {
     if (!running || isProcessingTimeout || !currentCommand) return;
@@ -450,21 +448,16 @@ function handleDeviceMotion(e) {
 
     let dir = null;
 
-    // เอียงซ้าย / ขวา
+    // ── เอียงซ้าย / ขวา (เหมือนเดิม)
     if      (acc.x < -TILT_SIDE_THRESHOLD) dir = 'left';
     else if (acc.x >  TILT_SIDE_THRESHOLD) dir = 'right';
 
-    // เอียงหน้าลง = DOWN
+    // ── เอียงหน้าลง = DOWN (ก้ม / เก็บเหรียญ)
     if (acc.z < TILT_FORWARD_THRESHOLD) {
         dir = 'down';
     }
 
-    // เอียงหลัง (เข้าหาตัว) = STOP
-    if (acc.z > TILT_BACKWARD_THRESHOLD) {
-        dir = 'stop';
-    }
-
-    // เขย่าแรง ๆ = UP
+    // ── เขย่าแรง ๆ = UP (กระโดด)
     const accelMagnitude = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
     const now = performance.now();
     if (accelMagnitude > SHAKE_THRESHOLD && now - lastShakeTime > SHAKE_DEBOUNCE) {
@@ -479,8 +472,7 @@ function handleDeviceMotion(e) {
             up:    'ArrowUp',
             down:  'ArrowDown',
             left:  'ArrowLeft',
-            right: 'ArrowRight',
-            stop:  's'           // ใช้ key 's' เหมือน keyboard
+            right: 'ArrowRight'
         };
         simulateKey(keyMap[dir]);
     }
@@ -532,7 +524,7 @@ async function requestMotionPermissionAndStart() {
 }
 
 // ────────────────────────────────────────────────
-// ส่วนเกมหลัก (ปรับเฉพาะส่วนที่เกี่ยวข้อง)
+// ส่วนที่เหลือของเกม (ไม่มีการเปลี่ยนแปลงใด ๆ)
 // ────────────────────────────────────────────────
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -549,8 +541,7 @@ async function loadCommandSounds() {
         'กระโดดขึ้น.mp3',
         'ก้มตัว.mp3',
         'เบี่ยงซ้าย.mp3',
-        'เบี่ยงขวา.mp3',
-        'หยุด.mp3'               // เพิ่มใหม่
+        'เบี่ยงขวา.mp3'
     ];
     const coinSounds = [
         'เหรียญอยู่ขวา.mp3',
@@ -638,8 +629,7 @@ const obstacleCommands = [
     {name: 'up',    sound: 'กระโดดขึ้น',       key: 'ArrowUp',    symbol: '↑'},
     {name: 'down',  sound: 'ก้มตัว',           key: 'ArrowDown',  symbol: '↓'},
     {name: 'left',  sound: 'เบี่ยงซ้าย',       key: 'ArrowLeft',  symbol: '←'},
-    {name: 'right', sound: 'เบี่ยงขวา',        key: 'ArrowRight', symbol: '→'},
-    {name: 'stop',  sound: 'หยุด',             key: 's',          symbol: '■'}   // หรือใช้สัญลักษณ์อื่นก็ได้
+    {name: 'right', sound: 'เบี่ยงขวา',        key: 'ArrowRight', symbol: '→'}
 ];
 
 const coinCommands = [
@@ -768,20 +758,10 @@ async function nextQuestion() {
     questionElem.className = '';
     questionElem.style.transform = 'scale(1)';
 
-    // เพิ่มโอกาสให้โผล่ "หยุด" ประมาณ 12–15%
-    const roll = Math.random();
-    let cmd;
-
-    if (roll < 0.13) {
-        // หยุด (พิเศษ - ผิด = ตายทันที, ถูก = ไม่ได้คะแนน)
-        cmd = {name: 'stop', sound: 'หยุด', key: 's', symbol: '■'};
-        currentCommand = { type: 'trap', cmd };
-    } else {
-        const isObstacle = Math.random() < 0.5;
-        const commands = isObstacle ? obstacleCommands : coinCommands;
-        cmd = commands[Math.floor(Math.random() * commands.length)];
-        currentCommand = { type: isObstacle ? 'obstacle' : 'coin', cmd };
-    }
+    const isObstacle = Math.random() < 0.5;
+    const commands = isObstacle ? obstacleCommands : coinCommands;
+    const cmd = commands[Math.floor(Math.random() * commands.length)];
+    currentCommand = { type: isObstacle ? 'obstacle' : 'coin', cmd };
 
     questionElem.textContent = cmd.symbol;
     play(currentCommand.cmd.sound);
@@ -801,10 +781,8 @@ async function nextQuestion() {
             clearInterval(timerInterval);
             if (currentCommand.type === 'obstacle') {
                 fail("ช้าไป!");
-            } else if (currentCommand.type === 'coin') {
+            } else {
                 fail("พลาดเหรียญ!");
-            } else if (currentCommand.type === 'trap') {
-                fail("ช้าเกินไป!");
             }
             return;
         }
@@ -835,18 +813,12 @@ async function handleCorrect() {
     clearInterval(timerInterval);
 
     questionElem.classList.add('correct-flash');
-
     if (currentCommand.type === 'obstacle') {
         play('pass');
-    } else if (currentCommand.type === 'coin') {
+    } else {
         play('coin');
         score += 100;
-    } else if (currentCommand.type === 'trap') {
-        // หยุด → ถูกต้อง = ไม่ได้คะแนน + ไม่ตาย แค่ผ่านไป
-        play('pass');
-        // สามารถเล่นเสียงพิเศษอื่นได้ถ้ามี เช่น play('stop_success');
     }
-
     showJudgment();
 
     setTimeout(() => {
@@ -862,13 +834,8 @@ async function handleWrong() {
     isProcessingTimeout = true;
     clearInterval(timerInterval);
 
-    if (currentCommand.type === 'trap') {
-        // หยุด → ผิด = ตายทันที (เช่นกดลูกศรแทนที่จะกด s)
-        play('die0'); // หรือเสียงอื่น
-    } else {
-        const dieIndex = Math.floor(Math.random() * 3);
-        play(`die${dieIndex}`);
-    }
+    const dieIndex = Math.floor(Math.random() * 3);
+    play(`die${dieIndex}`);
 
     document.body.classList.add('shake');
     const flash = document.getElementById('flashOverlay');
@@ -956,28 +923,13 @@ document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout || !currentCommand) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
 
-    const key = e.key.toLowerCase(); // รองรับทั้งตัวพิมพ์เล็ก-ใหญ่
-
-    // Shortcut keys ใหม่
-    const keyMap = {
-        'j': 'ArrowUp',
-        'f': 'ArrowDown',
-        'd': 'ArrowLeft',
-        'k': 'ArrowRight',
-        's': 's'
-    };
-
-    let pressedKey = key;
-    if (key in keyMap) {
-        pressedKey = keyMap[key];
-    }
-
-    // ตรวจสอบว่ากดตรงหรือไม่
-    if (pressedKey === currentCommand.cmd.key ||
-        (currentCommand.cmd.key.startsWith('Arrow') && pressedKey === currentCommand.cmd.key)) {
-        handleCorrect();
-    } else {
-        handleWrong();
+    const key = e.key;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+        if (key === currentCommand.cmd.key) {
+            handleCorrect();
+        } else {
+            handleWrong();
+        }
     }
 });
 </script>
