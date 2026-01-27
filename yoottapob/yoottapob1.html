@@ -429,7 +429,7 @@
                         text: "คุณเจอเพื่อนร่วมสำนักถูกขัง แต่เขามีอาการคลุ้มคลั่ง",
                         options: [
                             { text: "รีบไขกุญแจช่วยเขา", correct: false, reason: "เขากัดคอคุณขาดในทันทีที่ประตูเปิด" },
-                            { text: "สลบจุดสลบก่อนเข้าช่วยเหลือ", correct: true },
+                            { text: "สざまจุดสลบก่อนเข้าช่วยเหลือ", correct: true },
                             { text: "ปล่อยเขาไว้แบบนั้นเพื่อความปลอดภัย", correct: false, reason: "วิญญาณเขาตามอาฆาตและหลอนคุณจนตาย" }
                         ]
                     },
@@ -564,11 +564,7 @@
         let bgmBuffer = null;
         let isCorrectPlaying = false;
 
-        // สูตรลับ skip
-        let typed = '';
-        let skipTimeout = null;
-        let isSkipping = false;
-
+        // Load audio buffers
         async function loadAudio(url) {
             const response = await fetch(url);
             const arrayBuffer = await response.arrayBuffer();
@@ -582,34 +578,37 @@
             winBuffer = await loadAudio('audio/win.mp3');
         }
 
+        // Play sound
         function playSound(buffer, loop = false, onEnded = null) {
             const source = audioContext.createBufferSource();
             source.buffer = buffer;
             source.connect(audioContext.destination);
             source.loop = loop;
-            if (onEnded) source.onended = onEnded;
             source.start(0);
+            if (onEnded) {
+                source.onended = onEnded;
+            }
             return source;
         }
 
+        // Stop sound
         function stopSound(source) {
-            if (source) source.stop();
+            if (source) {
+                source.stop(0);
+                source = null;
+            }
         }
 
-        function stopAllSounds() {
-            [bgmSource, correctSource, lostSource, winSource].forEach(s => stopSound(s));
-            isCorrectPlaying = false;
-        }
-
-        function playCorrectSound(isLast = false) {
-            if (isCorrectPlaying) stopSound(correctSource);
+        // Handle correct sound with restart if quick
+        function playCorrectSound(isLastMission = false) {
+            if (isCorrectPlaying) {
+                stopSound(correctSource);
+            }
             isCorrectPlaying = true;
-
             correctSource = playSound(correctBuffer, false, () => {
                 isCorrectPlaying = false;
-                if (isLast) {
-                    winSource = playSound(winBuffer);
-                    showWin();
+                if (isLastMission) {
+                    playWinSound();
                 }
             });
         }
@@ -619,9 +618,24 @@
             lostSource = playSound(lostBuffer);
         }
 
+        function playWinSound() {
+            winSource = playSound(winBuffer);
+        }
+
         function playBgm() {
             bgmSource = playSound(bgmBuffer, true);
         }
+
+        function stopAllSounds() {
+            stopSound(bgmSource);
+            stopSound(correctSource);
+            stopSound(lostSource);
+            stopSound(winSource);
+            isCorrectPlaying = false;
+        }
+
+        // Preload audio on load
+        preloadAudio();
 
         function startGame() {
             document.getElementById('start-screen').classList.add('screen-hidden');
@@ -634,32 +648,35 @@
         function renderMission() {
             const level = gameData[currentLevel];
             const mission = level.missions[currentMission];
-
+            
             document.getElementById('level-display').innerText = `ด่านที่: ${currentLevel + 1}/10 (${level.levelName})`;
             document.getElementById('mission-display').innerText = `ภารกิจที่: ${currentMission + 1}/5`;
             document.getElementById('scenario-text').innerText = mission.text;
-
-            const container = document.getElementById('options-container');
-            container.innerHTML = '';
-
-            mission.options.forEach(opt => {
+            
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+            
+            mission.options.forEach((opt) => {
                 const btn = document.createElement('button');
                 btn.className = "bg-gray-700 hover:bg-red-900 text-left p-4 rounded border border-gray-500 transition-colors w-full";
-                btn.textContent = opt.text;
+                btn.innerText = opt.text;
                 btn.onclick = () => {
                     if (opt.correct) {
-                        const isLast = currentLevel === 9 && currentMission === 4;
+                        const isLast = (currentLevel === 9 && currentMission === 4);
                         playCorrectSound(isLast);
-                        if (!isLast) nextStep();
+                        nextStep();
                     } else {
                         playLostSound();
                         showDeath(opt.reason);
                     }
                 };
-                container.appendChild(btn);
+                optionsContainer.appendChild(btn);
             });
 
-            setTimeout(() => document.getElementById('level-display').focus(), 100);
+            // Focus on first heading after render
+            setTimeout(() => {
+                document.getElementById('level-display').focus();
+            }, 100); // Small buffer for render
         }
 
         function nextStep() {
@@ -668,46 +685,50 @@
                 currentMission = 0;
                 currentLevel++;
             }
-            if (currentLevel < 10) {
-                setTimeout(renderMission, 1000);
-            }
-        }
 
-        function jumpToFinal() {
-            if (isSkipping) return;
-            isSkipping = true;
-            currentLevel = 9;
-            currentMission = 4;
-            renderMission();
-            typed = '';
-            setTimeout(() => { isSkipping = false; }, 500);
+            if (currentLevel >= 10) {
+                // Wait for correct sound to finish before showing win
+                if (isCorrectPlaying) {
+                    correctSource.onended = () => {
+                        showWin();
+                    };
+                } else {
+                    showWin();
+                }
+            } else {
+                // Delay for 1 second before next mission
+                setTimeout(() => {
+                    renderMission();
+                }, 1000);
+            }
         }
 
         function showDeath(reason) {
             document.getElementById('gameplay-screen').classList.add('screen-hidden');
-            document.getElementById('death-reason').textContent = reason;
+            document.getElementById('death-reason').innerText = reason;
             document.getElementById('death-screen').classList.remove('screen-hidden');
             document.getElementById('death-screen').style.display = 'flex';
             document.getElementById('back-menu-btn').classList.remove('screen-hidden');
-            setTimeout(() => document.getElementById('death-heading').focus(), 100);
+            setTimeout(() => {
+                document.getElementById('death-heading').focus();
+            }, 100);
         }
 
         function showWin() {
+            stopSound(bgmSource);
             document.getElementById('gameplay-screen').classList.add('screen-hidden');
             document.getElementById('win-screen').classList.remove('screen-hidden');
             document.getElementById('win-screen').style.display = 'flex';
             document.getElementById('back-menu-btn').classList.remove('screen-hidden');
-            setTimeout(() => document.getElementById('win-heading').focus(), 100);
+            setTimeout(() => {
+                document.getElementById('win-heading').focus();
+            }, 100);
         }
 
         function restartGame() {
             stopAllSounds();
             currentLevel = 0;
             currentMission = 0;
-            typed = '';
-            if (skipTimeout) clearTimeout(skipTimeout);
-            isSkipping = false;
-
             document.getElementById('death-screen').style.display = 'none';
             document.getElementById('win-screen').style.display = 'none';
             document.getElementById('death-screen').classList.add('screen-hidden');
@@ -715,27 +736,12 @@
             document.getElementById('start-screen').classList.remove('screen-hidden');
             document.getElementById('gameplay-screen').classList.add('screen-hidden');
             document.getElementById('back-menu-btn').classList.remove('screen-hidden');
-            setTimeout(() => document.getElementById('start-heading').focus(), 100);
+            setTimeout(() => {
+                document.getElementById('start-heading').focus();
+            }, 100);
         }
 
-        // สูตรลับ skip
-        window.addEventListener('keydown', e => {
-            if (document.getElementById('gameplay-screen').classList.contains('screen-hidden')) return;
-
-            typed += e.key.toLowerCase();
-            if (typed.includes('skip')) {
-                if (skipTimeout) clearTimeout(skipTimeout);
-                skipTimeout = setTimeout(() => {
-                    if (typed.includes('skip')) {
-                        jumpToFinal();
-                    }
-                }, 2000);
-            }
-            if (typed.length > 20) typed = typed.slice(-20);
-        });
-
-        preloadAudio();
-
+        // Initial focus on start screen
         window.addEventListener('load', () => {
             document.getElementById('back-menu-btn').classList.remove('screen-hidden');
             document.getElementById('start-heading').focus();
