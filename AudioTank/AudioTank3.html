@@ -103,6 +103,7 @@
             color: #ffd700;
         }
 
+        /* ปุ่มกลับเมนูหลัก อยู่มุมบนซ้าย */
         .back-btn {
             position: absolute;
             top: 10px;
@@ -114,6 +115,7 @@
             z-index: 10;
         }
 
+        /* ทำให้ heading ได้รับ focus ได้ชัดเจน */
         h1:focus, h2:focus {
             outline: 3px solid #ffd700;
             outline-offset: 4px;
@@ -123,6 +125,7 @@
 <body>
     <div id="game-container">
 
+        <!-- ปุ่มกลับเมนูหลัก อยู่มุมบนซ้ายตลอด -->
         <button id="back-menu-main" class="back-btn">กลับเมนูหลัก</button>
 
         <div id="menu">
@@ -132,14 +135,15 @@
         </div>
 
         <div id="placement" style="display: none;">
-            <h2 tabindex="-1">เลือกตำแหน่งรถถังของคุณ (5 คัน)</h2>
+            <h2 tabindex="-1">เลือกตำแหน่งรถถังของคุณ (3 คัน)</h2>
             <div id="placement-grid" class="grid"></div>
+            <!-- ลบปุ่มเริ่มเกมออกไปตามที่ขอ -->
         </div>
 
         <div id="game" style="display: none;">
             <div id="lives">
-                <span id="player-lives">ผู้เล่น: 5</span>
-                <span id="enemy-lives">ศัตรู: 5</span>
+                <span id="player-lives">ผู้เล่น: 3</span>
+                <span id="enemy-lives">ศัตรู: 3</span>
             </div>
             <div id="player-grid" class="grid" style="display: none;"></div>
             <div id="enemy-grid" class="grid" style="display: none;"></div>
@@ -147,7 +151,7 @@
         </div>
 
         <div id="summary" style="display: none;">
-            <h2 tabindex="-1" id="summary-heading">สรุปผล</h2>
+            <h2 tabindex="-1">สรุปผล</h2>
             <p id="result-message"></p>
             <button id="new-game">เริ่มเกมใหม่</button>
         </div>
@@ -162,7 +166,7 @@
         let playerPositions = [];
         let enemyPositions = [];
         let currentTurn = '';
-        let lives = { player: 5, enemy: 5 };
+        let lives = { player: 3, enemy: 3 };
         const placementGrid = document.getElementById('placement-grid');
         const playerGrid = document.getElementById('player-grid');
         const enemyGrid = document.getElementById('enemy-grid');
@@ -282,6 +286,7 @@
             document.getElementById('game').style.display = 'none';
             document.getElementById('summary').style.display = 'block';
 
+            // เล่นเสียงชนะ/แพ้ทันที และแสดงหน้าสรุปพร้อมกัน
             const resultFile = playerWon ? 'win.mp3' : 'lost.mp3';
             const resultSource = playSound(resultFile);
             if (playerWon) {
@@ -289,9 +294,6 @@
             } else {
                 loseSound = resultSource;
             }
-
-            // โฟกัส heading สรุปผลทันทีที่แสดงหน้า
-            document.getElementById('summary-heading').focus();
 
             const winMessages = [
                 'ยินดีด้วย! คุณทำลายศัตรูได้หมดสิ้น',
@@ -316,16 +318,17 @@
                 const btn = document.createElement('button');
                 btn.textContent = i;
                 btn.onclick = () => {
-                    if (playerPositions.length < 5 && !btn.classList.contains('dim')) {
+                    if (playerPositions.length < 3 && !btn.classList.contains('dim')) {
                         playerPositions.push(i);
                         btn.textContent = `รถถังที่ ${i}`;
                         btn.classList.add('dim');
                         playSound('select.mp3');
 
-                        if (playerPositions.length === 5) {
+                        // เมื่อครบ 3 ตำแหน่ง → เริ่มเกมทันที
+                        if (playerPositions.length === 3) {
                             setTimeout(() => {
-                                hiddenStartBtn.click();
-                            }, 600);
+                                document.getElementById('start-game').click(); // เรียก logic เดิม
+                            }, 600); // เล็กน้อยเพื่อให้เห็นการเลือกตำแหน่งสุดท้าย
                         }
                     }
                 };
@@ -369,6 +372,7 @@
         }
 
         function setupEvents() {
+            // เริ่มเลือกตำแหน่ง
             document.getElementById('start-placement').onclick = () => {
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('placement').style.display = 'block';
@@ -377,21 +381,22 @@
                 focusFirstHeading('placement');
             };
 
+            // Logic เริ่มเกม (ใช้ซ้ำได้ทั้งจากปุ่มและ auto เมื่อครบ 3)
             const startGameLogic = () => {
                 document.getElementById('placement').style.display = 'none';
                 document.getElementById('game').style.display = 'block';
                 
                 enemyPositions = [];
-                while (enemyPositions.length < 5) {
+                while (enemyPositions.length < 3) {
                     const pos = Math.floor(Math.random() * 16) + 1;
                     if (!enemyPositions.includes(pos)) enemyPositions.push(pos);
                 }
                 
                 currentTurn = Math.random() < 0.5 ? 'player' : 'enemy';
                 
-                lives = { player: 5, enemy: 5 };
-                document.getElementById('player-lives').textContent = 'ผู้เล่น: 5';
-                document.getElementById('enemy-lives').textContent = 'ศัตรู: 5';
+                lives = { player: 3, enemy: 3 };
+                document.getElementById('player-lives').textContent = 'ผู้เล่น: 3';
+                document.getElementById('enemy-lives').textContent = 'ศัตรู: 3';
                 
                 createPlayerGrid();
                 createEnemyGrid();
@@ -400,13 +405,16 @@
                 focusFirstHeading('game');
             };
 
+            // สร้าง element ปลอมเพื่อเรียกใช้ logic เดิมได้ (แต่ไม่ต้องแสดงปุ่ม)
             const hiddenStartBtn = document.createElement('button');
             hiddenStartBtn.id = 'start-game';
             hiddenStartBtn.style.display = 'none';
             hiddenStartBtn.onclick = startGameLogic;
             document.body.appendChild(hiddenStartBtn);
 
+            // เริ่มเกมใหม่
             document.getElementById('new-game').onclick = () => {
+                // หยุดเสียง win/lose ทันที
                 if (winSound) winSound.stop();
                 if (loseSound) loseSound.stop();
                 winSound = null;
@@ -419,6 +427,7 @@
                 focusFirstHeading('placement');
             };
 
+            // ปุ่มกลับเมนูหลัก (มีหลายที่ แต่ใช้ตัวเดียวด้านบนซ้าย)
             document.getElementById('back-menu-main').onclick = () => {
                 if (bgm) bgm.stop();
                 if (winSound) winSound.stop();
@@ -429,6 +438,7 @@
 
         loadSounds().then(setupEvents);
 
+        // โฟกัสหน้าแรกเมื่อโหลด
         window.addEventListener('load', () => {
             focusFirstHeading('menu');
         });
