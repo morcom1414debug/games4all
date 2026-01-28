@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Tank</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #2e3d2e; /* โทนสีเขียวทหารสำหรับธีมสงคราม */
+            color: #fff;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        #game-container {
+            max-width: 600px;
+            margin: auto;
+            position: relative;
+            background-color: #4b5320; /* พื้นหลังเข้มสำหรับ container */
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        h1, h2 {
+            color: #ffd700; /* สีทองสำหรับหัวข้อเพื่อความโดดเด่น */
+        }
+
+        p {
+            font-size: 18px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            max-width: 400px;
+            margin: 20px auto;
+            border: 2px solid #ffd700; /* ตารางคลุมปุ่มด้วยเส้นสีทองตัดกันสวยงาม */
+            padding: 10px;
+            background-color: #556b2f; /* พื้นหลัง grid โทนเขียวเข้ม */
+            border-radius: 10px;
+        }
+
+        button {
+            padding: 20px;
+            font-size: 18px;
+            background-color: #6b8e23; /* สีเขียวมะกอกสำหรับปุ่ม */
+            color: #fff;
+            border: 1px solid #ffd700;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background-color: #9acd32;
+            transform: scale(1.05); /* Effect เล็กน้อยเมื่อ hover */
+        }
+
+        .dim {
+            opacity: 0.5;
+            pointer-events: none;
+            cursor: not-allowed;
+        }
+
+        .hit {
+            background-color: #ff4500; /* สีแดงสำหรับ hit */
+            animation: explode 0.5s ease-in-out;
+        }
+
+        .miss {
+            background-color: #808080; /* สีเทาสำหรับ miss */
+            animation: shake 0.3s;
+        }
+
+        @keyframes explode {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); background-color: #ff0000; }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
+
+        #lives {
+            font-size: 20px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-around;
+        }
+
+        #announcement {
+            font-size: 18px;
+            margin: 20px 0;
+            color: #ffd700;
+        }
+
+        #back-menu, #back-menu-summary {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: #8b0000; /* สีแดงเข้มสำหรับปุ่มกลับ */
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="menu">
+            <h1>Audio Tank</h1>
+            <p>เกมต่อสู้ด้วยรถถัง ทำลายฝ่ายศัตรูให้สิ้นซาก</p>
+            <button id="start-placement">เลือกตำแหน่งรถถังของคุณได้เลย</button>
+            <button id="back-menu">กลับเมนูหลัก</button>
+        </div>
+
+        <div id="placement" style="display: none;">
+            <h2>เลือกตำแหน่งรถถังของคุณ (3 คัน)</h2>
+            <div id="placement-grid" class="grid"></div>
+            <button id="start-game" style="display: none;">เริ่มเกม</button>
+        </div>
+
+        <div id="game" style="display: none;">
+            <div id="lives">
+                <span id="player-lives">ผู้เล่น: 3</span>
+                <span id="enemy-lives">ศัตรู: 3</span>
+            </div>
+            <div id="player-grid" class="grid" style="display: none;"></div>
+            <div id="enemy-grid" class="grid" style="display: none;"></div>
+            <div id="announcement" aria-live="polite"></div>
+        </div>
+
+        <div id="summary" style="display: none;">
+            <h2>สรุปผล</h2>
+            <p id="result-message"></p>
+            <button id="new-game">เริ่มเกมใหม่</button>
+            <button id="back-menu-summary">กลับเมนูหลัก</button>
+        </div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let sounds = {};
+        let bgm = null;
+        let playerPositions = [];
+        let enemyPositions = [];
+        let currentTurn = '';
+        let lives = { player: 3, enemy: 3 };
+        const placementGrid = document.getElementById('placement-grid');
+        const playerGrid = document.getElementById('player-grid');
+        const enemyGrid = document.getElementById('enemy-grid');
+        const announcement = document.getElementById('announcement');
+
+        async function loadSounds() {
+            const soundFiles = [
+                'back.mp3', 'select.mp3', 'shoot1.mp3', 'shoot2.mp3',
+                't1.mp3', 't2.mp3', 't3.mp3', 't4.mp3',
+                'f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3',
+                'win.mp3', 'lost.mp3'
+            ];
+            for (let file of soundFiles) {
+                const response = await fetch('audio/' + file);
+                const arrayBuf = await response.arrayBuffer();
+                sounds[file] = await audioCtx.decodeAudioData(arrayBuf);
+            }
+        }
+
+        function createSource(buffer, loop = false) {
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.loop = loop;
+            source.connect(audioCtx.destination);
+            return source;
+        }
+
+        function playSound(file, loop = false) {
+            const source = createSource(sounds[file], loop);
+            source.start();
+            return source;
+        }
+
+        function playRandom(group) {
+            let files;
+            if (group === 'shoot') files = ['shoot1.mp3', 'shoot2.mp3'];
+            else if (group === 'hit') files = ['t1.mp3', 't2.mp3', 't3.mp3', 't4.mp3'];
+            else if (group === 'miss') files = ['f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3'];
+            const file = files[Math.floor(Math.random() * files.length)];
+            return playSound(file);
+        }
+
+        async function attack(pos, attacker) {
+            const isPlayer = attacker === 'player';
+            const targetPositions = isPlayer ? enemyPositions : playerPositions;
+            const targetGrid = isPlayer ? enemyGrid : playerGrid;
+            const btn = targetGrid.querySelector(`button[data-pos="${pos}"]`);
+            const isHit = targetPositions.includes(pos);
+
+            // เล่นเสียง shoot ก่อน
+            const shootSource = playRandom('shoot');
+            await new Promise(resolve => shootSource.onended = resolve);
+
+            // อัปเดต label และ class หลังเสียง shoot จบ
+            if (isHit) {
+                btn.textContent = 'รถถังระเบิดเละ';
+                btn.classList.add('hit');
+            } else {
+                btn.textContent = 'Miss';
+                btn.classList.add('miss');
+            }
+            btn.classList.add('dim');
+            btn.disabled = true;
+
+            // เล่นเสียงผลลัพธ์
+            const resultSource = playRandom(isHit ? 'hit' : 'miss');
+            await new Promise(resolve => resultSource.onended = resolve);
+
+            // อัปเดตชีวิต
+            if (isHit) {
+                const livesKey = isPlayer ? 'enemy' : 'player';
+                lives[livesKey]--;
+                document.getElementById(`${livesKey}-lives`).textContent = `${livesKey === 'player' ? 'ผู้เล่น' : 'ศัตรู'}: ${lives[livesKey]}`;
+                if (lives[livesKey] === 0) {
+                    endGame(isPlayer);
+                    return;
+                }
+            }
+
+            // สลับ turn
+            currentTurn = isPlayer ? 'enemy' : 'player';
+            nextTurn();
+        }
+
+        function nextTurn() {
+            if (currentTurn === 'player') {
+                playerGrid.style.display = 'none';
+                enemyGrid.style.display = 'block';
+                announcement.textContent = 'โปรดเลือกตำแหน่งที่จะยิง';
+            } else {
+                enemyGrid.style.display = 'none';
+                playerGrid.style.display = 'block';
+                announcement.textContent = '';
+                setTimeout(botAttack, 1000); // Delay เล็กน้อยสำหรับ bot
+            }
+        }
+
+        async function botAttack() {
+            const availableButtons = playerGrid.querySelectorAll('button:not(.dim)');
+            if (availableButtons.length === 0) return;
+            const btn = availableButtons[Math.floor(Math.random() * availableButtons.length)];
+            const pos = parseInt(btn.dataset.pos);
+            announcement.textContent = `ศัตรูยิงที่ตำแหน่ง ${pos}`;
+            await new Promise(resolve => setTimeout(resolve, 1000)); // รอให้ประกาศ aria-live
+            await attack(pos, 'enemy');
+        }
+
+        function endGame(playerWon) {
+            if (bgm) bgm.stop();
+            const resultSound = playSound(playerWon ? 'win.mp3' : 'lost.mp3');
+            resultSound.onended = () => {
+                document.getElementById('game').style.display = 'none';
+                document.getElementById('summary').style.display = 'block';
+                const winMessages = ['ยินดีด้วย! คุณทำลายศัตรูได้หมดสิ้น', 'สุดยอดนักรบ! ชัยชนะเป็นของคุณ', 'คุณคือผู้พิชิต! ยินดีด้วยนะ', 'รถถังของคุณแข็งแกร่งมาก! ชนะเลิศ'];
+                const loseMessages = ['แพ้แล้ว แต่ลองใหม่นะ! คุณทำได้ดีแล้ว', 'ศัตรูแข็งแกร่ง ลองปรับกลยุทธ์ดูสิ', 'ไม่เป็นไร ครั้งหน้าชนะแน่นอน! สู้ๆ', 'ใกล้ชนะแล้ว ลองอีกครั้งเถอะ'];
+                const messages = playerWon ? winMessages : loseMessages;
+                document.getElementById('result-message').textContent = messages[Math.floor(Math.random() * messages.length)];
+            };
+        }
+
+        function createPlacementGrid() {
+            placementGrid.innerHTML = '';
+            playerPositions = [];
+            for (let i = 1; i <= 16; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.onclick = () => {
+                    if (playerPositions.length < 3 && !btn.classList.contains('dim')) {
+                        playerPositions.push(i);
+                        btn.textContent = `รถถังที่ตำแหน่ง ${i}`;
+                        btn.classList.add('dim');
+                        playSound('select.mp3');
+                        if (playerPositions.length === 3) {
+                            document.getElementById('start-game').style.display = 'block';
+                        }
+                    }
+                };
+                placementGrid.appendChild(btn);
+            }
+        }
+
+        function createPlayerGrid() {
+            playerGrid.innerHTML = '';
+            for (let i = 1; i <= 16; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                btn.dataset.pos = i;
+                btn.disabled = true; // ไม่ให้คลิก เพราะ bot ยิง auto
+                playerGrid.appendChild(btn);
+            }
+        }
+
+        function createEnemyGrid() {
+            enemyGrid.innerHTML = '';
+            for (let i = 1; i <= 16; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = `e${i}`;
+                btn.dataset.pos = i;
+                btn.onclick = async () => {
+                    if (currentTurn === 'player' && !btn.classList.contains('dim')) {
+                        await attack(i, 'player');
+                    }
+                };
+                enemyGrid.appendChild(btn);
+            }
+        }
+
+        function setupEvents() {
+            document.getElementById('start-placement').onclick = () => {
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('placement').style.display = 'block';
+                bgm = playSound('back.mp3', true);
+                createPlacementGrid();
+            };
+
+            document.getElementById('start-game').onclick = () => {
+                document.getElementById('placement').style.display = 'none';
+                document.getElementById('game').style.display = 'block';
+                enemyPositions = [];
+                while (enemyPositions.length < 3) {
+                    const pos = Math.floor(Math.random() * 16) + 1;
+                    if (!enemyPositions.includes(pos)) enemyPositions.push(pos);
+                }
+                currentTurn = Math.random() < 0.5 ? 'player' : 'enemy';
+                lives = { player: 3, enemy: 3 };
+                document.getElementById('player-lives').textContent = 'ผู้เล่น: 3';
+                document.getElementById('enemy-lives').textContent = 'ศัตรู: 3';
+                createPlayerGrid();
+                createEnemyGrid();
+                nextTurn();
+            };
+
+            document.getElementById('new-game').onclick = () => {
+                document.getElementById('summary').style.display = 'none';
+                document.getElementById('placement').style.display = 'block';
+                bgm = playSound('back.mp3', true);
+                createPlacementGrid();
+                document.getElementById('start-game').style.display = 'none';
+            };
+
+            document.getElementById('back-menu').onclick = () => {
+                window.location.href = '../index.html';
+            };
+
+            document.getElementById('back-menu-summary').onclick = () => {
+                window.location.href = '../index.html';
+            };
+        }
+
+        loadSounds().then(setupEvents);
+    </script>
+</body>
+</html>
