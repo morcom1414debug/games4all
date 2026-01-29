@@ -53,12 +53,6 @@
             cursor: pointer;
             transition: background-color 0.3s, transform 0.2s;
             border-radius: 5px;
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
         }
 
         button:hover {
@@ -67,66 +61,33 @@
         }
 
         .dim {
-            opacity: 0.6;
+            opacity: 0.5;
             pointer-events: none;
             cursor: not-allowed;
         }
 
         .hit {
             background-color: #ff4500;
-            animation: explode 0.6s ease-in-out forwards;
+            animation: explode 0.5s ease-in-out;
         }
 
         .miss {
-            background-color: #4a4a4a;
-            animation: shake 0.4s;
+            background-color: #808080;
+            animation: shake 0.3s;
         }
 
         @keyframes explode {
-            0%   { transform: scale(1);   background-color: #ff4500; }
-            40%  { transform: scale(1.35); background-color: #ff0000; }
-            70%  { transform: scale(0.95); background-color: #cc0000; }
-            100% { transform: scale(1);    background-color: #8b0000; }
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); background-color: #ff0000; }
+            100% { transform: scale(1); }
         }
 
         @keyframes shake {
-            0%   { transform: translateX(0); }
-            20%  { transform: translateX(-6px); }
-            40%  { transform: translateX(6px); }
-            60%  { transform: translateX(-4px); }
-            80%  { transform: translateX(4px); }
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
             100% { transform: translateX(0); }
-        }
-
-        /* Screen shake เมื่อผู้เล่นโดนยิง */
-        @keyframes screen-shake {
-            0%   { transform: translate(0, 0); }
-            10%  { transform: translate(-8px, -5px); }
-            20%  { transform: translate(8px, 5px); }
-            30%  { transform: translate(-6px, -3px); }
-            40%  { transform: translate(6px, 3px); }
-            50%  { transform: translate(-4px, -2px); }
-            60%  { transform: translate(4px, 2px); }
-            70%  { transform: translate(-2px, -1px); }
-            80%  { transform: translate(2px, 1px); }
-            90%  { transform: translate(-1px, 0); }
-            100% { transform: translate(0, 0); }
-        }
-
-        .shake-screen {
-            animation: screen-shake 0.5s ease-in-out;
-        }
-
-        .icon {
-            font-size: 2.4em;
-            line-height: 1;
-            margin-bottom: 4px;
-        }
-
-        .label {
-            font-size: 0.78em;
-            opacity: 0.85;
-            line-height: 1.1;
         }
 
         #lives {
@@ -163,17 +124,6 @@
         #result-message {
             font-size: 22px;
             line-height: 1.5;
-        }
-
-        /* === สีแยก Grid === */
-        #player-grid {
-            border-color: #4a704a;
-            background-color: #3a5f3a;
-        }
-
-        #enemy-grid {
-            border-color: #8b1e1e;
-            background-color: #5c1414;
         }
 
         h1:focus, h2:focus {
@@ -231,10 +181,9 @@
         let cheatTimer = null;
 
         const placementGrid = document.getElementById('placement-grid');
-        const playerGrid   = document.getElementById('player-grid');
-        const enemyGrid    = document.getElementById('enemy-grid');
+        const playerGrid = document.getElementById('player-grid');
+        const enemyGrid = document.getElementById('enemy-grid');
         const announcement = document.getElementById('announcement');
-        const gameContainer = document.getElementById('game-container');
 
         let lastPlayerShotPos = null;
 
@@ -288,11 +237,6 @@
             return playSound(file);
         }
 
-        function getHitEmoji() {
-            const emojis = ['💥','🔥','💣'];
-            return emojis[Math.floor(Math.random()*emojis.length)];
-        }
-
         async function attack(pos, attacker) {
             const isPlayer = attacker === 'player';
             const targetPositions = isPlayer ? enemyPositions : playerPositions;
@@ -306,32 +250,14 @@
             const shootSource = playSound(shootFile);
             if (shootSource) await new Promise(r => shootSource.onended = r);
 
-            // Visual + animation
             if (isHit) {
+                btn.textContent = isPlayer ? 'รถถังระเบิดเละ' : 'โดนยิง!';
                 btn.classList.add('hit');
-                btn.innerHTML = `<span class="icon" aria-hidden="true">${getHitEmoji()}</span><span class="label">โดนยิง!</span>`;
-
-                // รอ animation ระเบิดเสร็จ แล้วเปลี่ยนเป็นซาก
-                setTimeout(() => {
-                    btn.innerHTML = `<span class="icon" aria-hidden="true">🏚️</span><span class="label">ซากรถถัง</span>`;
-                    btn.classList.remove('hit');
-                    btn.classList.add('dim');
-                }, 700); // หลัง explode 0.6s + buffer
-
-                // ถ้าเป็นการโจมตีจากศัตรู → screen shake
-                if (!isPlayer) {
-                    gameContainer.classList.add('shake-screen');
-                    setTimeout(() => gameContainer.classList.remove('shake-screen'), 600);
-                }
             } else {
+                btn.textContent = 'Miss';
                 btn.classList.add('miss');
-                btn.innerHTML = `<span class="icon" aria-hidden="true">🕳️</span><span class="label">Miss</span>`;
-                setTimeout(() => {
-                    btn.classList.remove('miss');
-                    btn.classList.add('dim');
-                }, 500);
             }
-
+            btn.classList.add('dim');
             btn.disabled = true;
 
             if (isPlayer) lastPlayerShotPos = pos;
@@ -467,6 +393,7 @@
 
             document.getElementById('result-message').innerHTML = msg;
 
+            // ปรับปุ่มตามโหมด
             const newGameBtn = document.getElementById('new-game');
             if (playerWon && !isHardMode) {
                 newGameBtn.textContent = 'เข้าสู่สมรภูมิเลือด สงครามที่ไม่มีวันถอยกลับ';
@@ -524,12 +451,11 @@
             playerPositions = [];
             for (let i = 1; i <= 16; i++) {
                 const btn = document.createElement('button');
-                btn.innerHTML = `<span class="icon" aria-hidden="true">🚜</span><span class="label">${i}</span>`;
-                btn.dataset.pos = i;
+                btn.textContent = i;
                 btn.onclick = async () => {
                     if (playerPositions.length < 3 && !btn.classList.contains('dim')) {
                         playerPositions.push(i);
-                        btn.innerHTML = `<span class="icon" aria-hidden="true">🛡️</span><span class="label">ตำแหน่ง ${i}</span>`;
+                        btn.textContent = `เคลื่อนรถถังไปที่ ${i}`;
                         btn.classList.add('dim');
                         playSound('select.mp3');
 
@@ -549,7 +475,7 @@
             playerGrid.innerHTML = '';
             for (let i = 1; i <= 16; i++) {
                 const btn = document.createElement('button');
-                btn.innerHTML = `<span class="label">${i}</span>`;
+                btn.textContent = i;
                 btn.dataset.pos = i;
                 btn.disabled = true;
                 playerGrid.appendChild(btn);
@@ -560,7 +486,7 @@
             enemyGrid.innerHTML = '';
             for (let i = 1; i <= 16; i++) {
                 const btn = document.createElement('button');
-                btn.innerHTML = `<span class="label">e${i}</span>`;
+                btn.textContent = `e${i}`;
                 btn.dataset.pos = i;
                 btn.onclick = async () => {
                     if (currentTurn === 'player' && !btn.classList.contains('dim')) {
@@ -596,19 +522,25 @@
 
                 if (cheatBuffer === 'tank' && document.getElementById('game').style.display !== 'none') {
                     cheatBuffer = '';
+                    // Cheat: ชนะด่านปกติทันที → ไปหน้าสรุปเพื่อปลดล็อก hard mode
                     endGame(true);
                 }
                 else if (cheatBuffer === 'morcom' && document.getElementById('game').style.display !== 'none') {
                     cheatBuffer = '';
+                    // Cheat: เข้า hard mode + ศัตรูเหลือ 1
                     if (isHardMode) {
+                        // ถ้าอยู่ hard mode อยู่แล้ว → แค่เซ็ตศัตรูเหลือ 1
                         lives.enemy = 1;
                         document.getElementById('enemy-lives').textContent = `ศัตรู: 1`;
                         announcement.textContent = 'สูตรลับทำงานแล้ว! ศัตรูเหลือเพียง 1 ชีวิต!';
                     } else {
+                        // ถ้ายังไม่ใช่ hard mode → บังคับเข้า hard mode + ศัตรูเหลือ 1
                         isHardMode = true;
                         lives.enemy = 1;
                         document.getElementById('enemy-lives').textContent = `ศัตรู: 1`;
                         announcement.textContent = 'สูตรลับ MORCOM ทำงาน! เข้าสมรภูมิเลือด + ศัตรูเหลือ 1!';
+                        
+                        // ปรับ bgm ถ้ายังไม่ตรง
                         if (bgm) bgm.stop();
                         bgm = playSound('back1.mp3', true);
                     }
@@ -639,9 +571,11 @@
             createPlayerGrid();
             createEnemyGrid();
 
+            // ถ้าเป็นสูตร morcom แล้ว enemy เหลือ 1 ให้สุ่มปิดบางปุ่มตามชีวิตจริง
             if (lives.enemy === 1 && enemyCount > 1) {
-                const livePos = enemyPositions[0];
-                enemyPositions = [livePos];
+                const livePos = enemyPositions[0]; // เอาแค่คันแรกที่ยังอยู่
+                enemyPositions = [livePos]; // hack ให้เหลือแค่ 1 คันจริง ๆ
+                // แต่ปุ่มยังแสดงทั้งหมด แค่ logic ใช้ enemyPositions ที่ตัดแล้ว
             }
 
             nextTurn();
