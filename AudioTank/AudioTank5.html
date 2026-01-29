@@ -168,9 +168,6 @@
         const enemyGrid = document.getElementById('enemy-grid');
         const announcement = document.getElementById('announcement');
 
-        // เพิ่มตัวแปรเก็บตำแหน่งล่าสุดที่ผู้เล่นกด
-        let lastPlayerShotPos = null;
-
         async function loadSounds() {
             const soundFiles = [
                 'back.mp3', 'select.mp3', 'shoot1.mp3', 'shoot2.mp3',
@@ -232,11 +229,6 @@
             btn.classList.add('dim');
             btn.disabled = true;
 
-            // บันทึกตำแหน่งล่าสุด เฉพาะเมื่อเป็นผู้เล่นเท่านั้น
-            if (isPlayer) {
-                lastPlayerShotPos = pos;
-            }
-
             let hitMissGroup;
             if (isPlayer) {
                 hitMissGroup = isHit ? 'player_hit' : 'player_miss';
@@ -269,56 +261,11 @@
             announcement.textContent = `${turnText} - สถานะ: ${livesText}`;
         }
 
-        // ฟังก์ชันหาปุ่มที่ใกล้ที่สุดจากตำแหน่งสุดท้าย (แบบ Manhattan distance)
-        function focusNearestAvailableButton() {
-            if (currentTurn !== 'player' || !lastPlayerShotPos) {
-                focusFirstHeading('game');
-                return;
-            }
-
-            const buttons = Array.from(enemyGrid.querySelectorAll('button:not(.dim)'));
-            if (buttons.length === 0) return;
-
-            // ถ้ายังมีปุ่มเดิมอยู่ (ยังไม่โดนยิง) ให้โฟกัสปุ่มเดิมก่อน
-            const samePosBtn = enemyGrid.querySelector(`button[data-pos="${lastPlayerShotPos}"]:not(.dim)`);
-            if (samePosBtn) {
-                samePosBtn.focus();
-                return;
-            }
-
-            // หาปุ่มที่ใกล้ที่สุด (ใช้ระยะทางแบบ Manhattan)
-            let closest = null;
-            let minDist = Infinity;
-
-            buttons.forEach(btn => {
-                const pos = parseInt(btn.dataset.pos);
-                const row1 = Math.floor((lastPlayerShotPos - 1) / 4);
-                const col1 = (lastPlayerShotPos - 1) % 4;
-                const row2 = Math.floor((pos - 1) / 4);
-                const col2 = (pos - 1) % 4;
-                const dist = Math.abs(row1 - row2) + Math.abs(col1 - col2);
-
-                if (dist < minDist) {
-                    minDist = dist;
-                    closest = btn;
-                }
-            });
-
-            if (closest) {
-                closest.focus();
-            } else {
-                // fallback ถ้าไม่มีอะไรเลย
-                focusFirstHeading('game');
-            }
-        }
-
         function nextTurn() {
             if (currentTurn === 'player') {
                 playerGrid.style.display = 'none';
                 enemyGrid.style.display = 'block';
                 announceTurn();
-                // โฟกัสตำแหน่งใกล้เคียงเมื่อกลับมาถึงตาผู้เล่น
-                setTimeout(focusNearestAvailableButton, 100);
             } else {
                 enemyGrid.style.display = 'none';
                 playerGrid.style.display = 'block';
@@ -348,6 +295,7 @@
             const resultFile = playerWon ? 'win.mp3' : 'lost.mp3';
             const resultSource = playSound(resultFile);
 
+            // โฟกัส h2 ทันทีที่เริ่มเล่นเสียง (ตามที่ขอ)
             const summaryH2 = document.querySelector('#summary h2');
             if (summaryH2) {
                 summaryH2.focus();
@@ -440,11 +388,7 @@
                 document.getElementById('placement').style.display = 'block';
                 bgm = playSound('back.mp3', true);
                 createPlacementGrid();
-                // ปรับจุดที่ 1: โฟกัส h2 ทุกครั้งที่เข้ามาหน้า placement
-                setTimeout(() => {
-                    const placementH2 = document.querySelector('#placement h2');
-                    if (placementH2) placementH2.focus();
-                }, 50);
+                focusFirstHeading('placement');
             };
 
             const startGameLogic = () => {
@@ -463,14 +407,11 @@
                 document.getElementById('player-lives').textContent = 'ผู้เล่น: 3';
                 document.getElementById('enemy-lives').textContent = 'ศัตรู: 3';
                 
-                // รีเซ็ตตำแหน่งล่าสุดเมื่อเริ่มเกมใหม่
-                lastPlayerShotPos = null;
-                
                 createPlayerGrid();
                 createEnemyGrid();
                 
                 nextTurn();
-                // ไม่ต้อง focus ที่ heading อีก เพราะ nextTurn จะจัดการแล้ว
+                focusFirstHeading('game');
             };
 
             const hiddenStartBtn = document.createElement('button');
@@ -489,11 +430,7 @@
                 document.getElementById('placement').style.display = 'block';
                 bgm = playSound('back.mp3', true);
                 createPlacementGrid();
-                // โฟกัส h2 อีกครั้งเมื่อเริ่มใหม่
-                setTimeout(() => {
-                    const placementH2 = document.querySelector('#placement h2');
-                    if (placementH2) placementH2.focus();
-                }, 50);
+                focusFirstHeading('placement');
             };
 
             document.getElementById('back-menu-main').onclick = () => {
