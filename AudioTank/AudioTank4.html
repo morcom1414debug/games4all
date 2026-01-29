@@ -173,8 +173,8 @@
                 'back.mp3', 'select.mp3', 'shoot1.mp3', 'shoot2.mp3',
                 't1.mp3', 't2.mp3', 't3.mp3', 't4.mp3',
                 'f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3',
-                'a1.mp3', 'a2.mp3', 'a3.mp3', 'a4.mp3',
-                's1.mp3', 's2.mp3', 's3.mp3', 's4.mp3',
+                'a1.mp3', 'a2.mp3', 'a3.mp3', 'a4.mp3',   // ใหม่: ศัตรูยิงโดน
+                's1.mp3', 's2.mp3', 's3.mp3', 's4.mp3',   // ใหม่: ศัตรูยิงไม่โดน
                 'win.mp3', 'lost.mp3'
             ];
             for (let file of soundFiles) {
@@ -215,10 +215,12 @@
             const btn = targetGrid.querySelector(`button[data-pos="${pos}"]`);
             const isHit = targetPositions.includes(pos);
 
+            // เสียงยิงเริ่มต้น (เหมือนเดิม)
             const shootFile = isHit ? 'shoot2.mp3' : 'shoot1.mp3';
             const shootSource = playSound(shootFile);
             await new Promise(resolve => shootSource.onended = resolve);
 
+            // แสดงผลบนปุ่ม
             if (isHit) {
                 btn.textContent = isPlayer ? 'รถถังระเบิดเละ' : 'โดนยิง!';
                 btn.classList.add('hit');
@@ -229,6 +231,7 @@
             btn.classList.add('dim');
             btn.disabled = true;
 
+            // เลือกชุดเสียง hit/miss ตามฝ่ายที่เป็น "ผู้โจมตี"
             let hitMissGroup;
             if (isPlayer) {
                 hitMissGroup = isHit ? 'player_hit' : 'player_miss';
@@ -294,18 +297,19 @@
 
             const resultFile = playerWon ? 'win.mp3' : 'lost.mp3';
             const resultSource = playSound(resultFile);
-
-            // โฟกัส h2 ทันทีที่เริ่มเล่นเสียง (ตามที่ขอ)
-            const summaryH2 = document.querySelector('#summary h2');
-            if (summaryH2) {
-                summaryH2.focus();
-            }
-
             if (playerWon) {
                 winSound = resultSource;
             } else {
                 loseSound = resultSource;
             }
+
+            // โฟกัส h2 หลังจากเสียงชนะ/แพ้เล่นไปแล้ว 1 วินาที
+            resultSource.onended = () => {
+                setTimeout(() => {
+                    const summaryH2 = document.querySelector('#summary h2');
+                    if (summaryH2) summaryH2.focus();
+                }, 1000);
+            };
 
             const winMessages = [
                 'ยินดีด้วย! คุณทำลายศัตรูได้หมดสิ้น',
