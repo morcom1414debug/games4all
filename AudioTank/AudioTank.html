@@ -12,7 +12,6 @@
             text-align: center;
             margin: 0;
             padding: 20px;
-            overflow: hidden;
         }
 
         #game-container {
@@ -23,7 +22,6 @@
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-            overflow: hidden;
         }
 
         h1, h2 {
@@ -44,7 +42,6 @@
             padding: 10px;
             background-color: #556b2f;
             border-radius: 10px;
-            position: relative;
         }
 
         button {
@@ -120,16 +117,6 @@
             animation: screen-shake 0.5s ease-in-out;
         }
 
-        /* ขอบจอแดงกะพริบเมื่อโดนยิง */
-        @keyframes red-flash {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
-            50%      { box-shadow: 0 0 40px 20px rgba(255, 0, 0, 0.7); }
-        }
-
-        .red-flash {
-            animation: red-flash 0.8s ease-out;
-        }
-
         .icon {
             font-size: 2.4em;
             line-height: 1;
@@ -189,89 +176,9 @@
             background-color: #5c1414;
         }
 
-        /* Fog of War — หมอกปกคลุม enemy grid */
-        .fog {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at center, rgba(80,80,80,0.4) 30%, rgba(30,30,30,0.85) 70%);
-            pointer-events: none;
-            z-index: 5;
-            opacity: 0.9;
-            transition: opacity 1.2s ease-out;
-        }
-
-        .fog.revealed {
-            opacity: 0;
-        }
-
-        /* ควันจากซากรถถัง */
-        .smoke {
-            position: absolute;
-            bottom: 10%;
-            left: 50%;
-            width: 60%;
-            height: 60%;
-            background: linear-gradient(to top, rgba(150,150,150,0.7), transparent);
-            border-radius: 50% 50% 0 0;
-            opacity: 0;
-            transform: translateX(-50%);
-            pointer-events: none;
-            z-index: 10;
-            animation: smoke-rise 4s ease-out infinite;
-        }
-
-        @keyframes smoke-rise {
-            0%   { opacity: 0; transform: translateX(-50%) translateY(0) scale(0.6); }
-            20%  { opacity: 0.7; transform: translateX(-50%) translateY(-40%) scale(0.9); }
-            100% { opacity: 0; transform: translateX(-50%) translateY(-140%) scale(1.6); }
-        }
-
-        /* Projectile — ลูกกระสุนพุ่ง */
-        .projectile {
-            position: absolute;
-            width: 24px;
-            height: 24px;
-            background: radial-gradient(circle, #ffeb3b 30%, #f57c00 70%);
-            border-radius: 50%;
-            box-shadow: 0 0 12px #ff9800, 0 0 24px #f44336;
-            pointer-events: none;
-            z-index: 20;
-            animation: projectile-fly 0.9s ease-out forwards;
-        }
-
-        @keyframes projectile-fly {
-            0%   { transform: translateY(400px) scale(0.6); opacity: 1; }
-            80%  { transform: translateY(0) scale(1.1); opacity: 1; }
-            100% { transform: translateY(-20px) scale(0.4); opacity: 0; }
-        }
-
-        /* Fireworks ชนะ */
-        .firework {
-            position: absolute;
-            width: 12px;
-            height: 12px;
-            background: #ffeb3b;
-            border-radius: 50%;
-            pointer-events: none;
-            z-index: 30;
-            animation: firework-burst 1.5s ease-out forwards;
-        }
-
-        @keyframes firework-burst {
-            0%   { transform: translateY(100vh) scale(0); opacity: 1; }
-            30%  { transform: translateY(40vh) scale(1.5); opacity: 1; }
-            100% { transform: translateY(-20vh) scale(0.2); opacity: 0; }
-        }
-
         h1:focus, h2:focus {
             outline: 3px solid #ffd700;
             outline-offset: 4px;
-        }
-
-        /* Grayscale เมื่อแพ้ */
-        .game-over-lose {
-            filter: grayscale(100%) brightness(0.6);
-            transition: filter 3s ease-in;
         }
     </style>
 </head>
@@ -298,9 +205,7 @@
                 <span id="enemy-lives">ศัตรู: 3</span>
             </div>
             <div id="player-grid" class="grid" style="display: none;"></div>
-            <div id="enemy-grid" class="grid" style="display: none;">
-                <div class="fog" id="fog-layer"></div>
-            </div>
+            <div id="enemy-grid" class="grid" style="display: none;"></div>
             <div id="announcement" aria-live="polite"></div>
         </div>
 
@@ -330,7 +235,6 @@
         const enemyGrid    = document.getElementById('enemy-grid');
         const announcement = document.getElementById('announcement');
         const gameContainer = document.getElementById('game-container');
-        const fogLayer     = document.getElementById('fog-layer');
 
         let lastPlayerShotPos = null;
 
@@ -389,45 +293,6 @@
             return emojis[Math.floor(Math.random()*emojis.length)];
         }
 
-        // สร้างลูกกระสุน animation
-        function createProjectile(targetBtn, isPlayerAttack) {
-            const proj = document.createElement('div');
-            proj.className = 'projectile';
-            proj.style.left = '50%';
-            proj.style.bottom = '0';
-            proj.style.transform = 'translateX(-50%)';
-
-            // ปรับตำแหน่งปลายทางให้ตรงกับปุ่มเป้าหมาย
-            const gridRect = (isPlayerAttack ? enemyGrid : playerGrid).getBoundingClientRect();
-            const btnRect  = targetBtn.getBoundingClientRect();
-            const centerX = btnRect.left + btnRect.width/2 - gridRect.left;
-            const centerY = btnRect.top + btnRect.height/2 - gridRect.top;
-
-            proj.style.setProperty('--tx', `${centerX}px`);
-            proj.style.setProperty('--ty', `${centerY}px`);
-
-            gameContainer.appendChild(proj);
-
-            setTimeout(() => proj.remove(), 1200);
-        }
-
-        // เพิ่มควันจากซาก
-        function addSmokeEffect(btn) {
-            const smoke = document.createElement('div');
-            smoke.className = 'smoke';
-            smoke.setAttribute('aria-hidden', 'true');
-            btn.appendChild(smoke);
-        }
-
-        // หมอกแห่งสงคราม — เผยช่องที่ยิงแล้ว
-        function revealFog(pos) {
-            const btn = enemyGrid.querySelector(`button[data-pos="${pos}"]`);
-            if (btn) {
-                btn.style.position = 'relative';
-                btn.style.zIndex = '6';
-            }
-        }
-
         async function attack(pos, attacker) {
             const isPlayer = attacker === 'player';
             const targetPositions = isPlayer ? enemyPositions : playerPositions;
@@ -436,9 +301,6 @@
             if (!btn) return;
 
             const isHit = targetPositions.includes(pos);
-
-            // สร้าง animation ลูกกระสุน
-            createProjectile(btn, isPlayer);
 
             const shootFile = isHit ? 'shoot2.mp3' : 'shoot1.mp3';
             const shootSource = playSound(shootFile);
@@ -449,25 +311,17 @@
                 btn.classList.add('hit');
                 btn.innerHTML = `<span class="icon" aria-hidden="true">${getHitEmoji()}</span><span class="label">โดนยิง!</span>`;
 
-                // รอ animation ระเบิดเสร็จ แล้วเปลี่ยนเป็นซาก + ควัน
+                // รอ animation ระเบิดเสร็จ แล้วเปลี่ยนเป็นซาก
                 setTimeout(() => {
                     btn.innerHTML = `<span class="icon" aria-hidden="true">🏚️</span><span class="label">ซากรถถัง</span>`;
                     btn.classList.remove('hit');
                     btn.classList.add('dim');
-                    addSmokeEffect(btn); // เพิ่มควันลอยขึ้น
+                }, 700); // หลัง explode 0.6s + buffer
 
-                    // เผยหมอกถ้าเป็นฝั่งศัตรู
-                    if (isPlayer) revealFog(pos);
-                }, 700);
-
-                // ถ้าเป็นการโจมตีจากศัตรู → screen shake + ขอบแดงกะพริบ
+                // ถ้าเป็นการโจมตีจากศัตรู → screen shake
                 if (!isPlayer) {
                     gameContainer.classList.add('shake-screen');
-                    gameContainer.classList.add('red-flash');
-                    setTimeout(() => {
-                        gameContainer.classList.remove('shake-screen');
-                        gameContainer.classList.remove('red-flash');
-                    }, 800);
+                    setTimeout(() => gameContainer.classList.remove('shake-screen'), 600);
                 }
             } else {
                 btn.classList.add('miss');
@@ -475,7 +329,6 @@
                 setTimeout(() => {
                     btn.classList.remove('miss');
                     btn.classList.add('dim');
-                    if (isPlayer) revealFog(pos);
                 }, 500);
             }
 
@@ -576,20 +429,6 @@
             await attack(pos, 'enemy');
         }
 
-        // สร้างพลุ (fireworks) เมื่อชนะ
-        function createFireworks(count = 12) {
-            for (let i = 0; i < count; i++) {
-                const fw = document.createElement('div');
-                fw.className = 'firework';
-                fw.style.left = `${Math.random() * 100}%`;
-                fw.style.top = `${Math.random() * 40 + 10}%`;
-                fw.style.background = ['#ffeb3b','#ff5722','#e91e63','#9c27b0','#2196f3'][Math.floor(Math.random()*5)];
-                fw.style.animationDelay = `${Math.random() * 1.2}s`;
-                document.getElementById('summary').appendChild(fw);
-                setTimeout(() => fw.remove(), 3000);
-            }
-        }
-
         function endGame(playerWon) {
             if (bgm) bgm.stop();
 
@@ -602,13 +441,8 @@
             const summaryH2 = document.querySelector('#summary h2');
             if (summaryH2) summaryH2.focus();
 
-            if (playerWon) {
-                winSound = resultSource;
-                createFireworks(16); // พลุระเบิด
-            } else {
-                loseSound = resultSource;
-                document.getElementById('game-container').classList.add('game-over-lose');
-            }
+            if (playerWon) winSound = resultSource;
+            else loseSound = resultSource;
 
             let msg = '';
             if (isHardMode) {
@@ -660,9 +494,6 @@
             if (loseSound) loseSound.stop();
             winSound = null;
             loseSound = null;
-
-            // ล้างเอฟเฟกต์ grayscale
-            document.getElementById('game-container').classList.remove('game-over-lose');
 
             document.getElementById('summary').style.display = 'none';
             document.getElementById('placement').style.display = 'block';
@@ -812,9 +643,6 @@
                 const livePos = enemyPositions[0];
                 enemyPositions = [livePos];
             }
-
-            // เริ่มต้นหมอกแห่งสงคราม
-            if (fogLayer) fogLayer.style.opacity = '0.9';
 
             nextTurn();
             updateBackButtonVisibility();
