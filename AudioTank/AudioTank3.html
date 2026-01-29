@@ -103,6 +103,7 @@
             color: #ffd700;
         }
 
+        /* ปุ่มกลับเมนูหลัก อยู่มุมบนซ้าย */
         .back-btn {
             position: absolute;
             top: 10px;
@@ -114,6 +115,7 @@
             z-index: 10;
         }
 
+        /* ทำให้ heading ได้รับ focus ได้ชัดเจน */
         h1:focus, h2:focus {
             outline: 3px solid #ffd700;
             outline-offset: 4px;
@@ -123,6 +125,7 @@
 <body>
     <div id="game-container">
 
+        <!-- ปุ่มกลับเมนูหลัก อยู่มุมบนซ้ายตลอด -->
         <button id="back-menu-main" class="back-btn">กลับเมนูหลัก</button>
 
         <div id="menu">
@@ -134,6 +137,7 @@
         <div id="placement" style="display: none;">
             <h2 tabindex="-1">เลือกตำแหน่งรถถังของคุณ (3 คัน)</h2>
             <div id="placement-grid" class="grid"></div>
+            <!-- ลบปุ่มเริ่มเกมออกไปตามที่ขอ -->
         </div>
 
         <div id="game" style="display: none;">
@@ -173,8 +177,6 @@
                 'back.mp3', 'select.mp3', 'shoot1.mp3', 'shoot2.mp3',
                 't1.mp3', 't2.mp3', 't3.mp3', 't4.mp3',
                 'f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3',
-                'a1.mp3', 'a2.mp3', 'a3.mp3', 'a4.mp3',   // ใหม่: ศัตรูยิงโดน
-                's1.mp3', 's2.mp3', 's3.mp3', 's4.mp3',   // ใหม่: ศัตรูยิงไม่โดน
                 'win.mp3', 'lost.mp3'
             ];
             for (let file of soundFiles) {
@@ -200,10 +202,8 @@
 
         function playRandom(group) {
             let files;
-            if (group === 'player_hit')   files = ['t1.mp3', 't2.mp3', 't3.mp3', 't4.mp3'];
-            else if (group === 'player_miss') files = ['f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3'];
-            else if (group === 'enemy_hit')   files = ['a1.mp3', 'a2.mp3', 'a3.mp3', 'a4.mp3'];
-            else if (group === 'enemy_miss')  files = ['s1.mp3', 's2.mp3', 's3.mp3', 's4.mp3'];
+            if (group === 'hit') files = ['t1.mp3', 't2.mp3', 't3.mp3', 't4.mp3'];
+            else if (group === 'miss') files = ['f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3'];
             const file = files[Math.floor(Math.random() * files.length)];
             return playSound(file);
         }
@@ -215,14 +215,12 @@
             const btn = targetGrid.querySelector(`button[data-pos="${pos}"]`);
             const isHit = targetPositions.includes(pos);
 
-            // เสียงยิงเริ่มต้น (เหมือนเดิม)
             const shootFile = isHit ? 'shoot2.mp3' : 'shoot1.mp3';
             const shootSource = playSound(shootFile);
             await new Promise(resolve => shootSource.onended = resolve);
 
-            // แสดงผลบนปุ่ม
             if (isHit) {
-                btn.textContent = isPlayer ? 'รถถังระเบิดเละ' : 'โดนยิง!';
+                btn.textContent = 'รถถังระเบิดเละ';
                 btn.classList.add('hit');
             } else {
                 btn.textContent = 'Miss';
@@ -231,15 +229,7 @@
             btn.classList.add('dim');
             btn.disabled = true;
 
-            // เลือกชุดเสียง hit/miss ตามฝ่ายที่เป็น "ผู้โจมตี"
-            let hitMissGroup;
-            if (isPlayer) {
-                hitMissGroup = isHit ? 'player_hit' : 'player_miss';
-            } else {
-                hitMissGroup = isHit ? 'enemy_hit' : 'enemy_miss';
-            }
-
-            const resultSource = playRandom(hitMissGroup);
+            const resultSource = playRandom(isHit ? 'hit' : 'miss');
             await new Promise(resolve => resultSource.onended = resolve);
 
             if (isHit) {
@@ -260,6 +250,7 @@
             const turnText = currentTurn === 'player' 
                 ? 'ถึงตาคุณแล้ว โปรดเลือกตำแหน่งที่จะยิง' 
                 : 'ถึงตาศัตรู';
+
             const livesText = `ผู้เล่น ${lives.player} ศัตรู ${lives.enemy}`;
             announcement.textContent = `${turnText} - สถานะ: ${livesText}`;
         }
@@ -295,6 +286,7 @@
             document.getElementById('game').style.display = 'none';
             document.getElementById('summary').style.display = 'block';
 
+            // เล่นเสียงชนะ/แพ้ทันที และแสดงหน้าสรุปพร้อมกัน
             const resultFile = playerWon ? 'win.mp3' : 'lost.mp3';
             const resultSource = playSound(resultFile);
             if (playerWon) {
@@ -302,14 +294,6 @@
             } else {
                 loseSound = resultSource;
             }
-
-            // โฟกัส h2 หลังจากเสียงชนะ/แพ้เล่นไปแล้ว 1 วินาที
-            resultSource.onended = () => {
-                setTimeout(() => {
-                    const summaryH2 = document.querySelector('#summary h2');
-                    if (summaryH2) summaryH2.focus();
-                }, 1000);
-            };
 
             const winMessages = [
                 'ยินดีด้วย! คุณทำลายศัตรูได้หมดสิ้น',
@@ -340,10 +324,11 @@
                         btn.classList.add('dim');
                         playSound('select.mp3');
 
+                        // เมื่อครบ 3 ตำแหน่ง → เริ่มเกมทันที
                         if (playerPositions.length === 3) {
                             setTimeout(() => {
-                                document.getElementById('start-game').click();
-                            }, 600);
+                                document.getElementById('start-game').click(); // เรียก logic เดิม
+                            }, 600); // เล็กน้อยเพื่อให้เห็นการเลือกตำแหน่งสุดท้าย
                         }
                     }
                 };
@@ -387,6 +372,7 @@
         }
 
         function setupEvents() {
+            // เริ่มเลือกตำแหน่ง
             document.getElementById('start-placement').onclick = () => {
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('placement').style.display = 'block';
@@ -395,6 +381,7 @@
                 focusFirstHeading('placement');
             };
 
+            // Logic เริ่มเกม (ใช้ซ้ำได้ทั้งจากปุ่มและ auto เมื่อครบ 3)
             const startGameLogic = () => {
                 document.getElementById('placement').style.display = 'none';
                 document.getElementById('game').style.display = 'block';
@@ -418,13 +405,16 @@
                 focusFirstHeading('game');
             };
 
+            // สร้าง element ปลอมเพื่อเรียกใช้ logic เดิมได้ (แต่ไม่ต้องแสดงปุ่ม)
             const hiddenStartBtn = document.createElement('button');
             hiddenStartBtn.id = 'start-game';
             hiddenStartBtn.style.display = 'none';
             hiddenStartBtn.onclick = startGameLogic;
             document.body.appendChild(hiddenStartBtn);
 
+            // เริ่มเกมใหม่
             document.getElementById('new-game').onclick = () => {
+                // หยุดเสียง win/lose ทันที
                 if (winSound) winSound.stop();
                 if (loseSound) loseSound.stop();
                 winSound = null;
@@ -437,6 +427,7 @@
                 focusFirstHeading('placement');
             };
 
+            // ปุ่มกลับเมนูหลัก (มีหลายที่ แต่ใช้ตัวเดียวด้านบนซ้าย)
             document.getElementById('back-menu-main').onclick = () => {
                 if (bgm) bgm.stop();
                 if (winSound) winSound.stop();
@@ -447,6 +438,7 @@
 
         loadSounds().then(setupEvents);
 
+        // โฟกัสหน้าแรกเมื่อโหลด
         window.addEventListener('load', () => {
             focusFirstHeading('menu');
         });
