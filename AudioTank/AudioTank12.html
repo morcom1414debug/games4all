@@ -121,11 +121,6 @@
             min-height: 1.4em;
         }
 
-        #result-message {
-            font-size: 22px;
-            line-height: 1.5;
-        }
-
         h1:focus, h2:focus {
             outline: 3px solid #ffd700;
             outline-offset: 4px;
@@ -160,7 +155,7 @@
         </div>
 
         <div id="summary" style="display: none;">
-            <h2 tabindex="-1">สรุปผลการรบ</h2>
+            <h2 tabindex="-1">สรุปผล</h2>
             <p id="result-message"></p>
             <button id="new-game">เริ่มเกมใหม่</button>
         </div>
@@ -176,10 +171,6 @@
         let enemyPositions = [];
         let currentTurn = '';
         let lives = { player: 3, enemy: 3 };
-        let isHardMode = false;
-        let cheatBuffer = '';
-        let cheatTimer = null;
-
         const placementGrid = document.getElementById('placement-grid');
         const playerGrid = document.getElementById('player-grid');
         const enemyGrid = document.getElementById('enemy-grid');
@@ -189,25 +180,17 @@
 
         async function loadSounds() {
             const soundFiles = [
-                'back.mp3', 'back1.mp3',
-                'select.mp3',
-                'shoot1.mp3', 'shoot2.mp3',
+                'back.mp3', 'select.mp3', 'shoot1.mp3', 'shoot2.mp3',
                 't1.mp3', 't2.mp3', 't3.mp3', 't4.mp3',
                 'f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3',
                 'a1.mp3', 'a2.mp3', 'a3.mp3', 'a4.mp3',
                 's1.mp3', 's2.mp3', 's3.mp3', 's4.mp3',
-                'win.mp3', 'lost.mp3',
-                'start.mp3', 'start1.mp3'
+                'win.mp3', 'lost.mp3', 'start.mp3'
             ];
             for (let file of soundFiles) {
-                try {
-                    const response = await fetch('audio/' + file);
-                    if (!response.ok) continue;
-                    const arrayBuf = await response.arrayBuffer();
-                    sounds[file] = await audioCtx.decodeAudioData(arrayBuf);
-                } catch (e) {
-                    console.warn(`Cannot load sound: ${file}`, e);
-                }
+                const response = await fetch('audio/' + file);
+                const arrayBuf = await response.arrayBuffer();
+                sounds[file] = await audioCtx.decodeAudioData(arrayBuf);
             }
         }
 
@@ -220,7 +203,6 @@
         }
 
         function playSound(file, loop = false) {
-            if (!sounds[file]) return null;
             const source = createSource(sounds[file], loop);
             source.start();
             return source;
@@ -232,7 +214,6 @@
             else if (group === 'player_miss') files = ['f1.mp3', 'f2.mp3', 'f3.mp3', 'f4.mp3'];
             else if (group === 'enemy_hit')   files = ['a1.mp3', 'a2.mp3', 'a3.mp3', 'a4.mp3'];
             else if (group === 'enemy_miss')  files = ['s1.mp3', 's2.mp3', 's3.mp3', 's4.mp3'];
-            if (!files || files.length === 0) return null;
             const file = files[Math.floor(Math.random() * files.length)];
             return playSound(file);
         }
@@ -242,13 +223,11 @@
             const targetPositions = isPlayer ? enemyPositions : playerPositions;
             const targetGrid = isPlayer ? enemyGrid : playerGrid;
             const btn = targetGrid.querySelector(`button[data-pos="${pos}"]`);
-            if (!btn) return;
-
             const isHit = targetPositions.includes(pos);
 
             const shootFile = isHit ? 'shoot2.mp3' : 'shoot1.mp3';
             const shootSource = playSound(shootFile);
-            if (shootSource) await new Promise(r => shootSource.onended = r);
+            await new Promise(resolve => shootSource.onended = resolve);
 
             if (isHit) {
                 btn.textContent = isPlayer ? 'รถถังระเบิดเละ' : 'โดนยิง!';
@@ -260,22 +239,25 @@
             btn.classList.add('dim');
             btn.disabled = true;
 
-            if (isPlayer) lastPlayerShotPos = pos;
+            if (isPlayer) {
+                lastPlayerShotPos = pos;
+            }
 
-            let hitMissGroup = isPlayer 
-                ? (isHit ? 'player_hit' : 'player_miss')
-                : (isHit ? 'enemy_hit' : 'enemy_miss');
+            let hitMissGroup;
+            if (isPlayer) {
+                hitMissGroup = isHit ? 'player_hit' : 'player_miss';
+            } else {
+                hitMissGroup = isHit ? 'enemy_hit' : 'enemy_miss';
+            }
 
             const resultSource = playRandom(hitMissGroup);
-            if (resultSource) await new Promise(r => resultSource.onended = r);
+            await new Promise(resolve => resultSource.onended = resolve);
 
             if (isHit) {
                 const livesKey = isPlayer ? 'enemy' : 'player';
                 lives[livesKey]--;
-                document.getElementById(`${livesKey}-lives`).textContent = 
-                    `${livesKey === 'player' ? 'ผู้เล่น' : 'ศัตรู'}: ${lives[livesKey]}`;
-
-                if (lives[livesKey] <= 0) {
+                document.getElementById(`${livesKey}-lives`).textContent = `${livesKey === 'player' ? 'ผู้เล่น' : 'ศัตรู'}: ${lives[livesKey]}`;
+                if (lives[livesKey] === 0) {
                     endGame(isPlayer);
                     return;
                 }
@@ -288,9 +270,9 @@
         function announceTurn() {
             const turnText = currentTurn === 'player' 
                 ? 'ถึงตาคุณแล้ว โปรดเลือกตำแหน่งที่จะยิง' 
-                : 'ถึงตาศัตรูกำลังโจมตี...';
-            const livesText = `ผู้เล่น ${lives.player} | ศัตรู ${lives.enemy}`;
-            announcement.textContent = `${turnText} — ${livesText}`;
+                : 'ถึงตาศัตรู';
+            const livesText = `ผู้เล่น ${lives.player} ศัตรู ${lives.enemy}`;
+            announcement.textContent = `${turnText} - สถานะ: ${livesText}`;
         }
 
         function focusNearestAvailableButton() {
@@ -325,8 +307,11 @@
                 }
             });
 
-            if (closest) closest.focus();
-            else focusFirstHeading('game');
+            if (closest) {
+                closest.focus();
+            } else {
+                focusFirstHeading('game');
+            }
         }
 
         function nextTurn() {
@@ -349,8 +334,8 @@
             const btn = availableButtons[Math.floor(Math.random() * availableButtons.length)];
             const pos = parseInt(btn.dataset.pos);
             
-            announcement.textContent = `ศัตรูกำลังยิงที่ตำแหน่ง ${pos}...`;
-            await new Promise(r => setTimeout(r, 1200));
+            announcement.textContent = `ศัตรูกำลังยิงที่ตำแหน่ง ${pos}`;
+            await new Promise(resolve => setTimeout(resolve, 1200));
 
             await attack(pos, 'enemy');
         }
@@ -365,85 +350,50 @@
             const resultSource = playSound(resultFile);
 
             const summaryH2 = document.querySelector('#summary h2');
-            if (summaryH2) summaryH2.focus();
-
-            if (playerWon) winSound = resultSource;
-            else loseSound = resultSource;
-
-            let msg = '';
-            if (isHardMode) {
-                if (playerWon) {
-                    msg = 'ตำนานเกิดขึ้นแล้ว! คุณพิชิตสมรภูมิเลือดได้สำเร็จ!<br>นักรบผู้ยิ่งใหญ่ที่สุดแห่งยุค!';
-                } else {
-                    msg = 'สมรภูมิครั้งนี้โหดร้ายเกินไป...<br>แต่จิตวิญญาณนักรบของคุณยังไม่ดับสูญ<br>ลุกขึ้นมาสู้ใหม่!';
-                }
-            } else {
-                if (playerWon) {
-                    msg = ['ยินดีด้วย! คุณทำลายศัตรูได้หมดสิ้น',
-                           'สุดยอดนักรบ! ชัยชนะเป็นของคุณ',
-                           'คุณคือผู้พิชิต! ยินดีด้วยนะ',
-                           'รถถังของคุณแข็งแกร่งมาก! ชนะเลิศ'][Math.floor(Math.random()*4)];
-                } else {
-                    msg = ['แพ้แล้ว แต่ลองใหม่นะ! คุณทำได้ดีแล้ว',
-                           'ศัตรูแข็งแกร่ง ลองปรับกลยุทธ์ดูสิ',
-                           'ไม่เป็นไร ครั้งหน้าชนะแน่นอน! สู้ๆ',
-                           'ใกล้ชนะแล้ว ลองอีกครั้งเถอะ'][Math.floor(Math.random()*4)];
-                }
+            if (summaryH2) {
+                summaryH2.focus();
             }
 
-            document.getElementById('result-message').innerHTML = msg;
-
-            // ปรับปุ่มตามโหมด
-            const newGameBtn = document.getElementById('new-game');
-            if (playerWon && !isHardMode) {
-                newGameBtn.textContent = 'เข้าสู่สมรภูมิเลือด สงครามที่ไม่มีวันถอยกลับ';
-                newGameBtn.onclick = startHardMode;
+            if (playerWon) {
+                winSound = resultSource;
             } else {
-                newGameBtn.textContent = 'เริ่มเกมใหม่';
-                newGameBtn.onclick = startNormalGame;
+                loseSound = resultSource;
             }
 
-            updateBackButtonVisibility();
-        }
+            const winMessages = [
+                'ยินดีด้วย! คุณทำลายศัตรูได้หมดสิ้น',
+                'สุดยอดนักรบ! ชัยชนะเป็นของคุณ',
+                'คุณคือผู้พิชิต! ยินดีด้วยนะ',
+                'รถถังของคุณแข็งแกร่งมาก! ชนะเลิศ'
+            ];
+            const loseMessages = [
+                'แพ้แล้ว แต่ลองใหม่นะ! คุณทำได้ดีแล้ว',
+                'ศัตรูแข็งแกร่ง ลองปรับกลยุทธ์ดูสิ',
+                'ไม่เป็นไร ครั้งหน้าชนะแน่นอน! สู้ๆ',
+                'ใกล้ชนะแล้ว ลองอีกครั้งเถอะ'
+            ];
+            const messages = playerWon ? winMessages : loseMessages;
+            document.getElementById('result-message').textContent = messages[Math.floor(Math.random() * messages.length)];
 
-        function startNormalGame() {
-            isHardMode = false;
-            restartGameFlow();
-        }
-
-        function startHardMode() {
-            isHardMode = true;
-            restartGameFlow();
-        }
-
-        function restartGameFlow() {
-            if (winSound) winSound.stop();
-            if (loseSound) loseSound.stop();
-            winSound = null;
-            loseSound = null;
-
-            document.getElementById('summary').style.display = 'none';
-            document.getElementById('placement').style.display = 'block';
-
-            const bgmFile = isHardMode ? 'back1.mp3' : 'back.mp3';
-            bgm = playSound(bgmFile, true);
-
-            createPlacementGrid(startGameLogic);
-            announcePlacementInstruction();
-            focusPlacementHeading();
             updateBackButtonVisibility();
         }
 
         function focusPlacementHeading() {
             const h2 = document.querySelector('#placement h2');
             if (h2) {
-                requestAnimationFrame(() => setTimeout(() => h2.focus(), 50));
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        h2.focus();
+                    }, 50);
+                });
             }
         }
 
         function announcePlacementInstruction() {
-            document.getElementById('placement-announce').textContent = 
-                'เคลื่อนรถถังไปยังตำแหน่งที่ท่านต้องการได้ทันที (3 คัน)';
+            const announceDiv = document.getElementById('placement-announce');
+            if (announceDiv) {
+                announceDiv.textContent = 'เคลื่อนรถถังไปยังตำแหน่งที่ท่านต้องการได้ทันที';
+            }
         }
 
         function createPlacementGrid(startGameLogic) {
@@ -455,14 +405,13 @@
                 btn.onclick = async () => {
                     if (playerPositions.length < 3 && !btn.classList.contains('dim')) {
                         playerPositions.push(i);
-                        btn.textContent = `เคลื่อนรถถังไปที่ ${i}`;
+                        btn.textContent = `เคลื่อนรถถังไปที่ตำแหน่ง ${i}`;
                         btn.classList.add('dim');
                         playSound('select.mp3');
 
                         if (playerPositions.length === 3) {
-                            const startFile = isHardMode ? 'start1.mp3' : 'start.mp3';
-                            const startSource = playSound(startFile);
-                            if (startSource) await new Promise(r => startSource.onended = r);
+                            const startSource = playSound('start.mp3');
+                            await new Promise(resolve => startSource.onended = resolve);
                             startGameLogic();
                         }
                     }
@@ -501,51 +450,19 @@
             const section = document.getElementById(sectionId);
             if (!section) return;
             const heading = section.querySelector('h1, h2');
-            if (heading) heading.focus();
+            if (heading) {
+                heading.focus();
+            }
         }
 
         function updateBackButtonVisibility() {
             const backBtn = document.getElementById('back-menu-main');
-            const isMenuOrSummary = 
-                document.getElementById('menu').style.display !== 'none' ||
-                document.getElementById('summary').style.display !== 'none';
-            backBtn.style.display = isMenuOrSummary ? 'block' : 'none';
-        }
-
-        function initCheatListener() {
-            document.addEventListener('keydown', e => {
-                if (!/[a-z]/i.test(e.key)) return;
-                cheatBuffer += e.key.toLowerCase();
-
-                if (cheatTimer) clearTimeout(cheatTimer);
-                cheatTimer = setTimeout(() => { cheatBuffer = ''; }, 2000);
-
-                if (cheatBuffer === 'tank' && document.getElementById('game').style.display !== 'none') {
-                    cheatBuffer = '';
-                    // Cheat: ชนะด่านปกติทันที → ไปหน้าสรุปเพื่อปลดล็อก hard mode
-                    endGame(true);
-                }
-                else if (cheatBuffer === 'morcom' && document.getElementById('game').style.display !== 'none') {
-                    cheatBuffer = '';
-                    // Cheat: เข้า hard mode + ศัตรูเหลือ 1
-                    if (isHardMode) {
-                        // ถ้าอยู่ hard mode อยู่แล้ว → แค่เซ็ตศัตรูเหลือ 1
-                        lives.enemy = 1;
-                        document.getElementById('enemy-lives').textContent = `ศัตรู: 1`;
-                        announcement.textContent = 'สูตรลับทำงานแล้ว! ศัตรูเหลือเพียง 1 ชีวิต!';
-                    } else {
-                        // ถ้ายังไม่ใช่ hard mode → บังคับเข้า hard mode + ศัตรูเหลือ 1
-                        isHardMode = true;
-                        lives.enemy = 1;
-                        document.getElementById('enemy-lives').textContent = `ศัตรู: 1`;
-                        announcement.textContent = 'สูตรลับ MORCOM ทำงาน! เข้าสมรภูมิเลือด + ศัตรูเหลือ 1!';
-                        
-                        // ปรับ bgm ถ้ายังไม่ตรง
-                        if (bgm) bgm.stop();
-                        bgm = playSound('back1.mp3', true);
-                    }
-                }
-            });
+            const currentSection = 
+                document.getElementById('menu').style.display !== 'none' ? 'menu' :
+                document.getElementById('summary').style.display !== 'none' ? 'summary' : 
+                'other';
+            
+            backBtn.style.display = (currentSection === 'menu' || currentSection === 'summary') ? 'block' : 'none';
         }
 
         const loadPromise = loadSounds();
@@ -565,36 +482,49 @@
             const startGameLogic = () => {
                 document.getElementById('placement').style.display = 'none';
                 document.getElementById('game').style.display = 'block';
-
+                
                 enemyPositions = [];
-                const enemyCount = isHardMode ? 5 : 3;
-                while (enemyPositions.length < enemyCount) {
+                while (enemyPositions.length < 3) {
                     const pos = Math.floor(Math.random() * 16) + 1;
                     if (!enemyPositions.includes(pos)) enemyPositions.push(pos);
                 }
-
-                lives = { player: 3, enemy: enemyCount };
-                document.getElementById('player-lives').textContent = `ผู้เล่น: ${lives.player}`;
-                document.getElementById('enemy-lives').textContent = `ศัตรู: ${lives.enemy}`;
-
+                
                 currentTurn = Math.random() < 0.5 ? 'player' : 'enemy';
+                
+                lives = { player: 3, enemy: 3 };
+                document.getElementById('player-lives').textContent = 'ผู้เล่น: 3';
+                document.getElementById('enemy-lives').textContent = 'ศัตรู: 3';
+                
                 lastPlayerShotPos = null;
-
+                
                 createPlayerGrid();
                 createEnemyGrid();
-
-                // ถ้าเป็นสูตร morcom แล้ว enemy เหลือ 1 ให้สุ่มปิดบางปุ่มตามชีวิตจริง
-                if (lives.enemy === 1 && enemyCount > 1) {
-                    const livePos = enemyPositions[0]; // เอาแค่คันแรกที่ยังอยู่
-                    enemyPositions = [livePos]; // hack ให้เหลือแค่ 1 คันจริง ๆ
-                    // แต่ปุ่มยังแสดงทั้งหมด แค่ logic ใช้ enemyPositions ที่ตัดแล้ว
-                }
-
+                
                 nextTurn();
                 updateBackButtonVisibility();
             };
 
-            document.getElementById('new-game').onclick = startNormalGame;
+            const hiddenStartBtn = document.createElement('button');
+            hiddenStartBtn.id = 'start-game';
+            hiddenStartBtn.style.display = 'none';
+            hiddenStartBtn.onclick = startGameLogic;
+            document.body.appendChild(hiddenStartBtn);
+
+            document.getElementById('new-game').onclick = async () => {
+                await loadPromise;
+                if (winSound) winSound.stop();
+                if (loseSound) loseSound.stop();
+                winSound = null;
+                loseSound = null;
+
+                document.getElementById('summary').style.display = 'none';
+                document.getElementById('placement').style.display = 'block';
+                bgm = playSound('back.mp3', true);
+                createPlacementGrid(startGameLogic);
+                announcePlacementInstruction();
+                focusPlacementHeading();
+                updateBackButtonVisibility();
+            };
 
             document.getElementById('back-menu-main').onclick = () => {
                 if (bgm) bgm.stop();
@@ -603,8 +533,8 @@
                 window.location.href = '../index.html';
             };
 
+            // เรียกตอนเริ่มต้น
             updateBackButtonVisibility();
-            initCheatListener();
         }
 
         setupEvents();
