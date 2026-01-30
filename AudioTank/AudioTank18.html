@@ -13,7 +13,7 @@
         }
 
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--player-zone);
             color: #fff;
             text-align: center;
@@ -33,42 +33,27 @@
             border-radius: 15px;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
             box-sizing: border-box;
-            min-height: 560px;
+            min-height: 550px;
             overflow: hidden;
         }
 
-        /* ตกแต่ง Emoji Art */
-        .tank-art {
-            font-size: 80px;
-            margin: 20px 0;
-            filter: drop-shadow(0 5px 10px rgba(0,0,0,0.5));
-            user-select: none;
-        }
-
-        /* ปุ่มกลับเมนูหลักมุมซ้ายบน (ปรับเป็น Button แล้ว) */
-        .back-home-btn {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background-color: #8b0000;
-            color: white;
-            border: 1px solid var(--gold);
-            padding: 8px 12px;
-            font-size: 14px;
-            border-radius: 5px;
-            z-index: 100;
-            display: none; /* คุมด้วย JS */
-            aspect-ratio: auto !important; /* ป้องกันกลายเป็นวงกลม */
-            width: auto !important;
-        }
-
-        /* แอนิเมชันสั่นจอ */
+        /* Animation สั่นหน้าจอ */
         @keyframes shake {
-            0% { transform: translate(1px, 1px); }
-            50% { transform: translate(-3px, -2px); }
-            100% { transform: translate(0, 0); }
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
         }
         .shake-effect { animation: shake 0.4s; }
+
+        /* การเฟดสลับ Grid */
+        .fade-in { animation: fadeIn 0.4s forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        h1, h2 { color: var(--gold); margin: 10px 0; outline: none; }
 
         .grid {
             display: grid;
@@ -85,7 +70,7 @@
 
         button {
             padding: 5px;
-            font-size: 16px;
+            font-size: 18px;
             background-color: #6b8e23;
             color: #fff;
             border: 2px solid var(--gold);
@@ -95,38 +80,53 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: opacity 0.3s;
+            transition: all 0.2s;
+            position: relative;
         }
 
-        .grid button { width: 100%; min-height: 60px; font-weight: bold; }
-        button:disabled { opacity: 0.7; cursor: default; }
+        /* ปิด Scale บนมือถือเพื่อกัน VoiceOver เพี้ยน */
+        @media (hover: hover) { button:hover:not(:disabled) { background-color: #9acd32; } }
         button:focus { outline: 4px solid white; z-index: 5; }
+        button:disabled { opacity: 0.8; cursor: default; }
 
         .hit-bg { background-color: #ff4500 !important; }
         .miss-bg { background-color: #808080 !important; }
+
+        /* ตกแต่งสถานะท้ายเกม */
+        .victory-bg { background: linear-gradient(to bottom, #4b5320, #ffd700) !important; }
         .lose-grayscale { filter: grayscale(100%); }
 
         #lives {
             font-size: 18px;
             margin: 10px 0;
-            display: flex; justify-content: space-around;
+            display: flex;
+            justify-content: space-around;
             background: rgba(0,0,0,0.4);
-            padding: 10px; border-radius: 10px;
+            padding: 10px;
+            border-radius: 10px;
         }
 
         #announcement, #placement-announce {
-            font-size: 19px; margin: 10px 0; color: var(--gold);
-            min-height: 1.5em; font-weight: bold;
+            font-size: 19px;
+            margin: 10px 0;
+            color: var(--gold);
+            min-height: 1.5em;
+            font-weight: bold;
+        }
+
+        .back-btn {
+            position: absolute; top: 10px; left: 10px;
+            background-color: #8b0000; border: none; padding: 10px;
+            font-size: 14px; display: none; aspect-ratio: auto;
         }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <button id="back-home-main" class="back-home-btn">กลับเมนูหลัก</button>
+    <button id="back-menu-main" class="back-btn">กลับเมนู</button>
 
     <div id="menu">
-        <div class="tank-art" aria-hidden="true">🚜</div>
         <h1 tabindex="-1">Audio Tank</h1>
         <p>ยุทธการรถถังมหากาฬ</p>
         <button id="start-placement" style="aspect-ratio: auto; padding: 15px 30px; margin: 20px auto;">เริ่มวางกำลังพล</button>
@@ -144,16 +144,16 @@
             <span id="enemy-lives">ศัตรู: 3</span>
         </div>
         <div id="announcement" aria-live="polite"></div>
-        <div id="grid-container" style="min-height: 380px;">
+        <div id="grid-container">
             <div id="player-grid" class="grid" style="display: none;"></div>
             <div id="enemy-grid" class="grid" style="display: none;"></div>
         </div>
     </div>
 
     <div id="summary" style="display: none;">
-        <div class="tank-art" id="summary-art" aria-hidden="true">🎖️</div>
         <h2 tabindex="-1">รายงานผลการรบ</h2>
-        <p id="result-message" style="font-size: 20px;"></p>
+        <p id="result-message" style="font-size: 22px;"></p>
+        <div id="confetti" style="font-size: 40px; margin: 10px 0;" aria-hidden="true"></div>
         <button id="new-game" style="aspect-ratio: auto; padding: 15px 30px; margin: 20px auto;">เล่นอีกครั้ง</button>
     </div>
 </div>
@@ -166,10 +166,11 @@
     let currentTurn = '', isHard = false;
     let lastShot = 1;
 
+    // ระบบโหลดเสียง Background (Instant Start)
     const loadSounds = () => {
         ['back.mp3','back1.mp3','select.mp3','shoot1.mp3','shoot2.mp3','t1.mp3','t2.mp3','t3.mp3','t4.mp3','f1.mp3','f2.mp3','f3.mp3','f4.mp3','a1.mp3','a2.mp3','a3.mp3','a4.mp3','s1.mp3','s2.mp3','s3.mp3','s4.mp3','win.mp3','lost.mp3','start.mp3','start1.mp3']
         .forEach(f => {
-            fetch('audio/' + f).then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(d => sounds[f] = d);
+            fetch('audio/' + f).then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(d => sounds[f] = d).catch(() => {});
         });
     };
 
@@ -187,20 +188,12 @@
         return playS(f);
     };
 
-    // คุมการแสดงปุ่มกลับเมนูหลัก
-    function updateNav() {
-        const homeBtn = document.getElementById('back-home-main');
-        const isMenu = document.getElementById('menu').style.display !== 'none';
-        const isSum = document.getElementById('summary').style.display !== 'none';
-        homeBtn.style.display = (isMenu || isSum) ? 'block' : 'none';
-    }
-
+    // 1. หน้าเลือกตำแหน่ง
     function initPlacement() {
         const grid = document.getElementById('placement-grid');
         const ann = document.getElementById('placement-announce');
         grid.innerHTML = ''; playerPos = [];
-        ann.textContent = "เลือกตำแหน่งคันแรก";
-        updateNav();
+        ann.textContent = "เลือกตำแหน่งรถถังคันแรก";
 
         for (let i = 1; i <= 16; i++) {
             const btn = document.createElement('button');
@@ -217,7 +210,7 @@
                     if (playerPos.length < 3) {
                         ann.textContent = `วางคันที่ ${playerPos.length} แล้ว เลือกต่ออีก ${3-playerPos.length} คัน`;
                     } else {
-                        ann.textContent = "กำลังเริ่มยุทธการ...";
+                        ann.textContent = "กองทัพพร้อมแล้ว! กำลังเข้าสู่สมรภูมิ";
                         const s = playS(isHard ? 'start1.mp3' : 'start.mp3');
                         if (s) await new Promise(r => s.onended = r);
                         startGame();
@@ -228,20 +221,19 @@
         }
     }
 
+    // 2. ระบบการเล่น
     function startGame() {
         document.getElementById('placement').style.display = 'none';
         document.getElementById('game').style.display = 'block';
-        updateNav();
         
-        const eLimit = isHard ? 5 : 3;
         enemyPos = [];
+        const eLimit = isHard ? 5 : 3;
         while(enemyPos.length < eLimit) {
             let r = Math.floor(Math.random()*16)+1;
             if(!enemyPos.includes(r)) enemyPos.push(r);
         }
         lives = { p: 3, e: eLimit };
-        document.getElementById('player-lives').textContent = `ผู้เล่น: 3`;
-        document.getElementById('enemy-lives').textContent = `ศัตรู: ${eLimit}`;
+        updateUI();
 
         const pG = document.getElementById('player-grid');
         const eG = document.getElementById('enemy-grid');
@@ -270,15 +262,17 @@
         const btn = grid.querySelector(`button[data-pos="${pos}"]`) || grid.children[pos-1];
         const isHit = targetList.includes(pos);
 
+        // Shake Effect & Sound
         document.getElementById('game-container').classList.add('shake-effect');
         const s1 = playS(isHit ? 'shoot2.mp3' : 'shoot1.mp3');
         if (s1) await new Promise(r => s1.onended = r);
         document.getElementById('game-container').classList.remove('shake-effect');
 
+        // Visual & ARIA Update
         btn.disabled = true;
         btn.classList.add(isHit ? 'hit-bg' : 'miss-bg');
         btn.innerHTML = `<span aria-hidden="true">${isHit ? '💥' : '🕳️'}</span>`;
-        btn.setAttribute('aria-label', `ตำแหน่ง ${pos} ${isHit ? 'ยิงโดนระเบิด' : 'พลาด'}`);
+        btn.setAttribute('aria-label', `ตำแหน่ง ${pos} ${isHit ? 'ยิงโดนรถถังระเบิด' : 'ยิงพลาด'}`);
 
         if(isP) lastShot = pos;
         const s2 = playRnd(isP ? (isHit?'ph':'pm') : (isHit?'eh':'em'));
@@ -287,7 +281,7 @@
         if(isHit) {
             const vic = isP ? 'e' : 'p';
             lives[vic]--;
-            document.getElementById(isP?'enemy-lives':'player-lives').textContent = `${isP?'ศัตรู':'ผู้เล่น'}: ${lives[vic]}`;
+            updateUI();
             if(lives[vic] <= 0) { finishGame(isP); return; }
         }
         currentTurn = isP ? 'e' : 'p';
@@ -296,16 +290,24 @@
 
     function nextTurn() {
         const isP = currentTurn === 'p';
+        const pGrid = document.getElementById('player-grid');
+        const eGrid = document.getElementById('enemy-grid');
+        
+        // สลับ Zone สี
         document.body.style.backgroundColor = isP ? 'var(--enemy-zone)' : 'var(--player-zone)';
-        document.getElementById('player-grid').style.display = isP ? 'none' : 'grid';
-        document.getElementById('enemy-grid').style.display = isP ? 'grid' : 'none';
-        document.getElementById('announcement').textContent = isP ? "ตาคุณแล้ว เลือกยิงตำแหน่ง 1-16" : "ศัตรูกำลังโจมตี...";
+        
+        // สลับ Grid พร้อม Fade
+        pGrid.style.display = isP ? 'none' : 'grid';
+        eGrid.style.display = isP ? 'grid' : 'none';
+        pGrid.classList.add('fade-in'); eGrid.classList.add('fade-in');
+
+        document.getElementById('announcement').textContent = isP ? "ตาคุณแล้ว! รูดหาเป้าหมาย 1-16" : "ศัตรูกำลังเล็งเป้า...";
 
         if(isP) {
             setTimeout(() => {
-                const b = document.getElementById('enemy-grid').querySelector(`button[data-pos="${lastShot}"]:not(:disabled)`) || document.getElementById('enemy-grid').querySelector('button:not(:disabled)');
+                const b = eGrid.querySelector(`button[data-pos="${lastShot}"]:not(:disabled)`) || eGrid.querySelector('button:not(:disabled)');
                 if(b) b.focus();
-            }, 150);
+            }, 200);
         } else {
             setTimeout(botMove, 1200);
         }
@@ -315,27 +317,33 @@
         const avail = Array.from(document.getElementById('player-grid').children).filter(b => !b.classList.contains('hit-bg') && !b.classList.contains('miss-bg'));
         const target = avail[Math.floor(Math.random()*avail.length)];
         const pos = Array.from(target.parentNode.children).indexOf(target) + 1;
-        document.getElementById('announcement').textContent = `ศัตรูยิงมาที่ตำแหน่ง ${pos}`;
+        document.getElementById('announcement').textContent = `ศัตรูเลือกยิงที่เลข ${pos}!`;
         await new Promise(r => setTimeout(r, 800));
         handleAttack(pos, 'e');
+    }
+
+    function updateUI() {
+        document.getElementById('player-lives').textContent = `ผู้เล่น: ${lives.p}`;
+        document.getElementById('enemy-lives').textContent = `ศัตรู: ${lives.e}`;
     }
 
     function finishGame(pWon) {
         if (bgm) bgm.stop();
         document.getElementById('game').style.display = 'none';
         document.getElementById('summary').style.display = 'block';
-        updateNav();
+        document.body.style.backgroundColor = '#2e3d2e';
         
         const msg = document.getElementById('result-message');
-        const art = document.getElementById('summary-art');
+        const conf = document.getElementById('confetti');
         
         if (pWon) {
-            msg.textContent = "ชัยชนะสมบูรณ์แบบ! ศัตรูพ่ายแพ้แล้ว";
-            art.textContent = "🏆";
+            msg.textContent = "ชัยชนะสมบูรณ์แบบ! กองทัพศัตรูถูกทำลาย";
+            conf.textContent = "🎊✨🎉🏆✨🎊";
+            document.getElementById('game-container').classList.add('victory-bg');
             winS = playS('win.mp3');
         } else {
-            msg.textContent = "พ่ายแพ้... ฐานทัพถูกทำลาย";
-            art.textContent = "🌑";
+            msg.textContent = "พ่ายแพ้ยับเยิน... ฐานทัพถูกยึดครอง";
+            conf.textContent = "🌑💨🌪️";
             document.getElementById('game-container').classList.add('lose-grayscale');
             loseS = playS('lost.mp3');
         }
@@ -343,34 +351,37 @@
         const nb = document.getElementById('new-game');
         nb.onclick = () => {
             if(winS) winS.stop(); if(loseS) loseS.stop();
-            document.getElementById('game-container').classList.remove('lose-grayscale');
+            document.getElementById('game-container').classList.remove('victory-bg', 'lose-grayscale');
             isHard = pWon && !isHard; 
-            document.getElementById('summary').style.display = 'none';
-            document.getElementById('placement').style.display = 'block';
-            bgm = playS(isHard ? 'back1.mp3' : 'back.mp3', true);
-            initPlacement();
+            restart();
         };
-        nb.textContent = (pWon && !isHard) ? "โหมดสมรภูมิเลือด (Hard Mode)" : "เริ่มเกมใหม่";
+        nb.textContent = (pWon && !isHard) ? "เข้าสู่สมรภูมิเลือด (Hard Mode)" : "เริ่มยุทธการใหม่";
         document.querySelector('#summary h2').focus();
     }
 
+    function restart() {
+        document.getElementById('summary').style.display = 'none';
+        document.getElementById('placement').style.display = 'block';
+        bgm = playS(isHard ? 'back1.mp3' : 'back.mp3', true);
+        initPlacement();
+    }
+
+    // ระบบปุ่มเริ่มหน้าแรก (Instant)
     window.onload = () => {
         loadSounds();
-        // ปุ่มเริ่มหน้าแรก
         document.getElementById('start-placement').onclick = () => {
+            const btn = document.getElementById('start-placement');
+            btn.disabled = true; btn.textContent = "เตรียมอาวุธ...";
+            
             document.getElementById('menu').style.display = 'none';
             document.getElementById('placement').style.display = 'block';
+            document.getElementById('back-menu-main').style.display = 'block';
             bgm = playS('back.mp3', true);
             initPlacement();
             document.querySelector('#placement h2').focus();
         };
-        // ปุ่มกลับเมนูหลักมุมซ้ายบน
-        document.getElementById('back-home-main').onclick = () => {
-            if (bgm) bgm.stop();
-            window.location.href = '../index.html';
-        };
+        document.getElementById('back-menu-main').onclick = () => location.reload();
         document.querySelector('#menu h1').focus();
-        updateNav();
     };
 </script>
 
