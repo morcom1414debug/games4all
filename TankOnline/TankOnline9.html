@@ -36,28 +36,20 @@
             min-height: 580px;
         }
 
-        /* ปรับปรุง Style สำหรับ Dialog แจ้งเตือนให้ครอบคลุมทั้งหน้าจอ */
+        /* เพิ่ม Style สำหรับ Dialog แจ้งเตือน */
         #connection-dialog {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.95);
-            z-index: 9999;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-
-        #connection-dialog-content {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
             padding: 30px;
             border: 3px solid var(--gold);
             border-radius: 15px;
-            background: #222;
+            z-index: 1000;
+            width: 80%;
             max-width: 400px;
-            margin: 20px;
         }
 
         .grid {
@@ -112,8 +104,8 @@
 
     <div id="game" style="display: none;">
         <div id="lives" style="display: flex; justify-content: space-around; background: rgba(0,0,0,0.4); padding: 10px;">
-            <span id="p1-label">Host: 5</span>
-            <span id="p2-label">Guest: 5</span>
+            <span id="p1-label">Host: 3</span>
+            <span id="p2-label">Guest: 3</span>
         </div>
         <div id="announcement" aria-live="assertive"></div>
         
@@ -136,11 +128,9 @@
     </div>
 
     <div id="connection-dialog">
-        <div id="connection-dialog-content">
-            <h3 style="color: #ff4500;">พบปัญหาการเชื่อมต่อ</h3>
-            <p>การเชื่อมต่อขัดข้องหรือไม่มีการตอบสนอง ลองใหม่อีกครั้ง</p>
-            <button onclick="location.reload()" style="aspect-ratio: auto; padding: 10px 30px; margin-top: 15px; background: #8b0000; border: 2px solid #fff;">ตกลง</button>
-        </div>
+        <h3>พบปัญหาการเชื่อมต่อ</h3>
+        <p>การเชื่อมต่อขัดข้องหรือไม่มีการตอบสนอง ลองใหม่อีกครั้ง</p>
+        <button onclick="location.reload()" style="aspect-ratio: auto; padding: 10px 30px; margin-top: 15px; background: #8b0000;">ตกลง</button>
     </div>
 </div>
 
@@ -166,8 +156,9 @@
     let sounds = {};
     let bgmInstance = null;
 
+    // ตัวแปรใหม่สำหรับจัดการ Timeout
     let inactivityTimer = null;
-    const TIMEOUT_LIMIT = 90000; 
+    const TIMEOUT_LIMIT = 90000; // 90 วินาที
 
     const loadSounds = () => {
         ['back.mp3','back1.mp3','select.mp3','shoot1.mp3','shoot2.mp3','t1.mp3','t2.mp3','t3.mp3','t4.mp3','f1.mp3','f2.mp3','f3.mp3','f4.mp3','a1.mp3','a2.mp3','a3.mp3','a4.mp3','s1.mp3','s2.mp3','s3.mp3','s4.mp3','win.mp3','lost.mp3','start.mp3','start2.mp3']
@@ -193,18 +184,15 @@
     let roomRef = null;
     let processedShotId = null;
 
+    // ฟังก์ชันสำหรับแจ้งเตือนปัญหาการเชื่อมต่อ
     function showConnectionError() {
-        // ซ่อนเนื้อหาเกมทั้งหมดและแสดงเฉพาะ Dialog แบบ Full Screen
-        document.getElementById('menu').style.display = 'none';
-        document.getElementById('placement').style.display = 'none';
-        document.getElementById('game').style.display = 'none';
-        document.getElementById('summary').style.display = 'none';
-        document.getElementById('connection-dialog').style.display = 'flex';
-        
+        document.getElementById('connection-dialog').style.display = 'block';
         if (bgmInstance) bgmInstance.stop();
+        // ปิด listener เพื่อหยุดการทำงานพื้นหลัง
         if (roomRef) off(roomRef);
     }
 
+    // ฟังก์ชันรีเซ็ตเวลา 90 วินาที
     function resetInactivityTimer() {
         clearTimeout(inactivityTimer);
         inactivityTimer = setTimeout(() => {
@@ -260,19 +248,18 @@
             btn.textContent = i;
             btn.setAttribute('aria-label', `พิกัด ${i}`);
             btn.onclick = () => {
-                // เปลี่ยนจำนวนการเลือกวางเป็น 5 คัน
-                if (myTanks.length < 5 && !btn.disabled) {
+                if (myTanks.length < 3 && !btn.disabled) {
                     myTanks.push(i);
                     btn.disabled = true;
                     btn.innerHTML = "🚜";
                     playS('select.mp3');
                     
-                    const msg = myTanks.length < 5 
+                    const msg = myTanks.length < 3 
                         ? `วางรถถังคันที่ ${myTanks.length} แล้ว เลือกจุดยุทธศาสตร์ คันที่ ${myTanks.length + 1}` 
-                        : `วางรถถังคันที่ 5 ครบแล้ว รอสักครู่...`;
+                        : `วางรถถังคันที่ 3 ครบแล้ว รอสักครู่...`;
                     document.getElementById('placement-announce').textContent = msg;
 
-                    if (myTanks.length === 5) finishPlacement();
+                    if (myTanks.length === 3) finishPlacement();
                 }
             };
             grid.appendChild(btn);
@@ -287,6 +274,7 @@
     function listenForStart() {
         onValue(roomRef, async (snapshot) => {
             const data = snapshot.val();
+            // ตรวจสอบว่าถ้าห้องหายไป (ฝ่ายตรงข้ามหลุด) ระหว่างเล่นหรือรอกันอยู่
             if (!data && currentRoomId !== "") {
                 showConnectionError();
                 return;
@@ -297,19 +285,19 @@
                 if (myRole === "host") {
                     const startFile = Math.random() > 0.5 ? 'start.mp3' : 'start2.mp3';
                     const starter = Math.random() > 0.5 ? "host" : "guest";
-                    // ปรับชีวิตเริ่มต้นเป็น 5
-                    await update(roomRef, { status: "playing", turn: starter, h_lives: 5, g_lives: 5, startAudio: startFile });
+                    await update(roomRef, { status: "playing", turn: starter, h_lives: 3, g_lives: 3, startAudio: startFile });
                 }
             } else if (data.status === "playing") {
                 syncGameState(data);
             } else if (data.status === "finished") {
-                clearTimeout(inactivityTimer);
+                clearTimeout(inactivityTimer); // จบเกมให้หยุดจับเวลา
                 showResult(data);
             }
         });
     }
 
     async function syncGameState(data) {
+        // เมื่อมีการอัปเดตสถานะเกม ให้รีเซ็ตเวลา 90 วินาทีเสมอ
         resetInactivityTimer();
 
         if (data.startAudio && !window.startAudioPlayed) {
@@ -415,6 +403,7 @@
     async function attack(pos) {
         if (!isMyTurn) return;
         isMyTurn = false;
+        // เมื่อยิงแล้ว ให้รีเซ็ตเวลา 90 วินาที
         resetInactivityTimer();
         await update(roomRef, { lastShot: { by: myRole, pos: pos, id: Date.now() } });
     }
