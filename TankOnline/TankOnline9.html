@@ -36,28 +36,20 @@
             min-height: 580px;
         }
 
-        /* ส่วนของ Dialog หน้าต่างแจ้งเตือน */
-        #connection-modal {
+        /* เพิ่ม Style สำหรับ Dialog แจ้งเตือน */
+        #connection-dialog {
             display: none;
             position: fixed;
-            z-index: 9999;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.85);
-            backdrop-filter: blur(5px);
-        }
-
-        .modal-content {
-            background-color: var(--base-green);
-            margin: 15% auto;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
             padding: 30px;
-            border: 4px solid var(--gold);
+            border: 3px solid var(--gold);
+            border-radius: 15px;
+            z-index: 1000;
             width: 80%;
             max-width: 400px;
-            border-radius: 20px;
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
         }
 
         .grid {
@@ -134,14 +126,11 @@
         <p id="result-message"></p>
         <button onclick="location.reload()" style="aspect-ratio: auto; padding: 10px 20px;">กลับไปหน้าหลัก</button>
     </div>
-</div>
 
-<div id="connection-modal" role="dialog" aria-labelledby="modal-title" aria-describedby="modal-desc" aria-modal="true">
-    <div class="modal-content">
-        <h2 id="modal-title" style="color: var(--gold);">พบปัญหาการเชื่อมต่อ</h2>
-        <p id="modal-desc">การเชื่อมต่อขัดข้องหรือไม่มีการตอบสนอง ลองใหม่อีกครั้ง</p>
-        <div id="aria-alert" aria-live="assertive" style="position: absolute; width: 1px; height: 1px; overflow: hidden;"></div>
-        <button id="btn-modal-ok" onclick="location.reload()" style="aspect-ratio: auto; padding: 12px 40px; margin: 20px auto 0; font-weight: bold;">ตกลง</button>
+    <div id="connection-dialog">
+        <h3>พบปัญหาการเชื่อมต่อ</h3>
+        <p>การเชื่อมต่อขัดข้องหรือไม่มีการตอบสนอง ลองใหม่อีกครั้ง</p>
+        <button onclick="location.reload()" style="aspect-ratio: auto; padding: 10px 30px; margin-top: 15px; background: #8b0000;">ตกลง</button>
     </div>
 </div>
 
@@ -167,9 +156,9 @@
     let sounds = {};
     let bgmInstance = null;
 
-    // ระบบจัดการเวลา 90 วินาที
+    // ตัวแปรใหม่สำหรับจัดการ Timeout
     let inactivityTimer = null;
-    const TIMEOUT_DURATION = 90000;
+    const TIMEOUT_LIMIT = 90000; // 90 วินาที
 
     const loadSounds = () => {
         ['back.mp3','back1.mp3','select.mp3','shoot1.mp3','shoot2.mp3','t1.mp3','t2.mp3','t3.mp3','t4.mp3','f1.mp3','f2.mp3','f3.mp3','f4.mp3','a1.mp3','a2.mp3','a3.mp3','a4.mp3','s1.mp3','s2.mp3','s3.mp3','s4.mp3','win.mp3','lost.mp3','start.mp3','start2.mp3']
@@ -195,25 +184,20 @@
     let roomRef = null;
     let processedShotId = null;
 
-    // ฟังก์ชันเปิด Dialog แจ้งเตือน
-    function triggerConnectionError() {
-        const modal = document.getElementById('connection-modal');
-        const ariaAlert = document.getElementById('aria-alert');
-        
-        modal.style.display = 'block';
-        ariaAlert.textContent = "พบปัญหาการเชื่อมต่อ การเชื่อมต่อขัดข้องหรือไม่มีการตอบสนอง ลองใหม่อีกครั้ง";
-        
+    // ฟังก์ชันสำหรับแจ้งเตือนปัญหาการเชื่อมต่อ
+    function showConnectionError() {
+        document.getElementById('connection-dialog').style.display = 'block';
         if (bgmInstance) bgmInstance.stop();
+        // ปิด listener เพื่อหยุดการทำงานพื้นหลัง
         if (roomRef) off(roomRef);
-        clearTimeout(inactivityTimer);
-        document.getElementById('btn-modal-ok').focus();
     }
 
-    function resetTimeout() {
+    // ฟังก์ชันรีเซ็ตเวลา 90 วินาที
+    function resetInactivityTimer() {
         clearTimeout(inactivityTimer);
         inactivityTimer = setTimeout(() => {
-            triggerConnectionError();
-        }, TIMEOUT_DURATION);
+            showConnectionError();
+        }, TIMEOUT_LIMIT);
     }
 
     onValue(ref(db, `games/${GAME_ID}/rooms`), (snapshot) => {
@@ -290,14 +274,13 @@
     function listenForStart() {
         onValue(roomRef, async (snapshot) => {
             const data = snapshot.val();
-            
-            // กรณีผู้เล่นอีกฝ่ายหลุด (ห้องถูกลบจาก Firebase)
+            // ตรวจสอบว่าถ้าห้องหายไป (ฝ่ายตรงข้ามหลุด) ระหว่างเล่นหรือรอกันอยู่
             if (!data && currentRoomId !== "") {
-                triggerConnectionError();
+                showConnectionError();
                 return;
             }
-            
             if (!data) return;
+
             if (data.host !== "waiting" && data.guest && data.guest !== "waiting" && data.status === "waiting") {
                 if (myRole === "host") {
                     const startFile = Math.random() > 0.5 ? 'start.mp3' : 'start2.mp3';
@@ -307,15 +290,15 @@
             } else if (data.status === "playing") {
                 syncGameState(data);
             } else if (data.status === "finished") {
-                clearTimeout(inactivityTimer);
+                clearTimeout(inactivityTimer); // จบเกมให้หยุดจับเวลา
                 showResult(data);
             }
         });
     }
 
     async function syncGameState(data) {
-        // เมื่อมีความเคลื่อนไหวในเกม ให้เริ่มจับเวลาใหม่
-        resetTimeout();
+        // เมื่อมีการอัปเดตสถานะเกม ให้รีเซ็ตเวลา 90 วินาทีเสมอ
+        resetInactivityTimer();
 
         if (data.startAudio && !window.startAudioPlayed) {
             window.startAudioPlayed = true;
@@ -420,7 +403,8 @@
     async function attack(pos) {
         if (!isMyTurn) return;
         isMyTurn = false;
-        resetTimeout();
+        // เมื่อยิงแล้ว ให้รีเซ็ตเวลา 90 วินาที
+        resetInactivityTimer();
         await update(roomRef, { lastShot: { by: myRole, pos: pos, id: Date.now() } });
     }
 
