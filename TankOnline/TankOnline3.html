@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tank Assassin Online</title>
+    <style>
+        :root {
+            --base-green: #4b5320;
+            --player-zone: #2e3d2e;
+            --enemy-zone: #600000;
+            --gold: #ffd700;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: var(--player-zone);
+            color: #fff;
+            text-align: center;
+            margin: 0;
+            padding: 10px;
+            overflow-x: hidden;
+            transition: background-color 0.5s ease;
+        }
+
+        #game-container {
+            max-width: 600px;
+            width: 100%;
+            margin: auto;
+            position: relative;
+            background-color: var(--base-green);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
+            box-sizing: border-box;
+            min-height: 600px;
+        }
+
+        .smoke-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), transparent);
+            pointer-events: none;
+            animation: drift 8s infinite alternate ease-in-out;
+            z-index: 2;
+        }
+        @keyframes drift { from { transform: scale(1) translateX(-5%); } to { transform: scale(1.2) translateX(5%); } }
+
+        .tank-art { font-size: 80px; margin: 15px 0; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            max-width: 400px;
+            margin: 15px auto;
+            border: 3px solid var(--gold);
+            padding: 10px;
+            background-color: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            position: relative;
+            z-index: 3;
+        }
+
+        button {
+            padding: 10px; font-size: 16px;
+            background-color: #6b8e23; color: #fff;
+            border: 2px solid var(--gold);
+            cursor: pointer; border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        button:focus:not(:disabled) {
+            box-shadow: 0 0 15px #fff;
+            outline: 3px solid white;
+        }
+
+        .grid button { aspect-ratio: 1/1; font-weight: bold; width: 100%; }
+        
+        .hit-bg { background-color: #ff4500 !important; }
+        .miss-bg { background-color: #444 !important; }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px); }
+            50% { transform: translate(-3px, -2px); }
+            100% { transform: translate(0, 0); }
+        }
+        .shake-effect { animation: shake 0.4s; }
+
+        #room-list {
+            list-style: none; padding: 0; margin-top: 20px;
+            max-height: 250px; overflow-y: auto;
+        }
+        .room-item {
+            background: rgba(0,0,0,0.5); margin-bottom: 5px;
+            padding: 10px; border-radius: 5px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        #announcement, #placement-announce {
+            font-size: 19px; margin: 10px 0; color: var(--gold);
+            min-height: 1.5em; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="smoke-overlay"></div>
+
+    <div id="menu-screen">
+        <div class="tank-art">🚜</div>
+        <h1 tabindex="-1">Tank Assassin Online</h1>
+        <p>ยุทธการรถถังออนไลน์สลับกันยิง<br>ปกป้องฐานทัพจากผู้เล่นอื่นทั่วโลก</p>
+        <button id="btn-create-room" style="padding: 15px 30px;">สร้างห้องใหม่</button>
+        <h3>ห้องที่กำลังเปิดอยู่</h3>
+        <ul id="room-list"></ul>
+    </div>
+
+    <div id="placement-screen" style="display: none;">
+        <h2 id="role-display">กำลังเตรียมพร้อม...</h2>
+        <div id="placement-announce" aria-live="polite">กำลังเชื่อมต่อ...</div>
+        <div id="placement-grid" class="grid"></div>
+    </div>
+
+    <div id="game-screen" style="display: none;">
+        <div id="lives-display" style="display: flex; justify-content: space-around; padding: 10px; background: rgba(0,0,0,0.4);">
+            <span id="label-p1">Host: 3</span>
+            <span id="label-p2">Guest: 3</span>
+        </div>
+        <div id="announcement" aria-live="polite"></div>
+        <div id="battle-grids">
+            <div id="my-grid-area">
+                <p>ฐานทัพของคุณ</p>
+                <div id="my-grid" class="grid"></div>
+            </div>
+            <div id="target-grid-area" style="display:none;">
+                <p>พิกัดศัตรู (เลือกยิง)</p>
+                <div id="target-grid" class="grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="summary-screen" style="display: none;">
+        <div class="tank-art" id="summary-art">🎖️</div>
+        <h2 id="result-title">รายงานผลการรบ</h2>
+        <p id="result-message" style="font-size: 20px;"></p>
+        <button onclick="location.reload()" style="padding: 15px 30px;">กลับหน้าหลัก</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, push, onValue, update, onDisconnect, remove, runTransaction } 
+    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
+        authDomain: "xo-game-134ec.firebaseapp.com",
+        databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "xo-game-134ec",
+        storageBucket: "xo-game-134ec.firebasestorage.app",
+        messagingSenderId: "318375224157",
+        appId: "1:318375224157:web:ef720e113260d4b7b77eb4"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const GAME_ID = "tank001";
+
+    // --- Audio System ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const sounds = {};
+    let bgm;
+
+    const loadSounds = () => {
+        ['back.mp3','back1.mp3','select.mp3','shoot1.mp3','shoot2.mp3','t1.mp3','t2.mp3','t3.mp3','t4.mp3','f1.mp3','f2.mp3','f3.mp3','f4.mp3','a1.mp3','a2.mp3','a3.mp3','a4.mp3','s1.mp3','s2.mp3','s3.mp3','s4.mp3','win.mp3','lost.mp3','start.mp3','start1.mp3']
+        .forEach(f => {
+            fetch('audio/' + f).then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(d => sounds[f] = d);
+        });
+    };
+
+    const playS = (f, loop = false) => {
+        if (!sounds[f]) return null;
+        const s = audioCtx.createBufferSource();
+        s.buffer = sounds[f]; s.loop = loop;
+        s.connect(audioCtx.destination); s.start();
+        return s;
+    };
+
+    // --- Game Variables ---
+    let myRole = ""; // "host" or "guest"
+    let currentRoomId = "";
+    let myTanks = [];
+    let isGameOver = false;
+
+    // --- Room Management ---
+    const roomListEl = document.getElementById('room-list');
+    onValue(ref(db, `${GAME_ID}/rooms`), (snapshot) => {
+        roomListEl.innerHTML = "";
+        const rooms = snapshot.val();
+        for (let id in rooms) {
+            const room = rooms[id];
+            if (room.status === "waiting" || room.status === "playing") {
+                const li = document.createElement('li');
+                li.className = "room-item";
+                const count = room.guestJoined ? 2 : 1;
+                li.innerHTML = `<span>${id} (${count}/2)</span>`;
+                if (count < 2) {
+                    const btn = document.createElement('button');
+                    btn.textContent = "เข้าร่วม";
+                    btn.onclick = () => joinRoom(id);
+                    li.appendChild(btn);
+                }
+                roomListEl.appendChild(li);
+            }
+        }
+    });
+
+    // Create Room
+    document.getElementById('btn-create-room').onclick = async () => {
+        const roomRef = ref(db, `${GAME_ID}/roomCounter`);
+        const result = await runTransaction(roomRef, (current) => (current || 0) + 1);
+        const num = result.snapshot.val();
+        const roomId = "Tank" + String(num).padStart(5, '0');
+        
+        currentRoomId = roomId;
+        myRole = "host";
+        
+        const newRoom = {
+            status: "waiting",
+            hostTanks: [],
+            guestTanks: [],
+            turn: "",
+            lastAction: Date.now(),
+            hostLives: 3,
+            guestLives: 3,
+            guestJoined: false
+        };
+
+        await set(ref(db, `${GAME_ID}/rooms/${roomId}`), newRoom);
+        onDisconnect(ref(db, `${GAME_ID}/rooms/${roomId}`)).remove();
+        
+        showPlacement();
+    };
+
+    async function joinRoom(id) {
+        currentRoomId = id;
+        myRole = "guest";
+        await update(ref(db, `${GAME_ID}/rooms/${id}`), { 
+            guestJoined: true,
+            lastAction: Date.now() 
+        });
+        onDisconnect(ref(db, `${GAME_ID}/rooms/${id}`)).remove();
+        showPlacement();
+    }
+
+    // --- Placement Logic ---
+    function showPlacement() {
+        document.getElementById('menu-screen').style.display = 'none';
+        document.getElementById('placement-screen').style.display = 'block';
+        document.getElementById('role-display').textContent = `คุณคือฝ่าย ${myRole.toUpperCase()}`;
+        bgm = playS('back.mp3', true);
+        
+        const grid = document.getElementById('placement-grid');
+        const ann = document.getElementById('placement-announce');
+        grid.innerHTML = "";
+        myTanks = [];
+        ann.textContent = "เลือกตำแหน่งรถถังคันที่ 1";
+
+        for (let i = 1; i <= 16; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i;
+            btn.onclick = () => {
+                if (myTanks.length < 3 && !btn.disabled) {
+                    myTanks.push(i);
+                    btn.disabled = true;
+                    btn.innerHTML = "🚜";
+                    btn.setAttribute('aria-label', `ตำแหน่ง ${i} วางรถถังแล้ว`);
+                    playS('select.mp3');
+                    if (myTanks.length < 3) {
+                        ann.textContent = `วางคันที่ ${myTanks.length} แล้ว เลือกต่ออีก ${3-myTanks.length} คัน`;
+                    } else {
+                        ann.textContent = "ยืนยันพิกัดแล้ว รอคู่ต่อสู้...";
+                        submitTanks();
+                    }
+                }
+            };
+            grid.appendChild(btn);
+        }
+    }
+
+    async function submitTanks() {
+        const updates = {};
+        updates[`${myRole}Tanks`] = myTanks;
+        updates[`${myRole}Ready`] = true;
+        updates['lastAction'] = Date.now();
+        await update(ref(db, `${GAME_ID}/rooms/${currentRoomId}`), updates);
+        listenForStart();
+    }
+
+    function listenForStart() {
+        onValue(ref(db, `${GAME_ID}/rooms/${currentRoomId}`), (snapshot) => {
+            const data = snapshot.val();
+            if (!data) return;
+
+            if (data.hostReady && data.guestReady && data.status === "waiting") {
+                // สุ่มฝ่ายเริ่มก่อนโดย Host
+                if (myRole === "host") {
+                    const firstTurn = Math.random() > 0.5 ? "host" : "guest";
+                    update(ref(db, `${GAME_ID}/rooms/${currentRoomId}`), {
+                        status: "playing",
+                        turn: firstTurn,
+                        lastAction: Date.now()
+                    });
+                }
+            }
+
+            if (data.status === "playing") {
+                initBattle(data);
+            }
+        });
+    }
+
+    // --- Battle Logic ---
+    function initBattle(data) {
+        document.getElementById('placement-screen').style.display = 'none';
+        document.getElementById('game-screen').style.display = 'block';
+        
+        if (data.lastShot) {
+            handleVisualShot(data.lastShot);
+        }
+
+        renderGrids(data);
+        updateUI(data);
+    }
+
+    function updateUI(data) {
+        document.getElementById('label-p1').textContent = `Host: ${data.hostLives}`;
+        document.getElementById('label-p2').textContent = `Guest: ${data.guestLives}`;
+        
+        const isMyTurn = data.turn === myRole;
+        document.getElementById('announcement').textContent = isMyTurn ? "ตาคุณแล้ว! เลือกพิกัดยิง" : "ศัตรูกำลังเล็งเป้า...";
+        document.body.style.backgroundColor = isMyTurn ? "var(--enemy-zone)" : "var(--player-zone)";
+        
+        document.getElementById('target-grid-area').style.display = isMyTurn ? 'block' : 'none';
+        
+        // ตรวจสอบแพ้ชนะ
+        if (data.hostLives <= 0 || data.guestLives <= 0) {
+            endGame(data);
+        }
+    }
+
+    function renderGrids(data) {
+        const myGrid = document.getElementById('my-grid');
+        const targetGrid = document.getElementById('target-grid');
+        myGrid.innerHTML = "";
+        targetGrid.innerHTML = "";
+
+        const myTanksList = myRole === "host" ? data.hostTanks : data.guestTanks;
+        const enemyHits = data.hits || [];
+
+        for (let i = 1; i <= 16; i++) {
+            // My Grid (ตารางตั้งรับ)
+            const btnMe = document.createElement('button');
+            btnMe.textContent = i;
+            btnMe.disabled = true;
+            if (myTanksList.includes(i)) btnMe.innerHTML = "🚜";
+            
+            const shotAtMe = enemyHits.find(h => h.pos === i && h.by !== myRole);
+            if (shotAtMe) {
+                btnMe.classList.add(shotAtMe.isHit ? 'hit-bg' : 'miss-bg');
+                btnMe.innerHTML = shotAtMe.isHit ? "💥" : "🕳️";
+            }
+            myGrid.appendChild(btnMe);
+
+            // Target Grid (ตารางโจมตี)
+            const btnTarget = document.createElement('button');
+            btnTarget.textContent = i;
+            const myShot = enemyHits.find(h => h.pos === i && h.by === myRole);
+            if (myShot) {
+                btnTarget.disabled = true;
+                btnTarget.classList.add(myShot.isHit ? 'hit-bg' : 'miss-bg');
+                btnTarget.innerHTML = myShot.isHit ? "💥" : "🕳️";
+            } else {
+                btnTarget.onclick = () => isMyTurn() && fireShot(i, data);
+            }
+            targetGrid.appendChild(btnTarget);
+        }
+        
+        function isMyTurn() { return data.turn === myRole && !isGameOver; }
+    }
+
+    async function fireShot(pos, data) {
+        const enemyRole = myRole === "host" ? "guest" : "host";
+        const enemyTanks = enemyRole === "host" ? data.hostTanks : data.guestTanks;
+        const isHit = enemyTanks.includes(pos);
+        
+        const newHit = { pos, by: myRole, isHit };
+        const hits = data.hits || [];
+        hits.push(newHit);
+
+        const updates = {
+            hits: hits,
+            turn: enemyRole,
+            lastAction: Date.now(),
+            lastShot: newHit
+        };
+
+        if (isHit) {
+            updates[`${enemyRole}Lives`] = data[`${enemyRole}Lives`] - 1;
+        }
+
+        await update(ref(db, `${GAME_ID}/rooms/${currentRoomId}`), updates);
+    }
+
+    function handleVisualShot(shot) {
+        const isAttacker = shot.by === myRole;
+        document.getElementById('game-container').classList.add('shake-effect');
+        
+        // เล่นเสียงตามเงื่อนไขที่ขอ
+        if (isAttacker) {
+            playS(shot.isHit ? 'shoot2.mp3' : 'shoot1.mp3');
+            setTimeout(() => {
+                const rnd = Math.floor(Math.random()*4) + 1;
+                playS(shot.isHit ? `t${rnd}.mp3` : `f${rnd}.mp3`);
+            }, 600);
+        } else {
+            // ฝ่ายรับ
+            playS(shot.isHit ? 'shoot2.mp3' : 'shoot1.mp3');
+            setTimeout(() => {
+                const rnd = Math.floor(Math.random()*4) + 1;
+                playS(shot.isHit ? `a${rnd}.mp3` : `s${rnd}.mp3`);
+            }, 600);
+        }
+
+        setTimeout(() => {
+            document.getElementById('game-container').classList.remove('shake-effect');
+        }, 500);
+    }
+
+    function endGame(data) {
+        if (isGameOver) return;
+        isGameOver = true;
+        if (bgm) bgm.stop();
+
+        const iWon = (myRole === "host" && data.guestLives <= 0) || (myRole === "guest" && data.hostLives <= 0);
+        
+        document.getElementById('game-screen').style.display = 'none';
+        document.getElementById('summary-screen').style.display = 'block';
+        
+        const msg = document.getElementById('result-message');
+        const title = document.getElementById('result-title');
+        
+        if (iWon) {
+            title.textContent = "ชัยชนะ!";
+            msg.textContent = "คุณทำลายกองทัพศัตรูได้ราบคาบ!";
+            playS('win.mp3');
+        } else {
+            title.textContent = "พ่ายแพ้...";
+            msg.textContent = "ฐานทัพของคุณถูกทำลายแล้ว";
+            playS('lost.mp3');
+        }
+    }
+
+    // --- Cleanup System (10 mins inactivity) ---
+    setInterval(() => {
+        if (myRole === "host" && currentRoomId) {
+            const roomRef = ref(db, `${GAME_ID}/rooms/${currentRoomId}`);
+            onValue(roomRef, (snap) => {
+                const data = snap.val();
+                if (data && Date.now() - data.lastAction > 600000) {
+                    remove(roomRef);
+                    location.reload();
+                }
+            }, { onlyOnce: true });
+        }
+    }, 60000);
+
+    window.onload = loadSounds;
+</script>
+</body>
+</html>
