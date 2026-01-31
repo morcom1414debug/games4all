@@ -68,22 +68,6 @@
         .hit-bg { background-color: #ff4500 !important; opacity: 1 !important; }
         .miss-bg { background-color: #444 !important; opacity: 1 !important; }
         #announcement { margin: 15px; color: var(--gold); font-weight: bold; min-height: 1.5em; font-size: 1.2em; }
-
-        /* ส่วนที่เพิ่ม: Dialog แจ้งเตือน */
-        #disconnect-dialog {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9);
-            padding: 20px;
-            border: 3px solid var(--gold);
-            border-radius: 15px;
-            z-index: 1000;
-            width: 80%;
-            max-width: 300px;
-        }
     </style>
 </head>
 <body>
@@ -125,11 +109,6 @@
         <h2 id="result-title">รายงานผลการรบ</h2>
         <p id="result-message"></p>
         <button onclick="location.reload()" style="aspect-ratio: auto; padding: 10px 20px;">กลับไปหน้าหลัก</button>
-    </div>
-
-    <div id="disconnect-dialog">
-        <p>พบปัญหาการเชื่อมต่อ ลองใหม่อีกครั้ง</p>
-        <button onclick="location.reload()" style="aspect-ratio: auto; padding: 10px 30px; margin: auto;">ตกลง</button>
     </div>
 </div>
 
@@ -179,9 +158,6 @@
     let roomRef = null;
     let processedShotId = null;
 
-    // ส่วนที่เพิ่ม: ตัวแปรสำหรับการตรวจสอบ Connection
-    let checkInterval = null;
-
     onValue(ref(db, `games/${GAME_ID}/rooms`), (snapshot) => {
         const rooms = snapshot.val();
         const listDiv = document.getElementById('room-list');
@@ -203,47 +179,19 @@
         currentRoomId = "Tank" + String(count).padStart(5, '0');
         myRole = "host";
         roomRef = ref(db, `games/${GAME_ID}/rooms/${currentRoomId}`);
-        // เพิ่ม h_lastActive เพื่อติดตามสถานะ Host
-        await set(roomRef, { host: "waiting", status: "waiting", lastActive: serverTimestamp(), h_lastActive: serverTimestamp() });
+        await set(roomRef, { host: "waiting", status: "waiting", lastActive: serverTimestamp() });
         onDisconnect(roomRef).remove();
         showPlacement();
-        startHeartbeat(); // เริ่มส่งสัญญาณตัวตน
     }
 
     window.joinRoom = async (roomId) => {
         currentRoomId = roomId;
         myRole = "guest";
         roomRef = ref(db, `games/${GAME_ID}/rooms/${roomId}`);
-        // เพิ่ม g_lastActive เพื่อติดตามสถานะ Guest
-        await update(roomRef, { guest: "waiting", lastActive: serverTimestamp(), g_lastActive: serverTimestamp() });
+        await update(roomRef, { guest: "waiting", lastActive: serverTimestamp() });
         onDisconnect(roomRef).remove();
         showPlacement();
-        startHeartbeat(); // เริ่มส่งสัญญาณตัวตน
     };
-
-    // ส่วนที่เพิ่ม: ฟังก์ชันส่งสัญญาณว่ายังอยู่ในเกม
-    function startHeartbeat() {
-        setInterval(() => {
-            if (roomRef) {
-                const key = myRole === "host" ? "h_lastActive" : "g_lastActive";
-                update(roomRef, { [key]: serverTimestamp(), lastActive: serverTimestamp() });
-            }
-        }, 10000); // อัปเดตทุก 10 วินาที
-    }
-
-    // ส่วนที่เพิ่ม: ฟังก์ชันตรวจสอบการหยุดนิ่งของอีกฝ่าย
-    function monitorConnection(data) {
-        if (data.status === "playing" || (data.host !== "waiting" && data.guest !== "waiting")) {
-            const opponentLastActive = myRole === "host" ? data.g_lastActive : data.h_lastActive;
-            if (opponentLastActive) {
-                const now = Date.now();
-                const diff = now - opponentLastActive;
-                if (diff > 90000) { // 90 วินาที
-                    document.getElementById('disconnect-dialog').style.display = 'block';
-                }
-            }
-        }
-    }
 
     function showPlacement() {
         document.getElementById('menu').style.display = 'none';
@@ -264,6 +212,7 @@
                     btn.innerHTML = "🚜";
                     playS('select.mp3');
                     
+                    // ข้อ 1: ประกาศผ่าน Aria Live ตามต้นฉบับ
                     const msg = myTanks.length < 3 
                         ? `วางรถถังคันที่ ${myTanks.length} แล้ว เลือกจุดยุทธศาสตร์ คันที่ ${myTanks.length + 1}` 
                         : `วางรถถังคันที่ 3 ครบแล้ว รอสักครู่...`;
@@ -284,14 +233,7 @@
     function listenForStart() {
         onValue(roomRef, async (snapshot) => {
             const data = snapshot.val();
-            if (!data) {
-                // ถ้า data หายไปแปลว่าห้องถูกลบ (หลุด)
-                if (currentRoomId) document.getElementById('disconnect-dialog').style.display = 'block';
-                return;
-            }
-
-            monitorConnection(data); // เรียกใช้ฟังก์ชันตรวจสอบ Connection
-
+            if (!data) return;
             if (data.host !== "waiting" && data.guest && data.guest !== "waiting" && data.status === "waiting") {
                 if (myRole === "host") {
                     const startFile = Math.random() > 0.5 ? 'start.mp3' : 'start1.mp3';
@@ -332,17 +274,21 @@
         if (data.lastShot && data.lastShot.id !== processedShotId) {
             processedShotId = data.lastShot.id;
             const shot = data.lastShot;
-            const amIAttacker = (shot.by === myRole);
+            const amIAttacker = (shot.by === myRole); // เราเป็นคนยิงใช่ไหม?
             const targetTanks = amIAttacker ? (myRole === "host" ? data.guest : data.host) : myTanks;
             const isHit = targetTanks.includes(shot.pos);
 
+            // เล่นเสียงยิงให้จบก่อน
             const sShoot = playS(isHit ? 'shoot2.mp3' : 'shoot1.mp3');
             if (sShoot) await new Promise(r => sShoot.onended = r);
 
+            // ข้อ 2: ปรับชุดเสียงพากย์ตามสถานะ รุก/รับ และ โดน/พลาด
             let voicePool = [];
             if (amIAttacker) {
+                // ฝ่ายรุก (เป็นคนเลือกยิง)
                 voicePool = isHit ? ['t1','t2','t3','t4'] : ['f1','f2','f3','f4'];
             } else {
+                // ฝ่ายรับ (ถูกยิง)
                 voicePool = isHit ? ['a1','a2','a3','a4'] : ['s1','s2','s3','s4'];
             }
             const randomVoice = voicePool[Math.floor(Math.random() * 4)] + '.mp3';
