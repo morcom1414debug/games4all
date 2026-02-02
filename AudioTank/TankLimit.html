@@ -131,7 +131,7 @@
         #ammo-display {
             border-top: 1px solid rgba(255, 215, 0, 0.3);
             padding-top: 8px;
-            color: #add8e6; /* สีฟ้าอ่อนให้แยกจากชีวิต */
+            color: #add8e6;
         }
 
         #announcement, #placement-announce {
@@ -149,7 +149,7 @@
     <div id="menu">
         <div class="tank-art" aria-hidden="true">🚜</div>
         <h1 tabindex="-1">ยุทธการรถถังมหากาฬ - Tank Assassin</h1>
-        <p>โหมดกระสุนจำกัด: วางรถถัง 4 คัน และมีกระสุนเพียงฝ่ายละ 8 นัดเท่านั้น!<br>ปกป้องดินแดนยิ่งชีพ ใครเหลือรอดมากกว่าจะเป็นผู้ชนะ</p>
+        <p>โหมดกระสุนจำกัด: วางรถถัง 4 คัน และมีกระสุนเพียงฝ่ายละ 4 นัดเท่านั้น!<br>หาตำแหน่งศัตรูให้พบก่อนที่กระสุนจะหมดสิ้น</p>
         <button id="start-placement" style="aspect-ratio: auto; padding: 15px 30px; margin: 20px auto;">เริ่มวางกำลังพล</button>
     </div>
 
@@ -166,8 +166,8 @@
                 <span id="enemy-lives">ชีวิตศัตรู: 4</span>
             </div>
             <div id="ammo-display">
-                <span id="player-ammo">กระสุนผู้เล่น: 8</span>
-                <span id="enemy-ammo">กระสุนศัตรู: 8</span>
+                <span id="player-ammo">กระสุนผู้เล่น: 4</span>
+                <span id="enemy-ammo">กระสุนศัตรู: 4</span>
             </div>
         </div>
         <div id="announcement" aria-live="polite"></div>
@@ -189,12 +189,12 @@
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     let sounds = {};
     let bgm, winS, loseS;
-    let playerPos = [], enemyPos = [], lives = { p: 4, e: 4 }, ammo = { p: 8, e: 8 };
+    let playerPos = [], enemyPos = [], lives = { p: 4, e: 4 }, ammo = { p: 4, e: 4 };
     let currentTurn = '', isHard = false;
     let lastShot = 1;
 
     const loadSounds = () => {
-        ['back.mp3','back1.mp3','select.mp3','shoot1.mp3','shoot2.mp3','t1.mp3','t2.mp3','t3.mp3','t4.mp3','f1.mp3','f2.mp3','f3.mp3','f4.mp3','a1.mp3','a2.mp3','a3.mp3','a4.mp3','s1.mp3','s2.mp3','s3.mp3','s4.mp3','win.mp3','lost.mp3','start.mp3','start1.mp3']
+        ['back.mp3','back1.mp3','select.mp3','shoot1.mp3','shoot2.mp3','t1.mp3','t2.mp3','t3.mp3','t4.mp3','f1.mp3','f2.mp3','f3.mp3','f4.mp3','a1.mp3','a2.mp3','a3.mp3','a4.mp3','s1.mp3','s2.mp3','s3.mp3','s4.mp3','win.mp3','lost.mp3','start.mp3','start2.mp3']
         .forEach(f => {
             fetch('audio/' + f).then(r => r.arrayBuffer()).then(b => audioCtx.decodeAudioData(b)).then(d => sounds[f] = d);
         });
@@ -228,6 +228,10 @@
         ann.textContent = "เลือกตำแหน่งคันแรก";
         updateNav();
 
+        if (bgm) bgm.stop();
+        const bgmFiles = ['back.mp3', 'back1.mp3'];
+        bgm = playS(bgmFiles[Math.floor(Math.random() * bgmFiles.length)], true);
+
         for (let i = 1; i <= 16; i++) {
             const btn = document.createElement('button');
             btn.textContent = i;
@@ -242,8 +246,9 @@
                     if (playerPos.length < 4) {
                         ann.textContent = `วางคันที่ ${playerPos.length} แล้ว เลือกต่ออีก ${4-playerPos.length} คัน`;
                     } else {
-                        ann.textContent = "กำลังเริ่มยุทธการ...";
-                        const s = playS('start.mp3');
+                        ann.textContent = "เตรียมเคลื่อนพล...";
+                        const startFiles = ['start.mp3', 'start2.mp3'];
+                        const s = playS(startFiles[Math.floor(Math.random() * startFiles.length)]);
                         if (s) await new Promise(r => s.onended = r);
                         startGame();
                     }
@@ -265,12 +270,12 @@
         }
         
         lives = { p: 4, e: 4 };
-        ammo = { p: 8, e: 8 };
+        ammo = { p: 4, e: 4 };
         
         document.getElementById('player-lives').textContent = `ชีวิตผู้เล่น: 4`;
         document.getElementById('enemy-lives').textContent = `ชีวิตศัตรู: 4`;
-        document.getElementById('player-ammo').textContent = `กระสุนผู้เล่น: 8`;
-        document.getElementById('enemy-ammo').textContent = `กระสุนศัตรู: 8`;
+        document.getElementById('player-ammo').textContent = `กระสุนผู้เล่น: 4`;
+        document.getElementById('enemy-ammo').textContent = `กระสุนศัตรู: 4`;
 
         const pG = document.getElementById('player-grid');
         const eG = document.getElementById('enemy-grid');
@@ -379,11 +384,23 @@
         const art = document.getElementById('summary-art');
         
         if (pWon) {
-            msg.textContent = "ชัยชนะ! กองทัพศัตรูพ่ายแพ้ราบคาบ";
+            const winMsgs = [
+                "ชัยชนะ! กลยุทธ์ของคุณเหนือชั้นกว่าศัตรู",
+                "สำเร็จ! กองทัพศัตรูถูกทำลายราบคาบด้วยกระสุนอันน้อยนิด",
+                "ภารกิจเสร็จสิ้น! คุณคือมือสังหารรถถังที่แท้จริง",
+                "ยอดเยี่ยม! พิกัดของคุณแม่นยำจนศัตรูไร้ทางสู้"
+            ];
+            msg.textContent = winMsgs[Math.floor(Math.random()*winMsgs.length)];
             art.textContent = "🏆";
             winS = playS('win.mp3');
         } else {
-            msg.textContent = "พ่ายแพ้... ฐานทัพของเราล่มสลาย";
+            const loseMsgs = [
+                "พ่ายแพ้... กระสุนหมดสิ้นก่อนจะพิชิตศัตรู",
+                "ฐานทัพล่มสลาย! ศัตรูอ่านทางเราออกหมดแล้ว",
+                "ความพ่ายแพ้ที่ขมขื่น... เราสูญเสียแนวรบทั้งหมด",
+                "จบสิ้นแล้ว... รถถังของเราถูกทำลายจนหมดสิ้น"
+            ];
+            msg.textContent = loseMsgs[Math.floor(Math.random()*loseMsgs.length)];
             art.textContent = "🌑";
             document.getElementById('game-container').classList.add('lose-grayscale');
             loseS = playS('lost.mp3');
@@ -395,7 +412,6 @@
             document.getElementById('game-container').classList.remove('lose-grayscale');
             document.getElementById('summary').style.display = 'none';
             document.getElementById('placement').style.display = 'block';
-            bgm = playS('back.mp3', true);
             initPlacement();
         };
         nb.textContent = "เริ่มยุทธการใหม่";
@@ -407,7 +423,6 @@
         document.getElementById('start-placement').onclick = () => {
             document.getElementById('menu').style.display = 'none';
             document.getElementById('placement').style.display = 'block';
-            bgm = playS('back.mp3', true);
             initPlacement();
             document.querySelector('#placement h2').focus();
         };
