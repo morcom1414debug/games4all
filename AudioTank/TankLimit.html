@@ -131,7 +131,7 @@
         #ammo-display {
             border-top: 1px solid rgba(255, 215, 0, 0.3);
             padding-top: 8px;
-            color: #add8e6;
+            color: #add8e6; /* สีฟ้าอ่อนให้แยกจากชีวิต */
         }
 
         #announcement, #placement-announce {
@@ -149,7 +149,7 @@
     <div id="menu">
         <div class="tank-art" aria-hidden="true">🚜</div>
         <h1 tabindex="-1">ยุทธการรถถังมหากาฬ - Tank Assassin</h1>
-        <p>โหมดประหยัดทรัพยากร: วางรถถัง 4 คัน และมีกระสุนเพียงฝ่ายละ 4 นัด!<br>ยิงอย่างระมัดระวัง เพราะถ้ากระสุนหมดก่อน คุณอาจเป็นฝ่ายแพ้</p>
+        <p>โหมดกระสุนจำกัด: วางรถถัง 4 คัน และมีกระสุนเพียงฝ่ายละ 8 นัดเท่านั้น!<br>ปกป้องดินแดนยิ่งชีพ ใครเหลือรอดมากกว่าจะเป็นผู้ชนะ</p>
         <button id="start-placement" style="aspect-ratio: auto; padding: 15px 30px; margin: 20px auto;">เริ่มวางกำลังพล</button>
     </div>
 
@@ -166,8 +166,8 @@
                 <span id="enemy-lives">ชีวิตศัตรู: 4</span>
             </div>
             <div id="ammo-display">
-                <span id="player-ammo">กระสุนผู้เล่น: 4</span>
-                <span id="enemy-ammo">กระสุนศัตรู: 4</span>
+                <span id="player-ammo">กระสุนผู้เล่น: 8</span>
+                <span id="enemy-ammo">กระสุนศัตรู: 8</span>
             </div>
         </div>
         <div id="announcement" aria-live="polite"></div>
@@ -180,7 +180,7 @@
     <div id="summary" style="display: none;">
         <div class="tank-art" id="summary-art" aria-hidden="true">🎖️</div>
         <h2 tabindex="-1">รายงานผลการรบ</h2>
-        <p id="result-message" style="font-size: 20px; padding: 0 20px;"></p>
+        <p id="result-message" style="font-size: 20px;"></p>
         <button id="new-game" style="aspect-ratio: auto; padding: 15px 30px; margin: 20px auto;">เล่นอีกครั้ง</button>
     </div>
 </div>
@@ -189,8 +189,8 @@
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     let sounds = {};
     let bgm, winS, loseS;
-    let playerPos = [], enemyPos = [], lives = { p: 4, e: 4 }, ammo = { p: 4, e: 4 };
-    let currentTurn = '';
+    let playerPos = [], enemyPos = [], lives = { p: 4, e: 4 }, ammo = { p: 8, e: 8 };
+    let currentTurn = '', isHard = false;
     let lastShot = 1;
 
     const loadSounds = () => {
@@ -243,11 +243,8 @@
                         ann.textContent = `วางคันที่ ${playerPos.length} แล้ว เลือกต่ออีก ${4-playerPos.length} คัน`;
                     } else {
                         ann.textContent = "กำลังเริ่มยุทธการ...";
-                        // แก้ไข: สุ่มเล่น start.mp3 หรือ start1.mp3
-                        const bgmFile = Math.random() > 0.5 ? 'start.mp3' : 'start1.mp3';
-                        if(bgm) bgm.stop();
-                        bgm = playS(bgmFile, true);
-                        await new Promise(r => setTimeout(r, 1000));
+                        const s = playS('start.mp3');
+                        if (s) await new Promise(r => s.onended = r);
                         startGame();
                     }
                 }
@@ -268,12 +265,12 @@
         }
         
         lives = { p: 4, e: 4 };
-        ammo = { p: 4, e: 4 }; // ปรับกระสุนเหลือ 4
+        ammo = { p: 8, e: 8 };
         
         document.getElementById('player-lives').textContent = `ชีวิตผู้เล่น: 4`;
         document.getElementById('enemy-lives').textContent = `ชีวิตศัตรู: 4`;
-        document.getElementById('player-ammo').textContent = `กระสุนผู้เล่น: 4`;
-        document.getElementById('enemy-ammo').textContent = `กระสุนศัตรู: 4`;
+        document.getElementById('player-ammo').textContent = `กระสุนผู้เล่น: 8`;
+        document.getElementById('enemy-ammo').textContent = `กระสุนศัตรู: 8`;
 
         const pG = document.getElementById('player-grid');
         const eG = document.getElementById('enemy-grid');
@@ -315,7 +312,7 @@
         btn.disabled = true;
         btn.classList.add(isHit ? 'hit-bg' : 'miss-bg');
         btn.innerHTML = `<span aria-hidden="true">${isHit ? '💥' : '🕳️'}</span>`;
-        btn.setAttribute('aria-label', `ตำแหน่ง ${pos} ${isHit ? 'ถูกทำลาย' : 'พลาด'}`);
+        btn.setAttribute('aria-label', `ตำแหน่ง ${pos} ${isHit ? 'รถถังสิ้นสภาพ' : 'พลาด'}`);
 
         const s2 = playRnd(isP ? (isHit?'ph':'pm') : (isHit?'eh':'em'));
         if (isP) lastShot = pos;
@@ -330,7 +327,6 @@
         
         btn.classList.remove('hit-pulse');
 
-        // เช็คเงื่อนไขกระสุนหมดทั้งสองฝ่าย
         if (ammo.p === 0 && ammo.e === 0) {
             finishGame(lives.p > lives.e);
             return;
@@ -342,6 +338,7 @@
 
     function nextTurn() {
         const isP = currentTurn === 'p';
+        
         if (ammo[currentTurn] <= 0) {
             currentTurn = isP ? 'e' : 'p';
             nextTurn();
@@ -351,7 +348,7 @@
         document.body.style.backgroundColor = isP ? 'var(--enemy-zone)' : 'var(--player-zone)';
         document.getElementById('player-grid').style.display = isP ? 'none' : 'grid';
         document.getElementById('enemy-grid').style.display = isP ? 'grid' : 'none';
-        document.getElementById('announcement').textContent = isP ? "ตาคุณแล้ว ระวัง! กระสุนมีจำกัด" : "ศัตรูกำลังคำนวณพิกัด...";
+        document.getElementById('announcement').textContent = isP ? "ตาคุณแล้ว เลือกยิงเป้าหมาย (กระสุนจำกัด)" : "ศัตรูกำลังหาพิกัด...";
 
         if(isP) {
             setTimeout(() => {
@@ -368,7 +365,7 @@
         if (avail.length === 0 || ammo.e <= 0) return;
         const target = avail[Math.floor(Math.random()*avail.length)];
         const pos = Array.from(target.parentNode.children).indexOf(target) + 1;
-        document.getElementById('announcement').textContent = `ศัตรูยิงมาที่ตำแหน่ง ${pos}`;
+        document.getElementById('announcement').textContent = `ศัตรูโจมตีมาที่ตำแหน่ง ${pos}`;
         await new Promise(r => setTimeout(r, 800));
         handleAttack(pos, 'e');
     }
@@ -381,23 +378,12 @@
         const msg = document.getElementById('result-message');
         const art = document.getElementById('summary-art');
         
-        const winMsgs = [
-            "ชัยชนะ! แม้กระสุนจะจำกัด แต่คุณก็รักษารถถังไว้ได้มากกว่า",
-            "ยุทธการสำเร็จ! ศัตรูพ่ายแพ้เพราะบริหารทรัพยากรพลาดเอง",
-            "แม่นยำมาก! คุณกำจัดศัตรูได้ก่อนที่กระสุนนัดสุดท้ายจะหมด"
-        ];
-        const loseMsgs = [
-            "พ่ายแพ้! กระสุนหมดลงแล้วและเราเหลือรถถังน้อยกว่าศัตรู",
-            "ฐานล่มสลาย! ทรัพยากรของเราหมดเกลี้ยงก่อนจะทำลายเป้าหมายได้",
-            "กองทัพพ่ายแพ้! ศัตรูรักษาชีวิตไว้ได้เหนียวแน่นกว่าในศึกนี้"
-        ];
-
         if (pWon) {
-            msg.textContent = winMsgs[Math.floor(Math.random()*winMsgs.length)];
+            msg.textContent = "ชัยชนะ! กองทัพศัตรูพ่ายแพ้ราบคาบ";
             art.textContent = "🏆";
             winS = playS('win.mp3');
         } else {
-            msg.textContent = loseMsgs[Math.floor(Math.random()*loseMsgs.length)];
+            msg.textContent = "พ่ายแพ้... ฐานทัพของเราล่มสลาย";
             art.textContent = "🌑";
             document.getElementById('game-container').classList.add('lose-grayscale');
             loseS = playS('lost.mp3');
@@ -412,7 +398,7 @@
             bgm = playS('back.mp3', true);
             initPlacement();
         };
-        nb.textContent = "เริ่มแผนการรบใหม่";
+        nb.textContent = "เริ่มยุทธการใหม่";
         document.querySelector('#summary h2').focus();
     }
 
