@@ -36,6 +36,7 @@
             min-height: 580px;
         }
 
+        /* ปุ่มกลับหน้าหลัก */
         .btn-home {
             position: absolute;
             top: 15px;
@@ -48,6 +49,7 @@
             z-index: 10;
         }
 
+        /* ปรับปรุง Style สำหรับ Dialog แจ้งเตือนให้ครอบคลุมทั้งหน้าจอ */
         #connection-dialog {
             display: none;
             position: fixed;
@@ -111,9 +113,9 @@
     <button id="btn-back-community" class="btn-home" onclick="location.href='../index.html'">กลับสู่ชุมชนเกม</button>
 
     <div id="menu">
-        <div style="font-size: 80px; margin: 15px 0;" aria-hidden="true">🚜</div>
+<div style="font-size: 80px; margin: 15px 0;" aria-hidden="true">🚜</div>
         <h1>ยุทธการรถถังมหากาฬ - Tank Assassin Online</h1>
-        <p>เล่นกับเพื่อนแบบ 1 ต่อ 1 แบบ Online อยู่ที่ไหนก็ดวลกันได้<br>จะสร้างห้องใหม่หรือเข้าร่วมห้อง เลือกรถถัง 5 คัน แล้วไปลุยกันเลย</p>
+<p>เล่นกับเพื่อนแบบ 1 ต่อ 1 แบบ Online อยู่ที่ไหนก็ดวลกันได้<br>จะสร้างห้องใหม่หรือเข้าร่วมห้อง เลือกรถถัง 5 คัน แล้วไปลุยกันเลย</p>
         <button id="btn-create-room" style="aspect-ratio: auto; padding: 15px; width: 200px; margin: 10px auto;">สร้างห้องใหม่</button>
         <div id="room-list" style="margin-top:20px;"></div>
     </div>
@@ -179,17 +181,9 @@
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     let sounds = {};
     let bgmInstance = null;
+
     let inactivityTimer = null;
     const TIMEOUT_LIMIT = 90000; 
-
-    // GAME STATE
-    let myRole = ""; 
-    let currentRoomId = "";
-    let myTanks = [];
-    let isMyTurn = false;
-    let isProcessing = false; // ป้องกันการกดซ้ำในจังหวะ Latency
-    let roomRef = null;
-    let processedShotId = null;
 
     const toggleHomeBtn = (show) => {
         document.getElementById('btn-back-community').style.display = show ? 'block' : 'none';
@@ -212,6 +206,13 @@
         return s;
     };
 
+    let myRole = ""; 
+    let currentRoomId = "";
+    let myTanks = [];
+    let isMyTurn = false;
+    let roomRef = null;
+    let processedShotId = null;
+
     function showConnectionError() {
         document.getElementById('menu').style.display = 'none';
         document.getElementById('placement').style.display = 'none';
@@ -219,6 +220,7 @@
         document.getElementById('summary').style.display = 'none';
         document.getElementById('connection-dialog').style.display = 'flex';
         toggleHomeBtn(false);
+        
         if (bgmInstance) bgmInstance.stop();
         if (roomRef) off(roomRef);
     }
@@ -277,16 +279,19 @@
         for (let i = 1; i <= 16; i++) {
             const btn = document.createElement('button');
             btn.textContent = i;
+            btn.setAttribute('aria-label', `พิกัด ${i}`);
             btn.onclick = () => {
                 if (myTanks.length < 5 && !btn.disabled) {
                     myTanks.push(i);
                     btn.disabled = true;
                     btn.innerHTML = "🚜";
                     playS('select.mp3');
+                    
                     const msg = myTanks.length < 5 
-                        ? `วางรถถังคันที่ ${myTanks.length} แล้ว คันต่อไป...` 
-                        : `ครบแล้ว! รอคำสั่งเริ่มรบ...`;
+                        ? `วางรถถังคันที่ ${myTanks.length} แล้ว เลือกจุดยุทธศาสตร์ คันที่ ${myTanks.length + 1}` 
+                        : `วางรถถังคันที่ 5 ครบแล้ว รอสักครู่...ให้อีกฝ่ายเข้ามาและวางกำลังพลเสร็จเกมจะเริ่มทันที`;
                     document.getElementById('placement-announce').textContent = msg;
+
                     if (myTanks.length === 5) finishPlacement();
                 }
             };
@@ -302,40 +307,57 @@
     function listenForStart() {
         onValue(roomRef, async (snapshot) => {
             const data = snapshot.val();
+            if (!data && currentRoomId !== "") {
+                showConnectionError();
+                return;
+            }
             if (!data) return;
-            if (data.status === "playing") syncGameState(data);
-            else if (data.status === "finished") showResult(data);
-            else if (data.host !== "waiting" && data.guest && data.guest !== "waiting") {
+
+            if (data.host !== "waiting" && data.guest && data.guest !== "waiting" && data.status === "waiting") {
                 if (myRole === "host") {
+                    const startFile = Math.random() > 0.5 ? 'start.mp3' : 'start2.mp3';
                     const starter = Math.random() > 0.5 ? "host" : "guest";
-                    await update(roomRef, { status: "playing", turn: starter, h_lives: 5, g_lives: 5, startAudio: 'start.mp3' });
+                    await update(roomRef, { status: "playing", turn: starter, h_lives: 5, g_lives: 5, startAudio: startFile });
                 }
+            } else if (data.status === "playing") {
+                syncGameState(data);
+            } else if (data.status === "finished") {
+                clearTimeout(inactivityTimer);
+                showResult(data);
             }
         });
     }
 
     async function syncGameState(data) {
         resetInactivityTimer();
+
         if (data.startAudio && !window.startAudioPlayed) {
             window.startAudioPlayed = true;
             document.getElementById('placement').style.display = 'none';
             document.getElementById('game').style.display = 'block';
-            playS(data.startAudio);
+            toggleHomeBtn(false);
+            const s = playS(data.startAudio);
+            if (s) await new Promise(r => s.onended = r);
             initGrids();
         }
+        if (!window.startAudioPlayed) return;
 
         isMyTurn = (data.turn === myRole);
-        isProcessing = false; // รีเซ็ตสถานะประมวลผลเมื่อเปลี่ยนเทิร์น
+        
+        // คืนค่าปุ่มฝั่งศัตรูให้กดได้ (เฉพาะปุ่มที่ยังไม่เคยถูกยิง) เมื่อถึงตาเรา
+        if (isMyTurn) {
+            const enemyBtns = document.querySelectorAll('#enemy-grid button');
+            enemyBtns.forEach(btn => {
+                // ถ้าปุ่มยังไม่มี class hit-bg หรือ miss-bg แสดงว่ายังไม่เคยถูกยิง
+                if (!btn.classList.contains('hit-bg') && !btn.classList.contains('miss-bg')) {
+                    btn.disabled = false;
+                }
+            });
+        }
 
         const ann = document.getElementById('announcement');
-        ann.textContent = isMyTurn ? "ตาคุณแล้ว! เลือกพิกัดยิง" : "ข้าศึกกำลังเล็งเป้ามาที่ฐานคุณ...";
-        
-        // จัดการปุ่มฝั่งศัตรู: ถ้าเป็นตาเราให้เปิดปุ่มที่ยังไม่เคยยิง ถ้าไม่ใช่ให้ปิดทั้งหมด
-        const enemyBtns = document.querySelectorAll('#enemy-grid button');
-        enemyBtns.forEach(btn => {
-            const hasBeenShot = btn.classList.contains('hit-bg') || btn.classList.contains('miss-bg');
-            btn.disabled = !isMyTurn || hasBeenShot;
-        });
+        const statusMsg = isMyTurn ? "ตาคุณแล้ว! เลือกพิกัดยิงฝั่งศัตรู" : "ฝ่ายตรงข้ามกำลังจู่โจมฐานทัพคุณ...";
+        if (ann.textContent !== statusMsg) ann.textContent = statusMsg;
 
         document.getElementById('enemy-grid-container').style.display = isMyTurn ? 'block' : 'none';
         document.getElementById('my-grid-container').style.display = isMyTurn ? 'none' : 'block';
@@ -346,24 +368,37 @@
 
         if (data.lastShot && data.lastShot.id !== processedShotId) {
             processedShotId = data.lastShot.id;
-            handleShotVisuals(data.lastShot, data);
+            const shot = data.lastShot;
+            const amIAttacker = (shot.by === myRole); 
+            const targetTanks = amIAttacker ? (myRole === "host" ? data.guest : data.host) : myTanks;
+            const isHit = targetTanks.includes(shot.pos);
+
+            const sShoot = playS(isHit ? 'shoot2.mp3' : 'shoot1.mp3');
+            if (sShoot) await new Promise(r => sShoot.onended = r);
+
+            let voicePool = [];
+            if (amIAttacker) {
+                voicePool = isHit ? ['t1','t2','t3','t4'] : ['f1','f2','f3','f4'];
+            } else {
+                voicePool = isHit ? ['a1','a2','a3','a4'] : ['s1','s2','s3','s4'];
+            }
+            const randomVoice = voicePool[Math.floor(Math.random() * 4)] + '.mp3';
+            const sVoice = playS(randomVoice);
+            if (sVoice) await new Promise(r => sVoice.onended = r);
+
+            updateVisualGrid(shot.pos, isHit, !amIAttacker);
+
+            if (myRole === "host") {
+                const victim = shot.by === "host" ? "g_lives" : "h_lives";
+                const nextLives = isHit ? data[victim] - 1 : data[victim];
+                const updates = { turn: shot.by === "host" ? "guest" : "host", [victim]: nextLives };
+                if (nextLives <= 0) updates.status = "finished";
+                update(roomRef, updates);
+            }
         }
-    }
-
-    async function handleShotVisuals(shot, data) {
-        const amIAttacker = (shot.by === myRole); 
-        const targetTanks = amIAttacker ? (myRole === "host" ? data.guest : data.host) : myTanks;
-        const isHit = targetTanks.includes(shot.pos);
-
-        playS(isHit ? 'shoot2.mp3' : 'shoot1.mp3');
-        updateVisualGrid(shot.pos, isHit, !amIAttacker);
-
-        if (myRole === "host") {
-            const victim = shot.by === "host" ? "g_lives" : "h_lives";
-            const nextLives = isHit ? data[victim] - 1 : data[victim];
-            const updates = { turn: shot.by === "host" ? "guest" : "host", [victim]: nextLives };
-            if (nextLives <= 0) updates.status = "finished";
-            update(roomRef, updates);
+        if (isMyTurn) {
+            const f = document.querySelector('#enemy-grid button:not(:disabled)');
+            if (f) f.focus();
         }
     }
 
@@ -371,15 +406,17 @@
         if (!isTargetMe) {
             const btn = document.querySelector(`#enemy-grid button[data-pos="${pos}"]`);
             if (btn) {
+                btn.disabled = true;
                 btn.classList.add(isHit ? 'hit-bg' : 'miss-bg');
                 btn.innerHTML = isHit ? "💥" : "🕳️";
-                btn.disabled = true; // ปิดปุ่มที่ยิงไปแล้วถาวร
+                btn.setAttribute('aria-label', isHit ? `พิกัด ${pos} รถถังพังยับเยิน` : `พิกัด ${pos} พลาด`);
             }
         } else {
             const myBtn = document.getElementById(`my-pos-${pos}`);
             if (myBtn) {
                 myBtn.classList.add(isHit ? 'hit-bg' : 'miss-bg');
                 myBtn.innerHTML = isHit ? "💥" : "🕳️";
+                myBtn.setAttribute('aria-label', isHit ? `พิกัด ${pos} ถูกยิงพังยับเยิน` : `พิกัด ${pos} รอดหวุดหวิด`);
             }
         }
     }
@@ -391,27 +428,30 @@
         for (let i = 1; i <= 16; i++) {
             const eb = document.createElement('button');
             eb.dataset.pos = i; eb.textContent = i;
-            eb.onclick = () => attack(i);
+            eb.setAttribute('aria-label', `ยิงพิกัด ${i}`);
+            eb.onclick = () => isMyTurn && attack(i);
             eGrid.appendChild(eb);
 
             const mb = document.createElement('button');
             mb.id = `my-pos-${i}`; mb.textContent = i; mb.disabled = true;
-            if (myTanks.includes(i)) mb.innerHTML = "🚜";
+            if (myTanks.includes(i)) {
+                mb.innerHTML = "🚜";
+                mb.setAttribute('aria-label', `พิกัด ${i} รถถังของคุณ`);
+            } else {
+                mb.setAttribute('aria-label', `พิกัด ${i} พื้นที่ว่าง`);
+            }
             mGrid.appendChild(mb);
         }
     }
 
     async function attack(pos) {
-        // Logic ป้องกันการยิงซ้ำที่เข้มงวด
-        if (!isMyTurn || isProcessing) return; 
+        if (!isMyTurn) return;
         
-        isProcessing = true; // ล็อคทันทีในระดับ Browser
-        isMyTurn = false; 
-
-        // ปิดปุ่มทั้งหมดทันที (Dim) เพื่อไม่ให้กดซ้ำได้อีกในเทิร์นนี้
+        // ป้องกันการกดยิงซ้ำในเทิร์นเดียว: ปิดการใช้งานทุกปุ่มในตารางศัตรูทันที
+        isMyTurn = false;
         const enemyBtns = document.querySelectorAll('#enemy-grid button');
         enemyBtns.forEach(btn => btn.disabled = true);
-
+        
         resetInactivityTimer();
         await update(roomRef, { lastShot: { by: myRole, pos: pos, id: Date.now() } });
     }
