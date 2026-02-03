@@ -36,6 +36,7 @@
             min-height: 580px;
         }
 
+        /* ปุ่มกลับหน้าหลัก */
         .btn-home {
             position: absolute;
             top: 15px;
@@ -48,6 +49,7 @@
             z-index: 10;
         }
 
+        /* ปรับปรุง Style สำหรับ Dialog แจ้งเตือนให้ครอบคลุมทั้งหน้าจอ */
         #connection-dialog {
             display: none;
             position: fixed;
@@ -111,9 +113,9 @@
     <button id="btn-back-community" class="btn-home" onclick="location.href='../index.html'">กลับสู่ชุมชนเกม</button>
 
     <div id="menu">
-        <div style="font-size: 80px; margin: 15px 0;" aria-hidden="true">🚜</div>
+<div style="font-size: 80px; margin: 15px 0;" aria-hidden="true">🚜</div>
         <h1>ยุทธการรถถังมหากาฬ - Tank Assassin Online</h1>
-        <p>เล่นกับเพื่อนแบบ 1 ต่อ 1 แบบ Online อยู่ที่ไหนก็ดวลกันได้<br>จะสร้างห้องใหม่หรือเข้าร่วมห้อง เลือกรถถัง 5 คัน แล้วไปลุยกันเลย</p>
+<p>เล่นกับเพื่อนแบบ 1 ต่อ 1 แบบ Online อยู่ที่ไหนก็ดวลกันได้<br>จะสร้างห้องใหม่หรือเข้าร่วมห้อง เลือกรถถัง 5 คัน แล้วไปลุยกันเลย</p>
         <button id="btn-create-room" style="aspect-ratio: auto; padding: 15px; width: 200px; margin: 10px auto;">สร้างห้องใหม่</button>
         <div id="room-list" style="margin-top:20px;"></div>
     </div>
@@ -179,6 +181,7 @@
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     let sounds = {};
     let bgmInstance = null;
+
     let inactivityTimer = null;
     const TIMEOUT_LIMIT = 90000; 
 
@@ -217,6 +220,7 @@
         document.getElementById('summary').style.display = 'none';
         document.getElementById('connection-dialog').style.display = 'flex';
         toggleHomeBtn(false);
+        
         if (bgmInstance) bgmInstance.stop();
         if (roomRef) off(roomRef);
     }
@@ -282,10 +286,12 @@
                     btn.disabled = true;
                     btn.innerHTML = "🚜";
                     playS('select.mp3');
+                    
                     const msg = myTanks.length < 5 
                         ? `วางรถถังคันที่ ${myTanks.length} แล้ว เลือกจุดยุทธศาสตร์ คันที่ ${myTanks.length + 1}` 
-                        : `วางรถถังคันที่ 5 ครบแล้ว รอสักครู่...เกมกำลังจะเริ่ม`;
+                        : `วางรถถังคันที่ 5 ครบแล้ว รอสักครู่...ให้อีกฝ่ายเข้ามาและวางกำลังพลเสร็จเกมจะเริ่มทันที`;
                     document.getElementById('placement-announce').textContent = msg;
+
                     if (myTanks.length === 5) finishPlacement();
                 }
             };
@@ -301,7 +307,10 @@
     function listenForStart() {
         onValue(roomRef, async (snapshot) => {
             const data = snapshot.val();
-            if (!data && currentRoomId !== "") { showConnectionError(); return; }
+            if (!data && currentRoomId !== "") {
+                showConnectionError();
+                return;
+            }
             if (!data) return;
 
             if (data.host !== "waiting" && data.guest && data.guest !== "waiting" && data.status === "waiting") {
@@ -342,18 +351,6 @@
         document.getElementById('my-grid-container').style.display = isMyTurn ? 'none' : 'block';
         document.body.style.backgroundColor = isMyTurn ? "var(--enemy-zone)" : "var(--player-zone)";
 
-        // แก้ไข: เมื่อถึงตาเรา ให้คืนค่าปุ่มที่ยังไม่เคยถูกยิงให้กดได้
-        if (isMyTurn) {
-            const enemyButtons = document.querySelectorAll('#enemy-grid button');
-            enemyButtons.forEach(btn => {
-                if (!btn.classList.contains('hit-bg') && !btn.classList.contains('miss-bg')) {
-                    btn.disabled = false;
-                }
-            });
-            const f = document.querySelector('#enemy-grid button:not(:disabled)');
-            if (f) f.focus();
-        }
-
         document.getElementById('p1-label').textContent = `Host: ${data.h_lives}`;
         document.getElementById('p2-label').textContent = `Guest: ${data.g_lives}`;
 
@@ -386,6 +383,10 @@
                 if (nextLives <= 0) updates.status = "finished";
                 update(roomRef, updates);
             }
+        }
+        if (isMyTurn) {
+            const f = document.querySelector('#enemy-grid button:not(:disabled)');
+            if (f) f.focus();
         }
     }
 
@@ -431,11 +432,12 @@
         }
     }
 
+    // แก้ไขฟังก์ชันการโจมตีให้กดยิงได้ครั้งเดียวต่อ Turn
     async function attack(pos) {
         if (!isMyTurn) return;
-        isMyTurn = false;
+        isMyTurn = false; // ปิดสถานะ Turn ทันทีที่กด
         
-        // ล็อคทุกปุ่มทันทีเพื่อป้องกันการกดย้ำใน Turn เดียวกัน
+        // Dim (Disable) ทุกปุ่มใน Enemy Grid ทันทีเพื่อป้องกันการกดย้ำใน Turn เดียวกัน
         const enemyButtons = document.querySelectorAll('#enemy-grid button');
         enemyButtons.forEach(btn => btn.disabled = true);
         
