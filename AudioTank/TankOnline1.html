@@ -213,7 +213,6 @@
     let isMyTurn = false;
     let roomRef = null;
     let processedShotId = null;
-    let isSubmittingShot = false; // ตัวแปรป้องกันการกดซ้ำซ้อนระดับ Code
 
     function showConnectionError() {
         document.getElementById('menu').style.display = 'none';
@@ -345,9 +344,6 @@
         if (!window.startAudioPlayed) return;
 
         isMyTurn = (data.turn === myRole);
-        // เมื่อเปลี่ยนเทิร์น กลับมาเป็นตาเรา ให้ Reset สถานะการส่งข้อมูล
-        if (isMyTurn) isSubmittingShot = false;
-
         const ann = document.getElementById('announcement');
         const statusMsg = isMyTurn ? "ตาคุณแล้ว! เลือกพิกัดยิงฝั่งศัตรู" : "ฝ่ายตรงข้ามกำลังจู่โจมฐานทัพคุณ...";
         if (ann.textContent !== statusMsg) ann.textContent = statusMsg;
@@ -438,15 +434,8 @@
     }
 
     async function attack(pos) {
-        if (!isMyTurn || isSubmittingShot) return;
-        
-        isSubmittingShot = true; // ล็อกสถานะการส่ง
-        isMyTurn = false; // ปิดสถานะเทิร์นทันทีในหน้าจอผู้เล่น
-        
-        // สั่ง Disable ทุกปุ่มในตารางศัตรูทันทีเพื่อป้องกันการกดย้ำ
-        const enemyButtons = document.querySelectorAll('#enemy-grid button');
-        enemyButtons.forEach(btn => btn.disabled = true);
-
+        if (!isMyTurn) return;
+        isMyTurn = false;
         resetInactivityTimer();
         await update(roomRef, { lastShot: { by: myRole, pos: pos, id: Date.now() } });
     }
