@@ -36,6 +36,7 @@
             min-height: 580px;
         }
 
+        /* ปุ่มกลับหน้าหลัก */
         .btn-home {
             position: absolute;
             top: 15px;
@@ -48,6 +49,7 @@
             z-index: 10;
         }
 
+        /* ปรับปรุง Style สำหรับ Dialog แจ้งเตือนให้ครอบคลุมทั้งหน้าจอ */
         #connection-dialog {
             display: none;
             position: fixed;
@@ -111,9 +113,9 @@
     <button id="btn-back-community" class="btn-home" onclick="location.href='../index.html'">กลับสู่ชุมชนเกม</button>
 
     <div id="menu">
-        <div style="font-size: 80px; margin: 15px 0;" aria-hidden="true">🚜</div>
+<div style="font-size: 80px; margin: 15px 0;" aria-hidden="true">🚜</div>
         <h1>ยุทธการรถถังมหากาฬ - Tank Assassin Online</h1>
-        <p>เล่นกับเพื่อนแบบ 1 ต่อ 1 แบบ Online<br>สร้างห้องใหม่หรือเข้าร่วมห้อง แล้วไปลุยกันเลย</p>
+<p>เล่นกับเพื่อนแบบ 1 ต่อ 1 แบบ Online อยู่ที่ไหนก็ดวลกันได้<br>จะสร้างห้องใหม่หรือเข้าร่วมห้อง เลือกรถถัง 5 คัน แล้วไปลุยกันเลย</p>
         <button id="btn-create-room" style="aspect-ratio: auto; padding: 15px; width: 200px; margin: 10px auto;">สร้างห้องใหม่</button>
         <div id="room-list" style="margin-top:20px;"></div>
     </div>
@@ -179,9 +181,11 @@
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     let sounds = {};
     let bgmInstance = null;
+
     let inactivityTimer = null;
     const TIMEOUT_LIMIT = 90000; 
 
+    // จัดการการแสดงผลปุ่มหน้าหลัก
     const toggleHomeBtn = (show) => {
         document.getElementById('btn-back-community').style.display = show ? 'block' : 'none';
     };
@@ -210,13 +214,17 @@
     let roomRef = null;
     let processedShotId = null;
 
+    // --- State สำหรับป้องกันการยิงซ้ำ ---
+    let hasFiredThisTurn = false;
+
     function showConnectionError() {
         document.getElementById('menu').style.display = 'none';
         document.getElementById('placement').style.display = 'none';
         document.getElementById('game').style.display = 'none';
         document.getElementById('summary').style.display = 'none';
         document.getElementById('connection-dialog').style.display = 'flex';
-        toggleHomeBtn(false);
+        toggleHomeBtn(false); // ซ่อนปุ่มเมื่อเกิด error
+        
         if (bgmInstance) bgmInstance.stop();
         if (roomRef) off(roomRef);
     }
@@ -266,7 +274,7 @@
     function showPlacement() {
         document.getElementById('menu').style.display = 'none';
         document.getElementById('placement').style.display = 'block';
-        toggleHomeBtn(false);
+        toggleHomeBtn(false); // ซ่อนปุ่มเมื่อเริ่มวางตำแหน่ง
         const bgmFile = Math.random() > 0.5 ? 'back.mp3' : 'back1.mp3';
         bgmInstance = playS(bgmFile, true);
 
@@ -282,10 +290,12 @@
                     btn.disabled = true;
                     btn.innerHTML = "🚜";
                     playS('select.mp3');
+                    
                     const msg = myTanks.length < 5 
                         ? `วางรถถังคันที่ ${myTanks.length} แล้ว เลือกจุดยุทธศาสตร์ คันที่ ${myTanks.length + 1}` 
-                        : `วางครบแล้ว รอสักครู่...เกมกำลังจะเริ่ม`;
+                        : `วางรถถังคันที่ 5 ครบแล้ว รอสักครู่...ให้อีกฝ่ายเข้ามาและวางกำลังพลเสร็จเกมจะเริ่มทันที`;
                     document.getElementById('placement-announce').textContent = msg;
+
                     if (myTanks.length === 5) finishPlacement();
                 }
             };
@@ -301,7 +311,10 @@
     function listenForStart() {
         onValue(roomRef, async (snapshot) => {
             const data = snapshot.val();
-            if (!data && currentRoomId !== "") { showConnectionError(); return; }
+            if (!data && currentRoomId !== "") {
+                showConnectionError();
+                return;
+            }
             if (!data) return;
 
             if (data.host !== "waiting" && data.guest && data.guest !== "waiting" && data.status === "waiting") {
@@ -326,14 +339,23 @@
             window.startAudioPlayed = true;
             document.getElementById('placement').style.display = 'none';
             document.getElementById('game').style.display = 'block';
-            toggleHomeBtn(false);
+            toggleHomeBtn(false); // มั่นใจว่าซ่อนปุ่มระหว่างเล่น
             const s = playS(data.startAudio);
             if (s) await new Promise(r => s.onended = r);
             initGrids();
         }
         if (!window.startAudioPlayed) return;
 
+        // --- จัดการ Turn และ Reset State การยิง ---
+        const wasMyTurn = isMyTurn;
         isMyTurn = (data.turn === myRole);
+        
+        // ถ้าเปลี่ยนจากตาคนอื่นมาเป็นตาเรา ให้ Reset state
+        if (!wasMyTurn && isMyTurn) {
+            hasFiredThisTurn = false;
+            enableUntouchedButtons();
+        }
+
         const ann = document.getElementById('announcement');
         const statusMsg = isMyTurn ? "ตาคุณแล้ว! เลือกพิกัดยิงฝั่งศัตรู" : "ฝ่ายตรงข้ามกำลังจู่โจมฐานทัพคุณ...";
         if (ann.textContent !== statusMsg) ann.textContent = statusMsg;
@@ -341,19 +363,6 @@
         document.getElementById('enemy-grid-container').style.display = isMyTurn ? 'block' : 'none';
         document.getElementById('my-grid-container').style.display = isMyTurn ? 'none' : 'block';
         document.body.style.backgroundColor = isMyTurn ? "var(--enemy-zone)" : "var(--player-zone)";
-
-        // --- จุดที่ 1: เมื่อกลับมาเป็นตาของเรา ให้คืนค่าปุ่มที่ยังไม่ถูกยิง ---
-        if (isMyTurn) {
-            const enemyButtons = document.querySelectorAll('#enemy-grid button');
-            enemyButtons.forEach(btn => {
-                // ถ้าปุ่มยังไม่มีคลาสที่บอกว่ายิงไปแล้ว (hit-bg หรือ miss-bg) ให้กลับมาใช้งานได้
-                if (!btn.classList.contains('hit-bg') && !btn.classList.contains('miss-bg')) {
-                    btn.disabled = false;
-                }
-            });
-            const f = document.querySelector('#enemy-grid button:not(:disabled)');
-            if (f) f.focus();
-        }
 
         document.getElementById('p1-label').textContent = `Host: ${data.h_lives}`;
         document.getElementById('p2-label').textContent = `Guest: ${data.g_lives}`;
@@ -388,6 +397,21 @@
                 update(roomRef, updates);
             }
         }
+        if (isMyTurn && !hasFiredThisTurn) {
+            const f = document.querySelector('#enemy-grid button:not(:disabled)');
+            if (f) f.focus();
+        }
+    }
+
+    // ฟังก์ชันเปิดปุ่มที่ยังไม่เคยถูกยิงในตาเรา
+    function enableUntouchedButtons() {
+        const buttons = document.querySelectorAll('#enemy-grid button');
+        buttons.forEach(btn => {
+            // ปุ่มที่ยังไม่มี class hit-bg หรือ miss-bg คือปุ่มที่ยังไม่เคยยิง
+            if (!btn.classList.contains('hit-bg') && !btn.classList.contains('miss-bg')) {
+                btn.disabled = false;
+            }
+        });
     }
 
     function updateVisualGrid(pos, isHit, isTargetMe) {
@@ -433,13 +457,15 @@
     }
 
     async function attack(pos) {
-        if (!isMyTurn) return;
-        isMyTurn = false;
+        // --- ตรวจสอบว่าใน Turn นี้ยิงไปหรือยัง ---
+        if (!isMyTurn || hasFiredThisTurn) return;
         
-        // --- จุดที่ 2: ล็อกทุกปุ่มทันทีที่กดยิง เพื่อกันการกดย้ำใน Turn นั้น ---
-        const enemyButtons = document.querySelectorAll('#enemy-grid button');
-        enemyButtons.forEach(btn => btn.disabled = true);
+        hasFiredThisTurn = true; // ล็อกทันทีที่กด
         
+        // Disable ทุกปุ่มใน grid ศัตรูเพื่อป้องกันการกดเบิ้ลระหว่างรอ Firebase
+        const allEnemyButtons = document.querySelectorAll('#enemy-grid button');
+        allEnemyButtons.forEach(btn => btn.disabled = true);
+
         resetInactivityTimer();
         await update(roomRef, { lastShot: { by: myRole, pos: pos, id: Date.now() } });
     }
@@ -449,7 +475,7 @@
         const won = (myRole === "host" && data.h_lives > 0) || (myRole === "guest" && data.g_lives > 0);
         document.getElementById('game').style.display = 'none';
         document.getElementById('summary').style.display = 'block';
-        toggleHomeBtn(true);
+        toggleHomeBtn(true); // แสดงปุ่มเมื่อมาหน้าสรุปผล
         document.getElementById('result-message').textContent = won ? "ชัยชนะ! กองทัพศัตรูพ่ายแพ้ราบคาบ" : "พ่ายแพ้... ฐานทัพของเราล่มสลาย";
         playS(won ? 'win.mp3' : 'lost.mp3');
     }
@@ -457,7 +483,7 @@
     window.onload = () => {
         loadSounds();
         document.getElementById('btn-create-room').onclick = createRoom;
-        toggleHomeBtn(true);
+        toggleHomeBtn(true); // แสดงปุ่มในหน้าแรกสุด
     };
 </script>
 
