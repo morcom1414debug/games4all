@@ -19,7 +19,7 @@
             text-align: center;
             margin: 0;
             padding: 10px;
-            overflow: hidden; 
+            overflow: hidden; /* กันจอสั่นแล้วขอบหลุด */
             transition: background-color 0.5s ease;
         }
 
@@ -37,6 +37,7 @@
             overflow: hidden;
         }
 
+        /* 1. ควันไฟในสนามรบ (Battlefield Smoke) - ไม่ขวางนิ้ว */
         .smoke-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -50,6 +51,7 @@
             to { transform: scale(1.2) translateX(5%); }
         }
 
+        /* 2. เอฟเฟกต์ปุ่มเด้ง (Pulse) - ปลอดภัยต่อ Layout */
         @keyframes pulse-hit {
             0% { transform: scale(1); }
             50% { transform: scale(1.2); filter: brightness(1.3); }
@@ -101,6 +103,7 @@
             transition: box-shadow 0.2s, background-color 0.2s;
         }
 
+        /* เลเซอร์เล็งเป้า (Targeting Glow) */
         button:focus:not(:disabled), button:hover:not(:disabled) {
             box-shadow: 0 0 15px #fff, inset 0 0 10px var(--gold);
             background-color: #8da33c;
@@ -172,7 +175,7 @@
     let playerPos = [], enemyPos = [], lives = { p: 3, e: 3 };
     let currentTurn = '', isHard = false;
     let lastShot = 1;
-    let playerShotsInTurn = 0; // นับนัดที่ผู้เล่นยิงในเทิร์นปัจจุบัน
+    let isProcessing = false; // ตัวแปรควบคุมการป้องกันการกดย้ำ
 
     const loadSounds = () => {
         ['back.mp3','back1.mp3','select.mp3','shoot1.mp3','shoot2.mp3','t1.mp3','t2.mp3','t3.mp3','t4.mp3','f1.mp3','f2.mp3','f3.mp3','f4.mp3','a1.mp3','a2.mp3','a3.mp3','a4.mp3','s1.mp3','s2.mp3','s3.mp3','s4.mp3','win.mp3','lost.mp3','start.mp3','start1.mp3']
@@ -262,8 +265,7 @@
             eb.textContent = i; eb.dataset.pos = i;
             eb.setAttribute('aria-label', `ยิงตำแหน่ง ${i}`);
             eb.onclick = () => {
-                // กดได้เฉพาะตาผู้เล่น และไม่เกิน 2 นัด
-                if(currentTurn === 'p' && playerShotsInTurn < 2 && !eb.disabled) {
+                if(currentTurn === 'p' && !isProcessing) {
                     handleAttack(i, 'p');
                 }
             };
@@ -273,21 +275,16 @@
         nextTurn();
     }
 
-    // ฟังก์ชันช่วยล็อคกระดานศัตรูเมื่อยิงครบ 2 นัด
-    function lockEnemyGrid() {
-        const ebts = document.getElementById('enemy-grid').querySelectorAll('button');
-        ebts.forEach(btn => btn.disabled = true);
-    }
-
     async function handleAttack(pos, side) {
         const isP = side === 'p';
-        if(isP) playerShotsInTurn++;
-        
+        if (isP) isProcessing = true; // ล็อกทันทีเมื่อผู้เล่นเริ่มยิง
+
         const targetList = isP ? enemyPos : playerPos;
         const grid = document.getElementById(isP ? 'enemy-grid' : 'player-grid');
         const btn = grid.querySelector(`button[data-pos="${pos}"]`) || grid.children[pos-1];
-        
         const isHit = targetList.includes(pos);
+
+        // Visual Feedback
         document.getElementById('game-container').classList.add('shake-effect');
         if (isHit) btn.classList.add('hit-pulse');
 
@@ -295,9 +292,10 @@
         if (s1) await new Promise(r => s1.onended = r);
         document.getElementById('game-container').classList.remove('shake-effect');
 
-        btn.disabled = true; // ล็อคปุ่มที่ยิงไปแล้วทันที
+        btn.disabled = true;
         btn.classList.add(isHit ? 'hit-bg' : 'miss-bg');
         btn.innerHTML = `<span aria-hidden="true">${isHit ? '💥' : '🕳️'}</span>`;
+        btn.setAttribute('aria-label', `ตำแหน่ง ${pos} ${isHit ? 'รถถังสิ้นสภาพ' : 'พลาด'}`);
 
         const s2 = playRnd(isP ? (isHit?'ph':'pm') : (isHit?'eh':'em'));
         if (isP) lastShot = pos;
@@ -311,72 +309,44 @@
         }
         
         btn.classList.remove('hit-pulse');
-
-        // Logic สลับเทิร์นเมื่อยิงครบ 2 นัด
-        if(isP && playerShotsInTurn >= 2) {
-            lockEnemyGrid();
-            currentTurn = 'e';
-            setTimeout(nextTurn, 800);
-        }
+        currentTurn = isP ? 'e' : 'p';
+        nextTurn();
     }
 
     function nextTurn() {
         const isP = currentTurn === 'p';
+        
+        // ถ้าเป็นตาผู้เล่น ให้ปลดล็อกสถานะการประมวลผล
+        if (isP) isProcessing = false;
+
         document.body.style.backgroundColor = isP ? 'var(--enemy-zone)' : 'var(--player-zone)';
         document.getElementById('player-grid').style.display = isP ? 'none' : 'grid';
         document.getElementById('enemy-grid').style.display = isP ? 'grid' : 'none';
-        
+        document.getElementById('announcement').textContent = isP ? "ตาคุณแล้ว เลือกยิงเป้าหมาย 1-16" : "ศัตรูกำลังหาพิกัด...";
+
         if(isP) {
-            playerShotsInTurn = 0; 
-            // ปลดล็อคปุ่มเฉพาะที่ยังไม่เคยถูกยิง
-            const ebts = document.getElementById('enemy-grid').querySelectorAll('button');
-            ebts.forEach(btn => {
-                if(!btn.classList.contains('hit-bg') && !btn.classList.contains('miss-bg')) {
-                    btn.disabled = false;
-                }
-            });
-
-            document.getElementById('announcement').textContent = "ตาคุณแล้ว เลือกยิงได้ 2 จุด!";
-            
-            // เวลาเทิร์นเดิม (จบเทิร์นอัตโนมัติ)
-            setTimeout(() => {
-                if(currentTurn === 'p') {
-                    lockEnemyGrid();
-                    currentTurn = 'e';
-                    nextTurn();
-                }
-            }, 4000); 
-
             setTimeout(() => {
                 const b = document.getElementById('enemy-grid').querySelector(`button[data-pos="${lastShot}"]:not(:disabled)`) || document.getElementById('enemy-grid').querySelector('button:not(:disabled)');
                 if(b) b.focus();
             }, 150);
         } else {
-            document.getElementById('announcement').textContent = "ศัตรูกำลังยิงโต้ตอบ...";
             setTimeout(botMove, 1200);
         }
     }
 
     async function botMove() {
-        // ยิงคืนตามจำนวนที่ผู้เล่นยิง (ขั้นต่ำ 1 นัด เผื่อกรณีผู้เล่นกดไม่ทันเลยสักนัด)
-        const count = Math.max(1, playerShotsInTurn);
-        for(let i = 0; i < count; i++) {
-            if(lives.p <= 0 || lives.e <= 0) break;
-            const avail = Array.from(document.getElementById('player-grid').children).filter(b => !b.classList.contains('hit-bg') && !b.classList.contains('miss-bg'));
-            if (avail.length === 0) break;
-            const target = avail[Math.floor(Math.random()*avail.length)];
-            const pos = Array.from(target.parentNode.children).indexOf(target) + 1;
-            await new Promise(r => setTimeout(r, 800));
-            await handleAttack(pos, 'e');
-        }
-        if(lives.p > 0 && lives.e > 0) {
-            currentTurn = 'p';
-            nextTurn();
-        }
+        const avail = Array.from(document.getElementById('player-grid').children).filter(b => !b.classList.contains('hit-bg') && !b.classList.contains('miss-bg'));
+        if (avail.length === 0) return;
+        const target = avail[Math.floor(Math.random()*avail.length)];
+        const pos = Array.from(target.parentNode.children).indexOf(target) + 1;
+        document.getElementById('announcement').textContent = `ศัตรูโจมตีมาที่ตำแหน่ง ${pos}`;
+        await new Promise(r => setTimeout(r, 800));
+        handleAttack(pos, 'e');
     }
 
     function finishGame(pWon) {
         if (bgm) bgm.stop();
+        isProcessing = false; // รีเซ็ตสถานะเมื่อจบเกม
         document.getElementById('game').style.display = 'none';
         document.getElementById('summary').style.display = 'block';
         updateNav();
