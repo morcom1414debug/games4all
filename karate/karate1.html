@@ -64,16 +64,24 @@
         // --- Web Audio API Management ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const audioBuffers = {};
-        const activeSources = { back: null, t: null, lost: null, win: null };
+        const activeSources = {
+            back: null,
+            t: null,
+            lost: null,
+            win: null
+        };
 
         async function loadAudio(name, url) {
             try {
                 const response = await fetch(url);
                 const arrayBuffer = await response.arrayBuffer();
                 audioBuffers[name] = await audioCtx.decodeAudioData(arrayBuffer);
-            } catch (e) { console.error("Error loading audio:", name, e); }
+            } catch (e) {
+                console.error("Error loading audio:", name, e);
+            }
         }
 
+        // โหลดไฟล์เสียงเตรียมไว้
         loadAudio('back', 'audio/back.mp3');
         loadAudio('t', 'audio/t.mp3');
         loadAudio('lost', 'audio/lost.mp3');
@@ -81,47 +89,32 @@
 
         function playSound(name, loop = false, onEnded = null) {
             if (!audioBuffers[name]) return;
-            if (name === 't' || name === 'lost') stopSound(name);
+            
+            // ถ้าเป็น t หรือ lost ให้หยุดของเก่าก่อน (ตามเงื่อนไขข้อ 2)
+            if (name === 't' || name === 'lost') {
+                stopSound(name);
+            }
+
             const source = audioCtx.createBufferSource();
             source.buffer = audioBuffers[name];
             source.loop = loop;
             source.connect(audioCtx.destination);
             source.start(0);
             activeSources[name] = source;
-            if (onEnded) source.onended = onEnded;
+            
+            if (onEnded) {
+                source.onended = onEnded;
+            }
             return source;
         }
 
         function stopSound(name) {
             if (activeSources[name]) {
-                try { activeSources[name].stop(); } catch(e) {}
+                try {
+                    activeSources[name].stop();
+                } catch(e) {}
                 activeSources[name] = null;
             }
-        }
-
-        // --- Cheat Code Logic ---
-        let inputBuffer = "";
-        let lastKeyTime = 0;
-
-        document.addEventListener('keydown', (e) => {
-            const currentTime = Date.now();
-            if (currentTime - lastKeyTime > 2000) {
-                inputBuffer = ""; // ล้างค่าถ้าพิมพ์ห่างเกิน 2 วินาที
-            }
-            inputBuffer += e.key.toLowerCase();
-            lastKeyTime = currentTime;
-
-            if (inputBuffer.includes("karate")) {
-                inputBuffer = "";
-                activateCheat();
-            }
-        });
-
-        function activateCheat() {
-            // ส่งไปด่าน 10 ภารกิจที่ 5 (ข้อที่ 50)
-            currentLevel = 9;
-            currentMission = 4;
-            renderMission();
         }
 
         // --- Game Data ---
@@ -242,7 +235,7 @@
             
             container.innerHTML = `${menuBtnHtml}<div class="fade-in">${content}</div>`;
             
-            // Focus ไปที่ Heading อันแรกสุด (h1, h2, หรือ h3) ของหน้านั้นๆ เสมอ
+            // Focus ไปที่ Heading แรกของหน้านั้นๆ (ข้อ 2)
             const firstHeading = container.querySelector('h1, h2, h3');
             if (firstHeading) {
                 firstHeading.setAttribute('tabindex', '-1');
@@ -251,13 +244,24 @@
         }
 
         function initGame() {
+            // หยุดเสียง win หากมีการกดจากหน้าจบเกม (ข้อ 4)
             stopSound('win');
             showScreen(`
                 <h1 id="main-title" class="text-4xl md:text-6xl font-bold text-center mb-6 text-white border-b border-red-800 pb-8 glow-red">หมัดขาวแห่งโดโจร้าง</h1>
                 <div class="space-y-6 text-gray-300 leading-relaxed text-sm md:text-lg">
                     <div class="bg-red-950/20 p-6 rounded-2xl border-l-8 border-red-600">
                         <h2 class="text-xl font-bold text-white mb-2 underline decoration-red-600">เรื่องราวของคุณ:</h2>
-                        <p>คุณคือ "เคน" เด็กหนุ่มผู้สืบทอดวิชา 'คาราเต้หมัดขาว' เพียงหนึ่งเดียว บัดนี้คุณต้องบุกเข้าสู่ใจกลาง 'สมาคมนิลกาล' เพื่อทวงคืนเกียรติยศ!</p>
+                        <p>คุณคือ "เคน" เด็กหนุ่มผู้สืบทอดวิชา 'คาราเต้หมัดขาว' เพียงหนึ่งเดียว อาจารย์ของคุณถูกลอบสังหารและโดโจถูกแก๊งนักเลงยึดครอง บัดนี้คุณต้องบุกเข้าสู่ใจกลาง 'สมาคมนิลกาล' เพื่อทวงคืนเกียรติยศและปกป้องเมืองนี้จากเงามืด!</p>
+                    </div>
+                    
+                    <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
+                        <h2 class="text-xl font-bold text-white mb-4">กฎกติกาการเดิมพัน (ความตาย):</h2>
+                        <ul class="list-disc ml-5 space-y-2">
+                            <li>มีทั้งหมด <span class="text-red-500 font-bold">10 ด่าน</span> แต่ละด่านมี <span class="text-red-500 font-bold">5 ภารกิจ</span> รวม 50 การตัดสินใจ</li>
+                            <li><strong>ความตายที่แท้จริง:</strong> หากคุณเลือกผิดเพียงข้อเดียว คุณจะถูกสังหารทันที และต้องกลับไปเริ่มใหม่ที่ <span class="text-yellow-500 font-bold">ด่านที่ 1 ภารกิจที่ 1</span></li>
+                            <li>ไม่มีคำใบ้ ใช้ความรู้เชิงยุทธวิธีและความนิ่งสงบของคุณเท่านั้น</li>
+                            <li>เมื่อเลือกถูก คุณจะมุ่งหน้าสู่ภารกิจถัดไปทันทีอย่างรวดเร็ว</li>
+                        </ul>
                     </div>
                 </div>
                 <button onclick="startGameProcess()" class="w-full mt-10 bg-red-700 hover:bg-red-600 text-white font-bold py-5 rounded-2xl shadow-2xl transition-all active:scale-95 uppercase tracking-widest text-xl border-b-4 border-red-950">
@@ -267,8 +271,10 @@
         }
 
         function startGameProcess() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            playSound('back', true);
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            playSound('back', true); // เริ่มเล่น BGM (ข้อ 1)
             startLevel(0);
         }
 
@@ -300,14 +306,25 @@
                         <p class="text-red-500 text-xs font-bold uppercase tracking-[0.3em] mt-1 italic">MISSION ${currentMission + 1} / 5</p>
                     </div>
                 </div>
-                <div class="mb-10 h-2 w-full bg-gray-900 rounded-full overflow-hidden border border-white/5">
-                    <div class="h-full bg-gradient-to-r from-red-800 to-red-600 transition-all duration-300" style="width: ${((currentLevel * 5 + currentMission + 1) / 50) * 100}%"></div>
+
+                <div class="mb-10">
+                    <div class="h-2 w-full bg-gray-900 rounded-full overflow-hidden border border-white/5">
+                        <div class="h-full bg-gradient-to-r from-red-800 to-red-600 transition-all duration-300" style="width: ${((currentLevel * 5 + currentMission + 1) / 50) * 100}%"></div>
+                    </div>
                 </div>
-                <div class="min-h-[160px] flex items-center mb-10 pl-6 border-l-4 border-red-600">
-                    <p class="text-xl md:text-3xl leading-relaxed text-white font-light">${mission.text}</p>
+
+                <div class="min-h-[160px] flex items-center mb-10">
+                    <p class="text-xl md:text-3xl leading-relaxed text-white font-light border-l-4 border-red-600 pl-6">
+                        ${mission.text}
+                    </p>
                 </div>
-                <div class="grid grid-cols-1 gap-4 mb-4">${choicesHtml}</div>
+
+                <div class="grid grid-cols-1 gap-4 mb-4">
+                    ${choicesHtml}
+                </div>
             `);
+
+            document.getElementById('level-focus-header').scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
         function handleChoice(index) {
@@ -316,10 +333,14 @@
 
             if (index === mission.correct) {
                 if (isLastMission) {
-                    stopSound('back');
-                    playSound('t', false, () => { gameWin(); });
+                    // ข้อที่ 50 ตอบถูก
+                    stopSound('back'); // หยุด BGM
+                    playSound('t', false, () => {
+                        // เมื่อ t.mp3 จบ ค่อยเล่น win.mp3 (ข้อ 4)
+                        gameWin();
+                    });
                 } else {
-                    playSound('t');
+                    playSound('t'); // ตอบถูกทั่วไป (ข้อ 2)
                     nextStep();
                 }
             } else {
@@ -337,32 +358,45 @@
         }
 
         function gameOver() {
-            stopSound('back');
-            playSound('lost');
+            stopSound('back'); // หยุด BGM (ข้อ 1)
+            playSound('lost'); // เล่นเสียง lost (ข้อ 3)
             showScreen(`
-                <h2 class="text-5xl font-bold text-red-600 mb-6 text-center glow-red uppercase">เจ้าถูกปลิดชีพ</h2>
-                <p class="text-gray-400 text-xl text-center mb-12 italic">"ความผิดพลาดคือเสียงสุดท้ายที่คุณจะได้ยิน"</p>
-                <button onclick="retryGame()" class="bg-white text-black font-bold py-5 px-20 rounded-2xl transition-all hover:bg-gray-200 w-full text-xl uppercase">
-                    ขอกลับมาล้างแค้น
-                </button>
+                <div class="text-center py-10 fade-in">
+                    <div class="text-[100px] mb-8">💀</div>
+                    <h2 class="text-5xl font-bold text-red-600 mb-6 tracking-tighter uppercase glow-red">เจ้าถูกปลิดชีพ</h2>
+                    <p class="text-gray-400 text-xl mb-12 italic">"คาราเต้คือความเงียบงัน... แต่ความผิดพลาดคือเสียงสุดท้ายที่คุณจะได้ยิน"</p>
+                    <div class="p-8 bg-red-950/30 border border-red-900/50 rounded-3xl mb-12">
+                        <p class="text-red-500 font-bold text-xl uppercase tracking-widest">คำพิพากษา: เริ่มใหม่ที่ด่าน 1</p>
+                    </div>
+                    <button onclick="retryGame()" class="bg-white text-black font-bold py-5 px-20 rounded-2xl transition-all hover:bg-gray-200 w-full md:w-auto shadow-2xl text-xl uppercase">
+                        ขอกลับมาล้างแค้น
+                    </button>
+                </div>
             `, true);
         }
 
         function retryGame() {
-            stopSound('lost');
+            stopSound('lost'); // หยุดเสียง lost ทันที (ข้อ 3)
             initGame();
         }
 
         function gameWin() {
-            playSound('win');
+            // เมื่อ t.mp3 จบแล้ว (ถูกเรียกจาก onended ของข้อ 50)
+            playSound('win'); // เล่นเสียง win (ข้อ 4)
             showScreen(`
-                <h2 class="text-5xl font-bold text-yellow-500 mb-6 text-center glow-red uppercase">ปรมาจารย์หมัดขาว</h2>
-                <div class="text-left text-gray-300 space-y-6 mb-12 bg-white/5 p-10 rounded-3xl border border-yellow-900/40">
-                    <p class="text-xl italic text-center">"ยินดีด้วย... เจ้าคือตำนานที่ยังมีชีวิต"</p>
+                <div class="text-center py-10 fade-in">
+                    <div class="text-[100px] mb-8">🥋</div>
+                    <h2 class="text-5xl font-bold text-yellow-500 mb-6 tracking-tighter uppercase glow-red">ปรมาจารย์หมัดขาว</h2>
+                    <div class="text-left text-gray-300 space-y-6 mb-12 bg-white/5 p-10 rounded-3xl border border-yellow-900/40">
+                        <p class="text-xl italic">"เจ้าผ่านบททดสอบทั้ง 50 ประการด้วยหัวใจที่แกร่งดังเพชร"</p>
+                        <p>สมาคมนิลกาลล่มสลาย อาจารย์ได้รับการล้างแค้น และโดโจหมัดขาวกลับมาเป็นสถานอบรมจิตใจของคนทั้งเมือง</p>
+                        <p class="font-bold text-white text-2xl text-center border-t border-white/10 pt-6">"วิชาที่แท้จริง ไม่ได้มีไว้เพื่อชัยชนะเหนือผู้อื่น แต่มีไว้เพื่อชัยชนะเหนือจิตใจตนเอง"</p>
+                        <p class="text-center text-yellow-500 font-bold text-lg">ยินดีด้วย... เจ้าคือตำนานที่ยังมีชีวิต</p>
+                    </div>
+                    <button onclick="initGame()" class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-5 px-20 rounded-2xl transition-all w-full md:w-auto text-xl shadow-2xl">
+                        เริ่มตำนานใหม่อีกครั้ง
+                    </button>
                 </div>
-                <button onclick="initGame()" class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-5 px-20 rounded-2xl transition-all w-full text-xl shadow-2xl">
-                    เริ่มตำนานใหม่อีกครั้ง
-                </button>
             `, true);
         }
 
