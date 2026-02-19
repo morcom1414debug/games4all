@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>วาลูก้าแห่งโชคชะตา - Valuga of Destiny</title>
+    <style>
+        :root {
+            --primary: #6a11cb;
+            --secondary: #2575fc;
+            --danger: #ff4b2b;
+            --success: #00b09b;
+            --gold: #f1c40f;
+            --dark-bg: #1a1a2e;
+        }
+
+        body {
+            font-family: 'Kanit', 'Segoe UI', sans-serif;
+            background: var(--dark-bg);
+            color: white;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            width: 90%;
+            max-width: 500px;
+            background: #16213e;
+            border-radius: 24px;
+            padding: 2.5rem;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            border: 2px solid rgba(37, 117, 252, 0.3);
+        }
+
+        .scene { display: none; }
+        .scene.active { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 1.5rem;
+            animation: slideUp 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        h1, h2 { margin: 0; color: var(--gold); text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+
+        /* กงล้อ Visual */
+        .wheel-area {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            margin: 1.5rem auto;
+        }
+
+        .wheel-graphic {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 10px solid var(--gold);
+            background: conic-gradient(
+                from 0deg,
+                #6a11cb 0deg 45deg,
+                #2575fc 45deg 90deg,
+                #6a11cb 90deg 135deg,
+                #2575fc 135deg 180deg,
+                #6a11cb 180deg 225deg,
+                #2575fc 225deg 270deg,
+                #6a11cb 270deg 315deg,
+                #2575fc 315deg 360deg
+            );
+            transition: transform 3s cubic-bezier(0.1, 0, 0.2, 1);
+            box-shadow: 0 0 30px rgba(106, 17, 203, 0.4);
+        }
+
+        .spinning { animation: spinContinuous 0.5s linear infinite; }
+        @keyframes spinContinuous { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .pointer {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 30px solid var(--danger);
+            z-index: 10;
+        }
+
+        /* ปุ่มคันโยก */
+        .lever {
+            padding: 18px 40px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: none;
+            border-radius: 60px;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .lever:hover:not(:disabled) { transform: scale(1.05); box-shadow: 0 10px 25px rgba(106, 17, 203, 0.5); }
+        .lever:active:not(:disabled) { transform: scale(0.95); }
+        .lever:disabled { opacity: 0.5; filter: grayscale(1); cursor: wait; }
+
+        /* แถบสถานะ */
+        .stats-container {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 10px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .hp-text { color: #ff6b6b; font-weight: bold; font-size: 1.2rem; }
+        .shield-active { color: #4facfe; text-shadow: 0 0 12px #00f2fe; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
+        /* ตัวเลือกชั้น 10 */
+        .options-grid { display: grid; gap: 12px; margin-top: 20px; }
+        .opt-btn {
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border: 2px solid rgba(37, 117, 252, 0.4);
+            color: white;
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: left;
+            font-size: 1rem;
+            transition: 0.2s;
+        }
+        .opt-btn:hover { background: rgba(37, 117, 252, 0.2); border-color: var(--secondary); }
+
+        #game-log { min-height: 3em; color: #cbd5e0; font-style: italic; }
+    </style>
+</head>
+<body>
+
+<div id="game-container" role="main">
+    <section id="start-screen" class="scene active">
+        <h1 id="main-title" tabindex="-1">วาลูก้าแห่งโชคชะตา</h1>
+        <p>พิชิตหอคอยแห่งวาลูก้า การเดินทางที่โชคชะตาเป็นผู้กำหนด</p>
+        <div style="margin-top: 20px;">
+            <button id="btn-start" class="lever" aria-label="กดเพื่อเริ่มต้นพิชิตหอคอย">พิชิตหอคอย</button>
+        </div>
+    </section>
+
+    <section id="tower-screen" class="scene">
+        <h2 id="floor-header" tabindex="-1">หอคอยชั้นที่ 1</h2>
+        <div class="stats-container">
+            <div class="stat-box hp-text" id="hp-display" aria-live="polite">❤️ HP: 1,000</div>
+            <div class="stat-box" id="shield-display" aria-live="polite">🛡️ ไม่มีเกราะ</div>
+        </div>
+        <div class="wheel-area">
+            <div class="pointer" aria-hidden="true"></div>
+            <div id="visual-wheel" class="wheel-graphic" aria-hidden="true"></div>
+        </div>
+        <button id="lever-btn" class="lever">สับคันโยก</button>
+        <p id="game-log" aria-live="assertive"></p>
+    </section>
+
+    <section id="quiz-screen" class="scene">
+        <h2 id="quiz-header" tabindex="-1">ชั้นที่ 10: ชั้นแห่งความรู้</h2>
+        <p id="question-text"></p>
+        <div id="quiz-options" class="options-grid"></div>
+    </section>
+
+    <section id="result-screen" class="scene">
+        <h2 id="result-header" tabindex="-1">บทสรุปการเดินทาง</h2>
+        <p id="result-message" style="font-size: 1.3rem; margin: 20px 0;"></p>
+        <div class="stat-box" id="final-stats"></div>
+    </section>
+</div>
+
+<script>
+/** --- ระบบเสียง Web Audio API --- **/
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const buffers = {};
+const soundPaths = {
+    start: 'audio/start.mp3', back: 'audio/back.mp3', wheel: 'audio/wheel.mp3',
+    up: 'audio/up.mp3', up1: 'audio/up1.mp3', shield: 'audio/shield.mp3',
+    wind: 'audio/wind.mp3', water: 'audio/water.mp3', earth: 'audio/earth.mp3',
+    winner: 'audio/winner.mp3', lost: 'audio/lost.mp3'
+};
+
+async function loadToBuffer(name, url) {
+    try {
+        const resp = await fetch(url);
+        const arrayBuf = await resp.arrayBuffer();
+        buffers[name] = await audioCtx.decodeAudioData(arrayBuf);
+    } catch (e) { console.warn(`Sound error: ${name}`); }
+}
+
+async function initPreload() {
+    // โหลดไฟล์ที่ต้องใช้ทันที
+    await Promise.all([
+        loadToBuffer('start', soundPaths.start),
+        loadToBuffer('wheel', soundPaths.wheel),
+        loadToBuffer('back', soundPaths.back)
+    ]);
+    // ทยอยโหลดที่เหลือแบบ background
+    Object.entries(soundPaths).forEach(([n, u]) => {
+        if(!buffers[n]) loadToBuffer(n, u);
+    });
+}
+
+function play(name, loop = false) {
+    if (!buffers[name]) return null;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffers[name];
+    src.loop = loop;
+    src.connect(audioCtx.destination);
+    src.start(0);
+    return src;
+}
+
+function playWait(name) {
+    return new Promise(res => {
+        const s = play(name);
+        if(!s) res(); else s.onended = res;
+    });
+}
+
+/** --- ข้อมูลคำถามชั้น 10 --- **/
+const quizDB = [
+    { q: "ธาตุน้ำ แพ้ทางให้กับธาตุใดที่กักกั้นการไหลได้?", opts: ["ไฟ", "ดิน", "ทอง", "ลม"], ans: 1 },
+    { q: "ธาตุใดชนะ 'ธาตุดิน' ด้วยการชอนไชดึงสารอาหาร?", opts: ["ไม้", "ทอง", "ไฟ", "น้ำแข็ง"], ans: 0 },
+    { q: "ในวัฏจักร 'ธาตุไฟ' จะพ่ายแพ้ต่อธาตุใดที่ลดอุณหภูมิได้?", opts: ["ลม", "ทอง", "น้ำ", "ไม้"], ans: 2 },
+    { q: "ธาตุใดคมกริบพอจะทำลาย 'ธาตุไม้' ได้?", opts: ["น้ำ", "ดิน", "ทอง (โลหะ)", "ลม"], ans: 2 },
+    { q: "'ธาตุลม' เสียเปรียบต่อสิ่งใดที่มีมวลมหาศาลกั้นทางลม?", opts: ["น้ำ", "ดิน", "ไม้", "ไฟ"], ans: 1 },
+    { q: "'ธาตุทอง' จะพ่ายแพ้ต่อธาตุใดที่ทำให้มันละลาย?", opts: ["ไฟ", "น้ำ", "ลม", "น้ำแข็ง"], ans: 0 },
+    { q: "'ธาตุน้ำแข็ง' แพ้ต่อธาตุใดที่ทำให้มันระเหย?", opts: ["น้ำ", "ลม", "ไฟ", "ดิน"], ans: 2 },
+    { q: "'ธาตุสายฟ้า' แพ้ทางให้กับธาตุใดที่เป็นฉนวน?", opts: ["น้ำ", "ดิน", "ทอง", "ลม"], ans: 1 },
+    { q: "ธาตุใดที่ 'ธาตุลม' มักจะแพ้ทางในเชิงถูกเจาะทะลวง?", opts: ["สายฟ้า", "น้ำแข็ง", "ไม้", "น้ำ"], ans: 0 },
+    { q: "ธาตุใดที่ 'ธาตุน้ำแข็ง' เอาชนะได้ง่ายที่สุด?", opts: ["ไฟ", "ทอง", "ไม้", "น้ำ"], ans: 3 }
+];
+
+/** --- ตรรกะเกม --- **/
+let game = {
+    hp: 1000,
+    floor: 1,
+    hasShield: false,
+    isProcessing: false,
+    bgm: null
+};
+
+const winQuotes = [
+    "โอ้ผู้กล้า! ท่านได้พิชิตยอดหอคอยวาลูก้าสำเร็จแล้ว!",
+    "ตำนานบทใหม่ได้เริ่มขึ้นแล้ว ยินดีกับชัยชนะอันยิ่งใหญ่!",
+    "ความรู้และโชคชะตาอยู่ข้างท่าน ท่านคือผู้ที่หอคอยยอมรับ!"
+];
+
+const lostQuotes = [
+    "โชคชะตายังไม่เข้าข้าง... จงกลับมาฝึกฝนใหม่นะผู้กล้า",
+    "หอคอยแห่งวาลูก้านั้นสูงชัน อย่าเพิ่งยอมแพ้ล่ะ!",
+    "พลังชีวิตหมดสิ้น แต่จิตวิญญาณยังอยู่ กลับมาสู้ใหม่อีกครั้ง!"
+];
+
+function updateStats() {
+    document.getElementById('hp-display').innerText = `❤️ HP: ${game.hp.toLocaleString()}`;
+    const sDisplay = document.getElementById('shield-display');
+    if(game.hasShield) {
+        sDisplay.innerText = "🛡️ เกราะแห่งแสงเปิดใช้งาน";
+        sDisplay.classList.add('shield-active');
+    } else {
+        sDisplay.innerText = "🛡️ ไม่มีเกราะ";
+        sDisplay.classList.remove('shield-active');
+    }
+}
+
+function goTo(sceneId) {
+    document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById(sceneId);
+    target.classList.add('active');
+    const header = target.querySelector('h1, h2');
+    if(header) header.focus();
+}
+
+// เริ่มเกม
+document.getElementById('btn-start').onclick = async () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    await initPreload();
+    await playWait('start');
+    game.bgm = play('back', true);
+    goTo('tower-screen');
+    updateStats();
+};
+
+// สับคันโยก
+document.getElementById('lever-btn').onclick = async () => {
+    if (game.isProcessing) return;
+    game.isProcessing = true;
+    document.getElementById('lever-btn').disabled = true;
+    
+    // Animation หมุน
+    const wheel = document.getElementById('visual-wheel');
+    wheel.classList.add('spinning');
+    document.getElementById('game-log').innerText = "กงล้อกำลังกำหนดโชคชะตา...";
+    
+    await playWait('wheel');
+    wheel.classList.remove('spinning');
+    
+    // คำนวณผล
+    let pool = [];
+    if(game.floor <= 5) {
+        pool = ['up','up','up','up', 'shield', 'wind','wind', 'water'];
+    } else {
+        pool = ['up','up','up','up', 'shield', 'wind', 'water', 'earth', 'fire', 'fire'];
+    }
+    
+    const result = pool[Math.floor(Math.random() * pool.length)];
+    await applyEffect(result);
+    
+    if (game.hp > 0 && game.floor < 10) {
+        game.isProcessing = false;
+        document.getElementById('lever-btn').disabled = false;
+    }
+};
+
+async function applyEffect(res) {
+    let logMsg = "";
+    if (res === 'up') {
+        const sfx = (game.floor === 9) ? 'up1' : 'up';
+        await playWait(sfx);
+        game.floor++;
+        logMsg = `ยินดีด้วย! ท่านขึ้นสู่ชั้นที่ ${game.floor}`;
+        document.getElementById('floor-header').innerText = `หอคอยชั้นที่ ${game.floor}`;
+        if(game.floor === 10) return startFinalQuiz();
+    } 
+    else if (res === 'shield') {
+        game.hasShield = true;
+        logMsg = "ท่านได้รับเกราะแห่งแสง ป้องกันการโจมตีครั้งต่อไป!";
+        await playWait('shield');
+    } 
+    else {
+        const data = {
+            wind: { name: "วายุลมกลด", dmg: 100, sfx: 'wind' },
+            water: { name: "มหาสมุทรคลั่ง", dmg: 200, sfx: 'water' },
+            earth: { name: "ปฐพีกลืนกิน", dmg: 200, sfx: 'earth' },
+            fire: { name: "อัคนีพิโรธ", dmg: 300, sfx: 'water' } // ใช้เสียง water ตามโจทย์
+        };
+        const effect = data[res];
+        logMsg = `ท่านโดนเวทมนต์ ${effect.name}!`;
+        
+        if(game.hasShield) {
+            logMsg += " แต่เกราะแห่งแสงช่วยป้องกันไว้ได้!";
+            game.hasShield = false;
+            await playWait(effect.sfx);
+        } else {
+            game.hp -= effect.dmg;
+            await playWait(effect.sfx);
+            if(game.hp <= 0) {
+                game.hp = 0;
+                updateStats();
+                return endGame(false);
+            }
+        }
+    }
+    document.getElementById('game-log').innerText = logMsg;
+    updateStats();
+}
+
+function startFinalQuiz() {
+    goTo('quiz-screen');
+    const qData = quizDB[Math.floor(Math.random() * quizDB.length)];
+    document.getElementById('question-text').innerText = qData.q;
+    const optBox = document.getElementById('quiz-options');
+    optBox.innerHTML = "";
+    
+    qData.opts.forEach((txt, i) => {
+        const btn = document.createElement('button');
+        btn.className = "opt-btn";
+        btn.innerText = `${['ก','ข','ค','ง'][i]}. ${txt}`;
+        btn.onclick = () => {
+            if(i === qData.ans) endGame(true);
+            else endGame(false);
+        };
+        optBox.appendChild(btn);
+    });
+}
+
+async function endGame(isWin) {
+    if(game.bgm) game.bgm.stop();
+    goTo('result-screen');
+    
+    const msgEl = document.getElementById('result-message');
+    const statsEl = document.getElementById('final-stats');
+    
+    if(isWin) {
+        msgEl.innerText = winQuotes[Math.floor(Math.random() * winQuotes.length)];
+        await playWait('winner');
+    } else {
+        msgEl.innerText = lostQuotes[Math.floor(Math.random() * lostQuotes.length)];
+        await playWait('lost');
+    }
+    
+    statsEl.innerHTML = `
+        <p>ชั้นที่ไปถึง: <strong>${game.floor === 10 && isWin ? "ยอดหอคอย" : game.floor}</strong></p>
+        <p>พลังชีวิตสุดท้าย: <strong>${game.hp.toLocaleString()}</strong></p>
+    `;
+}
+</script>
+</body>
+</html>
