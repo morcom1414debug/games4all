@@ -64,6 +64,7 @@
         .stats-bar { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; }
         .stat-item { background: var(--glass); padding: 8px 15px; border-radius: 10px; }
         
+        /* CSS สำหรับซ่อนการแสดงผล แต่ยังให้ระบบประกาศทำงานได้ */
         .sr-only-fixed {
             position: absolute !important;
             width: 1px !important; height: 1px !important;
@@ -128,7 +129,7 @@
 
 <script>
 /** -----------------------------------------------------------
- * DATA & CONFIG
+ * DATA: คำถามครบถ้วนเหมือนเดิม
  * ----------------------------------------------------------- */
 const quiz1to19 = [
     {q: "สิ่งใดที่ยิ่งดิ้นรนขัดขืน กระแสของมันยิ่งรัดร่างเจ้าให้จมดิ่งลง", opts: ["ธาตุดิน", "ธาตุน้ำ", "ธาตุลม"], ans: 1},
@@ -208,7 +209,7 @@ const effects = {
 };
 
 /** -----------------------------------------------------------
- * ENGINE & STATE
+ * ENGINE
  * ----------------------------------------------------------- */
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const buffers = {};
@@ -227,10 +228,6 @@ let state = {
     usedQuiz: [], f20Step: 0, f20Data: [],
     lastEffects: []
 };
-
-// สูตรลับ Skip
-let skipBuffer = "";
-let lastKeyTime = 0;
 
 async function loadSound(name, url) {
     try {
@@ -257,13 +254,18 @@ function playWait(name) {
     return new Promise(r => { const s = play(name); if (!s) return r(); s.onended = r; });
 }
 
+/** * ฟังค์ชั่นประกาศเสียง (Balanced Version)
+ * - ปกติซ่อนจากการนำทางด้วย aria-hidden="true"
+ * - เมื่อจะประกาศ จะปลดล็อคให้ Screen reader อ่าน แล้วล็อคกลับ
+ */
 function announce(text) {
     const el = document.getElementById('aria-announcer');
-    el.innerText = ""; 
-    el.removeAttribute('aria-hidden'); 
+    el.innerText = ""; // Clear เก่า
+    el.removeAttribute('aria-hidden'); // ปลดล็อคให้ Screen Reader เห็น
     
     setTimeout(() => {
-        el.innerText = text; 
+        el.innerText = text; // ใส่ข้อความใหม่เพื่อกระตุ้น Live Region
+        // รอสักครู่ให้การประกาศเริ่มทำงาน แล้วซ่อนจากการนำทาง (แต่เสียงจะยังอ่านจนจบ)
         setTimeout(() => {
             el.setAttribute('aria-hidden', 'true');
         }, 1000);
@@ -279,32 +281,6 @@ function switchScene(id) {
     document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
     const sc = document.getElementById(id); sc.classList.add('active');
     const head = sc.querySelector('h1, h2'); if (head) head.focus();
-}
-
-/** -----------------------------------------------------------
- * SECRET SKIP LOGIC
- * ----------------------------------------------------------- */
-window.addEventListener('keydown', (e) => {
-    const now = Date.now();
-    if (now - lastKeyTime > 2000) skipBuffer = ""; // Reset ถ้าเกิน 2 วินาที
-    
-    skipBuffer += e.key.toLowerCase();
-    lastKeyTime = now;
-
-    if (skipBuffer.includes("skip")) {
-        skipBuffer = "";
-        executeSkipSecret();
-    }
-});
-
-function executeSkipSecret() {
-    if (state.floor >= 20 || state.hp <= 0) return;
-    state.floor = 18;
-    state.hp = 1000;
-    state.hasShield = true;
-    state.isBusy = false;
-    announce("สูตรลับทำงาน! วาร์ปสู่ชั้นที่ 18 พร้อมพลังเต็มเปี่ยมและเกราะแห่งแสง");
-    startFloor();
 }
 
 /** -----------------------------------------------------------
@@ -395,17 +371,14 @@ async function applyEffect(key) {
             state.hasShield = false; 
         } else {
             state.hp -= eff.dmg;
-            // ปรับปรุงการประกาศ: รวมข้อมูลความเสียหายและ HP ที่เหลือในประโยคเดียวกัน
-            finalSpeech = `${eff.label} เสียพลังชีวิต ${eff.dmg}`;
         }
     } else if (eff.dmg < 0) {
         state.hp = Math.min(1000, state.hp + 200);
-        finalSpeech = `${eff.label} ฟื้นฟูพลังชีวิต 200`;
     }
     
     if (eff.isShield) state.hasShield = true;
 
-    // ประกาศรวดเดียวจบ
+    // ประกาศ: ผลกงล้อ + พลังชีวิตที่เหลือ (กระชับ)
     announce(`${finalSpeech} เหลือพลังชีวิต ${Math.max(0, state.hp)}`);
     updateUI();
     
