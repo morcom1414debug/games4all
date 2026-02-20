@@ -26,6 +26,7 @@
             position: relative; min-height: 600px; display: flex; flex-direction: column;
         }
         .nav-header { display: flex; justify-content: flex-start; margin-bottom: 10px; }
+        
         .btn-community {
             background: var(--glass); border: 1px solid rgba(255,255,255,0.2);
             color: #ddd; padding: 8px 15px; border-radius: 12px;
@@ -33,6 +34,7 @@
             font-family: 'Kanit', sans-serif;
         }
         .btn-community:hover { background: rgba(255,255,255,0.2); }
+
         .scene { display: none; flex-direction: column; gap: 1.2rem; animation: fadeIn 0.6s ease; }
         .scene.active { display: flex; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -57,15 +59,20 @@
             color: white; padding: 14px; border-radius: 12px; text-align: left;
             cursor: pointer; transition: 0.2s; font-size: 1.1rem;
         }
-        .btn-opt.dim { opacity: 0.3; pointer-events: none; }
-        .btn-opt.selected { background: var(--primary); border-color: var(--gold); opacity: 1 !important; }
+        .btn-opt.dim { opacity: 0.2; pointer-events: none; }
+        .btn-opt.selected { background: var(--primary); border-color: var(--gold); }
         .stats-bar { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; }
         .stat-item { background: var(--glass); padding: 8px 15px; border-radius: 10px; }
+        
         .sr-only-fixed {
-            position: absolute !important; width: 1px !important; height: 1px !important;
-            padding: 0 !important; margin: -1px !important; overflow: hidden !important;
-            clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important;
+            position: absolute !important;
+            width: 1px !important; height: 1px !important;
+            padding: 0 !important; margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important; border: 0 !important;
         }
+
         #loading-overlay { position: fixed; inset: 0; background: var(--dark-bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
         .spinner { width: 40px; height: 40px; border: 4px solid var(--glass); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -113,7 +120,7 @@
         <section id="scene-result" class="scene">
             <h2 id="result-title" tabindex="-1">สรุปการเดินทาง</h2>
             <div id="result-icon" style="font-size: 4rem;" aria-hidden="true"></div>
-            <p id="result-desc" style="font-size: 1.3rem; font-weight: 600;"></p>
+            <p id="result-desc" style="font-size: 1.3rem;"></p>
             <p id="result-stats" style="opacity: 0.8;"></p>
         </section>
     </div>
@@ -121,7 +128,7 @@
 
 <script>
 /** -----------------------------------------------------------
- * DATA: 1-19 (50 ข้อ) และ ชั้นที่ 20 (10 ข้อ)
+ * DATA & CONFIG
  * ----------------------------------------------------------- */
 const quiz1to19 = [
     {q: "สิ่งใดที่ยิ่งดิ้นรนขัดขืน กระแสของมันยิ่งรัดร่างเจ้าให้จมดิ่งลง", opts: ["ธาตุดิน", "ธาตุน้ำ", "ธาตุลม"], ans: 1},
@@ -177,31 +184,16 @@ const quiz1to19 = [
 ];
 
 const quiz20 = [
-    {q: "ธาตุน้ำ มักจะแพ้ทางให้กับธาตุใดที่สามารถดูดซับหรือกักกั้นการไหลได้?", opts: ["ก. ธาตุไฟ", "ข. ธาตุดิน", "ค. ธาตุทอง", "ง. ธาตุลม"], ans: 1},
-    {q: "ธาตุใดที่สามารถเอาชนะ 'ธาตุดิน' ได้ด้วยการชอนไชและดึงสารอาหารไปใช้?", opts: ["ก. ธาตุไม้", "ข. ธาตุทอง", "ค. ธาตุไฟ", "ง. ธาตุน้ำแข็ง"], ans: 0},
-    {q: "ในวัฏจักรการหลอมละลาย 'ธาตุไฟ' จะพ่ายแพ้ต่อธาตุใดที่ลดอุณหภูมิได้อย่างรวดเร็ว?", opts: ["ก. ธาตุลม", "ข. ธาตุทอง", "ค. ธาตุน้ำ", "ง. ธาตุไม้"], ans: 2},
-    {q: "ธาตุใดที่มีความแข็งแกร่งและคมกริบพอที่จะทำลาย 'ธาตุไม้' ได้?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุดิน", "ค. ธาตุทอง", "ง. ธาตุลม"], ans: 2},
-    {q: "'ธาตุลม' มักจะเสียเปรียบต่อสิ่งใดที่มีมวลมหาศาลจนลมไม่สามารถพัดให้เคลื่อนที่ได้?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุดิน", "ค. ธาตุไม้", "ง. ธาตุไฟ"], ans: 1},
-    {q: "'ธาตุทอง' (โลหะ) จะพ่ายแพ้ต่อธาตุใดที่สามารถทำให้มันเปลี่ยนสถานะเป็นของเหลว?", opts: ["ก. ธาตุไฟ", "ข. ธาตุน้ำ", "ค. ธาตุลม", "ง. ธาตุน้ำแข็ง"], ans: 0},
-    {q: "ธาตุพิเศษอย่าง 'ธาตุน้ำแข็ง' จะพ่ายแพ้ต่อธาตุใดที่ทำให้มันระเหยหรือละลาย?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุลม", "ค. ธาตุไฟ", "ง. ธาตุดิน"], ans: 2},
-    {q: "ในทางวิทยาศาสตร์และแฟนตาซี 'ธาตุสายฟ้า' มักจะแพ้ทางให้กับธาตุใดที่เป็นฉนวน?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุดิน", "ค. ธาตุทอง", "ง. ธาตุลม"], ans: 1},
-    {q: "ธาตุใดต่อไปนี้ที่ 'ธาตุลม' มักจะแพ้ทาง (ในเชิงการถูกเจาะทะลวง)?", opts: ["ก. ธาตุสายฟ้า", "ข. ธาตุน้ำแข็ง", "ค. ธาตุไม้", "ง. ธาตุน้ำ"], ans: 0},
-    {q: "ธาตุใดที่ 'ธาตุน้ำแข็ง' สามารถเอาชนะได้ง่ายที่สุด (โดยการแช่แข็ง)?", opts: ["ก. ธาตุไฟ", "ข. ธาตุทอง", "ค. ธาตุไม้", "ง. ธาตุน้ำ"], ans: 3}
-];
-
-const praiseMsgs = [
-    "เจ้าคือตำนานบทใหม่แห่งวาลูก้า! ปัญญาของเจ้าช่างล้ำเลิศนัก",
-    "ยอดหอคอยสยบแทบเท้าผู้กล้า! ยินดีด้วยกับชัยชนะอันยิ่งใหญ่",
-    "ความรู้และโชคชะตาอยู่ข้างเจ้าเสมอ เจ้าคือผู้พิชิตที่แท้จริง!",
-    "หอคอยสั่นสะเทือนต่อพลังแห่งปัญญาของเจ้า! ความเป็นหนึ่งในใต้หล้าเป็นของเจ้าแล้ว"
-];
-
-const encouragementMsgs = [
-    "โชคชะตายังไม่มาถึงในวันนี้... อย่าเพิ่งท้อแท้ กลับมาสู้ใหม่นะผู้กล้า!",
-    "เพียงก้าวเดียวก็จะถึงฝัน... ฝึกฝนปัญญาแล้วกลับมาท้าทายอีกครั้ง!",
-    "ความพ่ายแพ้คือครูที่ดีที่สุด... เราจะรอเจ้ากลับมาพิชิตหอคอยนี้",
-    "แม้กายจะล้มลง แต่จิตวิญญาณผู้กล้ายังคงอยู่... ลองใหม่อีกครั้งนะ!",
-    "ชั้นที่เจ้าพิชิตได้นั้นน่าทึ่งมาก! ครั้งหน้ายอดหอคอยต้องเป็นของเจ้าแน่นอน"
+    {q: "ธาตุน้ำ มักจะแพ้ทางให้กับธาตุใดที่สามารถดูดซับหรือกักกั้นการไหลได้?", opts: ["ธาตุไฟ", "ธาตุดิน", "ธาตุทอง", "ธาตุลม"], ans: 1},
+    {q: "ธาตุใดที่สามารถเอาชนะ 'ธาตุดิน' ได้ด้วยการชอนไชและดึงสารอาหารไปใช้?", opts: ["ธาตุไม้", "ธาตุทอง", "ธาตุไฟ", "ธาตุน้ำแข็ง"], ans: 0},
+    {q: "ในวัฏจักรการหลอมละลาย 'ธาตุไฟ' จะพ่ายแพ้ต่อธาตุใดที่ลดอุณหภูมิได้อย่างรวดเร็ว?", opts: ["ธาตุลม", "ธาตุทอง", "ธาตุน้ำ", "ธาตุไม้"], ans: 2},
+    {q: "ธาตุใดที่มีความแข็งแกร่งและคมกริบพอที่จะทำลาย 'ธาตุไม้' ได้?", opts: ["ธาตุน้ำ", "ธาตุดิน", "ธาตุทอง", "ธาตุลม"], ans: 2},
+    {q: "'ธาตุลม' มักจะเสียเปรียบต่อสิ่งใดที่มีมวลมหาศาลจนลมไม่สามารถพัดให้เคลื่อนที่ได้?", opts: ["ธาตุน้ำ", "ธาตุดิน", "ธาตุไม้", "ธาตุไฟ"], ans: 1},
+    {q: "'ธาตุทอง' (โลหะ) จะพ่ายแพ้ต่อธาตุใดที่สามารถทำให้มันเปลี่ยนสถานะเป็นของเหลว?", opts: ["ธาตุไฟ", "ธาตุน้ำ", "ธาตุลม", "ธาตุน้ำแข็ง"], ans: 0},
+    {q: "ธาตุพิเศษอย่าง 'ธาตุน้ำแข็ง' จะพ่ายแพ้ต่อธาตุใดที่ทำให้มันระเหยหรือละลาย?", opts: ["ธาตุน้ำ", "ธาตุลม", "ธาตุไฟ", "ธาตุดิน"], ans: 2},
+    {q: "ในทางวิทยาศาสตร์และแฟนตาซี 'ธาตุสายฟ้า' มักจะแพ้ทางให้กับธาตุใดที่เป็นฉนวน?", opts: ["ธาตุน้ำ", "ธาตุดิน", "ธาตุทอง", "ธาตุลม"], ans: 1},
+    {q: "ธาตุใดต่อไปนี้ที่ 'ธาตุลม' มักจะแพ้ทาง (ในเชิงการถูกเจาะทะลวง)?", opts: ["ธาตุสายฟ้า", "ธาตุน้ำแข็ง", "ธาตุไม้", "ธาตุน้ำ"], ans: 0},
+    {q: "ธาตุใดที่ 'ธาตุน้ำแข็ง' สามารถเอาชนะได้ง่ายที่สุด (โดยการแช่แข็ง)?", opts: ["ธาตุไฟ", "ธาตุทอง", "ธาตุไม้", "ธาตุน้ำ"], ans: 3}
 ];
 
 const effects = {
@@ -236,6 +228,7 @@ let state = {
     lastEffects: []
 };
 
+// สูตรลับ Skip
 let skipBuffer = "";
 let lastKeyTime = 0;
 
@@ -266,10 +259,14 @@ function playWait(name) {
 
 function announce(text) {
     const el = document.getElementById('aria-announcer');
-    el.innerText = ""; el.removeAttribute('aria-hidden'); 
+    el.innerText = ""; 
+    el.removeAttribute('aria-hidden'); 
+    
     setTimeout(() => {
         el.innerText = text; 
-        setTimeout(() => { el.setAttribute('aria-hidden', 'true'); }, 1000);
+        setTimeout(() => {
+            el.setAttribute('aria-hidden', 'true');
+        }, 1000);
     }, 100);
 }
 
@@ -285,27 +282,33 @@ function switchScene(id) {
 }
 
 /** -----------------------------------------------------------
- * SECRET SKIP
+ * SECRET SKIP LOGIC
  * ----------------------------------------------------------- */
 window.addEventListener('keydown', (e) => {
     const now = Date.now();
-    if (now - lastKeyTime > 2000) skipBuffer = "";
+    if (now - lastKeyTime > 2000) skipBuffer = ""; // Reset ถ้าเกิน 2 วินาที
+    
     skipBuffer += e.key.toLowerCase();
     lastKeyTime = now;
+
     if (skipBuffer.includes("skip")) {
-        skipBuffer = ""; executeSkipSecret();
+        skipBuffer = "";
+        executeSkipSecret();
     }
 });
 
 function executeSkipSecret() {
     if (state.floor >= 20 || state.hp <= 0) return;
-    state.floor = 18; state.hp = 1000; state.hasShield = true; state.isBusy = false;
+    state.floor = 18;
+    state.hp = 1000;
+    state.hasShield = true;
+    state.isBusy = false;
     announce("สูตรลับทำงาน! วาร์ปสู่ชั้นที่ 18 พร้อมพลังเต็มเปี่ยมและเกราะแห่งแสง");
     startFloor();
 }
 
 /** -----------------------------------------------------------
- * GAMEPLAY
+ * GAMEPLAY LOGIC
  * ----------------------------------------------------------- */
 document.getElementById('btn-begin').onclick = async () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -325,12 +328,17 @@ function startFloor() {
 function showQuiz() {
     document.getElementById('quiz-area').style.display = 'block';
     document.getElementById('wheel-area').style.display = 'none';
+    
     let idx;
-    do { idx = Math.floor(Math.random() * quiz1to19.length); } while (state.usedQuiz.includes(idx));
+    do { idx = Math.floor(Math.random() * quiz1to19.length); } 
+    while (state.usedQuiz.includes(idx));
     state.usedQuiz.push(idx);
+
     const data = quiz1to19[idx];
     const h2 = document.getElementById('question-heading');
-    h2.innerText = `ชั้นที่ ${state.floor} - ${data.q}`; h2.focus();
+    h2.innerText = `ชั้นที่ ${state.floor} - ${data.q}`; 
+    h2.focus();
+
     const container = document.getElementById('options-container');
     container.innerHTML = "";
     data.opts.forEach((opt, i) => {
@@ -338,7 +346,7 @@ function showQuiz() {
         btn.className = 'btn-opt'; btn.innerText = `${['ก','ข','ค'][i]}. ${opt}`;
         btn.onclick = () => {
             document.querySelectorAll('.btn-opt').forEach(b => b.classList.add('dim'));
-            btn.classList.add('selected');
+            btn.classList.replace('dim', 'selected');
             setTimeout(() => {
                 document.getElementById('quiz-area').style.display = 'none';
                 document.getElementById('wheel-area').style.display = 'block';
@@ -351,70 +359,89 @@ function showQuiz() {
 
 async function spinWheel(isCorrect) {
     if (state.isBusy) return; state.isBusy = true;
+    
     let pool = isCorrect 
         ? ['shield','shield','hp','hp','wind','water','earth','fire','winter','thunder']
         : ['shield','hp','wind','wind','water','water','earth','earth','fire','fire','winter','winter','thunder','thunder'];
+
     let availablePool = pool.filter(item => !state.lastEffects.includes(item));
     if (availablePool.length === 0) availablePool = pool;
+    
     const effectKey = availablePool[Math.floor(Math.random() * availablePool.length)];
     state.lastEffects.push(effectKey);
     if (state.lastEffects.length > 3) state.lastEffects.shift();
+
     const wheel = document.getElementById('visual-wheel');
     const lever = document.getElementById('lever-visual');
     lever.classList.add('lever-active');
     wheel.style.transform = `rotate(${1800 + Math.random()*360}deg)`;
+    
     announce("กงล้อกำลังหมุน...");
     await playWait(isCorrect ? 'wheel' : 'wheel1');
     lever.classList.remove('lever-active');
+    
     await applyEffect(effectKey);
 }
 
 async function applyEffect(key) {
     const eff = effects[key];
     let finalSpeech = eff.label;
+    
     await playWait(eff.sfx);
+
     if (eff.dmg > 0) {
-        if (state.hasShield) { finalSpeech = "เกราะแห่งแสงป้องกันไว้ได้"; state.hasShield = false; }
-        else { state.hp -= eff.dmg; finalSpeech = `${eff.label} เสียพลังชีวิต ${eff.dmg}`; }
+        if (state.hasShield) { 
+            finalSpeech = "เกราะแห่งแสงป้องกันไว้ได้";
+            state.hasShield = false; 
+        } else {
+            state.hp -= eff.dmg;
+            // ปรับปรุงการประกาศ: รวมข้อมูลความเสียหายและ HP ที่เหลือในประโยคเดียวกัน
+            finalSpeech = `${eff.label} เสียพลังชีวิต ${eff.dmg}`;
+        }
     } else if (eff.dmg < 0) {
         state.hp = Math.min(1000, state.hp + 200);
         finalSpeech = `${eff.label} ฟื้นฟูพลังชีวิต 200`;
     }
+    
     if (eff.isShield) state.hasShield = true;
+
+    // ประกาศรวดเดียวจบ
     announce(`${finalSpeech} เหลือพลังชีวิต ${Math.max(0, state.hp)}`);
     updateUI();
+    
     await new Promise(r => setTimeout(r, 2000));
+    
     if (state.hp <= 0) return endGame(false);
+
     await playWait(state.floor === 19 ? 'up1' : 'up');
-    state.floor++; state.isBusy = false;
+    state.floor++; 
+    state.isBusy = false;
     startFloor();
 }
 
 /** -----------------------------------------------------------
- * FLOOR 20: 3 Questions Challenge
+ * FLOOR 20 & END GAME
  * ----------------------------------------------------------- */
 function startFloor20() {
     state.f20Step = 0;
-    state.f20Data = quiz20.sort(() => Math.random() - 0.5).slice(0, 3);
+    state.f20Data = [...quiz20].sort(() => Math.random() - 0.5).slice(0, 3);
     showF20();
 }
 
 function showF20() {
-    document.getElementById('quiz-area').style.display = 'block';
-    document.getElementById('wheel-area').style.display = 'none';
     const data = state.f20Data[state.f20Step];
     const h2 = document.getElementById('question-heading');
-    h2.innerText = `ชั้นที่ 20 แห่งความรู้ (ข้อ ${state.f20Step + 1}/3) - ${data.q}`; h2.focus();
+    h2.innerText = `ยอดหอคอยข้อที่ ${state.f20Step + 1} - ${data.q}`; 
+    h2.focus();
+    
     const container = document.getElementById('options-container');
     container.innerHTML = "";
     data.opts.forEach((opt, i) => {
         const btn = document.createElement('button');
-        btn.className = 'btn-opt'; btn.innerText = opt;
+        btn.className = 'btn-opt'; btn.innerText = `${['ก','ข','ค','ง'][i]}. ${opt}`;
         btn.onclick = async () => {
-            document.querySelectorAll('.btn-opt').forEach(b => b.classList.add('dim'));
-            btn.classList.add('selected');
             if (i === data.ans) {
-                await playWait('t');
+                await playWait('t'); 
                 state.f20Step++;
                 if (state.f20Step >= 3) endGame(true);
                 else showF20();
@@ -426,29 +453,21 @@ function showF20() {
     });
 }
 
-/** -----------------------------------------------------------
- * END GAME
- * ----------------------------------------------------------- */
 async function endGame(win) {
-    if (bgmSource) { bgmSource.stop(); bgmSource = null; }
+    if (bgmSource) bgmSource.stop();
     switchScene('scene-result');
     const icon = document.getElementById('result-icon');
     const desc = document.getElementById('result-desc');
     const stats = document.getElementById('result-stats');
     
-    stats.innerText = `ชั้นที่พิชิต: ${win ? 20 : state.floor} | พลังชีวิตสุดท้าย: ${Math.max(0, state.hp)}`;
+    const endText = win ? "เจ้าคือผู้พิชิตวาลูก้าที่แท้จริง!" : "โชคชะตายังไม่มาถึง กลับมาใหม่นะ";
+    stats.innerText = `ชั้นที่พิชิต: ${state.floor - 1} | HP สุดท้าย: ${Math.max(0, state.hp)}`;
+    desc.innerText = endText;
     
-    if (win) {
-        icon.innerText = "🏆";
-        desc.innerText = praiseMsgs[Math.floor(Math.random() * praiseMsgs.length)];
-        announce("ยินดีด้วย! " + desc.innerText);
-        await playWait('winner');
-    } else {
-        icon.innerText = "💀";
-        desc.innerText = encouragementMsgs[Math.floor(Math.random() * encouragementMsgs.length)];
-        announce("เกมจบลงแล้ว... " + desc.innerText);
-        await playWait('lost');
-    }
+    announce(endText);
+    
+    if (win) { icon.innerText = "🏆"; await playWait('winner'); } 
+    else { icon.innerText = "💀"; await playWait('lost'); }
 }
 
 initPreload();
