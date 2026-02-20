@@ -112,7 +112,7 @@
 
 <script>
 /** -----------------------------------------------------------
- * DATA: คำถาม
+ * DATA: ชุดคำถามสมบูรณ์ 50 ข้อ + 10 ข้อ
  * ----------------------------------------------------------- */
 const quiz1to19 = [
     {q: "สิ่งใดที่ยิ่งดิ้นรนขัดขืน กระแสของมันยิ่งรัดร่างเจ้าให้จมดิ่งลง", opts: ["ธาตุดิน", "ธาตุน้ำ", "ธาตุลม"], ans: 1},
@@ -180,18 +180,13 @@ const quiz20 = [
     {q: "ธาตุใดที่ 'ธาตุน้ำแข็ง' สามารถเอาชนะได้ง่ายที่สุด (โดยการแช่แข็ง)?", opts: ["ธาตุไฟ", "ธาตุทอง", "ธาตุไม้", "ธาตุน้ำ"], ans: 3}
 ];
 
-/** -----------------------------------------------------------
- * EFFECTS CONFIG
- * ----------------------------------------------------------- */
 const effects = {
-    shield: { label: "ท่านผู้กล้าได้รับเกราะแห่งแสง!", sfx: 'shield', dmg: 0, isShield: true },
-    wind: { label: "ผู้กล้าโดน วายุลมกลด! สูญเสีย HP 100", sfx: 'wind', dmg: 100 },
-    water: { label: "ผู้กล้าโดน มหาสมุทรคลั่ง! สูญเสีย HP 200", sfx: 'water', dmg: 200 },
-    earth: { label: "ผู้กล้าโดน ปฐพีกลืนกิน! สูญเสีย HP 200", sfx: 'earth', dmg: 200 },
-    fire: { label: "ผู้กล้าโดน อัคนีพิโรธ! สูญเสีย HP 300", sfx: 'fire', dmg: 300 },
-    winter: { label: "ผู้กล้าโดน ดินแดนเยือกแข็ง! สูญเสีย HP 300", sfx: 'winter', dmg: 300 },
-    thunder: { label: "ผู้กล้าโดน ทัณฑ์สวรรค์สายฟ้ากัมปนาถ! สูญเสีย HP 400", sfx: 'thunder', dmg: 400 },
-    hp: { label: "ได้รับน้ำยาเพิ่มพลัง HP +200!", sfx: 'hp', dmg: -200 }
+    shield: { label: "ได้รับเกราะแห่งแสง!", sfx: 'shield', dmg: 0, shield: true },
+    wind: { label: "โดน วายุลมกลด! ลด 100", sfx: 'wind', dmg: 100 },
+    water: { label: "โดน มหาสมุทรคลั่ง! ลด 200", sfx: 'water', dmg: 200 },
+    earth: { label: "โดน ปฐพีกลืนกิน! ลด 200", sfx: 'earth', dmg: 200 },
+    fire: { label: "โดน อัคนีพิโรธ! ลด 300", sfx: 'water', dmg: 300 },
+    hp: { label: "ได้รับยาเพิ่มพลัง HP +200!", sfx: 'hp', dmg: -200 }
 };
 
 /** -----------------------------------------------------------
@@ -203,17 +198,12 @@ const soundPaths = {
     start: 'audio/start.mp3', back: 'audio/back.mp3', wheel: 'audio/wheel.mp3', 
     wheel1: 'audio/wheel1.mp3', up: 'audio/up.mp3', up1: 'audio/up1.mp3',
     shield: 'audio/shield.mp3', wind: 'audio/wind.mp3', water: 'audio/water.mp3', 
-    earth: 'audio/earth.mp3', winter: 'audio/winter.mp3', fire: 'audio/fire.mp3',
-    thunder: 'audio/thunder.mp3', hp: 'audio/hp.mp3', t: 'audio/t.mp3', 
-    winner: 'audio/winner.mp3', lost: 'audio/lost.mp3'
+    earth: 'audio/earth.mp3', winter: 'audio/winter.mp3', hp: 'audio/hp.mp3',
+    t: 'audio/t.mp3', winner: 'audio/winner.mp3', lost: 'audio/lost.mp3'
 };
 
 let bgmSource = null;
-let state = { 
-    hp: 1000, floor: 1, hasShield: false, isBusy: false, 
-    usedQuiz: [], f20Step: 0, f20Data: [],
-    lastEffects: [] // เก็บประวัติการสุ่ม 3 ครั้งล่าสุด
-};
+let state = { hp: 1000, floor: 1, hasShield: false, isBusy: false, usedQuiz: [], f20Step: 0, f20Data: [] };
 
 async function loadSound(name, url) {
     try {
@@ -244,7 +234,12 @@ function updateLogAndUI(eventText) {
     const logEl = document.getElementById('game-log');
     document.getElementById('hp-display').innerText = `❤️ HP: ${Math.max(0, state.hp).toLocaleString()}`;
     document.getElementById('shield-display').innerText = state.hasShield ? "🛡️ มีเกราะ" : "🛡️ ไม่มีเกราะ";
-    if (eventText) logEl.innerText = eventText;
+    // แสดงผลและประกาศ aria-live บรรทัดเดียว
+    if (eventText) {
+        logEl.innerText = `${eventText} เหลือ HP ${Math.max(0, state.hp)}`;
+    } else {
+        logEl.innerText = "";
+    }
 }
 
 function switchScene(id) {
@@ -254,7 +249,7 @@ function switchScene(id) {
 }
 
 /** -----------------------------------------------------------
- * GAMEPLAY LOGIC
+ * GAMEPLAY
  * ----------------------------------------------------------- */
 document.getElementById('btn-begin').onclick = async () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -305,26 +300,8 @@ function showQuiz() {
 
 async function spinWheel(isCorrect) {
     if (state.isBusy) return; state.isBusy = true;
-    
-    // สร้าง Pool ตามเงื่อนไขจำนวนตัวเลือก
-    let pool = [];
-    if (isCorrect) {
-        // ตอบถูก: Shield(2), HP(2), อื่นๆ(อย่างละ 1)
-        pool = ['shield','shield','hp','hp','wind','water','earth','fire','winter','thunder'];
-    } else {
-        // ตอบผิด: Shield(1), HP(1), อื่นๆ(อย่างละ 2)
-        pool = ['shield','hp','wind','wind','water','water','earth','earth','fire','fire','winter','winter','thunder','thunder'];
-    }
-
-    // กรองประวัติ 3 ครั้งล่าสุดเพื่อความหลากหลาย
-    let availablePool = pool.filter(item => !state.lastEffects.includes(item));
-    if (availablePool.length === 0) availablePool = pool; // ป้องกันกรณีกรองจนหมด
-    
-    const effectKey = availablePool[Math.floor(Math.random() * availablePool.length)];
-    
-    // อัปเดตประวัติ
-    state.lastEffects.push(effectKey);
-    if (state.lastEffects.length > 3) state.lastEffects.shift();
+    const pool = isCorrect ? ['shield','hp','wind','water'] : ['wind','earth','fire'];
+    const effectKey = pool[Math.floor(Math.random() * pool.length)];
 
     const wheel = document.getElementById('visual-wheel');
     const lever = document.getElementById('lever-visual');
@@ -334,51 +311,37 @@ async function spinWheel(isCorrect) {
     document.getElementById('game-log').innerText = "กงล้อกำลังหมุน...";
     await playWait(isCorrect ? 'wheel' : 'wheel1');
     lever.classList.remove('lever-active');
-    
     await applyEffect(effectKey);
 }
 
 async function applyEffect(key) {
     const eff = effects[key];
     let eventLabel = eff.label;
-    
-    // เล่นไฟล์เสียงผลลัพธ์
     await playWait(eff.sfx);
 
     if (eff.dmg > 0) {
-        if (state.hasShield) { 
-            eventLabel += " แต่เกราะแห่งแสงช่วยไว้!"; 
-            state.hasShield = false; 
-        } else {
-            state.hp -= eff.dmg;
-        }
+        if (state.hasShield) { eventLabel += " แต่เกราะช่วยไว้!"; state.hasShield = false; }
+        else state.hp -= eff.dmg;
     } else if (eff.dmg < 0) {
         state.hp = Math.min(1000, state.hp + 200);
     }
-    
-    if (eff.isShield) state.hasShield = true;
+    if (eff.shield) state.hasShield = true;
 
-    // ประกาศผลผ่าน Aria-live
     updateLogAndUI(eventLabel);
-    
-    // เว้นว่างนิดนึงตามสั่ง
     await new Promise(r => setTimeout(r, 2000));
-    
     if (state.hp <= 0) return endGame(false);
 
-    // เล่นเสียงประตูเปิด
     await playWait(state.floor === 19 ? 'up1' : 'up');
-    
-    state.floor++; 
-    state.isBusy = false;
+    state.floor++; state.isBusy = false;
     startFloor();
 }
 
 /** -----------------------------------------------------------
- * FLOOR 20
+ * FLOOR 20: 10 ข้อ สุ่มมา 3 ข้อ (ผิดแพ้ทันที)
  * ----------------------------------------------------------- */
 function startFloor20() {
     state.f20Step = 0;
+    // สุ่มคำถาม 10 ข้อ แล้วดึงมาเพียง 3 ข้อสำหรับเล่นจริง
     state.f20Data = [...quiz20].sort(() => Math.random() - 0.5).slice(0, 3);
     showF20();
 }
@@ -398,16 +361,19 @@ function showF20() {
             if (i === data.ans) {
                 await playWait('t'); 
                 state.f20Step++;
-                if (state.f20Step >= 3) endGame(true);
+                if (state.f20Step >= 3) endGame(true); // ถูกครบ 3 ข้อ ชนะเกม
                 else showF20();
             } else {
-                endGame(false);
+                endGame(false); // ผิดข้อเดียว แพ้ทันที
             }
         };
         container.appendChild(btn);
     });
 }
 
+/** -----------------------------------------------------------
+ * RESULT (No Aria-live)
+ * ----------------------------------------------------------- */
 async function endGame(win) {
     if (bgmSource) bgmSource.stop();
     switchScene('scene-result');
@@ -415,7 +381,7 @@ async function endGame(win) {
     const desc = document.getElementById('result-desc');
     const stats = document.getElementById('result-stats');
     
-    stats.innerText = `ชั้นที่พิชิต: ${state.floor - 1} | HP สุดท้าย: ${Math.max(0, state.hp)}`;
+    stats.innerText = `ชั้นที่พิชิต: ${state.floor} | HP สุดท้าย: ${state.hp}`;
     if (win) {
         icon.innerText = "🏆"; desc.innerText = "เจ้าคือผู้พิชิตวาลูก้าที่แท้จริง!";
         await playWait('winner');
