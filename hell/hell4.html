@@ -9,7 +9,6 @@
             --primary: #6a11cb;
             --secondary: #2575fc;
             --danger: #ff4b2b;
-            --success: #00b09b;
             --gold: #f1c40f;
             --dark-bg: #1a1a2e;
         }
@@ -54,11 +53,14 @@
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .pointer { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 20px solid var(--danger); z-index: 10; }
 
+        .btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
         .lever {
             padding: 15px 35px; font-size: 1.2rem; font-weight: bold;
             background: linear-gradient(135deg, var(--primary), var(--secondary));
             border: none; border-radius: 50px; color: white; cursor: pointer; transition: 0.3s;
         }
+        .lever.easy { background: linear-gradient(135deg, #11998e, #38ef7d); }
+        .lever:hover:not(:disabled) { transform: scale(1.05); }
         .lever:disabled { opacity: 0.5; filter: grayscale(1); cursor: not-allowed; }
 
         .stats { display: flex; gap: 10px; justify-content: center; }
@@ -77,8 +79,11 @@
 <div id="game-container">
     <section id="start-screen" class="scene active">
         <h1 id="main-title" tabindex="-1">วาลูก้าแห่งโชคชะตา</h1>
-        <p>พิชิตหอคอย 10 ชั้น และบททดสอบแห่งปัญญา</p>
-        <button id="btn-start" class="lever">พิชิตหอคอย</button>
+        <p>เลือกโหมดการพิชิตหอคอย</p>
+        <div class="btn-group">
+            <button id="btn-easy" class="lever easy" aria-label="พิชิตแบบง่าย">พิชิตแบบง่าย</button>
+            <button id="btn-hard" class="lever" aria-label="พิชิตแบบยาก">พิชิตแบบยาก</button>
+        </div>
     </section>
 
     <section id="tower-screen" class="scene">
@@ -96,8 +101,8 @@
     </section>
 
     <section id="quiz-screen" class="scene">
-        <h2 id="quiz-header" tabindex="-1">ชั้นที่ 10: บททดสอบ 3 ข้อ</h2>
-        <div id="quiz-progress">ข้อที่ 1/3</div>
+        <h2 id="quiz-header" tabindex="-1">ชั้นที่ 10: บททดสอบปัญญา</h2>
+        <div id="quiz-progress"></div>
         <p id="question-text"></p>
         <div id="quiz-options" class="options-grid"></div>
     </section>
@@ -159,18 +164,28 @@ const quizDB = [
     { q: "ธาตุใดที่ 'ธาตุน้ำแข็ง' เอาชนะได้ง่ายที่สุด?", opts: ["ไฟ", "ทอง", "ไม้", "น้ำ"], ans: 3 }
 ];
 
-let state = { hp: 1000, floor: 1, hasShield: false, isBusy: false, bgm: null, quizCount: 0, usedQuestions: [] };
+let state = { 
+    hp: 1000, floor: 1, hasShield: false, 
+    isBusy: false, bgm: null, 
+    difficulty: 'hard', // 'easy' or 'hard'
+    quizCount: 0, usedQuestions: [] 
+};
 
 /** LOGIC **/
-document.getElementById('btn-start').onclick = async () => {
+const startGame = async (diff) => {
+    state.difficulty = diff;
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-easy').disabled = true;
+    document.getElementById('btn-hard').disabled = true;
     await initAudio();
     await playWait('start');
     state.bgm = play('back', true);
     switchScene('tower-screen');
     updateUI();
 };
+
+document.getElementById('btn-easy').onclick = () => startGame('easy');
+document.getElementById('btn-hard').onclick = () => startGame('hard');
 
 document.getElementById('lever-btn').onclick = async () => {
     if (state.isBusy) return;
@@ -183,12 +198,19 @@ document.getElementById('lever-btn').onclick = async () => {
     document.getElementById('visual-wheel').classList.remove('spinning');
 
     let pool = [];
-    if (state.floor <= 5) {
-        // ประตู(3), เกราะ(1), วายุ(2), มหาสมุทร(2) = 8 ตัวเลือก
-        pool = ['up','up','up', 'shield', 'wind','wind', 'water','water'];
+    if (state.difficulty === 'hard') {
+        if (state.floor <= 5) {
+            pool = ['up','up','up', 'shield', 'wind','wind', 'water','water'];
+        } else {
+            pool = ['up','up', 'shield', 'wind', 'water', 'earth','earth', 'fire','fire'];
+        }
     } else {
-        // ประตู(2), เกราะ(1), วายุ(1), มหาสมุทร(1), ปฐพี(2), อัคนี(2) = 9 ตัวเลือก
-        pool = ['up','up', 'shield', 'wind', 'water', 'earth','earth', 'fire','fire'];
+        // EASY MODE (ตามข้อกำหนดก่อนหน้า)
+        if (state.floor <= 5) {
+            pool = ['up','up','up','up', 'shield', 'wind','wind', 'water'];
+        } else {
+            pool = ['up','up','up','up', 'shield', 'wind', 'water', 'earth', 'fire','fire'];
+        }
     }
 
     const res = pool[Math.floor(Math.random() * pool.length)];
@@ -206,7 +228,7 @@ async function applyEffect(res) {
         const sfx = (state.floor === 9) ? 'up1' : 'up';
         await playWait(sfx);
         state.floor++;
-        log = `ขึ้นสู่ชั้นที่ ${state.floor}!`;
+        log = `ยินดีด้วย! ขึ้นสู่ชั้นที่ ${state.floor}`;
         if (state.floor === 10) return startBossQuiz();
     } else if (res === 'shield') {
         state.hasShield = true;
@@ -217,9 +239,9 @@ async function applyEffect(res) {
         const sfxMap = { wind: 'wind', water: 'water', earth: 'earth', fire: 'water' };
         const nMap = { wind: 'วายุลมกลด', water: 'มหาสมุทรคลั่ง', earth: 'ปฐพีกลืนกิน', fire: 'อัคนีพิโรธ' };
         
-        log = `โดน ${nMap[res]}!`;
+        log = `โดนเวทมนต์ ${nMap[res]}!`;
         if (state.hasShield) {
-            log += " แต่เกราะป้องกันได้!";
+            log += " แต่เกราะช่วยท่านไว้!";
             state.hasShield = false;
             await playWait(sfxMap[res]);
         } else {
@@ -241,9 +263,9 @@ function startBossQuiz() {
 
 function nextQuestion() {
     state.quizCount++;
-    document.getElementById('quiz-progress').innerText = `ข้อที่ ${state.quizCount}/3`;
+    const maxQuiz = (state.difficulty === 'hard') ? 3 : 1;
+    document.getElementById('quiz-progress').innerText = `บททดสอบที่ ${state.quizCount}/${maxQuiz}`;
     
-    // สุ่มไม่ให้ซ้ำ
     let qIdx;
     do { qIdx = Math.floor(Math.random() * quizDB.length); } 
     while (state.usedQuestions.includes(qIdx));
@@ -260,7 +282,7 @@ function nextQuestion() {
         btn.innerText = `${['ก','ข','ค','ง'][i]}. ${opt}`;
         btn.onclick = () => {
             if (i === qData.ans) {
-                if (state.quizCount >= 3) endGame(true);
+                if (state.quizCount >= maxQuiz) endGame(true);
                 else nextQuestion();
             } else {
                 endGame(false);
@@ -280,7 +302,8 @@ function switchScene(id) {
     document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
     const target = document.getElementById(id);
     target.classList.add('active');
-    target.querySelector('h1, h2').focus();
+    const head = target.querySelector('h1, h2');
+    if(head) head.focus();
 }
 
 async function endGame(isWin) {
@@ -289,10 +312,10 @@ async function endGame(isWin) {
     const msgEl = document.getElementById('result-message');
     
     if (isWin) {
-        msgEl.innerText = "ท่านตอบถูกครบ 3 ข้อ! พิชิตยอดหอคอยวาลูก้าได้สำเร็จ!";
+        msgEl.innerText = "ท่านพิชิตยอดหอคอยวาลูก้าได้สำเร็จ! ในโหมด" + (state.difficulty === 'hard' ? 'ยาก' : 'ง่าย');
         await playWait('winner');
     } else {
-        msgEl.innerText = state.hp <= 0 ? "พลังชีวิตหมดลงแล้ว..." : "ตอบคำถามพลาดเพียงนิด ชีวิตเปลี่ยน...";
+        msgEl.innerText = state.hp <= 0 ? "พลังชีวิตหมดลงระหว่างการเดินทาง..." : "คำตอบที่ผิดพลาดทำให้ท่านต้องเริ่มใหม่...";
         await playWait('lost');
     }
     document.getElementById('final-stats').innerText = `ชั้นที่ไปถึง: ${state.floor} | HP ที่เหลือ: ${state.hp}`;
