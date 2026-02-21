@@ -37,65 +37,6 @@
         .scene.active { display: flex; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         h1, h2 { color: var(--gold); text-shadow: 0 0 15px rgba(241, 196, 15, 0.3); margin-top: 0; outline: none; }
-        
-        /* --- Health & Shield Visual Enhancement --- */
-        .stats-wrapper {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            border-radius: 20px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        .hp-container {
-            width: 100%;
-            height: 12px;
-            background: #222;
-            border-radius: 6px;
-            overflow: hidden;
-            margin-bottom: 8px;
-            position: relative;
-        }
-        #hp-bar {
-            height: 100%;
-            width: 100%;
-            background: linear-gradient(90deg, #ff4b2b, #ff416c);
-            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 0 10px rgba(255, 75, 43, 0.5);
-        }
-        .stats-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: 600;
-        }
-        .shield-badge {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            padding: 4px 12px;
-            border-radius: 50px;
-            font-size: 0.85rem;
-            transition: all 0.3s ease;
-        }
-        .shield-active {
-            background: rgba(241, 196, 15, 0.2);
-            color: var(--gold);
-            border: 1px solid var(--gold);
-            animation: pulse-shield 2s infinite;
-            text-shadow: 0 0 5px rgba(241, 196, 15, 0.5);
-        }
-        .shield-inactive {
-            background: rgba(255, 255, 255, 0.05);
-            color: #666;
-            border: 1px solid transparent;
-        }
-        @keyframes pulse-shield {
-            0% { box-shadow: 0 0 0 0 rgba(241, 196, 15, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(241, 196, 15, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(241, 196, 15, 0); }
-        }
-        /* ------------------------------------------ */
-
         .wheel-wrapper { position: relative; width: 200px; height: 200px; margin: 10px auto; }
         .wheel-graphic {
             width: 100%; height: 100%; border-radius: 50%; border: 8px solid var(--gold);
@@ -119,6 +60,12 @@
         .btn-opt.dim { opacity: 0.3; pointer-events: none; }
         .btn-opt.selected { background: var(--primary); border-color: var(--gold); opacity: 1 !important; }
         
+        /* แก้ไขส่วน Stats Bar ให้แสดงผลสวยงามและมองเห็นได้ชัดเจน */
+        .stats-bar { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 1.1rem; font-weight: 600; }
+        .stat-item { background: rgba(255, 255, 255, 0.15); padding: 10px 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); flex: 1; margin: 0 5px; }
+        #hp-display { color: #ff4b2b; }
+        #shield-display { color: #00b09b; }
+
         .sr-only-fixed {
             position: absolute !important; width: 1px !important; height: 1px !important;
             padding: 0 !important; margin: -1px !important; overflow: hidden !important;
@@ -151,18 +98,11 @@
         </section>
 
         <section id="scene-tower" class="scene">
-            <div id="stat-group-accessible" class="stats-wrapper" tabindex="0" role="text" aria-label="สถานะผู้เล่น">
-                <div class="hp-container" aria-hidden="true">
-                    <div id="hp-bar"></div>
-                </div>
-                <div class="stats-info">
-                    <span id="hp-text-visual" aria-hidden="true" style="font-size: 0.9rem;">❤️ HP: 1,000</span>
-                    <div id="shield-visual" class="shield-badge shield-inactive" aria-hidden="true">
-                        <span id="shield-icon">🛡️</span> <span id="shield-status-text">ไม่มีเกราะ</span>
-                    </div>
-                </div>
+            <div class="stats-bar">
+                <div class="stat-item" id="hp-display">❤️ HP: 1,000</div>
+                <div class="stat-item" id="shield-display">🛡️ ไม่มีเกราะ</div>
             </div>
-
+            
             <div id="quiz-area">
                 <h2 id="question-heading" tabindex="-1"></h2>
                 <div id="options-container" class="options-grid"></div>
@@ -187,7 +127,7 @@
 
 <script>
 /** -----------------------------------------------------------
- * DATA: (คงเดิมทุกประการ)
+ * DATA: 1-19 (50 ข้อ) และ ชั้นที่ 20 (10 ข้อ)
  * ----------------------------------------------------------- */
 const quiz1to19 = [
     {q: "สิ่งใดที่ยิ่งดิ้นรนขัดขืน กระแสของมันยิ่งรัดร่างเจ้าให้จมดิ่งลง", opts: ["ธาตุดิน", "ธาตุน้ำ", "ธาตุลม"], ans: 1},
@@ -339,32 +279,9 @@ function announce(text) {
     }, 100);
 }
 
-/** -----------------------------------------------------------
- * UPDATED UI FUNCTION (Visual & ARIA)
- * ----------------------------------------------------------- */
 function updateUI() {
-    const hpPercent = (state.hp / 1000) * 100;
-    const hpBar = document.getElementById('hp-bar');
-    const hpText = document.getElementById('hp-text-visual');
-    const shieldBadge = document.getElementById('shield-visual');
-    const shieldStatus = document.getElementById('shield-status-text');
-    const statGroup = document.getElementById('stat-group-accessible');
-
-    // Visual Update
-    hpBar.style.width = `${Math.max(0, hpPercent)}%`;
-    hpText.innerText = `❤️ HP: ${Math.max(0, state.hp).toLocaleString()}`;
-    
-    if (state.hasShield) {
-        shieldBadge.className = "shield-badge shield-active";
-        shieldStatus.innerText = "มีเกราะแห่งแสง";
-    } else {
-        shieldBadge.className = "shield-badge shield-inactive";
-        shieldStatus.innerText = "ไม่มีเกราะ";
-    }
-
-    // ARIA Label for Screen Reader (Grouped Information)
-    const shieldAria = state.hasShield ? "มีเกราะป้องกัน" : "ไม่มีเกราะ";
-    statGroup.setAttribute('aria-label', `สถานะผู้กล้า: พลังชีวิต ${Math.max(0, state.hp)} หน่วย, ${shieldAria}`);
+    document.getElementById('hp-display').innerText = `❤️ HP: ${Math.max(0, state.hp).toLocaleString()}`;
+    document.getElementById('shield-display').innerText = state.hasShield ? "🛡️ มีเกราะ" : "🛡️ ไม่มีเกราะ";
 }
 
 function switchScene(id) {
@@ -394,7 +311,7 @@ function executeSkipSecret() {
 }
 
 /** -----------------------------------------------------------
- * GAMEPLAY (คงเดิมทุกประการ)
+ * GAMEPLAY
  * ----------------------------------------------------------- */
 document.getElementById('btn-begin').onclick = async () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -479,6 +396,9 @@ async function applyEffect(key) {
     startFloor();
 }
 
+/** -----------------------------------------------------------
+ * FLOOR 20: 3 Questions Challenge
+ * ----------------------------------------------------------- */
 function startFloor20() {
     state.f20Step = 0;
     state.f20Data = quiz20.sort(() => Math.random() - 0.5).slice(0, 3);
@@ -512,6 +432,9 @@ function showF20() {
     });
 }
 
+/** -----------------------------------------------------------
+ * END GAME
+ * ----------------------------------------------------------- */
 async function endGame(win) {
     if (bgmSource) { bgmSource.stop(); bgmSource = null; }
     switchScene('scene-result');
@@ -520,6 +443,7 @@ async function endGame(win) {
     const stats = document.getElementById('result-stats');
     
     let conqueredFloor = win ? 20 : (state.floor === 20 ? 19 : state.floor - 1);
+    
     stats.innerText = `ชั้นที่พิชิตได้: ${conqueredFloor} | พลังชีวิตสุดท้าย: ${Math.max(0, state.hp)}`;
     
     if (win) {
