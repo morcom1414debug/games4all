@@ -160,7 +160,7 @@
            Mini Game Styles
         ─────────────────────────────────────────────── */
         #minigame-scene {
-            position: fixed;
+            position: absolute;
             inset: 0;
             background: rgba(15,12,41,0.92);
             backdrop-filter: blur(8px);
@@ -168,8 +168,7 @@
             display: none;
             flex-direction: column;
             padding: 20px;
-            border-radius: 0;
-            overflow-y: auto;
+            border-radius: 30px;
         }
         .minigame-glow-layer {
             position: absolute;
@@ -204,7 +203,7 @@
             letter-spacing: 18px;
             color: var(--light);
             text-shadow: 0 0 20px rgba(255,255,220,0.7);
-            margin: 1.5rem 0 2.5rem 0;
+            margin: 1.5rem 0 1.8rem 0;
             min-height: 80px;
             text-align: center;
         }
@@ -215,7 +214,6 @@
             max-width: 480px;
             width: 100%;
             margin: 0 auto;
-            padding-bottom: 2rem;
         }
         .letter-btn-mg {
             aspect-ratio: 1;
@@ -264,20 +262,6 @@
         @keyframes particle-float {
             0%   { opacity: 0.9; transform: scale(0.5) translate(0,0); }
             100% { opacity: 0;   transform: scale(1.4) translate(var(--dx), var(--dy)); }
-        }
-
-        /* เมื่อ mini-game เปิด ให้ซ่อนองค์ประกอบภายนอกทั้งหมด */
-        body.mini-game-active #game-outer,
-        body.mini-game-active #game-container,
-        body.mini-game-active .scene,
-        body.mini-game-active #loading-overlay,
-        body.mini-game-active #element-flash,
-        body.mini-game-active #shield-aura-visual {
-            display: none !important;
-        }
-
-        body.mini-game-active #aria-announcer {
-            visibility: hidden;
         }
     </style>
 </head>
@@ -481,8 +465,8 @@ const soundPaths = {
     wheel1:   'audio/wheel1.mp3',
     up:       'audio/up.mp3',
     up1:      'audio/up1.mp3',
-    down:     'audio/down.mp3',
-    minigame: 'audio/minigame.mp3',
+    down:     'audio/down.mp3',           // เพิ่ม
+    minigame: 'audio/minigame.mp3',       // เพิ่ม
     shield:   'audio/shield.mp3',
     wind:     'audio/wind.mp3',
     water:    'audio/water.mp3',
@@ -492,8 +476,8 @@ const soundPaths = {
     thunder:  'audio/thunder.mp3',
     hp:       'audio/hp.mp3',
     t:        'audio/t.mp3',
-    t1:       'audio/t1.mp3',
-    f:        'audio/f.mp3',
+    t1:       'audio/t1.mp3',             // MiniGame
+    f:        'audio/f.mp3',              // MiniGame
     winner:   'audio/winner.mp3',
     lost:     'audio/lost.mp3'
 };
@@ -636,6 +620,7 @@ function showQuiz() {
 async function spinWheel(isCorrect) {
     if (state.isBusy) return; state.isBusy = true;
 
+    // ตรวจสอบ streak → Mini Game
     if (isCorrect) {
         state.consecutiveCorrect++;
         if (state.consecutiveCorrect >= 4 && state.floor <= 19) {
@@ -733,10 +718,10 @@ async function applyEffect(key) {
 ─────────────────────────────────────────────── */
 async function enterMiniGame() {
     state.inMiniGame = true;
-    document.body.classList.add('mini-game-active');
     document.getElementById('minigame-scene').style.display = 'flex';
-    updateUI();
+    updateUI(); // อัปเดต HP & Shield ให้แสดงค่าปัจจุบัน
 
+    // เลือกคำถามที่ยังไม่ซ้ำในรอบนี้
     let avail = miniGameQuestions.filter((_,i)=>!state.usedMiniGameQ.has(i));
     if (avail.length === 0) {
         state.usedMiniGameQ.clear();
@@ -750,6 +735,7 @@ async function enterMiniGame() {
     const word = chosen.en.toLowerCase();
     const thWord  = chosen.th;
 
+    // ตั้งหัวข้อคำถาม
     const titleEl = document.getElementById('minigame-question-heading');
     titleEl.innerText = `ชั้นพิเศษ - สะกดเป็นคำว่า "${thWord}" ตามลำดับให้ถูกสิท่านผู้กล้า`;
     titleEl.focus();
@@ -759,6 +745,7 @@ async function enterMiniGame() {
     display.textContent = '_ '.repeat(word.length).trim();
     grid.innerHTML = '';
 
+    // ใช้เฉพาะตัวอักษรจริง ไม่เติมตัวหลอก
     let letters = word.split('');
     letters = letters.sort(()=>Math.random()-0.5);
 
@@ -795,6 +782,7 @@ async function selectMiniLetter(btn, char, correctWord) {
     if (typed.length < correctWord.length && correctWord.startsWith(typed)) {
         await playWait('t1');
 
+        // Particle magic
         for(let i=0;i<6;i++){
             const p = document.createElement('div');
             p.className = 'particle';
@@ -810,7 +798,6 @@ async function selectMiniLetter(btn, char, correctWord) {
         state.inMiniGame = false;
         await playWait('hp');
         document.getElementById('minigame-scene').style.display = 'none';
-        document.body.classList.remove('mini-game-active');
 
         state.hp = Math.min(1000, state.hp + 300);
         announce("ผ่านประตูธาตุโบราณ! ได้รับพลังชีวิต +300");
@@ -835,7 +822,6 @@ async function selectMiniLetter(btn, char, correctWord) {
         state.floor = Math.max(1, state.floor - 3);
         announce(`ผิดพลาด! ตกลงไป 3 ชั้น → ชั้นที่ ${state.floor}`);
         document.getElementById('minigame-scene').style.display = 'none';
-        document.body.classList.remove('mini-game-active');
 
         await playWait('down');
         startFloor();
