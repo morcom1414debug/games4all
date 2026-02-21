@@ -38,60 +38,63 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         h1, h2 { color: var(--gold); text-shadow: 0 0 15px rgba(241, 196, 15, 0.3); margin-top: 0; outline: none; }
         
-        /* Animation Visual สำหรับ HP และ Shield */
+        /* --- Health & Shield Visual Enhancement --- */
         .stats-wrapper {
             background: rgba(0, 0, 0, 0.3);
             padding: 15px;
             border-radius: 20px;
             margin-bottom: 20px;
-            border: 1px solid rgba(255,255,255,0.05);
-            outline: none; /* ให้ focus ได้แต่ไม่มีกรอบดำที่รบกวนสายตา */
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
-        .stats-wrapper:focus { border-color: var(--gold); background: rgba(0, 0, 0, 0.4); }
         .hp-container {
             width: 100%;
-            height: 14px;
+            height: 12px;
             background: #222;
-            border-radius: 7px;
+            border-radius: 6px;
             overflow: hidden;
-            margin-bottom: 10px;
-            border: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 8px;
+            position: relative;
         }
         #hp-bar {
             height: 100%;
             width: 100%;
             background: linear-gradient(90deg, #ff4b2b, #ff416c);
-            box-shadow: 0 0 15px rgba(255, 75, 43, 0.4);
-            transition: width 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(255, 75, 43, 0.5);
         }
-        .stats-text-row {
+        .stats-info {
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-weight: 600;
         }
         .shield-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            background: var(--glass);
-            font-size: 0.9rem;
-            transition: 0.3s;
             display: flex;
             align-items: center;
             gap: 5px;
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
         }
         .shield-active {
             background: rgba(241, 196, 15, 0.2);
             color: var(--gold);
             border: 1px solid var(--gold);
-            box-shadow: 0 0 15px rgba(241, 196, 15, 0.3);
-            animation: pulseShield 2s infinite;
+            animation: pulse-shield 2s infinite;
+            text-shadow: 0 0 5px rgba(241, 196, 15, 0.5);
         }
-        @keyframes pulseShield {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); text-shadow: 0 0 8px var(--gold); }
-            100% { transform: scale(1); }
+        .shield-inactive {
+            background: rgba(255, 255, 255, 0.05);
+            color: #666;
+            border: 1px solid transparent;
         }
+        @keyframes pulse-shield {
+            0% { box-shadow: 0 0 0 0 rgba(241, 196, 15, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(241, 196, 15, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(241, 196, 15, 0); }
+        }
+        /* ------------------------------------------ */
 
         .wheel-wrapper { position: relative; width: 200px; height: 200px; margin: 10px auto; }
         .wheel-graphic {
@@ -148,13 +151,15 @@
         </section>
 
         <section id="scene-tower" class="scene">
-            <div class="stats-wrapper" id="status-group" role="text" aria-label="สถานะพลังชีวิตและเกราะ" tabindex="0">
+            <div id="stat-group-accessible" class="stats-wrapper" tabindex="0" role="text" aria-label="สถานะผู้เล่น">
                 <div class="hp-container" aria-hidden="true">
                     <div id="hp-bar"></div>
                 </div>
-                <div class="stats-text-row">
-                    <span id="hp-display" aria-hidden="true">❤️ HP: 1,000</span>
-                    <span id="shield-display" class="shield-badge" aria-hidden="true">🛡️ ไม่มีเกราะ</span>
+                <div class="stats-info">
+                    <span id="hp-text-visual" aria-hidden="true" style="font-size: 0.9rem;">❤️ HP: 1,000</span>
+                    <div id="shield-visual" class="shield-badge shield-inactive" aria-hidden="true">
+                        <span id="shield-icon">🛡️</span> <span id="shield-status-text">ไม่มีเกราะ</span>
+                    </div>
                 </div>
             </div>
 
@@ -182,7 +187,7 @@
 
 <script>
 /** -----------------------------------------------------------
- * DATA & CONFIG (คงเดิมตามไฟล์หลัก)
+ * DATA: (คงเดิมทุกประการ)
  * ----------------------------------------------------------- */
 const quiz1to19 = [
     {q: "สิ่งใดที่ยิ่งดิ้นรนขัดขืน กระแสของมันยิ่งรัดร่างเจ้าให้จมดิ่งลง", opts: ["ธาตุดิน", "ธาตุน้ำ", "ธาตุลม"], ans: 1},
@@ -250,8 +255,20 @@ const quiz20 = [
     {q: "ธาตุใดที่ 'ธาตุน้ำแข็ง' สามารถเอาชนะได้ง่ายที่สุด (โดยการแช่แข็ง)?", opts: ["ก. ธาตุไฟ", "ข. ธาตุทอง", "ค. ธาตุไม้", "ง. ธาตุน้ำ"], ans: 3}
 ];
 
-const praiseMsgs = ["เจ้าคือตำนานบทใหม่แห่งวาลูก้า! ปัญญาของเจ้าช่างล้ำเลิศนัก", "ยอดหอคอยสยบแทบเท้าผู้กล้า!", "ความรู้และโชคชะตาอยู่ข้างเจ้าเสมอ", "หอคอยสั่นสะเทือนต่อพลังแห่งปัญญาของเจ้า!"];
-const encouragementMsgs = ["โชคชะตายังไม่มาถึงในวันนี้...", "เพียงก้าวเดียวก็จะถึงฝัน...", "ความพ่ายแพ้คือครูที่ดีที่สุด...", "แม้กายจะล้มลง แต่จิตวิญญาณผู้กล้ายังคงอยู่...", "ความล้มเหลวคือบันไดสู่ความสำเร็จ!"];
+const praiseMsgs = [
+    "เจ้าคือตำนานบทใหม่แห่งวาลูก้า! ปัญญาของเจ้าช่างล้ำเลิศนัก",
+    "ยอดหอคอยสยบแทบเท้าผู้กล้า! ยินดีด้วยกับชัยชนะอันยิ่งใหญ่",
+    "ความรู้และโชคชะตาอยู่ข้างเจ้าเสมอ เจ้าคือผู้พิชิตที่แท้จริง!",
+    "หอคอยสั่นสะเทือนต่อพลังแห่งปัญญาของเจ้า! ความเป็นหนึ่งในใต้หล้าเป็นของเจ้าแล้ว"
+];
+
+const encouragementMsgs = [
+    "โชคชะตายังไม่มาถึงในวันนี้... อย่าเพิ่งท้อแท้ กลับมาสู้ใหม่นะผู้กล้า!",
+    "เพียงก้าวเดียวก็จะถึงฝัน... ฝึกฝนปัญญาแล้วกลับมาท้าทายอีกครั้ง!",
+    "ความพ่ายแพ้คือครูที่ดีที่สุด... เราจะรอเจ้ากลับมาพิชิตหอคอยนี้",
+    "แม้กายจะล้มลง แต่จิตวิญญาณผู้กล้ายังคงอยู่... ลองใหม่อีกครั้งนะ!",
+    "ความล้มเหลวคือบันไดสู่ความสำเร็จ! ครั้งหน้ายอดหอคอยต้องเป็นของเจ้าแน่นอน"
+];
 
 const effects = {
     shield: { label: "ท่านผู้กล้าได้รับเกราะแห่งแสง", sfx: 'shield', dmg: 0, isShield: true },
@@ -279,7 +296,14 @@ const soundPaths = {
 };
 
 let bgmSource = null;
-let state = { hp: 1000, floor: 1, hasShield: false, isBusy: false, usedQuiz: [], f20Step: 0, f20Data: [], lastEffects: [] };
+let state = { 
+    hp: 1000, floor: 1, hasShield: false, isBusy: false, 
+    usedQuiz: [], f20Step: 0, f20Data: [],
+    lastEffects: []
+};
+
+let skipBuffer = "";
+let lastKeyTime = 0;
 
 async function loadSound(name, url) {
     try {
@@ -315,29 +339,32 @@ function announce(text) {
     }, 100);
 }
 
-// ปรับปรุงฟังก์ชัน updateUI: อัปเดตข้อมูล Aria-label แต่ไม่มีการเรียก announce()
+/** -----------------------------------------------------------
+ * UPDATED UI FUNCTION (Visual & ARIA)
+ * ----------------------------------------------------------- */
 function updateUI() {
-    const hpPercent = (Math.max(0, state.hp) / 1000) * 100;
+    const hpPercent = (state.hp / 1000) * 100;
     const hpBar = document.getElementById('hp-bar');
-    const hpText = document.getElementById('hp-display');
-    const shieldBadge = document.getElementById('shield-display');
-    const statusGroup = document.getElementById('status-group');
+    const hpText = document.getElementById('hp-text-visual');
+    const shieldBadge = document.getElementById('shield-visual');
+    const shieldStatus = document.getElementById('shield-status-text');
+    const statGroup = document.getElementById('stat-group-accessible');
 
-    hpBar.style.width = `${hpPercent}%`;
+    // Visual Update
+    hpBar.style.width = `${Math.max(0, hpPercent)}%`;
     hpText.innerText = `❤️ HP: ${Math.max(0, state.hp).toLocaleString()}`;
     
-    let shieldText = "ไม่มีเกราะ";
     if (state.hasShield) {
-        shieldBadge.innerText = "🛡️ มีเกราะป้องกัน";
-        shieldBadge.classList.add('shield-active');
-        shieldText = "มีเกราะป้องกัน";
+        shieldBadge.className = "shield-badge shield-active";
+        shieldStatus.innerText = "มีเกราะแห่งแสง";
     } else {
-        shieldBadge.innerText = "🛡️ ไม่มีเกราะ";
-        shieldBadge.classList.remove('shield-active');
+        shieldBadge.className = "shield-badge shield-inactive";
+        shieldStatus.innerText = "ไม่มีเกราะ";
     }
 
-    // อัปเดต Aria-label ให้ Screen Reader ทราบเฉพาะตอนเลื่อนมาอ่าน (ไม่มี announce)
-    statusGroup.setAttribute('aria-label', `สถานะตัวละคร พลังชีวิตเหลือ ${Math.max(0, state.hp)} หน่วย และ${shieldText}`);
+    // ARIA Label for Screen Reader (Grouped Information)
+    const shieldAria = state.hasShield ? "มีเกราะป้องกัน" : "ไม่มีเกราะ";
+    statGroup.setAttribute('aria-label', `สถานะผู้กล้า: พลังชีวิต ${Math.max(0, state.hp)} หน่วย, ${shieldAria}`);
 }
 
 function switchScene(id) {
@@ -347,7 +374,27 @@ function switchScene(id) {
 }
 
 /** -----------------------------------------------------------
- * GAMEPLAY LOGIC (ครบถ้วนตามไฟล์หลัก)
+ * SECRET SKIP
+ * ----------------------------------------------------------- */
+window.addEventListener('keydown', (e) => {
+    const now = Date.now();
+    if (now - lastKeyTime > 2000) skipBuffer = "";
+    skipBuffer += e.key.toLowerCase();
+    lastKeyTime = now;
+    if (skipBuffer.includes("skip")) {
+        skipBuffer = ""; executeSkipSecret();
+    }
+});
+
+function executeSkipSecret() {
+    if (state.floor >= 20 || state.hp <= 0) return;
+    state.floor = 18; state.hp = 1000; state.hasShield = true; state.isBusy = false;
+    announce("สูตรลับทำงาน! วาร์ปสู่ชั้นที่ 18 พร้อมพลังเต็มเปี่ยมและเกราะแห่งแสง");
+    startFloor();
+}
+
+/** -----------------------------------------------------------
+ * GAMEPLAY (คงเดิมทุกประการ)
  * ----------------------------------------------------------- */
 document.getElementById('btn-begin').onclick = async () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -396,12 +443,16 @@ async function spinWheel(isCorrect) {
     let pool = isCorrect 
         ? ['shield','shield','hp','hp','wind','water','earth','fire','winter','thunder']
         : ['shield','hp','wind','wind','water','water','earth','earth','fire','fire','winter','winter','thunder','thunder'];
-    const effectKey = pool[Math.floor(Math.random() * pool.length)];
+    let availablePool = pool.filter(item => !state.lastEffects.includes(item));
+    if (availablePool.length === 0) availablePool = pool;
+    const effectKey = availablePool[Math.floor(Math.random() * availablePool.length)];
+    state.lastEffects.push(effectKey);
+    if (state.lastEffects.length > 3) state.lastEffects.shift();
     const wheel = document.getElementById('visual-wheel');
     const lever = document.getElementById('lever-visual');
     lever.classList.add('lever-active');
     wheel.style.transform = `rotate(${1800 + Math.random()*360}deg)`;
-    announce("กงล้อกำลังหมุน..."); // ประกาศผ่าน Aria Live เดิมตามปกติ
+    announce("กงล้อกำลังหมุน...");
     await playWait(isCorrect ? 'wheel' : 'wheel1');
     lever.classList.remove('lever-active');
     await applyEffect(effectKey);
@@ -419,7 +470,7 @@ async function applyEffect(key) {
         finalSpeech = `${eff.label} ฟื้นฟูพลังชีวิต 200`;
     }
     if (eff.isShield) state.hasShield = true;
-    announce(`${finalSpeech} เหลือพลังชีวิต ${Math.max(0, state.hp)}`); // ประกาศเหตุการณ์เดิมตามปกติ
+    announce(`${finalSpeech} เหลือพลังชีวิต ${Math.max(0, state.hp)}`);
     updateUI();
     await new Promise(r => setTimeout(r, 2000));
     if (state.hp <= 0) return endGame(false);
@@ -436,40 +487,51 @@ function startFloor20() {
 
 function showF20() {
     document.getElementById('quiz-area').style.display = 'block';
+    document.getElementById('wheel-area').style.display = 'none';
     const data = state.f20Data[state.f20Step];
     const h2 = document.getElementById('question-heading');
-    h2.innerText = `ชั้นที่ 20 (ข้อ ${state.f20Step + 1}/3) - ${data.q}`; h2.focus();
+    h2.innerText = `ชั้นที่ 20 แห่งความรู้ (ข้อ ${state.f20Step + 1}/3) - ${data.q}`; h2.focus();
     const container = document.getElementById('options-container');
     container.innerHTML = "";
     data.opts.forEach((opt, i) => {
         const btn = document.createElement('button');
         btn.className = 'btn-opt'; btn.innerText = opt;
         btn.onclick = async () => {
+            document.querySelectorAll('.btn-opt').forEach(b => b.classList.add('dim'));
+            btn.classList.add('selected');
             if (i === data.ans) {
                 await playWait('t');
                 state.f20Step++;
                 if (state.f20Step >= 3) endGame(true);
                 else showF20();
-            } else endGame(false);
+            } else {
+                endGame(false);
+            }
         };
         container.appendChild(btn);
     });
 }
 
 async function endGame(win) {
-    if (bgmSource) { bgmSource.stop(); }
+    if (bgmSource) { bgmSource.stop(); bgmSource = null; }
     switchScene('scene-result');
     const icon = document.getElementById('result-icon');
     const desc = document.getElementById('result-desc');
     const stats = document.getElementById('result-stats');
-    let cf = win ? 20 : (state.floor === 20 ? 19 : state.floor - 1);
-    stats.innerText = `ชั้นที่พิชิตได้: ${cf} | พลังชีวิตสุดท้าย: ${Math.max(0, state.hp)}`;
+    
+    let conqueredFloor = win ? 20 : (state.floor === 20 ? 19 : state.floor - 1);
+    stats.innerText = `ชั้นที่พิชิตได้: ${conqueredFloor} | พลังชีวิตสุดท้าย: ${Math.max(0, state.hp)}`;
+    
     if (win) {
-        icon.innerText = "🏆"; desc.innerText = praiseMsgs[0];
-        announce("ยินดีด้วย! " + desc.innerText); await playWait('winner');
+        icon.innerText = "🏆";
+        desc.innerText = praiseMsgs[Math.floor(Math.random() * praiseMsgs.length)];
+        announce("ยินดีด้วย! " + desc.innerText);
+        await playWait('winner');
     } else {
-        icon.innerText = "💀"; desc.innerText = encouragementMsgs[0];
-        announce("เกมจบลงแล้ว... " + desc.innerText); await playWait('lost');
+        icon.innerText = "💀";
+        desc.innerText = encouragementMsgs[Math.floor(Math.random() * encouragementMsgs.length)];
+        announce("เกมจบลงแล้ว... " + desc.innerText);
+        await playWait('lost');
     }
 }
 
