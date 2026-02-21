@@ -112,68 +112,6 @@
         }
         @keyframes sparkle-anim { from { transform: scale(0.8); opacity: 0.5; } to { transform: scale(1.2); opacity: 1; } }
 
-        /* ───────────────────────────────────────────────
-           WIN ANIMATION ENHANCEMENT
-        ─────────────────────────────────────────────── */
-        .win-glow-layer {
-            position: absolute;
-            inset: -80px;
-            pointer-events: none;
-            background: radial-gradient(circle at 50% 30%, rgba(255,215,0,0.25), transparent 65%);
-            opacity: 0;
-            z-index: 5;
-        }
-        .win-glow-layer.active {
-            animation: win-glow-expand 4s ease-out forwards;
-        }
-        @keyframes win-glow-expand {
-            0%   { opacity: 0; transform: scale(0.6); }
-            20%  { opacity: 0.9; transform: scale(1.15); }
-            60%  { opacity: 0.7; transform: scale(1.4); }
-            100% { opacity: 0;   transform: scale(1.8); }
-        }
-
-        .win-particles {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            overflow: hidden;
-            z-index: 6;
-        }
-        .win-particle {
-            position: absolute;
-            width: 12px;
-            height: 12px;
-            background: var(--gold);
-            border-radius: 50%;
-            opacity: 0;
-            box-shadow: 0 0 12px var(--gold);
-        }
-        @keyframes win-particle-rise {
-            0%   { transform: translateY(0) rotate(0deg); opacity: 0.9; }
-            100% { transform: translateY(-800px) rotate(720deg); opacity: 0; }
-        }
-
-        .win-confetti {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            z-index: 7;
-        }
-        .confetti-piece {
-            position: absolute;
-            width: 14px;
-            height: 7px;
-            background: linear-gradient(45deg, #f1c40f, #fff176);
-            opacity: 0;
-            border-radius: 3px;
-            transform-origin: center;
-        }
-        @keyframes confetti-fall {
-            0%   { transform: translateY(-100%) rotate(0deg); opacity: 1; }
-            100% { transform: translateY(120vh) rotate(1440deg); opacity: 0; }
-        }
-
         .nav-header { display: flex; justify-content: flex-start; margin-bottom: 10px; }
         .btn-community {
             background: var(--glass); border: 1px solid rgba(255,255,255,0.2);
@@ -328,6 +266,7 @@
             100% { opacity: 0;   transform: scale(1.4) translate(var(--dx), var(--dy)); }
         }
 
+        /* เมื่อ mini-game เปิด ให้ซ่อนองค์ประกอบภายนอกทั้งหมด */
         body.mini-game-active #game-outer,
         body.mini-game-active #game-container,
         body.mini-game-active .scene,
@@ -407,10 +346,6 @@
         </section>
 
         <section id="scene-result" class="scene">
-            <div class="win-glow-layer" id="win-glow"></div>
-            <div class="win-particles" id="win-particles"></div>
-            <div class="win-confetti" id="win-confetti"></div>
-
             <h2 id="result-title" tabindex="-1">สรุปการเดินทาง</h2>
             <div id="result-icon" style="font-size: 4rem;" aria-hidden="true"></div>
             <p id="result-desc" style="font-size: 1.3rem; font-weight: 600;"></p>
@@ -832,7 +767,6 @@ async function enterMiniGame() {
         btn.className = 'letter-btn-mg';
         btn.textContent = char;
         btn.dataset.char = char;
-        btn.setAttribute('aria-label', `ตัวอักษร ${char}`);
         btn.onclick = ()=>selectMiniLetter(btn, char, word);
         grid.appendChild(btn);
     });
@@ -852,9 +786,6 @@ async function selectMiniLetter(btn, char, correctWord) {
 
     mgSelected.push(char);
     btn.classList.add('used');
-    btn.setAttribute('aria-disabled', 'true');
-    btn.setAttribute('tabindex', '-1');
-    btn.setAttribute('aria-label', `${char} เลือกแล้ว`);
 
     const display = document.getElementById('mg-spelling');
     display.textContent = mgSelected.join(' ');
@@ -950,7 +881,7 @@ function showF20() {
 }
 
 /** ───────────────────────────────────────────────
-    END GAME (ปรับเฉพาะตอนชนะ)
+    END GAME (เดิม)
 ─────────────────────────────────────────────── */
 async function endGame(win) {
     if (bgmSource) { bgmSource.stop(); bgmSource = null; }
@@ -959,9 +890,6 @@ async function endGame(win) {
     const icon = document.getElementById('result-icon');
     const desc = document.getElementById('result-desc');
     const stats = document.getElementById('result-stats');
-    const winGlow = document.getElementById('win-glow');
-    const winParticles = document.getElementById('win-particles');
-    const winConfetti = document.getElementById('win-confetti');
     
     let cf = win ? 20 : (state.floor===20 ? 19 : state.floor-1);
     stats.innerText = `ชั้นที่พิชิตได้: ${cf} | พลังชีวิตสุดท้าย: ${Math.max(0,state.hp)}`;
@@ -970,34 +898,6 @@ async function endGame(win) {
         icon.innerText = "🏆";
         icon.className = "scale-up trophy-sparkle";
         cont.classList.add('trophy-sparkle');
-
-        // Glow layer
-        winGlow.classList.add('active');
-
-        // Golden particles
-        for(let i = 0; i < 28; i++){
-            const p = document.createElement('div');
-            p.className = 'win-particle';
-            p.style.left = Math.random()*100 + '%';
-            p.style.top = Math.random()*40 + '%';
-            p.style.animation = `win-particle-rise ${2 + Math.random()*3}s linear forwards`;
-            p.style.animationDelay = Math.random()*1.2 + 's';
-            winParticles.appendChild(p);
-            setTimeout(()=>p.remove(), 6000);
-        }
-
-        // Confetti
-        for(let i = 0; i < 60; i++){
-            const c = document.createElement('div');
-            c.className = 'confetti-piece';
-            c.style.left = Math.random()*100 + '%';
-            c.style.background = `hsl(${Math.random()*60 + 40}, 100%, 60%)`;
-            c.style.animation = `confetti-fall ${3 + Math.random()*4}s linear forwards`;
-            c.style.animationDelay = Math.random()*1.5 + 's';
-            winConfetti.appendChild(c);
-            setTimeout(()=>c.remove(), 8000);
-        }
-
         desc.innerText = praiseMsgs[Math.floor(Math.random()*praiseMsgs.length)];
         announce("ยินดีด้วย! " + desc.innerText);
         await playWait('winner');
