@@ -123,7 +123,7 @@
         .scene { display: none; flex-direction: column; gap: 1.2rem; animation: fadeIn 0.6s ease; }
         .scene.active { display: flex; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        h1, h2, h3 { color: var(--gold); text-shadow: 0 0 15px rgba(241, 196, 15, 0.3); margin-top: 0; outline: none; }
+        h1, h2 { color: var(--gold); text-shadow: 0 0 15px rgba(241, 196, 15, 0.3); margin-top: 0; outline: none; }
         .wheel-wrapper { position: relative; width: 200px; height: 200px; margin: 10px auto; }
         .wheel-graphic {
             width: 100%; height: 100%; border-radius: 50%; border: 8px solid var(--gold);
@@ -167,29 +167,14 @@
             z-index: 1500;
             display: none;
             flex-direction: column;
+            align-items: center;
+            justify-content: center;
             padding: 20px;
             border-radius: 30px;
         }
-        .minigame-glow-layer {
-            position: absolute;
-            inset: -40px;
-            background: radial-gradient(circle at 50% 30%, rgba(255,215,0,0.18), transparent 60%);
-            pointer-events: none;
-            animation: minigame-aura 6s ease-in-out infinite;
-        }
-        @keyframes minigame-aura {
-            0%,100% { opacity: 0.4; transform: scale(1); }
-            50%     { opacity: 0.7; transform: scale(1.08); }
-        }
-        .minigame-header {
-            margin-bottom: 1rem;
-        }
-        .minigame-stats {
-            margin-bottom: 1.5rem;
-        }
         .minigame-title {
-            font-size: 1.8rem;
-            margin: 0.5rem 0 1.2rem 0;
+            font-size: 2.1rem;
+            margin: 0 0 1.2rem;
             text-shadow: 0 0 20px var(--gold), 0 0 40px rgba(241,196,15,0.4);
             animation: title-glow 3s ease-in-out infinite alternate;
         }
@@ -203,13 +188,12 @@
             letter-spacing: 18px;
             color: var(--light);
             text-shadow: 0 0 20px rgba(255,255,220,0.7);
-            margin: 1.5rem 0 1.8rem 0;
+            margin: 1.5rem 0 2.5rem;
             min-height: 80px;
-            text-align: center;
         }
         .letters-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 14px;
             max-width: 480px;
             width: 100%;
@@ -263,6 +247,17 @@
             0%   { opacity: 0.9; transform: scale(0.5) translate(0,0); }
             100% { opacity: 0;   transform: scale(1.4) translate(var(--dx), var(--dy)); }
         }
+        .minigame-glow-layer {
+            position: absolute;
+            inset: -40px;
+            background: radial-gradient(circle at 50% 30%, rgba(255,215,0,0.18), transparent 60%);
+            pointer-events: none;
+            animation: minigame-aura 6s ease-in-out infinite;
+        }
+        @keyframes minigame-aura {
+            0%,100% { opacity: 0.4; transform: scale(1); }
+            50%     { opacity: 0.7; transform: scale(1.08); }
+        }
     </style>
 </head>
 <body>
@@ -270,20 +265,8 @@
 <div id="element-flash" aria-hidden="true"></div>
 <div id="minigame-scene" aria-live="polite">
     <div class="minigame-glow-layer" aria-hidden="true"></div>
-
-    <div class="minigame-header nav-header">
-        <button onclick="location.href='../index.html'" class="btn-community">🏠 กลับสู่ชุมชน</button>
-    </div>
-
-    <div class="minigame-stats stats-bar">
-        <div class="stat-item" id="hp-display">❤️ HP: 1,000</div>
-        <div class="stat-item" id="shield-display">🛡️ ไม่มีเกราะ</div>
-    </div>
-
-    <h3 id="minigame-question-heading" class="minigame-title" tabindex="-1"></h3>
-
+    <h2 class="minigame-title" tabindex="-1">ประตูแห่งธาตุโบราณ</h2>
     <div class="spelling-display" id="mg-spelling">_ _ _ _ _</div>
-
     <div class="letters-grid" id="mg-letters" role="region" aria-label="ตัวอักษรธาตุให้เลือก"></div>
 </div>
 
@@ -719,11 +702,11 @@ async function applyEffect(key) {
 async function enterMiniGame() {
     state.inMiniGame = true;
     document.getElementById('minigame-scene').style.display = 'flex';
-    updateUI(); // อัปเดต HP & Shield ให้แสดงค่าปัจจุบัน
 
     // เลือกคำถามที่ยังไม่ซ้ำในรอบนี้
     let avail = miniGameQuestions.filter((_,i)=>!state.usedMiniGameQ.has(i));
     if (avail.length === 0) {
+        // ถ้าหมดแล้ว ให้รีเซ็ต (กรณีพิเศษ)
         state.usedMiniGameQ.clear();
         avail = [...miniGameQuestions];
     }
@@ -733,20 +716,19 @@ async function enterMiniGame() {
     state.usedMiniGameQ.add(realIndex);
 
     const word = chosen.en.toLowerCase();
-    const thWord  = chosen.th;
-
-    // ตั้งหัวข้อคำถาม
-    const titleEl = document.getElementById('minigame-question-heading');
-    titleEl.innerText = `ชั้นพิเศษ - สะกดเป็นคำว่า "${thWord}" ตามลำดับให้ถูกสิท่านผู้กล้า`;
-    titleEl.focus();
-
     const display = document.getElementById('mg-spelling');
     const grid = document.getElementById('mg-letters');
     display.textContent = '_ '.repeat(word.length).trim();
     grid.innerHTML = '';
 
-    // ใช้เฉพาะตัวอักษรจริง ไม่เติมตัวหลอก
+    // สุ่มตัวอักษร + เติมตัวหลอก 3 ตัว (ไม่ซ้ำกับคำตอบ)
     let letters = word.split('');
+    const extras = "abcdefghjklmnpqrstuvwxyz".split('').filter(c=>!letters.includes(c));
+    for(let i=0; i<3; i++){
+        const ex = extras[Math.floor(Math.random()*extras.length)];
+        letters.push(ex);
+        extras.splice(extras.indexOf(ex),1);
+    }
     letters = letters.sort(()=>Math.random()-0.5);
 
     letters.forEach(char => {
@@ -758,9 +740,7 @@ async function enterMiniGame() {
         grid.appendChild(btn);
     });
 
-    mgSelected = [];
-    mgTargetWord = word;
-
+    // เปิดประตูเวทย์ด้วยเสียงพิเศษ
     await playWait('minigame');
 }
 
@@ -779,6 +759,7 @@ async function selectMiniLetter(btn, char, correctWord) {
 
     const typed = mgSelected.join('');
 
+    // ยังไม่ครบ && ขึ้นต้นถูก
     if (typed.length < correctWord.length && correctWord.startsWith(typed)) {
         await playWait('t1');
 
@@ -794,11 +775,13 @@ async function selectMiniLetter(btn, char, correctWord) {
         }
     }
 
+    // ถูกทั้งคำ
     if (typed === correctWord) {
         state.inMiniGame = false;
         await playWait('hp');
         document.getElementById('minigame-scene').style.display = 'none';
 
+        // Reward
         state.hp = Math.min(1000, state.hp + 300);
         announce("ผ่านประตูธาตุโบราณ! ได้รับพลังชีวิต +300");
         updateUI();
@@ -814,11 +797,13 @@ async function selectMiniLetter(btn, char, correctWord) {
         return;
     }
 
+    // ผิด
     if (!correctWord.startsWith(typed)) {
         state.inMiniGame = false;
         btn.classList.add('wrong');
         await playWait('f');
 
+        // ตกลง 3 ชั้น
         state.floor = Math.max(1, state.floor - 3);
         announce(`ผิดพลาด! ตกลงไป 3 ชั้น → ชั้นที่ ${state.floor}`);
         document.getElementById('minigame-scene').style.display = 'none';
