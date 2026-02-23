@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>วาลูก้าแห่งโชคชะตา - Valuga of Destiny</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6a11cb; --secondary: #2575fc; --danger: #ff4b2b;
+            --success: #00b09b; --gold: #f1c40f; --dark-bg: #0f0c29;
+            --glass: rgba(255, 255, 255, 0.1);
+            --fire: #ff4b2b; --water: #2575fc; --winter: #e0f7fa;
+            --thunder: #bf55ff; --earth: #5d4037; --wind: #cfd8dc;
+            --hp-color: #00e676; --light: #fff59d; --dark: #212121;
+            --ice: #81d4fa; --wood: #8d6e63;
+        }
+        body {
+            font-family: 'Kanit', sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: white; margin: 0; display: flex;
+            justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+        }
+        #game-outer { width: 100%; max-width: 600px; padding: 20px; box-sizing: border-box; perspective: 1000px; }
+        #game-container {
+            background: rgba(22, 33, 62, 0.8); backdrop-filter: blur(15px);
+            border-radius: 30px; padding: 2.5rem; text-align: center;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5); border: 2px solid rgba(255, 255, 255, 0.1);
+            position: relative; min-height: 600px; display: flex; flex-direction: column;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .btn-opt {
+            background: var(--glass); border: 1px solid rgba(255,255,255,0.1);
+            color: white; padding: 14px; border-radius: 12px; text-align: left;
+            cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            font-size: 1.1rem; position: relative; overflow: hidden;
+        }
+        .btn-opt:hover:not(.dim) {
+            transform: scale(1.03); background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.1); border-color: rgba(255,255,255,0.4);
+        }
+        .btn-opt:active:not(.dim) { transform: scale(0.95); }
+        .btn-opt.selected { background: var(--primary); border-color: var(--gold); box-shadow: 0 0 20px rgba(106, 17, 203, 0.6); opacity: 1 !important; }
+
+        .wheel-graphic.spinning { 
+            animation: wheel-glow 2s infinite alternate;
+        }
+        @keyframes wheel-glow {
+            from { box-shadow: 0 0 10px var(--gold); }
+            to { box-shadow: 0 0 30px var(--gold), 0 0 50px rgba(241, 196, 15, 0.5); }
+        }
+        .wheel-flash {
+            position: absolute; inset: -10px; border-radius: 50%;
+            background: white; opacity: 0; pointer-events: none; z-index: 5;
+        }
+        .flash-active { animation: flash-anim 0.2s ease-out; }
+        @keyframes flash-anim { 0% { opacity: 0.8; } 100% { opacity: 0; } }
+
+        .shake { animation: shake-anim 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake-anim {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        #element-flash {
+            position: fixed; inset: 0; pointer-events: none; z-index: 2000; opacity: 0;
+        }
+        .flash-fire { background: radial-gradient(circle, var(--fire) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        .flash-water { background: radial-gradient(circle, var(--water) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        .flash-winter { background: radial-gradient(circle, var(--winter) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        .flash-thunder { background: radial-gradient(circle, var(--thunder) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        .flash-earth { background: radial-gradient(circle, var(--earth) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        .flash-wind { background: radial-gradient(circle, var(--wind) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        .flash-shield { background: radial-gradient(circle, var(--gold) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        .flash-hp { background: radial-gradient(circle, var(--hp-color) 0%, transparent 70%); animation: flash-overlay 0.8s forwards; }
+        @keyframes flash-overlay { 0% { opacity: 0; } 30% { opacity: 0.6; } 100% { opacity: 0; } }
+
+        .hp-pulse { animation: hp-pulse-anim 0.5s 2; }
+        @keyframes hp-pulse-anim { 0% { color: #ff4b2b; } 50% { color: var(--hp-color); text-shadow: 0 0 10px var(--hp-color); } 100% { color: #ff4b2b; } }
+        .floating-hp {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            color: var(--hp-color); font-weight: bold; font-size: 1.5rem;
+            animation: float-up 1.5s forwards; pointer-events: none;
+        }
+        @keyframes float-up { 0% { opacity: 0; transform: translate(-50%, 0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50px); } }
+
+        .shield-aura {
+            position: absolute; inset: 0; border: 4px solid var(--gold); border-radius: 30px;
+            pointer-events: none; opacity: 0; z-index: 10;
+        }
+        .shield-active { animation: shield-glow-anim 1.2s ease-out; }
+        @keyframes shield-glow-anim {
+            0% { opacity: 0; transform: scale(0.95); box-shadow: inset 0 0 0 var(--gold); }
+            50% { opacity: 1; transform: scale(1.02); box-shadow: inset 0 0 30px var(--gold), 0 0 30px var(--gold); }
+            100% { opacity: 0; transform: scale(1.05); }
+        }
+
+        .game-over-fade { background: rgba(0,0,0,0.8) !important; transition: background 2s ease; }
+        .red-pulse { animation: red-pulse-anim 3s infinite; }
+        @keyframes red-pulse-anim { 0% { box-shadow: 0 0 20px rgba(255,0,0,0.2); } 50% { box-shadow: 0 0 50px rgba(255,0,0,0.5); } 100% { box-shadow: 0 0 20px rgba(255,0,0,0.2); } }
+        .scale-up { animation: scale-up-anim 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes scale-up-anim { 0% { transform: scale(0); } 80% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        .trophy-sparkle { position: relative; }
+        .trophy-sparkle::after {
+            content: ''; position: absolute; inset: -20px;
+            background: radial-gradient(circle, rgba(241,196,15,0.4) 0%, transparent 70%);
+            animation: sparkle-anim 2s infinite alternate;
+        }
+        @keyframes sparkle-anim { from { transform: scale(0.8); opacity: 0.5; } to { transform: scale(1.2); opacity: 1; } }
+
+        /* ───────────────────────────────────────────────
+           WIN ANIMATION ENHANCEMENT
+        ─────────────────────────────────────────────── */
+        .win-glow-layer {
+            position: absolute;
+            inset: -80px;
+            pointer-events: none;
+            background: radial-gradient(circle at 50% 30%, rgba(255,215,0,0.25), transparent 65%);
+            opacity: 0;
+            z-index: 5;
+        }
+        .win-glow-layer.active {
+            animation: win-glow-expand 4s ease-out forwards;
+        }
+        @keyframes win-glow-expand {
+            0%   { opacity: 0; transform: scale(0.6); }
+            20%  { opacity: 0.9; transform: scale(1.15); }
+            60%  { opacity: 0.7; transform: scale(1.4); }
+            100% { opacity: 0;   transform: scale(1.8); }
+        }
+
+        .win-particles {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 6;
+        }
+        .win-particle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: var(--gold);
+            border-radius: 50%;
+            opacity: 0;
+            box-shadow: 0 0 12px var(--gold);
+        }
+        @keyframes win-particle-rise {
+            0%   { transform: translateY(0) rotate(0deg); opacity: 0.9; }
+            100% { transform: translateY(-800px) rotate(720deg); opacity: 0; }
+        }
+
+        .win-confetti {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 7;
+        }
+        .confetti-piece {
+            position: absolute;
+            width: 14px;
+            height: 7px;
+            background: linear-gradient(45deg, #f1c40f, #fff176);
+            opacity: 0;
+            border-radius: 3px;
+            transform-origin: center;
+        }
+        @keyframes confetti-fall {
+            0%   { transform: translateY(-100%) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(120vh) rotate(1440deg); opacity: 0; }
+        }
+
+        .nav-header { display: flex; justify-content: flex-start; margin-bottom: 10px; }
+        .btn-community {
+            background: var(--glass); border: 1px solid rgba(255,255,255,0.2);
+            color: #ddd; padding: 8px 15px; border-radius: 12px;
+            cursor: pointer; font-size: 0.9rem; transition: 0.3s;
+            font-family: 'Kanit', sans-serif;
+        }
+        .btn-community:hover { background: rgba(255,255,255,0.2); }
+        .scene { display: none; flex-direction: column; gap: 1.2rem; animation: fadeIn 0.6s ease; }
+        .scene.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        h1, h2, h3 { color: var(--gold); text-shadow: 0 0 15px rgba(241, 196, 15, 0.3); margin-top: 0; outline: none; }
+        .wheel-wrapper { position: relative; width: 200px; height: 200px; margin: 10px auto; }
+        .wheel-graphic {
+            width: 100%; height: 100%; border-radius: 50%; border: 8px solid var(--gold);
+            background: conic-gradient(#6a11cb 0% 12.5%, #2575fc 12.5% 25%, #6a11cb 25% 37.5%, #2575fc 37.5% 50%, #6a11cb 50% 62.5%, #2575fc 62.5% 75%, #6a11cb 75% 87.5%, #2575fc 87.5% 100%);
+            transition: transform 4s cubic-bezier(0.15, 0, 0.15, 1);
+            position: relative;
+        }
+        .lever-container { position: absolute; right: -30px; top: 50%; height: 70px; width: 14px; background: #333; border-radius: 7px; }
+        .lever-handle { width: 22px; height: 22px; background: var(--danger); border-radius: 50%; position: absolute; left: -4px; top: 0; transition: top 0.5s ease; }
+        .lever-active .lever-handle { top: 48px; }
+        .btn-main {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: none; padding: 18px 40px; border-radius: 50px; color: white;
+            font-size: 1.3rem; font-weight: 600; cursor: pointer; transition: 0.3s; align-self: center; margin-top: auto;
+        }
+        .options-grid { display: grid; gap: 10px; margin-top: 10px; }
+        .btn-opt.dim { opacity: 0.3; pointer-events: none; }
+        
+        .stats-bar { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 1.1rem; font-weight: 600; }
+        .stat-item { background: rgba(255, 255, 255, 0.15); padding: 10px 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); flex: 1; margin: 0 5px; position: relative; }
+        #hp-display { color: #ff4b2b; }
+        #shield-display { color: #00b09b; }
+
+        .sr-only-fixed {
+            position: absolute !important; width: 1px !important; height: 1px !important;
+            padding: 0 !important; margin: -1px !important; overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important;
+        }
+        #loading-overlay { position: fixed; inset: 0; background: var(--dark-bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        .spinner { width: 40px; height: 40px; border: 4px solid var(--glass); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ───────────────────────────────────────────────
+           Mini Game Styles
+        ─────────────────────────────────────────────── */
+        #minigame-scene {
+            position: fixed;
+            inset: 0;
+            background: rgba(15,12,41,0.92);
+            backdrop-filter: blur(8px);
+            z-index: 1500;
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+            border-radius: 0;
+            overflow-y: auto;
+        }
+        .minigame-glow-layer {
+            position: absolute;
+            inset: -40px;
+            background: radial-gradient(circle at 50% 30%, rgba(255,215,0,0.18), transparent 60%);
+            pointer-events: none;
+            animation: minigame-aura 6s ease-in-out infinite;
+        }
+        @keyframes minigame-aura {
+            0%,100% { opacity: 0.4; transform: scale(1); }
+            50%     { opacity: 0.7; transform: scale(1.08); }
+        }
+        .minigame-header {
+            margin-bottom: 1rem;
+        }
+        .minigame-stats {
+            margin-bottom: 1.5rem;
+        }
+        .minigame-title {
+            font-size: 1.8rem;
+            margin: 0.5rem 0 1.2rem 0;
+            text-shadow: 0 0 20px var(--gold), 0 0 40px rgba(241,196,15,0.4);
+            animation: title-glow 3s ease-in-out infinite alternate;
+        }
+        @keyframes title-glow {
+            from { text-shadow: 0 0 10px var(--gold); }
+            to   { text-shadow: 0 0 30px var(--gold), 0 0 60px rgba(241,196,15,0.6); }
+        }
+        .spelling-display {
+            font-size: 4.2rem;
+            font-weight: 900;
+            letter-spacing: 18px;
+            color: var(--light);
+            text-shadow: 0 0 20px rgba(255,255,220,0.7);
+            margin: 1.5rem 0 2.5rem 0;
+            min-height: 80px;
+            text-align: center;
+        }
+        .letters-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            max-width: 480px;
+            width: 100%;
+            margin: 0 auto;
+            padding-bottom: 2rem;
+        }
+        .letter-btn-mg {
+            aspect-ratio: 1;
+            font-size: 2.4rem;
+            font-weight: bold;
+            background: linear-gradient(145deg, #fffde7, #fff9c4);
+            color: #333;
+            border: none;
+            border-radius: 18px;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4), inset 0 2px 6px rgba(255,255,255,0.7);
+            transition: all 0.28s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .letter-btn-mg:hover:not(.used):not(.wrong) {
+            transform: translateY(-6px) scale(1.08);
+            box-shadow: 0 14px 30px rgba(0,0,0,0.5), inset 0 3px 10px rgba(255,255,255,0.9);
+        }
+        .letter-btn-mg.used {
+            background: linear-gradient(145deg, #bdbdbd, #9e9e9e);
+            color: #555;
+            transform: scale(0.94);
+            box-shadow: inset 0 4px 10px rgba(0,0,0,0.6);
+            cursor: not-allowed;
+        }
+        .letter-btn-mg.wrong {
+            background: #ff5252 !important;
+            color: white !important;
+            animation: mg-shake 0.4s;
+        }
+        @keyframes mg-shake {
+            0%,100% { transform: translateX(0); }
+            25%  { transform: translateX(-8px) scale(0.97); }
+            75%  { transform: translateX(8px) scale(0.97); }
+        }
+        .particle {
+            position: absolute;
+            width: 8px; height: 8px;
+            background: var(--gold);
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            animation: particle-float 1.2s forwards;
+        }
+        @keyframes particle-float {
+            0%   { opacity: 0.9; transform: scale(0.5) translate(0,0); }
+            100% { opacity: 0;   transform: scale(1.4) translate(var(--dx), var(--dy)); }
+        }
+
+        body.mini-game-active #game-outer,
+        body.mini-game-active #game-container,
+        body.mini-game-active .scene,
+        body.mini-game-active #loading-overlay,
+        body.mini-game-active #element-flash,
+        body.mini-game-active #shield-aura-visual {
+            display: none !important;
+        }
+
+        body.mini-game-active #aria-announcer {
+            visibility: hidden;
+        }
+
+        /* ───────────────────────────────────────────────
+           NEW VISUAL ENHANCEMENTS (only visual - no logic change)
+        ─────────────────────────────────────────────── */
+
+        /* 1. Cinematic Tower Background - scene-start only */
+        #scene-start::before {
+            content: "🏰";
+            position: absolute;
+            inset: 0;
+            font-size: 80vmin;
+            opacity: 0.055;
+            z-index: -2;
+            pointer-events: none;
+            user-select: none;
+            text-align: center;
+            line-height: 100vh;
+            animation: cinematic-tower-float 24s infinite ease-in-out;
+            filter: drop-shadow(0 0 60px var(--gold));
+            aria-hidden: true;
+        }
+        @keyframes cinematic-tower-float {
+            0%,100%   { transform: translateY(0) scale(1.00); }
+            50%       { transform: translateY(-3%) scale(1.03); }
+        }
+
+        /* 2. Floating background particles - only in scene-tower */
+        #tower-particles {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: -1;
+            overflow: hidden;
+            aria-hidden: true;
+        }
+        .particle-bg {
+            position: absolute;
+            background: var(--gold);
+            border-radius: 50%;
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: 0 0 12px var(--gold);
+        }
+        @keyframes particle-rise {
+            0%   { transform: translateY(120vh) scale(0.2); opacity: 0.6; }
+            100% { transform: translateY(-30vh) scale(0.8); opacity: 0; }
+        }
+
+        /* 3. Low HP Red Vignette Tension */
+        #low-hp-vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at center, transparent 40%, rgba(180,0,0,0.4) 80%);
+            opacity: 0;
+            z-index: 999;
+            animation: vignette-pulse 4s infinite ease-in-out;
+            aria-hidden: true;
+        }
+        @keyframes vignette-pulse {
+            0%,100% { opacity: 0; }
+            50%     { opacity: 0.35; }
+        }
+
+        /* 4. Enhanced elemental effects (layer on top of flash) */
+        .elemental-layer {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2001;
+            opacity: 0;
+        }
+
+        /* Fire - flame flicker */
+        .eff-fire {
+            background: radial-gradient(circle at 50% 30%, rgba(255,80,0,0.45), transparent 60%);
+            animation: fire-flicker 1.2s ease-out forwards;
+        }
+        @keyframes fire-flicker {
+            0%   { opacity: 0; transform: scale(0.8); }
+            20%  { opacity: 0.7; transform: scale(1.15); }
+            40%  { opacity: 0.4; transform: scale(0.95); }
+            60%  { opacity: 0.65; transform: scale(1.08); }
+            100% { opacity: 0; transform: scale(1.3); }
+        }
+
+        /* Water - ripple */
+        .eff-water {
+            background: radial-gradient(circle, rgba(40,120,255,0.35) 10%, transparent 60%);
+            animation: water-ripple 1.8s ease-out forwards;
+        }
+        @keyframes water-ripple {
+            0%   { transform: scale(0.4); opacity: 0.7; border-radius: 50%; }
+            100% { transform: scale(2.2); opacity: 0; border-radius: 50%; }
+        }
+
+        /* Wind - streak lines */
+        .eff-wind {
+            background: linear-gradient(90deg, transparent, rgba(220,240,255,0.4), transparent);
+            animation: wind-streak 1.1s linear forwards;
+        }
+        @keyframes wind-streak {
+            0%   { transform: translateX(-120%); opacity: 0.8; }
+            50%  { opacity: 0.9; }
+            100% { transform: translateX(120%); opacity: 0; }
+        }
+
+        /* Earth - crack flash */
+        .eff-earth {
+            background: radial-gradient(circle at 50% 70%, rgba(140,90,40,0.55), transparent 70%);
+            animation: earth-crack 0.9s ease-out forwards;
+        }
+        @keyframes earth-crack {
+            0%   { opacity: 0; transform: scale(0.6); }
+            30%  { opacity: 0.8; transform: scale(1.1); }
+            100% { opacity: 0; transform: scale(1.4); }
+        }
+
+        /* Thunder - lightning branch */
+        .eff-thunder {
+            background: linear-gradient(135deg, transparent 40%, #d3a0ff 50%, transparent 60%);
+            animation: thunder-streak 0.7s ease-out forwards;
+        }
+        @keyframes thunder-streak {
+            0%,100% { opacity: 0; transform: scaleX(0.3); }
+            40%     { opacity: 0.95; transform: scaleX(1.4); }
+            70%     { opacity: 0.6; transform: scaleX(0.8); }
+        }
+
+        /* Winter - frost grow */
+        .eff-winter {
+            background: radial-gradient(circle, rgba(160,240,255,0.45) 10%, transparent 70%);
+            animation: frost-grow 1.4s ease-out forwards;
+        }
+        @keyframes frost-grow {
+            0%   { transform: scale(0.5); opacity: 0.7; filter: blur(2px); }
+            50%  { transform: scale(1.3); opacity: 0.5; filter: blur(6px); }
+            100% { transform: scale(1.8); opacity: 0; filter: blur(12px); }
+        }
+
+        /* Shield - golden ring expand */
+        .eff-shield {
+            border: 5px solid var(--gold);
+            border-radius: 50%;
+            animation: shield-ring 1.5s ease-out forwards;
+        }
+        @keyframes shield-ring {
+            0%   { transform: scale(0.2); opacity: 0.9; }
+            60%  { transform: scale(1.4); opacity: 0.7; }
+            100% { transform: scale(2.0); opacity: 0; }
+        }
+
+        /* HP - green burst */
+        .eff-hp {
+            background: radial-gradient(circle, rgba(0,230,118,0.5), transparent 70%);
+            animation: hp-burst 1.2s ease-out forwards;
+        }
+        @keyframes hp-burst {
+            0%   { transform: scale(0.6); opacity: 0.8; }
+            40%  { transform: scale(1.3); opacity: 0.6; }
+            100% { transform: scale(1.8); opacity: 0; }
+        }
+
+        /* 5. Camera zoom + light sweep when going up floor */
+        @keyframes floor-up-zoom {
+            0%   { transform: scale(1.00); }
+            30%  { transform: scale(1.045); }
+            100% { transform: scale(1.00); }
+        }
+        .floor-transition {
+            animation: floor-up-zoom 800ms ease-out;
+        }
+
+        .light-sweep {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, transparent, rgba(255,215,100,0.25), transparent);
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0;
+            animation: light-sweep-anim 900ms ease-out forwards;
+        }
+        @keyframes light-sweep-anim {
+            0%   { transform: translateY(-100%); opacity: 0.7; }
+            60%  { opacity: 0.9; }
+            100% { transform: translateY(100%); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="element-flash" aria-hidden="true"></div>
+
+<!-- New visual layers -->
+<div id="low-hp-vignette" aria-hidden="true"></div>
+<div id="tower-particles" aria-hidden="true"></div>
+<div class="elemental-layer" id="elemental-layer" aria-hidden="true"></div>
+
+<div id="minigame-scene" aria-live="polite">
+    <div class="minigame-glow-layer" aria-hidden="true"></div>
+
+    <div class="minigame-header nav-header">
+        <button onclick="location.href='../index.html'" class="btn-community">🏠 กลับสู่ชุมชน</button>
+    </div>
+
+    <div class="minigame-stats stats-bar">
+        <div class="stat-item" id="mg-hp-display">❤️ HP: 1,000</div>
+        <div class="stat-item" id="mg-shield-display">🛡️ ไม่มีเกราะ</div>
+    </div>
+
+    <h3 id="minigame-question-heading" class="minigame-title" tabindex="-1"></h3>
+
+    <div class="spelling-display" id="mg-spelling">_ _ _ _ _</div>
+
+    <div class="letters-grid" id="mg-letters" role="region" aria-label="ตัวอักษรธาตุให้เลือก"></div>
+</div>
+
+<div id="loading-overlay" aria-hidden="true">
+    <div class="spinner"></div>
+    <p>กำลังรวบรวมปริศนาธาตุ...</p>
+</div>
+
+<div id="aria-announcer" class="sr-only-fixed" role="status" aria-live="assertive" aria-atomic="true" aria-hidden="true"></div>
+
+<div id="game-outer">
+    <div id="game-container">
+        <div id="shield-aura-visual" class="shield-aura" aria-hidden="true"></div>
+        
+        <div class="nav-header">
+            <button onclick="location.href='../index.html'" class="btn-community">🏠 กลับสู่ชุมชน</button>
+        </div>
+
+        <section id="scene-start" class="scene active">
+            <h1 id="title-start" tabindex="-1">วาลูก้าแห่งโชคชะตา</h1>
+            <p>พิชิตหอคอย 20 ชั้นเพื่อพิสูจน์ความเป็นหนึ่งในใต้หล้า</p>
+            <button id="btn-begin" class="btn-main">พิชิตหอคอย</button>
+        </section>
+
+        <section id="scene-tower" class="scene">
+            <div class="stats-bar">
+                <div class="stat-item" id="hp-display">❤️ HP: 1,000</div>
+                <div class="stat-item" id="shield-display">🛡️ ไม่มีเกราะ</div>
+            </div>
+            
+            <div id="quiz-area">
+                <h2 id="question-heading" tabindex="-1"></h2>
+                <div id="options-container" class="options-grid"></div>
+            </div>
+            <div id="wheel-area" style="display: none;">
+                <h2 id="wheel-title">กงล้อแห่งโชคชะตา</h2>
+                <div class="wheel-wrapper" aria-hidden="true">
+                    <div id="visual-wheel" class="wheel-graphic">
+                        <div class="wheel-flash" id="wheel-flash-el"></div>
+                    </div>
+                    <div class="lever-container" id="lever-visual"><div class="lever-handle"></div></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="scene-result" class="scene">
+            <div class="win-glow-layer" id="win-glow"></div>
+            <div class="win-particles" id="win-particles"></div>
+            <div class="win-confetti" id="win-confetti"></div>
+
+            <h2 id="result-title" tabindex="-1">สรุปการเดินทาง</h2>
+            <div id="result-icon" style="font-size: 4rem;" aria-hidden="true"></div>
+            <p id="result-desc" style="font-size: 1.3rem; font-weight: 600;"></p>
+            <p id="result-stats" style="opacity: 0.8;"></p>
+        </section>
+    </div>
+</div>
+
+<script>
+/** ───────────────────────────────────────────────
+    DATA — ข้อสอบปกติ (ไม่เปลี่ยนแปลง)
+─────────────────────────────────────────────── */
+const quiz1to19 = [
+    {q: "สิ่งใดที่ยิ่งดิ้นรนขัดขืน กระแสของมันยิ่งรัดร่างเจ้าให้จมดิ่งลง", opts: ["ธาตุดิน", "ธาตุน้ำ", "ธาตุลม"], ans: 1},
+    {q: "ข้าไร้รูปร่าง มองไม่เห็น แต่หากข้าหยุดเคลื่อนไหว สิ่งมีชีวิตย่อมสิ้นลมหายใจ", opts: ["ธาตุลม", "ธาตุแสง", "ธาตุทอง"], ans: 0},
+    {q: "ข้าให้กำเนิดพืชพรรณ และเมื่อทุกสิ่งดับสูญ ข้าก็เป็นที่พักสุดท้ายของร่างนั้น", opts: ["ธาตุไม้", "ธาตุความมืด", "ธาตุดิน"], ans: 2},
+    {q: "ข้ายิ่งสว่างไสว ยามข้าเผาผลาญตัวเองเป็นเชื้อเพลิง", opts: ["ธาตุสายฟ้า", "ธาตุไฟ", "ธาตุแสง"], ans: 1},
+    {q: "ข้าซ่อนคุณค่าไว้ใต้ผืนดิน ต้องผ่านความร้อนและการหลอมจึงเผยความงดงาม", opts: ["ธาตุทอง", "ธาตุดิน", "ธาตุน้ำแข็ง"], ans: 0},
+    {q: "ข้าคือความเย็นที่ทำให้ทุกการเคลื่อนไหวช้าลงจนหยุดนิ่ง", opts: ["ธาตุลม", "ธาตุน้ำแข็ง", "ธาตุความมืด"], ans: 1},
+    {q: "ข้าปรากฏเพียงชั่วพริบตาบนท้องฟ้า แล้วหายไปพร้อมเสียงคำราม", opts: ["ธาตุไฟ", "ธาตุแสง", "ธาตุสายฟ้า"], ans: 2},
+    {q: "แม้ถูกตัดโค่น ข้ายังแตกกิ่งก้านและเติบโตใหม่ได้เสมอ", opts: ["ธาตุน้ำ", "ธาตุไม้", "ธาตุดิน"], ans: 1},
+    {q: "ข้าโอบล้อมโลกยามค่ำคืน เป็นที่ซ่อนของความลับและความหวาดหวั่น", opts: ["ธาตุลม", "ธาตุความมืด", "ธาตุน้ำแข็ง"], ans: 1},
+    {q: "ข้าขับไล่ความมืด แต่หากเจ้าจ้องข้านานเกินไป ดวงตาจะพร่ามัว", opts: ["ธาตุไฟ", "ธาตุสายฟ้า", "ธาตุแสง"], ans: 2},
+    {q: "ข้าไหลโอบกอดโขดหินอย่างอ่อนโยน แต่สามารถกัดเซาะภูเขาได้ตามกาลเวลา", opts: ["ธาตุน้ำ", "ธาตุลม", "ธาตุไม้"], ans: 0},
+    {q: "ข้ายืนหยัดรับน้ำหนักทุกสิ่งโดยไม่เคยร้องขอสิ่งตอบแทน", opts: ["ธาตุทอง", "ธาตุดิน", "ธาตุไม้"], ans: 1},
+    {q: "ข้าเปลี่ยนรูปร่างได้สามสถานะ เป็นน้ำแข็ง เป็นสายน้ำ และเป็นไอ", opts: ["ธาตุลม", "ธาตุไฟ", "ธาตุน้ำ"], ans: 2},
+    {q: "ข้าเปลี่ยนความโกลาหลให้หยุดนิ่งด้วยความเย็นเยียบ", opts: ["ธาตุทอง", "ธาตุน้ำแข็ง", "ธาตุดิน"], ans: 1},
+    {q: "ยิ่งข้าได้รับเชื้อเพลิง ข้ายิ่งลุกโชนและแผ่ขยายไม่สิ้นสุด", opts: ["ธาตุไฟ", "ธาตุไม้", "ธาตุความมืด"], ans: 0},
+    {q: "ข้าคือเส้นสายแห่งพลังที่เชื่อมผืนฟ้าและผืนดินในชั่วพริบตา", opts: ["ธาตุแสง", "ธาตุสายฟ้า", "ธาตุลม"], ans: 1},
+    {q: "ข้าแข็งแกร่งยามถูกหลอมและตีขึ้นรูป แต่จะอ่อนแรงเมื่อปล่อยให้สนิมกัดกิน", opts: ["ธาตุน้ำแข็ง", "ธาตุดิน", "ธาตุทอง"], ans: 2},
+    {q: "ข้าหยั่งรากลึก เติบโต และผลิบานตามฤดูกาล", opts: ["ธาตุไม้", "ธาตุน้ำ", "ธาตุแสง"], ans: 0},
+    {q: "ข้าไม่มีเสียงของตนเอง เสียงจะเกิดขึ้นเมื่อข้าปะทะสิ่งอื่น", opts: ["ธาตุลม", "ธาตุน้ำ", "ธาตุทอง"], ans: 0},
+    {q: "ข้าสะท้อนภาพได้ชัดเจนที่สุดเมื่อพื้นผิวของข้านิ่งสนิท", opts: ["ธาตุน้ำ", "ธาตุแสง", "ธาตุน้ำแข็ง"], ans: 0},
+    {q: "สิ่งที่ดูมั่นคงที่สุด แต่สามารถเคลื่อนตัวได้เมื่อแผ่นเปลือกโลกเปลี่ยนแปลง", opts: ["ธาตุไม้", "ธาตุดิน", "ธาตุทอง"], ans: 1},
+    {q: "ข้าปกคลุมทุกสิ่งด้วยสีขาวในฤดูหนาว ทำให้โลกเงียบสงบ", opts: ["ธาตุน้ำแข็ง", "ธาตุแสง", "ธาตุลม"], ans: 0},
+    {q: "พลังงานที่มองไม่เห็น ทำให้เครื่องจักรและแสงสว่างทำงานได้", opts: ["ธาตุสายฟ้า", "ธาตุไฟ", "ธาตุทอง"], ans: 0},
+    {q: "ข้าสวยงามแต่ร้อนแรง เปลวสีน้ำเงินของข้าร้อนยิ่งกว่าเปลวสีอื่น", opts: ["ธาตุน้ำแข็ง", "ธาตุไฟ", "ธาตุแสง"], ans: 1},
+    {q: "ข้าซ่อนอยู่ใต้พิภพ ต้องขุดลึกจึงพบคุณค่าของข้า", opts: ["ธาตุดิน", "ธาตุไม้", "ธาตุทอง"], ans: 2},
+    {q: "ข้าให้ความอบอุ่นแก่ผู้ใช้ด้วยความระมัดระวัง แต่เผาผลาญผู้ประมาท", opts: ["ธาตุแสง", "ธาตุไฟ", "ธาตุสายฟ้า"], ans: 1},
+    {q: "ข้าไหลไปตามรูปทรงของภาชนะ ปรับตัวตามสิ่งที่ข้าพบ", opts: ["ธาตุน้ำ", "ธาตุลม", "ธาตุไม้"], ans: 0},
+    {q: "แร่ในตัวข้าสามารถดึงดูดและชี้ทิศทางตามสนามแม่เหล็ก", opts: ["ธาตุทอง", "ธาตุดิน", "ธาตุลม"], ans: 0},
+    {q: "ความเจ็บปวดที่รวดเร็วราวแสงวาบจากท้องฟ้า", opts: ["ธาตุไฟ", "ธาตุสายฟ้า", "ธาตุลม"], ans: 1},
+    {q: "ข้าคือผืนป่าที่หายใจ กลิ่นดินและใบไม้คือชีวิตของข้า", opts: ["ธาตุน้ำ", "ธาตุไม้", "ธาตุดิน"], ans: 1},
+    {q: "ข้าทำให้เจ้ามองเห็นทุกสิ่ง แต่เจ้ามองไม่เห็นตัวข้าโดยตรง", opts: ["ธาตุแสง", "ธาตุลม", "ธาตุความมืด"], ans: 0},
+    {q: "ยามข้าพัดรุนแรง ทะเลที่สงบอาจกลายเป็นคลื่นยักษ์", opts: ["ธาตุน้ำ", "ธาตุลม", "ธาตุไฟ"], ans: 1},
+    {q: "ข้าดูดซับความร้อนจากสิ่งรอบตัว ทำให้อุณหภูมิลดต่ำลง", opts: ["ธาตุดิน", "ธาตุน้ำแข็ง", "ธาตุทอง"], ans: 1},
+    {q: "ข้ามีหนามปกป้องตนเอง และผลิดอกงามในฤดูกาล", opts: ["ธาตุไม้", "ธาตุน้ำ", "ธาตุแสง"], ans: 0},
+    {q: "หากไม่มีข้า แสงสว่างก็ไร้ความหมาย", opts: ["ธาตุดิน", "ธาตุความมืด", "ธาตุน้ำแข็ง"], ans: 1},
+    {q: "ข้าพาเสียงเดินทางจากที่ไกลมาถึงหูของเจ้า", opts: ["ธาตุลม", "ธาตุน้ำ", "ธาตุสายฟ้า"], ans: 0},
+    {q: "ข้าเปลี่ยนน้ำที่อ่อนโยนให้กลายเป็นของแข็งแหลมคม", opts: ["ธาตุน้ำแข็ง", "ธาตุลม", "ธาตุทอง"], ans: 0},
+    {q: "ยิ่งถูกเผาและขัดเกลา ข้ายิ่งบริสุทธิ์และมีค่า", opts: ["ธาตุดิน", "ธาตุทอง", "ธาตุสายฟ้า"], ans: 1},
+    {q: "ข้าปกคลุมพื้นดินด้วยสีเขียว ฟื้นฟูรอยแยกของผืนโลก", opts: ["ธาตุไม้", "ธาตุน้ำ", "ธาตุแสง"], ans: 0},
+    {q: "ข้าเป็นอาวุธร้อนแรง ที่ทำร้ายทั้งผู้ใช้และศัตรูหากควบคุมไม่ดี", opts: ["ธาตุสายฟ้า", "ธาตุไฟ", "ธาตุความมืด"], ans: 1},
+    {q: "ข้าเกิดขึ้นเมื่อแสงถูกบดบัง และยิ่งแสงแรง ข้ายิ่งชัดเจน", opts: ["ธาตุความมืด", "ธาตุน้ำ", "ธาตุดิน"], ans: 0},
+    {q: "ข้าคือน้ำที่หยุดเวลาไว้ จนกว่าความร้อนจะปลดปล่อยข้า", opts: ["ธาตุน้ำแข็ง", "ธาตุทอง", "ธาตุไม้"], ans: 0},
+    {q: "ข้าไหลเวียนเป็นเส้นเลือดของแผ่นดิน หล่อเลี้ยงทุกชีวิต", opts: ["ธาตุดิน", "ธาตุน้ำ", "ธาตุไม้"], ans: 1},
+    {q: "ยามข้าฟาดลงมา สิ่งที่แข็งแรงอาจแตกสลาย", opts: ["ธาตุทอง", "ธาตุลม", "ธาตุสายฟ้า"], ans: 2},
+    {q: "ข้าคือรากฐานที่มั่นคง ทำให้สิ่งปลูกสร้างตั้งตระหง่าน", opts: ["ธาตุทอง", "ธาตุดิน", "ธาตุไม้"], ans: 1},
+    {q: "ยามข้าปกคลุม สติและสายตาอาจเลือนราง", opts: ["ธาตุลม", "ธาตุความมืด", "ธาตุน้ำ"], ans: 1},
+    {q: "ข้าคือพลังความร้อนภายในร่างกายของสิ่งมีชีวิต", opts: ["ธาตุแสง", "ธาตุไฟ", "ธาตุไม้"], ans: 1},
+    {q: "แม้มองไม่เห็น แต่เมื่อข้าหมุนวนรุนแรง ข้าสามารถทำลายหินผาได้", opts: ["ธาตุลม", "ธาตุน้ำ", "ธาตุสายฟ้า"], ans: 0},
+    {q: "เสียงคำรามบนท้องฟ้าที่มาพร้อมแสงวาบ", opts: ["ธาตุน้ำ", "ธาตุสายฟ้า", "ธาตุไฟ"], ans: 1},
+    {q: "ข้าคือแรงดึงดูดที่ยึดทุกสรรพสิ่งไว้กับผืนโลก", opts: ["ธาตุแสง", "ธาตุดิน", "ธาตุความมืด"], ans: 1}
+];
+
+const quiz20 = [
+    {q: "ธาตุน้ำ มักจะแพ้ทางให้กับธาตุใดที่สามารถดูดซับหรือกักกั้นการไหลได้?", opts: ["ก. ธาตุไฟ", "ข. ธาตุดิน", "ค. ธาตุทอง", "ง. ธาตุลม"], ans: 1},
+    {q: "ธาตุใดที่สามารถเอาชนะ 'ธาตุดิน' ได้ด้วยการชอนไชและดึงสารอาหารไปใช้?", opts: ["ก. ธาตุไม้", "ข. ธาตุทอง", "ค. ธาตุไฟ", "ง. ธาตุน้ำแข็ง"], ans: 0},
+    {q: "ในวัฏจักรการหลอมละลาย 'ธาตุไฟ' จะพ่ายแพ้ต่อธาตุใดที่ลดอุณหภูมิได้อย่างรวดเร็ว?", opts: ["ก. ธาตุลม", "ข. ธาตุทอง", "ค. ธาตุน้ำ", "ง. ธาตุไม้"], ans: 2},
+    {q: "ธาตุใดที่มีความแข็งแกร่งและคมกริบพอที่จะทำลาย 'ธาตุไม้' ได้?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุดิน", "ค. ธาตุทอง", "ง. ธาตุลม"], ans: 2},
+    {q: "'ธาตุลม' มักจะเสียเปรียบต่อสิ่งใดที่มีมวลมหาศาลจนลมไม่สามารถพัดให้เคลื่อนที่ได้?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุดิน", "ค. ธาตุไม้", "ง. ธาตุไฟ"], ans: 1},
+    {q: "'ธาตุทอง' (โลหะ) จะพ่ายแพ้ต่อธาตุใดที่สามารถทำให้มันเปลี่ยนสถานะเป็นของเหลว?", opts: ["ก. ธาตุไฟ", "ข. ธาตุน้ำ", "ค. ธาตุลม", "ง. ธาตุน้ำแข็ง"], ans: 0},
+    {q: "ธาตุพิเศษอย่าง 'ธาตุน้ำแข็ง' จะพ่ายแพ้ต่อธาตุใดที่ทำให้มันระเหยหรือละลาย?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุลม", "ค. ธาตุไฟ", "ง. ธาตุดิน"], ans: 2},
+    {q: "ในทางวิทยาศาสตร์และแฟนตาซี 'ธาตุสายฟ้า' มักจะแพ้ทางให้กับธาตุใดที่เป็นฉนวน?", opts: ["ก. ธาตุน้ำ", "ข. ธาตุดิน", "ค. ธาตุทอง", "ง. ธาตุลม"], ans: 1},
+    {q: "ธาตุใดต่อไปนี้ที่ 'ธาตุลม' มักจะแพ้ทาง (ในเชิงการถูกเจาะทะลวง)?", opts: ["ก. ธาตุสายฟ้า", "ข. ธาตุน้ำแข็ง", "ค. ธาตุไม้", "ง. ธาตุน้ำ"], ans: 0},
+    {q: "ธาตุใดที่ 'ธาตุน้ำแข็ง' สามารถเอาชนะได้ง่ายที่สุด (โดยการแช่แข็ง)?", opts: ["ก. ธาตุไฟ", "ข. ธาตุทอง", "ค. ธาตุไม้", "ง. ธาตุน้ำ"], ans: 3}
+];
+
+/** ───────────────────────────────────────────────
+    Mini Game Questions (10 ข้อ — ใช้ภาษาอังกฤษตัวพิมพ์เล็ก)
+─────────────────────────────────────────────── */
+const miniGameQuestions = [
+    {th:"ดิน",       en:"earth"},
+    {th:"น้ำ",       en:"water"},
+    {th:"ลม",        en:"wind"},
+    {th:"ไฟ",        en:"fire"},
+    {th:"แสงสว่าง",  en:"light"},
+    {th:"ความมืด",   en:"dark"},
+    {th:"น้ำแข็ง",   en:"ice"},
+    {th:"สายฟ้า",    en:"thunder"},
+    {th:"ทอง",       en:"gold"},
+    {th:"ไม้",       en:"wood"},
+    {th:"พายุหิมะ",   en:"blizzard"},
+    {th:"พายุหมุน",   en:"cyclone"},
+    {th:"จิตวิญญาณ", en:"spirit"},
+    {th:"พลังงาน",    en:"energy"},
+    {th:"นิรันดร์",    en:"eternity"},
+    {th:"คริสตัล", en:"crystal"},
+    {th:"หอคอย",      en:"tower"},
+    {th:"ผู้กล้า",      en:"hero"},
+    {th:"ผู้พิทักษ์",    en:"guardian"},
+    {th:"ชัยชนะ",      en:"victory"},
+    {th:"โชคชะตา",    en:"destiny"}
+];
+
+/** ───────────────────────────────────────────────
+    Messages
+─────────────────────────────────────────────── */
+const praiseMsgs = [
+    "เจ้าคือตำนานบทใหม่แห่งวาลูก้า! ปัญญาของเจ้าช่างล้ำเลิศนัก",
+    "ยอดหอคอยสยบแทบเท้าผู้กล้า! ยินดีด้วยกับชัยชนะอันยิ่งใหญ่",
+    "ความรู้และโชคชะตาอยู่ข้างเจ้าเสมอ เจ้าคือผู้พิชิตที่แท้จริง!",
+    "หอคอยสั่นสะเทือนต่อพลังแห่งปัญญาของเจ้า! ความเป็นหนึ่งในใต้หล้าเป็นของเจ้าแล้ว"
+];
+
+const encouragementMsgs = [
+    "โชคชะตายังไม่มาถึงในวันนี้... อย่าเพิ่งท้อแท้ กลับมาสู้ใหม่นะผู้กล้า!",
+    "เพียงก้าวเดียวก็จะถึงฝัน... ฝึกฝนปัญญาแล้วกลับมาท้าทายอีกครั้ง!",
+    "ความพ่ายแพ้คือครูที่ดีที่สุด... เราจะรอเจ้ากลับมาพิชิตหอคอยนี้",
+    "แม้กายจะล้มลง แต่จิตวิญญาณผู้กล้ายังคงอยู่... ลองใหม่อีกครั้งนะ!",
+    "ความล้มเหลวคือบันไดสู่ความสำเร็จ! ครั้งหน้ายอดหอคอยต้องเป็นของเจ้าแน่นอน"
+];
+
+const effects = {
+    shield: { label: "ท่านผู้กล้าได้รับเกราะแห่งแสง", sfx: 'shield', dmg: 0, isShield: true },
+    wind:   { label: "ผู้กล้าโดนวายุลมกลด",             sfx: 'wind',   dmg: 100  },
+    water:  { label: "ผู้กล้าโดนมหาสมุทรคลั่ง",         sfx: 'water',  dmg: 300  },
+    earth:  { label: "ผู้กล้าโดนปฐพีกลืนกิน",           sfx: 'earth',  dmg: 200  },
+    fire:   { label: "ผู้กล้าโดนอัคนีพิโรธ",             sfx: 'fire',   dmg: 400  },
+    winter: { label: "ผู้กล้าโดนดินแดนเยือกแข็ง",       sfx: 'winter', dmg: 300  },
+    thunder:{ label: "ผู้กล้าโดนทัณฑ์สวรรค์สายฟ้ากัมปนาถ", sfx: 'thunder', dmg: 500 },
+    hp:     { label: "ได้รับน้ำยาเพิ่มพลัง",             sfx: 'hp',     dmg: -100 }
+};
+
+/** ───────────────────────────────────────────────
+    Audio & State
+─────────────────────────────────────────────── */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const buffers = {};
+const soundPaths = {
+    start:    'audio/start.mp3',
+    back:     'audio/back.mp3',
+    wheel:    'audio/wheel.mp3',
+    wheel1:   'audio/wheel1.mp3',
+    up:       'audio/up.mp3',
+    up1:      'audio/up1.mp3',
+    down:     'audio/down.mp3',
+    minigame: 'audio/minigame.mp3',
+    shield:   'audio/shield.mp3',
+    wind:     'audio/wind.mp3',
+    water:    'audio/water.mp3',
+    earth:    'audio/earth.mp3',
+    winter:   'audio/winter.mp3',
+    fire:     'audio/fire.mp3',
+    thunder:  'audio/thunder.mp3',
+    hp:       'audio/hp.mp3',
+    t:        'audio/t.mp3',
+    t1:       'audio/t1.mp3',
+    f:        'audio/f.mp3',
+    winner:   'audio/winner.mp3',
+    lost:     'audio/lost.mp3'
+};
+
+let bgmSource = null;
+let state = { 
+    hp: 1000, 
+    floor: 1, 
+    hasShield: false, 
+    isBusy: false, 
+    usedQuiz: [], 
+    f20Step: 0, 
+    f20Data: [],
+    lastEffects: [],
+    consecutiveCorrect: 0,
+    usedMiniGameQ: new Set(),
+    inMiniGame: false
+};
+
+let skipBuffer = "";
+let lastKeyTime = 0;
+
+async function loadSound(name, url) {
+    try {
+        const r = await fetch(url);
+        const ab = await r.arrayBuffer();
+        buffers[name] = await audioCtx.decodeAudioData(ab);
+    } catch(e) {}
+}
+
+async function initPreload() {
+    await loadSound('start', soundPaths.start);
+    await loadSound('back',  soundPaths.back);
+    document.getElementById('loading-overlay').style.display = 'none';
+    Object.entries(soundPaths).forEach(([n,u]) => { if (n!=='start'&&n!=='back') loadSound(n,u); });
+}
+
+function play(name, loop = false) {
+    if (!buffers[name]) return null;
+    const s = audioCtx.createBufferSource();
+    s.buffer = buffers[name];
+    s.loop = loop;
+    s.connect(audioCtx.destination);
+    s.start(0);
+    return s;
+}
+
+function playWait(name) {
+    return new Promise(r => {
+        const s = play(name);
+        if (!s) return r();
+        s.onended = r;
+    });
+}
+
+function announce(text) {
+    const el = document.getElementById('aria-announcer');
+    el.innerText = ""; el.removeAttribute('aria-hidden');
+    setTimeout(() => {
+        el.innerText = text;
+        setTimeout(() => el.setAttribute('aria-hidden','true'), 1200);
+    }, 80);
+}
+
+function updateUI() {
+    const hpText = `❤️ HP: ${Math.max(0, state.hp).toLocaleString()}`;
+    const shieldText = state.hasShield ? "🛡️ มีเกราะ" : "🛡️ ไม่มีเกราะ";
+
+    document.getElementById('hp-display').innerText     = hpText;
+    document.getElementById('mg-hp-display').innerText  = hpText;
+
+    document.getElementById('shield-display').innerText    = shieldText;
+    document.getElementById('mg-shield-display').innerText = shieldText;
+
+    // Low HP vignette
+    document.getElementById('low-hp-vignette').style.opacity = (state.hp <= 300) ? "" : "0";
+}
+
+function switchScene(id) {
+    document.querySelectorAll('.scene').forEach(s=>s.classList.remove('active'));
+    const sc = document.getElementById(id); sc.classList.add('active');
+    const h = sc.querySelector('h1,h2'); if(h) h.focus();
+
+    // Start floating particles only when entering tower scene
+    if (id === 'scene-tower') {
+        startFloatingParticles();
+    }
+}
+
+function startFloatingParticles() {
+    const container = document.getElementById('tower-particles');
+    if (container.children.length > 0) return; // already running
+
+    function createParticle() {
+        const p = document.createElement('div');
+        p.className = 'particle-bg';
+        const size = 4 + Math.random()*10;
+        p.style.width = size + 'px';
+        p.style.height = size + 'px';
+        p.style.left = Math.random()*100 + '%';
+        p.style.animation = `particle-rise ${8 + Math.random()*12}s linear forwards`;
+        p.style.animationDelay = Math.random()*3 + 's';
+        container.appendChild(p);
+
+        setTimeout(()=>{
+            p.remove();
+            if (document.getElementById('scene-tower').classList.contains('active')) {
+                createParticle();
+            }
+        }, 20000);
+    }
+
+    for(let i=0; i<12; i++) {
+        setTimeout(createParticle, i*800 + Math.random()*1200);
+    }
+}
+
+/** ───────────────────────────────────────────────
+    SECRET SKIP (เดิม)
+─────────────────────────────────────────────── */
+window.addEventListener('keydown', e => {
+    const now = Date.now();
+    if (now - lastKeyTime > 2000) skipBuffer = "";
+    skipBuffer += e.key.toLowerCase();
+    lastKeyTime = now;
+    if (skipBuffer.includes("skip")) {
+        skipBuffer = "";
+        if (state.floor >= 20 || state.hp <= 0) return;
+        state.floor = 18;state.isBusy = false;
+        announce("สูตรลับทำงาน! วาร์ปสู่ชั้นที่ 18");
+        startFloor();
+    }
+});
+
+/** ───────────────────────────────────────────────
+    GAME START
+─────────────────────────────────────────────── */
+document.getElementById('btn-begin').onclick = async () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    document.getElementById('btn-begin').disabled = true;
+    await playWait('start');
+    bgmSource = play('back', true);
+    switchScene('scene-tower');
+    startFloor();
+};
+
+function startFloor() {
+    updateUI();
+    if (state.floor < 20) showQuiz();
+    else startFloor20();
+}
+
+function showQuiz() {
+    document.getElementById('quiz-area').style.display = 'block';
+    document.getElementById('wheel-area').style.display = 'none';
+    let idx;
+    do { idx = Math.floor(Math.random() * quiz1to19.length); } 
+    while (state.usedQuiz.includes(idx));
+    state.usedQuiz.push(idx);
+    const q = quiz1to19[idx];
+    const h = document.getElementById('question-heading');
+    h.innerText = `ชั้นที่ ${state.floor} - ${q.q}`; h.focus();
+    const c = document.getElementById('options-container');
+    c.innerHTML = "";
+    q.opts.forEach((opt,i)=>{
+        const b = document.createElement('button');
+        b.className = 'btn-opt';
+        b.innerText = `${['ก','ข','ค'][i]}. ${opt}`;
+        b.onclick = ()=>{
+            document.querySelectorAll('.btn-opt').forEach(bb=>bb.classList.add('dim'));
+            b.classList.add('selected');
+            setTimeout(()=>{
+                document.getElementById('quiz-area').style.display = 'none';
+                document.getElementById('wheel-area').style.display = 'block';
+                spinWheel(i === q.ans);
+            },600);
+        };
+        c.appendChild(b);
+    });
+}
+
+async function spinWheel(isCorrect) {
+    if (state.isBusy) return; state.isBusy = true;
+
+    if (isCorrect) {
+        state.consecutiveCorrect++;
+        if (state.consecutiveCorrect >= 4 && state.floor <= 19) {
+            state.consecutiveCorrect = 0;
+            await enterMiniGame();
+            state.isBusy = false;
+            return;
+        }
+    } else {
+        state.consecutiveCorrect = 0;
+    }
+
+    let pool = isCorrect 
+        ? ['shield','shield','hp','hp','wind','water','earth','fire','winter','thunder']
+        : ['shield','hp','wind','wind','water','water','earth','earth','fire','fire','winter','winter','thunder','thunder'];
+    let avail = pool.filter(e=>!state.lastEffects.includes(e));
+    if (avail.length===0) avail = pool;
+    const key = avail[Math.floor(Math.random()*avail.length)];
+    state.lastEffects.push(key);
+    if (state.lastEffects.length>3) state.lastEffects.shift();
+
+    const wheel = document.getElementById('visual-wheel');
+    const lever = document.getElementById('lever-visual');
+    wheel.classList.add('spinning');
+    lever.classList.add('lever-active');
+    wheel.style.transform = `rotate(${1800 + Math.random()*360}deg)`;
+    announce("กงล้อกำลังหมุน...");
+
+    await playWait(isCorrect ? 'wheel' : 'wheel1');
+
+    wheel.classList.remove('spinning');
+    const flash = document.getElementById('wheel-flash-el');
+    flash.classList.add('flash-active');
+    setTimeout(()=>flash.classList.remove('flash-active'),200);
+    lever.classList.remove('lever-active');
+
+    await applyEffect(key);
+}
+
+async function applyEffect(key) {
+    const eff = effects[key];
+    const flash = document.getElementById('element-flash');
+    const cont = document.getElementById('game-container');
+    let speech = eff.label;
+
+    flash.className = `flash-${key}`;
+    setTimeout(()=>flash.className="",850);
+
+    // ─── NEW: Enhanced elemental visual layer ───
+    const layer = document.getElementById('elemental-layer');
+    layer.className = 'elemental-layer';
+    layer.classList.add(`eff-${key}`);
+    setTimeout(()=> { layer.className = 'elemental-layer'; }, 1800);
+
+    await playWait(eff.sfx);
+
+    if (eff.dmg > 0) {
+        if (state.hasShield) { 
+            speech = "เกราะแห่งแสงป้องกันไว้ได้"; 
+            state.hasShield = false; 
+        } else { 
+            state.hp -= eff.dmg; 
+            speech = `${eff.label} เสียพลังชีวิต ${eff.dmg}`; 
+            if(eff.dmg >= 200){
+                cont.classList.add('shake');
+                setTimeout(()=>cont.classList.remove('shake'),400);
+            }
+        }
+} else if (eff.dmg < 0) {
+    const healAmount = Math.abs(eff.dmg); // ดึงค่า 100 มาจาก effects.hp.dmg
+    state.hp = Math.min(1000, state.hp + healAmount); 
+    speech = `${eff.label} ฟื้นฟูพลังชีวิต ${healAmount}`;
+        const hpEl = document.getElementById('hp-display');
+        hpEl.classList.add('hp-pulse');
+        const f = document.createElement('div');
+        f.className='floating-hp'; f.innerText='+200'; f.setAttribute('aria-hidden','true');
+        hpEl.appendChild(f);
+        setTimeout(()=>{hpEl.classList.remove('hp-pulse');f.remove();},1500);
+    }
+
+    if (eff.isShield) {
+        state.hasShield = true;
+        const aura = document.getElementById('shield-aura-visual');
+        aura.classList.add('shield-active');
+        setTimeout(()=>aura.classList.remove('shield-active'),1200);
+    }
+
+    announce(`${speech} เหลือพลังชีวิต ${Math.max(0,state.hp)}`);
+    updateUI();
+    await new Promise(r=>setTimeout(r,2000));
+
+    if (state.hp <= 0) return endGame(false);
+
+    // ─── NEW: Floor transition zoom + light sweep ───
+    cont.classList.add('floor-transition');
+    const sweep = document.createElement('div');
+    sweep.className = 'light-sweep';
+    cont.appendChild(sweep);
+    setTimeout(()=>sweep.remove(), 1200);
+
+    await playWait(state.floor === 19 ? 'up1' : 'up');
+    state.floor++; 
+    state.isBusy = false;
+    startFloor();
+
+    // Clean up transition class
+    setTimeout(()=>cont.classList.remove('floor-transition'), 900);
+}
+
+/** ───────────────────────────────────────────────
+    Mini Game Core
+─────────────────────────────────────────────── */
+async function enterMiniGame() {
+    state.inMiniGame = true;
+    document.body.classList.add('mini-game-active');
+    document.getElementById('minigame-scene').style.display = 'flex';
+
+    let avail = miniGameQuestions.filter((_,i)=>!state.usedMiniGameQ.has(i));
+    if (avail.length === 0) {
+        state.usedMiniGameQ.clear();
+        avail = [...miniGameQuestions];
+    }
+    const idx = Math.floor(Math.random() * avail.length);
+    const chosen = avail[idx];
+    const realIndex = miniGameQuestions.indexOf(chosen);
+    state.usedMiniGameQ.add(realIndex);
+
+    const word = chosen.en.toLowerCase();
+    const thWord  = chosen.th;
+
+    const titleEl = document.getElementById('minigame-question-heading');
+    titleEl.innerText = `ชั้นพิเศษ - สะกดเป็นคำว่า "${thWord}" ตามลำดับให้ถูกสิท่านผู้กล้า`;
+    titleEl.focus();
+
+    const display = document.getElementById('mg-spelling');
+    const grid = document.getElementById('mg-letters');
+    display.textContent = '_ '.repeat(word.length).trim();
+    grid.innerHTML = '';
+
+    let letters = word.split('');
+    letters = letters.sort(()=>Math.random()-0.5);
+
+    letters.forEach(char => {
+        const btn = document.createElement('button');
+        btn.className = 'letter-btn-mg';
+        btn.textContent = char;
+        btn.dataset.char = char;
+        btn.setAttribute('aria-label', `ตัวอักษร ${char}`);
+        btn.onclick = ()=>selectMiniLetter(btn, char, word);
+        grid.appendChild(btn);
+    });
+
+    mgSelected = [];
+    mgTargetWord = word;
+
+    await playWait('minigame');
+}
+
+let mgSelected = [];
+let mgTargetWord = "";
+
+async function selectMiniLetter(btn, char, correctWord) {
+    if (state.inMiniGame === false) return;
+    if (btn.classList.contains('used') || btn.classList.contains('wrong')) return;
+
+    mgSelected.push(char);
+    btn.classList.add('used');
+    btn.setAttribute('aria-disabled', 'true');
+    btn.setAttribute('tabindex', '-1');
+    btn.setAttribute('aria-label', `${char} เลือกแล้ว`);
+
+    const display = document.getElementById('mg-spelling');
+    display.textContent = mgSelected.join(' ');
+
+    const typed = mgSelected.join('');
+
+    if (typed.length < correctWord.length && correctWord.startsWith(typed)) {
+        await playWait('t1');
+
+        for(let i=0;i<6;i++){
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.setProperty('--dx', (Math.random()-0.5)*120 + 'px');
+            p.style.setProperty('--dy', (Math.random()-0.5)*120 - 40 + 'px');
+            p.style.left = '50%'; p.style.top = '50%';
+            btn.appendChild(p);
+            setTimeout(()=>p.remove(), 1300);
+        }
+    }
+
+    if (typed === correctWord) {
+        state.inMiniGame = false;
+        await playWait('hp');
+        document.getElementById('minigame-scene').style.display = 'none';
+        document.body.classList.remove('mini-game-active');
+
+const hpValues = [100, 200, 300]; 
+const randomHP = hpValues[Math.floor(Math.random() * hpValues.length)];
+state.hp += randomHP;
+if (state.hp > 1000) state.hp = 1000;
+announce(`ผ่านประตูธาตุโบราณ! ได้รับพลังชีวิต +${randomHP}`);
+        updateUI();
+
+        const cont = document.getElementById('game-container');
+        cont.classList.add('hp-pulse');
+        setTimeout(()=>cont.classList.remove('hp-pulse'), 1200);
+
+        await playWait('up');
+        state.floor++;
+        startFloor();
+        mgSelected = [];
+        return;
+    }
+
+    if (!correctWord.startsWith(typed)) {
+        state.inMiniGame = false;
+        btn.classList.add('wrong');
+        await playWait('f');
+
+        state.floor = Math.max(1, state.floor - 3);
+        announce(`ผิดพลาด! ตกลงไป 3 ชั้น → ชั้นที่ ${state.floor}`);
+        document.getElementById('minigame-scene').style.display = 'none';
+        document.body.classList.remove('mini-game-active');
+
+        await playWait('down');
+        startFloor();
+        mgSelected = [];
+    }
+}
+
+/** ───────────────────────────────────────────────
+    Floor 20 (เดิม)
+─────────────────────────────────────────────── */
+function startFloor20() {
+    state.f20Step = 0;
+    state.f20Data = quiz20.sort(()=>Math.random()-0.5).slice(0,3);
+    showF20();
+}
+
+function showF20() {
+    document.getElementById('quiz-area').style.display = 'block';
+    document.getElementById('wheel-area').style.display = 'none';
+    const d = state.f20Data[state.f20Step];
+    const h = document.getElementById('question-heading');
+    h.innerText = `ชั้นที่ 20 แห่งความรู้ (ข้อ ${state.f20Step+1}/3) - ${d.q}`; h.focus();
+    const c = document.getElementById('options-container');
+    c.innerHTML = "";
+    d.opts.forEach((opt,i)=>{
+        const b = document.createElement('button');
+        b.className = 'btn-opt';
+        b.innerText = opt;
+        b.onclick = async ()=>{
+            document.querySelectorAll('.btn-opt').forEach(bb=>bb.classList.add('dim'));
+            b.classList.add('selected');
+            if (i === d.ans) {
+                await playWait('t');
+                state.f20Step++;
+                if (state.f20Step >= 3) endGame(true);
+                else showF20();
+            } else {
+                endGame(false);
+            }
+        };
+        c.appendChild(b);
+    });
+}
+
+/** ───────────────────────────────────────────────
+    END GAME (ปรับเฉพาะตอนชนะ)
+─────────────────────────────────────────────── */
+async function endGame(win) {
+    if (bgmSource) { bgmSource.stop(); bgmSource = null; }
+    switchScene('scene-result');
+    const cont = document.getElementById('game-container');
+    const icon = document.getElementById('result-icon');
+    const desc = document.getElementById('result-desc');
+    const stats = document.getElementById('result-stats');
+    const winGlow = document.getElementById('win-glow');
+    const winParticles = document.getElementById('win-particles');
+    const winConfetti = document.getElementById('win-confetti');
+    
+    let cf = win ? 20 : (state.floor===20 ? 19 : state.floor-1);
+    stats.innerText = `ชั้นที่พิชิตได้: ${cf} | พลังชีวิตสุดท้าย: ${Math.max(0,state.hp)}`;
+    
+    if (win) {
+        icon.innerText = "🏆";
+        icon.className = "scale-up trophy-sparkle";
+        cont.classList.add('trophy-sparkle');
+
+        winGlow.classList.add('active');
+
+        for(let i = 0; i < 28; i++){
+            const p = document.createElement('div');
+            p.className = 'win-particle';
+            p.style.left = Math.random()*100 + '%';
+            p.style.top = Math.random()*40 + '%';
+            p.style.animation = `win-particle-rise ${2 + Math.random()*3}s linear forwards`;
+            p.style.animationDelay = Math.random()*1.2 + 's';
+            winParticles.appendChild(p);
+            setTimeout(()=>p.remove(), 6000);
+        }
+
+        for(let i = 0; i < 60; i++){
+            const c = document.createElement('div');
+            c.className = 'confetti-piece';
+            c.style.left = Math.random()*100 + '%';
+            c.style.background = `hsl(${Math.random()*60 + 40}, 100%, 60%)`;
+            c.style.animation = `confetti-fall ${3 + Math.random()*4}s linear forwards`;
+            c.style.animationDelay = Math.random()*1.5 + 's';
+            winConfetti.appendChild(c);
+            setTimeout(()=>c.remove(), 8000);
+        }
+
+        desc.innerText = praiseMsgs[Math.floor(Math.random()*praiseMsgs.length)];
+        announce("ยินดีด้วย! " + desc.innerText);
+        await playWait('winner');
+    } else {
+        icon.innerText = "💀";
+        icon.className = "scale-up";
+        cont.classList.add('game-over-fade','red-pulse','shake');
+        setTimeout(()=>cont.classList.remove('shake'),400);
+        desc.innerText = encouragementMsgs[Math.floor(Math.random()*encouragementMsgs.length)];
+        announce("เกมจบลงแล้ว... " + desc.innerText);
+        await playWait('lost');
+    }
+}
+
+initPreload();
+</script>
+</body>
+</html>
