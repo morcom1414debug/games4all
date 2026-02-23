@@ -527,36 +527,6 @@
             60%  { opacity: 0.9; }
             100% { transform: translateY(100%); opacity: 0; }
         }
-
-        /* ───────────────────────────────────────────────
-           Battle Mode Styles
-        ─────────────────────────────────────────────── */
-        #battle-log {
-            background: rgba(0,0,0,0.3);
-            padding: 1.2rem;
-            border-radius: 16px;
-            border: 1px solid rgba(241,196,15,0.2);
-            max-height: 180px;
-            overflow-y: auto;
-        }
-
-        #battle-hero-hp, #battle-guardian-hp {
-            transition: all 0.4s ease;
-        }
-
-        .battle-hp-low {
-            color: #ff4b2b !important;
-            animation: hp-pulse-anim 1.2s infinite;
-        }
-
-        .battle-turn-player   { color: var(--gold);   font-weight: bold; }
-        .battle-turn-guardian { color: #ff9800; font-weight: bold; }
-
-        #btn-pull-lever:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
     </style>
 </head>
 <body>
@@ -639,27 +609,6 @@
             <p id="result-desc" style="font-size: 1.3rem; font-weight: 600;"></p>
             <p id="result-stats" style="opacity: 0.8;"></p>
         </section>
-
-        <!-- เพิ่ม scene ใหม่สำหรับ battle mode -->
-        <section id="scene-battle" class="scene">
-            <div class="stats-bar" style="margin-bottom: 1.5rem;">
-                <div class="stat-item" id="battle-hero-hp">❤️ ผู้กล้า: 1,000</div>
-                <div class="stat-item" id="battle-guardian-hp">🛡️ ผู้พิทักษ์หอคอย: 1,000</div>
-            </div>
-
-            <h2 id="battle-title" tabindex="-1">ศึกสุดท้าย — ผู้พิทักษ์หอคอยแห่งวาลูก้า</h2>
-            
-            <div id="battle-log" style="min-height: 120px; font-size: 1.2rem; margin: 1.5rem 0; line-height: 1.6;">
-                การต่อสู้กำลังเริ่มต้น...
-            </div>
-
-            <div style="margin-top: auto; text-align: center;">
-                <button id="btn-pull-lever" class="btn-main" style="font-size: 1.4rem; padding: 20px 60px;">
-                    กดคันโยกโจมตี
-                </button>
-            </div>
-        </section>
-
     </div>
 </div>
 
@@ -815,15 +764,7 @@ const soundPaths = {
     t1:       'audio/t1.mp3',
     f:        'audio/f.mp3',
     winner:   'audio/winner.mp3',
-    lost:     'audio/lost.mp3',
-    // เพิ่มสำหรับ battle
-    battle:   'audio/battle.mp3',
-    earth1:   'audio/earth1.mp3',
-    fire1:    'audio/fire1.mp3',
-    thunder1: 'audio/thunder1.mp3',
-    water1:   'audio/water1.mp3',
-    wind1:    'audio/wind1.mp3',
-    winter1:  'audio/winter1.mp3'
+    lost:     'audio/lost.mp3'
 };
 
 let bgmSource = null;
@@ -838,12 +779,7 @@ let state = {
     lastEffects: [],
     consecutiveCorrect: 0,
     usedMiniGameQ: new Set(),
-    inMiniGame: false,
-    // ── ใหม่สำหรับ battle ──
-    inBattle: false,
-    battleHeroHP: 1000,
-    battleGuardianHP: 1000,
-    battleTurn: null // 'player' or 'guardian'
+    inMiniGame: false
 };
 
 let skipBuffer = "";
@@ -1079,14 +1015,14 @@ async function applyEffect(key) {
                 setTimeout(()=>cont.classList.remove('shake'),400);
             }
         }
-    } else if (eff.dmg < 0) {
-        const healAmount = Math.abs(eff.dmg);
-        state.hp = Math.min(1000, state.hp + healAmount); 
-        speech = `${eff.label} ฟื้นฟูพลังชีวิต ${healAmount}`;
+} else if (eff.dmg < 0) {
+    const healAmount = Math.abs(eff.dmg); // ดึงค่า 100 มาจาก effects.hp.dmg
+    state.hp = Math.min(1000, state.hp + healAmount); 
+    speech = `${eff.label} ฟื้นฟูพลังชีวิต ${healAmount}`;
         const hpEl = document.getElementById('hp-display');
         hpEl.classList.add('hp-pulse');
         const f = document.createElement('div');
-        f.className='floating-hp'; f.innerText='+100'; f.setAttribute('aria-hidden','true');
+        f.className='floating-hp'; f.innerText='+200'; f.setAttribute('aria-hidden','true');
         hpEl.appendChild(f);
         setTimeout(()=>{hpEl.classList.remove('hp-pulse');f.remove();},1500);
     }
@@ -1207,11 +1143,11 @@ async function selectMiniLetter(btn, char, correctWord) {
         document.getElementById('minigame-scene').style.display = 'none';
         document.body.classList.remove('mini-game-active');
 
-        const hpValues = [100, 200, 300]; 
-        const randomHP = hpValues[Math.floor(Math.random() * hpValues.length)];
-        state.hp += randomHP;
-        if (state.hp > 1000) state.hp = 1000;
-        announce(`ผ่านประตูธาตุโบราณ! ได้รับพลังชีวิต +${randomHP}`);
+const hpValues = [100, 200, 300]; 
+const randomHP = hpValues[Math.floor(Math.random() * hpValues.length)];
+state.hp += randomHP;
+if (state.hp > 1000) state.hp = 1000;
+announce(`ผ่านประตูธาตุโบราณ! ได้รับพลังชีวิต +${randomHP}`);
         updateUI();
 
         const cont = document.getElementById('game-container');
@@ -1242,7 +1178,7 @@ async function selectMiniLetter(btn, char, correctWord) {
 }
 
 /** ───────────────────────────────────────────────
-    Floor 20 (ปรับให้เรียก battle แทน win ทันที)
+    Floor 20 (เดิม)
 ─────────────────────────────────────────────── */
 function startFloor20() {
     state.f20Step = 0;
@@ -1268,182 +1204,14 @@ function showF20() {
             if (i === d.ans) {
                 await playWait('t');
                 state.f20Step++;
-                if (state.f20Step >= 3) {
-                    enterBattleMode();
-                } else {
-                    showF20();
-                }
+                if (state.f20Step >= 3) endGame(true);
+                else showF20();
             } else {
                 endGame(false);
             }
         };
         c.appendChild(b);
     });
-}
-
-/** ───────────────────────────────────────────────
-    Battle Mode — เรียกเมื่อผ่านข้อสอบชั้น 20 ครบ 3 ข้อ
-─────────────────────────────────────────────── */
-async function enterBattleMode() {
-    state.inBattle = true;
-    state.battleHeroHP     = 1000;
-    state.battleGuardianHP = 1000;
-    state.battleTurn = Math.random() < 0.5 ? 'player' : 'guardian';
-
-    switchScene('scene-battle');
-    document.getElementById('battle-title').focus();
-
-    updateBattleUI();
-    announce("ศึกสุดท้ายเริ่มต้นแล้ว! ผู้พิทักษ์หอคอยแห่งวาลูก้าปรากฏตัว");
-
-    await playWait('battle');
-
-    // เริ่ม turn แรก
-    setTimeout(battleTurnLoop, 1200);
-}
-
-function updateBattleUI() {
-    const heroEl     = document.getElementById('battle-hero-hp');
-    const guardianEl = document.getElementById('battle-guardian-hp');
-    
-    heroEl.innerText     = `❤️ ผู้กล้า: ${Math.max(0, state.battleHeroHP).toLocaleString()}`;
-    guardianEl.innerText = `🛡️ ผู้พิทักษ์หอคอย: ${Math.max(0, state.battleGuardianHP).toLocaleString()}`;
-
-    heroEl.classList.toggle('battle-hp-low', state.battleHeroHP <= 300);
-    guardianEl.classList.toggle('battle-hp-low', state.battleGuardianHP <= 300);
-}
-
-function appendBattleLog(msg, className = '') {
-    const log = document.getElementById('battle-log');
-    const p = document.createElement('p');
-    p.innerText = msg;
-    if (className) p.className = className;
-    log.appendChild(p);
-    log.scrollTop = log.scrollHeight;
-}
-
-async function battleTurnLoop() {
-    if (!state.inBattle) return;
-
-    const btn = document.getElementById('btn-pull-lever');
-    btn.disabled = true;
-
-    if (state.battleTurn === 'player') {
-        appendBattleLog("ถึงตาคุณ — กดคันโยกเพื่อโจมตี!", 'battle-turn-player');
-        announce("ถึงตาคุณ กดคันโยกเพื่อโจมตี");
-        btn.disabled = false;
-        btn.focus();
-    } else {
-        appendBattleLog("ผู้พิทักษ์หอคอยกำลังโจมตี...", 'battle-turn-guardian');
-        announce("ผู้พิทักษ์หอคอยกำลังโจมตี");
-        await new Promise(r => setTimeout(r, 1200));
-        await guardianAttack();
-    }
-}
-
-document.getElementById('btn-pull-lever').onclick = async function playerAttack() {
-    if (!state.inBattle || state.battleTurn !== 'player') return;
-    this.disabled = true;
-
-    const keys = ['earth','fire','thunder','water','wind','winter'];
-    const key = keys[Math.floor(Math.random()*keys.length)];
-    const eff = effects[key];
-
-    // animation & sound เหมือนเดิม
-    const wheel = document.getElementById('visual-wheel');
-    wheel.style.display = 'block'; // hack ชั่วคราวให้เห็นวงล้อ
-    wheel.classList.add('spinning');
-    await playWait('wheel');
-
-    wheel.classList.remove('spinning');
-    wheel.style.display = 'none';
-
-    // visual effect เดิม
-    const flash = document.getElementById('element-flash');
-    flash.className = `flash-${key}`;
-    setTimeout(()=>flash.className="", 850);
-
-    const layer = document.getElementById('elemental-layer');
-    layer.classList.add(`eff-${key}`);
-    setTimeout(()=>layer.classList.remove(`eff-${key}`), 1800);
-
-    await playWait(key + '1');  // earth1, fire1, ...
-
-    // damage
-    state.battleGuardianHP -= eff.dmg;
-    if (state.battleGuardianHP < 0) state.battleGuardianHP = 0;
-
-    appendBattleLog(`คุณใช้ธาตุ${key} โจมตี! ผู้พิทักษ์เสีย ${eff.dmg} HP`, 'battle-turn-player');
-    announce(`คุณโจมตีด้วยธาตุ${key} ผู้พิทักษ์เสีย ${eff.dmg} HP เหลือ ${state.battleGuardianHP}`);
-
-    updateBattleUI();
-
-    if (state.battleGuardianHP <= 0) {
-        await endBattle(true);
-        return;
-    }
-
-    // สลับตา
-    state.battleTurn = 'guardian';
-    setTimeout(battleTurnLoop, 1800);
-};
-
-async function guardianAttack() {
-    if (!state.inBattle) return;
-
-    const keys = ['earth','fire','thunder','water','wind','winter'];
-    const key = keys[Math.floor(Math.random()*keys.length)];
-    const eff = effects[key];
-
-    // animation เดียวกัน
-    const wheel = document.getElementById('visual-wheel');
-    wheel.style.display = 'block';
-    wheel.classList.add('spinning');
-    await playWait('wheel');
-
-    wheel.classList.remove('spinning');
-    wheel.style.display = 'none';
-
-    const flash = document.getElementById('element-flash');
-    flash.className = `flash-${key}`;
-    setTimeout(()=>flash.className="", 850);
-
-    const layer = document.getElementById('elemental-layer');
-    layer.classList.add(`eff-${key}`);
-    setTimeout(()=>layer.classList.remove(`eff-${key}`), 1800);
-
-    await playWait(eff.sfx);  // เสียงชุดเดิม
-
-    // damage to player
-    state.battleHeroHP -= eff.dmg;
-    if (state.battleHeroHP < 0) state.battleHeroHP = 0;
-
-    appendBattleLog(`ผู้พิทักษ์ใช้ธาตุ${key} โจมตี! คุณเสีย ${eff.dmg} HP`, 'battle-turn-guardian');
-    announce(`ผู้พิทักษ์โจมตีด้วยธาตุ${key} คุณเสีย ${eff.dmg} HP เหลือ ${state.battleHeroHP}`);
-
-    updateBattleUI();
-
-    if (state.battleHeroHP <= 0) {
-        await endBattle(false);
-        return;
-    }
-
-    // สลับตา
-    state.battleTurn = 'player';
-    setTimeout(battleTurnLoop, 1800);
-}
-
-async function endBattle(win) {
-    state.inBattle = false;
-    document.getElementById('btn-pull-lever').disabled = true;
-
-    if (win) {
-        await playWait('winner');
-        endGame(true);
-    } else {
-        await playWait('lost');
-        endGame(false);
-    }
 }
 
 /** ───────────────────────────────────────────────
