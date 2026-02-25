@@ -3,15 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Valuga Battle Arena - โหมดต่อสู้</title>
+    <title>Valuga Battle Mode - ศึกผู้พิทักษ์</title>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #6a11cb; --secondary: #2575fc; --danger: #ff4b2b;
             --success: #00b09b; --gold: #f1c40f; --dark-bg: #0f0c29;
-            --glass: rgba(255, 255, 255, 0.15);
-            --fire: #ff4b2b; --water: #2575fc; --winter: #e0f7fa;
-            --thunder: #bf55ff; --earth: #5d4037; --wind: #cfd8dc;
             --hp-color: #00e676;
         }
         body {
@@ -22,249 +19,258 @@
             height: 100vh; overflow: hidden;
         }
         #game-container {
-            background: rgba(22, 33, 62, 0.85); backdrop-filter: blur(25px);
-            border-radius: 40px; padding: 2.5rem; text-align: center;
-            box-shadow: 0 30px 60px rgba(0,0,0,0.7); border: 2px solid rgba(255, 255, 255, 0.1);
+            background: rgba(22, 33, 62, 0.85); backdrop-filter: blur(15px);
+            border-radius: 30px; padding: 2.5rem; text-align: center;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5); border: 2px solid rgba(255, 255, 255, 0.1);
             width: 100%; max-width: 500px; position: relative;
         }
-        .stats-bar { display: flex; justify-content: space-between; margin-bottom: 30px; gap: 15px; }
-        .stat-item { 
-            background: var(--glass); padding: 15px; border-radius: 20px; 
-            flex: 1; font-weight: 600; border: 1px solid rgba(255,255,255,0.1);
-            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        .hp-val { color: var(--hp-color); font-size: 1.4rem; margin-top: 5px; }
-        .shield-val { color: var(--gold); font-size: 0.9rem; min-height: 1.2rem; }
+        .scene { display: none; flex-direction: column; gap: 1.5rem; animation: fadeIn 0.5s ease; }
+        .scene.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* ซ่อน Battle Log ตามความต้องการ ให้เหลือแค่ประกาศเสียง */
-        .log-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+        .btn-main {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: none; padding: 18px 40px; border-radius: 50px; color: white;
+            font-size: 1.3rem; font-weight: 600; cursor: pointer; transition: 0.3s;
+        }
+        .btn-main:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(37, 117, 252, 0.4); }
+        .btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .wheel-wrapper { position: relative; width: 220px; height: 220px; margin: 30px auto; }
+        .stats-bar { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 20px; }
+        .stat-item { background: rgba(255,255,255,0.1); padding: 12px; border-radius: 15px; flex: 1; font-weight: bold; position: relative; }
+        .shield-active { border: 2px solid var(--gold); box-shadow: 0 0 15px var(--gold); }
+
+        .wheel-wrapper { position: relative; width: 180px; height: 180px; margin: 20px auto; }
         .wheel-graphic {
-            width: 100%; height: 100%; border-radius: 50%; border: 8px solid var(--gold);
-            background: conic-gradient(
-                var(--fire) 0% 12.5%, var(--water) 12.5% 25%, 
-                var(--winter) 25% 37.5%, var(--thunder) 37.5% 50%, 
-                var(--earth) 50% 62.5%, var(--wind) 62.5% 75%, 
-                var(--hp-color) 75% 87.5%, var(--gold) 87.5% 100%
-            );
-            box-shadow: 0 0 30px rgba(241, 196, 15, 0.3);
-            transition: transform 3.5s cubic-bezier(0.15, 0, 0.15, 1);
+            width: 100%; height: 100%; border-radius: 50%; border: 6px solid var(--gold);
+            background: conic-gradient(var(--primary) 0% 12.5%, var(--secondary) 12.5% 25%, var(--primary) 25% 37.5%, var(--secondary) 37.5% 50%, var(--primary) 50% 62.5%, var(--secondary) 62.5% 75%, var(--primary) 75% 87.5%, var(--secondary) 87.5% 100%);
+            transition: transform 3s cubic-bezier(0.15, 0, 0.15, 1);
         }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
         
-        .lever-container { position: absolute; right: -50px; top: 50%; height: 100px; width: 20px; background: #1a1a1a; border-radius: 10px; border: 2px solid #333; }
-        .lever-handle { width: 34px; height: 34px; background: radial-gradient(circle at 30% 30%, var(--danger), #800); border-radius: 50%; position: absolute; left: -9px; top: 0; transition: top 0.4s; cursor: pointer; }
-        .lever-active .lever-handle { top: 66px; }
-
-        .btn-pull {
-            background: linear-gradient(135deg, var(--danger), #ff9800);
-            border: none; padding: 18px 60px; border-radius: 50px; color: white;
-            font-size: 1.5rem; font-weight: 600; cursor: pointer; transition: 0.3s;
-            box-shadow: 0 10px 25px rgba(255, 75, 43, 0.4); margin-top: 20px;
-        }
-        .btn-pull:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 15px 30px rgba(255, 75, 43, 0.5); }
-        .btn-pull:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
-        
-        #element-flash { position: fixed; inset: 0; pointer-events: none; z-index: 100; opacity: 0; transition: opacity 0.4s; }
-        
-        /* Animation สำหรับ HP และ Shield */
-        .pulse-heal { animation: pulse-green 0.6s; }
-        @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(0, 230, 118, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); } }
-        
-        .shake { animation: shake 0.5s; }
-        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+        /* Flash Effects */
+        #element-flash { position: fixed; inset: 0; pointer-events: none; z-index: 2000; opacity: 0; }
+        .flash-active { animation: flash-anim 0.8s forwards; }
+        @keyframes flash-anim { 0% { opacity: 0; } 30% { opacity: 0.6; } 100% { opacity: 0; } }
     </style>
 </head>
 <body>
 
-<div id="element-flash"></div>
-<div id="announcer" class="log-hidden" role="status" aria-live="assertive"></div>
+<div id="element-flash" aria-hidden="true"></div>
+<div id="aria-announcer" class="sr-only" role="status" aria-live="assertive"></div>
 
 <div id="game-container">
-    <h2 id="display-title" style="margin-top:0; letter-spacing: 1px;">VALUGA BATTLE</h2>
-    
-    <div class="stats-bar">
-        <div class="stat-item" id="hero-stat">
-            <div style="font-size: 0.8rem; opacity: 0.8;">PLAYER</div>
-            <div class="hp-val" id="hero-hp">1000</div>
-            <div class="shield-val" id="hero-shield"></div>
-        </div>
-        <div class="stat-item" id="guard-stat">
-            <div style="font-size: 0.8rem; opacity: 0.8;">GUARDIAN</div>
-            <div class="hp-val" id="guard-hp">1000</div>
-            <div class="shield-val" id="guard-shield"></div>
-        </div>
-    </div>
+    <section id="scene-intro" class="scene active">
+        <h1>โหมด Battle พิเศษ</h1>
+        <p>เผชิญหน้ากับผู้พิทักษ์หอคอยในศึกตัดสิน!<br>สุ่มกงล้อเพื่อโจมตี ฟื้นพลัง หรือกางเกราะแห่งแสง</p>
+        <button id="btn-start" class="btn-main">เริ่ม Battle</button>
+    </section>
 
-    <div class="wheel-wrapper">
-        <div id="wheel" class="wheel-graphic"></div>
-        <div class="lever-container" id="lever-visual"><div class="lever-handle"></div></div>
-    </div>
+    <section id="scene-battle" class="scene">
+        <div class="stats-bar">
+            <div id="p-stat" class="stat-item">❤️ ผู้เล่น: <span id="p-hp">1000</span></div>
+            <div id="g-stat" class="stat-item">🛡️ ผู้พิทักษ์: <span id="g-hp">1000</span></div>
+        </div>
 
-    <button id="btn-action" class="btn-pull" onclick="startTurn()">โยกคันโยก</button>
+        <h2 id="turn-display">เตรียมตัวต่อสู้...</h2>
+
+        <div class="wheel-wrapper">
+            <div id="visual-wheel" class="wheel-graphic"></div>
+        </div>
+
+        <button id="btn-action" class="btn-main">กดคันโยก</button>
+    </section>
+
+    <section id="scene-result" class="scene">
+        <h2 id="result-title">จบการต่อสู้</h2>
+        <p id="result-desc"></p>
+        <button onclick="location.reload()" class="btn-main">เล่นใหม่อีกครั้ง</button>
+    </section>
 </div>
 
 <script>
-    const SKILLS = [
-        { name: "ธาตุไฟ", dmg: 180, color: "#ff4b2b" },
-        { name: "ธาตุน้ำ", dmg: 150, color: "#2575fc" },
-        { name: "ธาตุน้ำแข็ง", dmg: 160, color: "#e0f7fa" },
-        { name: "ธาตุสายฟ้า", dmg: 200, color: "#bf55ff" },
-        { name: "ธาตุดิน", dmg: 140, color: "#5d4037" },
-        { name: "ธาตุลม", dmg: 130, color: "#cfd8dc" },
-        { name: "HP", type: "heal", color: "#00e676" },
-        { name: "เกราะแห่งแสง", type: "shield", color: "#f1c40f" }
+    // การตั้งค่าท่าและตัวเลือกกงล้อ
+    const attacks = [
+        {name: "หมัดอัคคีพิฆาต", dmg: 150, flash: "#ff4b2b", sfx: "fire"},
+        {name: "วารีสลาตัน", dmg: 140, flash: "#2575fc", sfx: "water"},
+        {name: "พฤกษาพันธนาการ", dmg: 130, flash: "#8d6e63", sfx: "wood"},
+        {name: "สายฟ้ากัมปนาท", dmg: 180, flash: "#bf55ff", sfx: "thunder"},
+        {name: "ปฐพีถล่ม", dmg: 160, flash: "#5d4037", sfx: "earth"},
+        {name: "เหมันต์นิรันดร์", dmg: 145, flash: "#81d4fa", sfx: "ice"}
     ];
 
-    let wheelPool = [];
-    SKILLS.forEach((s, idx) => {
-        if (idx < 6) { wheelPool.push(s, s); } 
-        else { wheelPool.push(s); }
-    });
+    // สร้างลิสต์ตัวเลือก 14 ช่อง (6 ท่า x 2 + HP 1 + Shield 1)
+    let wheelOptions = [];
+    attacks.forEach(a => { wheelOptions.push(a); wheelOptions.push(a); });
+    wheelOptions.push({name: "ฟื้นฟู HP", type: "hp"});
+    wheelOptions.push({name: "เกราะแห่งแสง", type: "shield"});
 
     let state = {
-        hero: { hp: 1000, shield: false },
-        guard: { hp: 1000, shield: false },
+        pHP: 1000, gHP: 1000,
+        pShield: false, gShield: false,
         isPlayerTurn: true,
-        isSpinning: false
+        isBusy: false
     };
 
-    const audioPath = 'audio/';
+    const audioPath = "audio/";
     const sounds = {
-        lever: new Audio(audioPath + 'lever.mp3'),
-        spin: new Audio(audioPath + 'spin.mp3'),
-        hero_atk: new Audio(audioPath + 'hero_atk.mp3'),
-        guard_atk: new Audio(audioPath + 'guard_atk.mp3'),
-        hp_player: new Audio(audioPath + 'hp.mp3'),
-        shield_player: new Audio(audioPath + 'shield.mp3'),
-        hp_guard: new Audio(audioPath + 'hp1.mp3'),
-        shield_guard: new Audio(audioPath + 'shield1.mp3')
+        start: new Audio(audioPath + "start1.mp3"),
+        bgm: new Audio(audioPath + "back.mp3"),
+        wheel: new Audio(audioPath + "wheel.mp3"),
+        win: new Audio(audioPath + "win.mp3"),
+        lost: new Audio(audioPath + "lost.mp3")
+    };
+    sounds.bgm.loop = true;
+
+    // ระบบประกาศ Screen Reader
+    function announce(msg) {
+        document.getElementById('aria-announcer').innerText = msg;
+    }
+
+    // เริ่มเกม
+    document.getElementById('btn-start').onclick = async () => {
+        document.getElementById('btn-start').disabled = true;
+        await sounds.start.play();
+        sounds.start.onended = () => {
+            sounds.bgm.play();
+            switchScene('scene-battle');
+            // สุ่มว่าใครเริ่มก่อน
+            state.isPlayerTurn = Math.random() > 0.5;
+            updateTurnUI();
+        };
     };
 
-    function announce(msg) {
-        // อัปเดต Aria Live เพื่อให้ Screen Reader อ่านตามชื่อท่าเดิม
-        document.getElementById('announcer').innerText = msg;
+    function switchScene(id) {
+        document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
     }
 
-    async function playSfx(key) {
-        try {
-            sounds[key].currentTime = 0;
-            await sounds[key].play();
-        } catch(e) {}
-    }
+    function updateTurnUI() {
+        const turnText = state.isPlayerTurn ? "ตาของคุณแล้ว!" : "ตาของผู้พิทักษ์...";
+        document.getElementById('turn-display').innerText = turnText;
+        document.getElementById('btn-action').disabled = !state.isPlayerTurn;
+        announce(turnText);
 
-    function updateUI() {
-        document.getElementById('hero-hp').innerText = state.hero.hp;
-        document.getElementById('hero-shield').innerText = state.hero.shield ? "🛡️ SHIELD ACTIVE" : "";
-        document.getElementById('guard-hp').innerText = state.guard.hp;
-        document.getElementById('guard-shield').innerText = state.guard.shield ? "🛡️ SHIELD ACTIVE" : "";
-        
-        const btn = document.getElementById('btn-action');
-        btn.disabled = state.isSpinning || !state.isPlayerTurn;
-        btn.innerText = state.isPlayerTurn ? "โยกคันโยก" : "รอศัตรู...";
-    }
-
-    async function startTurn() {
-        if (state.isSpinning) return;
-        state.isSpinning = true;
-        updateUI();
-
-        document.getElementById('lever-visual').classList.add('lever-active');
-        playSfx('lever');
-        await new Promise(r => setTimeout(r, 500));
-        document.getElementById('lever-visual').classList.remove('lever-active');
-
-        playSfx('spin');
-        const wheel = document.getElementById('wheel');
-        const randomDeg = (3600 * 2) + Math.floor(Math.random() * 360);
-        wheel.style.transform = `rotate(${randomDeg}deg)`;
-
-        await new Promise(r => setTimeout(r, 3500));
-        processResult();
-    }
-
-    function processResult() {
-        const attacker = state.isPlayerTurn ? state.hero : state.guard;
-        const defender = state.isPlayerTurn ? state.guard : state.hero;
-        const sideName = state.isPlayerTurn ? "ผู้กล้า" : "ผู้พิทักษ์";
-
-        let result = wheelPool[Math.floor(Math.random() * wheelPool.length)];
-
-        // Shield Logic: ถ้ามีอยู่แล้วให้สุ่มใหม่
-        if (result.type === 'shield' && attacker.shield) {
-            const noShieldPool = wheelPool.filter(s => s.type !== 'shield');
-            result = noShieldPool[Math.floor(Math.random() * noShieldPool.length)];
+        if(!state.isPlayerTurn && state.pHP > 0 && state.gHP > 0) {
+            setTimeout(executeTurn, 1500); // ผู้พิทักษ์เล่นอัตโนมัติ
         }
-
-        executeAction(result, attacker, defender, sideName);
     }
 
-    async function executeAction(skill, atk, def, name) {
-        const isHero = state.isPlayerTurn;
-        const statElem = document.getElementById(isHero ? 'hero-stat' : 'guard-stat');
-        const targetElem = document.getElementById(isHero ? 'guard-stat' : 'hero-stat');
+    document.getElementById('btn-action').onclick = () => {
+        if(state.isBusy) return;
+        executeTurn();
+    };
+
+    async function executeTurn() {
+        state.isBusy = true;
+        document.getElementById('btn-action').disabled = true;
         
-        if (skill.type === 'heal') {
-            const heals = [100, 300, 500];
-            const amount = heals[Math.floor(Math.random() * heals.length)];
-            atk.hp = Math.min(1000, atk.hp + amount);
-            announce(`${name} ${skill.name} +${amount}`); // ข้อความสำหรับ Aria Live
-            playSfx(isHero ? 'hp_player' : 'hp_guard');
-            statElem.classList.add('pulse-heal');
-            setTimeout(() => statElem.classList.remove('pulse-heal'), 600);
-        } 
-        else if (skill.type === 'shield') {
-            atk.shield = true;
-            announce(`${name} ${skill.name}`); 
-            playSfx(isHero ? 'shield_player' : 'shield_guard');
-        } 
-        else {
-            playSfx(isHero ? 'hero_atk' : 'guard_atk');
-            let damage = skill.dmg;
-            if (def.shield) {
-                damage = 0;
-                def.shield = false;
-                announce(`${name} ใช้ ${skill.name} แต่ติดเกราะ`);
-            } else {
-                def.hp = Math.max(0, def.hp - damage);
-                announce(`${name} ใช้ ${skill.name} โจมตี ${damage}`);
-                targetElem.classList.add('shake');
-                setTimeout(() => targetElem.classList.remove('shake'), 500);
+        sounds.wheel.currentTime = 0;
+        sounds.wheel.play();
+
+        // สุ่มผลลัพธ์
+        let index = Math.floor(Math.random() * wheelOptions.length);
+        let result = wheelOptions[index];
+
+        // เงื่อนไข Shield: ถ้ามีอยู่แล้วให้สุ่มใหม่ไปโดนท่าโจมตีแทน
+        if(result.type === "shield") {
+            const hasShield = state.isPlayerTurn ? state.pShield : state.gShield;
+            if(hasShield) {
+                while(wheelOptions[index].type === "shield") {
+                    index = Math.floor(Math.random() * wheelOptions.length);
+                }
+                result = wheelOptions[index];
             }
         }
+
+        // Animation กงล้อ
+        const rotation = 3600 + (index * (360/wheelOptions.length));
+        document.getElementById('visual-wheel').style.transform = `rotate(${rotation}deg)`;
+
+        setTimeout(() => {
+            processResult(result);
+        }, 3000);
+    }
+
+    async function processResult(res) {
+        const isP = state.isPlayerTurn;
+        const actorName = isP ? "คุณ" : "ผู้พิทักษ์";
         
-        showFlash(skill.color);
-        state.isSpinning = false;
-        
-        if (state.hero.hp <= 0 || state.guard.hp <= 0) {
-            setTimeout(endGame, 1000);
+        if(res.type === "hp") {
+            const heal = [100, 300, 500][Math.floor(Math.random()*3)];
+            if(isP) state.pHP = Math.min(1000, state.pHP + heal);
+            else state.gHP = Math.min(1000, state.gHP + heal);
+            
+            const sfx = isP ? "hp.mp3" : "hp1.mp3";
+            new Audio(audioPath + sfx).play();
+            flashEffect("#00e676");
+            announce(`${actorName} ได้รับการฟื้นฟู HP ${heal} หน่วย`);
+        } 
+        else if(res.type === "shield") {
+            if(isP) state.pShield = true; else state.gShield = true;
+            const sfx = isP ? "shield.mp3" : "shield1.mp3";
+            new Audio(audioPath + sfx).play();
+            flashEffect("#f1c40f");
+            announce(`${actorName} เปิดใช้งานเกราะแห่งแสง!`);
+        }
+        else {
+            // โจมตี
+            let damage = res.dmg;
+            const targetShield = isP ? state.gShield : state.pShield;
+            
+            if(targetShield) {
+                damage = 0;
+                if(isP) state.gShield = false; else state.pShield = false;
+                announce(`${actorName} ใช้ท่า ${res.name} แต่ถูกเกราะป้องกันไว้ได้!`);
+            } else {
+                if(isP) state.gHP -= damage; else state.pHP -= damage;
+                announce(`${actorName} ใช้ท่า ${res.name} โจมตี ${damage} หน่วย`);
+            }
+            
+            new Audio(audioPath + res.sfx + ".mp3").play();
+            flashEffect(res.flash);
+        }
+
+        updateStatsUI();
+
+        // ตรวจสอบจบเกม
+        if(state.pHP <= 0 || state.gHP <= 0) {
+            endGame();
         } else {
             state.isPlayerTurn = !state.isPlayerTurn;
-            updateUI();
-            if (!state.isPlayerTurn) {
-                setTimeout(startTurn, 1500);
-            }
+            state.isBusy = false;
+            setTimeout(updateTurnUI, 1500);
         }
     }
 
-    function showFlash(color) {
-        const f = document.getElementById('element-flash');
-        f.style.background = `radial-gradient(circle, ${color} 0%, transparent 75%)`;
-        f.style.opacity = '0.5';
-        setTimeout(() => f.style.opacity = '0', 600);
+    function updateStatsUI() {
+        document.getElementById('p-hp').innerText = Math.max(0, state.pHP);
+        document.getElementById('g-hp').innerText = Math.max(0, state.gHP);
+        
+        document.getElementById('p-stat').className = "stat-item" + (state.pShield ? " shield-active" : "");
+        document.getElementById('g-stat').className = "stat-item" + (state.gShield ? " shield-active" : "");
+    }
+
+    function flashEffect(color) {
+        const el = document.getElementById('element-flash');
+        el.style.background = `radial-gradient(circle, ${color} 0%, transparent 70%)`;
+        el.classList.add('flash-active');
+        setTimeout(() => el.classList.remove('flash-active'), 800);
     }
 
     function endGame() {
-        const win = state.hero.hp > 0;
-        document.getElementById('display-title').innerText = win ? "VICTORY" : "DEFEAT";
-        announce(win ? "ชัยชนะเป็นของคุณ" : "คุณพ่ายแพ้");
-        const btn = document.getElementById('btn-action');
-        btn.onclick = () => location.reload();
-        btn.innerText = "เริ่มใหม่";
-        btn.disabled = false;
+        sounds.bgm.pause();
+        switchScene('scene-result');
+        if(state.gHP <= 0) {
+            document.getElementById('result-title').innerText = "ชัยชนะเป็นของคุณ!";
+            document.getElementById('result-desc').innerText = "คุณได้พิชิตผู้พิทักษ์หอคอยสำเร็จ";
+            sounds.win.play();
+        } else {
+            document.getElementById('result-title').innerText = "พ่ายแพ้...";
+            document.getElementById('result-desc').innerText = "พลังของคุณยังไม่เพียงพอที่จะล้มผู้พิทักษ์";
+            sounds.lost.play();
+        }
     }
-
-    updateUI();
 </script>
 
 </body>
