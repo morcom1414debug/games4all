@@ -118,13 +118,6 @@
         .btn-main:hover:not(:disabled) { transform: translateY(-5px) scale(1.05); box-shadow: 0 15px 45px rgba(255, 75, 43, 0.5); }
         .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        /* ปุ่มโหมด Last Boss */
-        .btn-boss {
-            background: linear-gradient(135deg, #000, #4b0082);
-            border: 2px solid var(--gold); margin-top: 15px; padding: 15px 30px;
-            font-size: 1.2rem; display: none; animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.27);
-        }
-
         #result-icon { font-size: 5rem; display: block; margin-bottom: 10px; opacity: 0; }
         .win-anim #result-icon { animation: trophyPop 1s cubic-bezier(0.175, 0.885, 0.32, 1.27) 0.5s forwards, trophyGlow 2s infinite ease-in-out 1.5s; }
         .lost-anim #result-icon { animation: fallDown 1.2s ease-in 0.3s forwards; filter: grayscale(1); }
@@ -147,13 +140,13 @@
 <div id="aria-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
 
 <div id="game-container">
-    <div class="boss-aura" id="boss-spirit-bg" aria-hidden="true">💀</div>
+    <div class="boss-aura" aria-hidden="true">💀</div>
     <button id="btn-community" onclick="location.href='../index.html'" aria-label="กลับสู่ชุมชน">
         🏠 กลับสู่ชุมชน
     </button>
 
     <section id="scene-start" class="scene active">
-        <div class="floor-tag" id="floor-display">FLOOR 20</div>
+        <div class="floor-tag">FLOOR 20</div>
         <h1 class="game-title">Battle กับผู้พิทักษ์</h1>
         <p style="opacity: 0.8; font-weight: 300; margin-top: 10px;">โชคชะตาจะเป็นของใคร... ให้สวรรค์เป็นผู้เลือก! เดี่ยวกับผู้พิทักษ์กัน</p>
         <button id="btn-start-game" class="btn-main" style="margin-top: 20px;">Battle</button>
@@ -170,7 +163,7 @@
                 <div class="hp-track"><div id="p-hp-bar" class="hp-fill"></div></div>
             </div>
             <div class="stat-item" id="g-box" tabindex="0">
-                <span class="hp-label" id="boss-name-label">💀 ผู้พิทักษ์</span>
+                <span class="hp-label">💀 ผู้พิทักษ์</span>
                 <div class="hp-val-container">
                     <span id="g-hp">1,000</span>
                     <span class="shield-icon" aria-hidden="true">🛡️</span>
@@ -190,7 +183,6 @@
             <span id="result-icon" aria-hidden="true">🏆</span>
             <h2 id="result-title"></h2>
             <p id="result-desc"></p>
-            <button id="btn-last-boss" class="btn-main btn-boss">🔥 Battle กับ Last boss</button>
         </div>
     </section>
 </div>
@@ -227,11 +219,11 @@ function animateFX() {
     if (particlesList.length > 0) requestAnimationFrame(animateFX);
 }
 
-function launchFireworks(multiplier = 1) {
+function launchFireworks() {
     const colors = ['255, 215, 0', '255, 75, 43', '0, 210, 255', '46, 204, 113'];
     const interval = setInterval(() => {
         if (document.getElementById('scene-result').style.display === 'none') return clearInterval(interval);
-        for(let i=0; i<(30 * multiplier); i++) {
+        for(let i=0; i<30; i++) {
             particlesList.push(new Firework(canvas.width/2, canvas.height/2, colors[Math.floor(Math.random()*colors.length)]));
         }
         animateFX();
@@ -298,29 +290,22 @@ const lostMessages = [
     { title: "เกือบไปแล้ว!", desc: "คุณทำได้ดีมากแล้วในรอบนี้ ครั้งหน้าชัยชนะจะเป็นของคุณแน่นอน" }
 ];
 
-// ข้อความพิเศษสำหรับ Last Boss
-const epicWinMessages = [
-    { title: "ตำนานเหนือตำนาน!", desc: "คุณได้สยบ Last Boss และกลายเป็นพระเจ้าองค์ใหม่แห่งหอคอยกาลเวลา!" }
-];
-
 let wheelOptions = [];
 skills.forEach(s => { wheelOptions.push({...s, type: 'attack'}); });
 wheelOptions.push({id: 'hp', name: 'ได้รับน้ำยาเพิ่มพลัง', type: 'hp', color: 'var(--success)'});
 wheelOptions.push({id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield', color: 'var(--gold)'});
 
 let state = {
-    pHP: 1000, gHP: 1000, maxGHP: 1000,
+    pHP: 1000, gHP: 1000,
     pShield: false, gShield: false,
     turn: 'player', isBonus: false,
-    lastId: null, bgm: null,
-    isLastBoss: false
+    lastId: null, bgm: null
 };
 
 const announcer = document.getElementById('aria-announcer');
 const spinBtn = document.getElementById('btn-spin');
 const communityBtn = document.getElementById('btn-community');
 const flashOverlay = document.getElementById('hit-flash');
-const lastBossBtn = document.getElementById('btn-last-boss');
 
 function triggerFlash(color) {
     flashOverlay.style.backgroundColor = color;
@@ -347,7 +332,7 @@ function updateUI() {
     document.getElementById('p-hp').innerText = state.pHP.toLocaleString();
     document.getElementById('g-hp').innerText = state.gHP.toLocaleString();
     const pBar = document.getElementById('p-hp-bar'), gBar = document.getElementById('g-hp-bar');
-    const pPerc = (state.pHP / 1000) * 100, gPerc = (state.gHP / state.maxGHP) * 100;
+    const pPerc = (state.pHP / 1000) * 100, gPerc = (state.gHP / 1000) * 100;
     pBar.style.width = pPerc + '%';
     gBar.style.width = gPerc + '%';
     [pBar, gBar].forEach(bar => {
@@ -363,34 +348,17 @@ function updateUI() {
     else { gb.classList.add('active-turn'); pb.classList.remove('active-turn'); }
 }
 
-// ฟังก์ชันเริ่มเกม (ปรับปรุงให้รองรับโหมดปกติและโหมดบอส)
-async function startGame(isBossMode = false) {
+document.getElementById('btn-start-game').onclick = async () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     
-    state.isLastBoss = isBossMode;
-    state.pHP = 1000;
-    state.gHP = isBossMode ? 1500 : 1000;
-    state.maxGHP = state.gHP;
-    state.pShield = false;
-    state.gShield = false;
     state.turn = Math.random() < 0.5 ? 'player' : 'guardian';
     
-    // UI ปรับเปลี่ยนตามโหมด
-    if(isBossMode) {
-        document.getElementById('floor-display').innerText = "FINAL FLOOR";
-        document.getElementById('boss-name-label').innerText = "🔥 LAST BOSS";
-        document.getElementById('boss-spirit-bg').innerText = "🐲";
-    }
-
     document.getElementById('scene-start').classList.remove('active');
-    document.getElementById('scene-result').classList.remove('active'); // สำหรับตอนกดใหม่จากหน้าจบ
     document.getElementById('scene-battle').classList.add('active');
     communityBtn.classList.add('hidden');
-    lastBossBtn.style.display = 'none';
-    document.body.style.filter = 'none';
     
-    announce(isBossMode ? "เผชิญหน้ากับความว่างเปล่า... การต่อสู้สุดท้ายเริ่มขึ้นแล้ว!" : "กงล้อแห่งโชคชะตากำลังทำงาน...");
-    await playWait(isBossMode ? 'start2' : 'start1');
+    announce("กงล้อแห่งโชคชะตากำลังทำงาน...");
+    await playWait('start1');
     
     const bgm = audioCtx.createBufferSource();
     bgm.buffer = await loadSound('back1');
@@ -398,17 +366,14 @@ async function startGame(isBossMode = false) {
     bgm.start(0); state.bgm = bgm;
     
     if (state.turn === 'guardian') {
-        announce(isBossMode ? "อำนาจมืดกดขี่! Last Boss ชิงลงมือก่อน" : "ความมืดคืบคลาน! ผู้พิทักษ์ได้เริ่มก่อน");
+        announce("ความมืดคืบคลาน! ผู้พิทักษ์ได้เริ่มก่อน");
     } else {
         announce("โชคเข้าข้าง! คุณได้เริ่มก่อน");
     }
     await wait(1800);
     
     nextTurnCycle();
-}
-
-document.getElementById('btn-start-game').onclick = () => startGame(false);
-lastBossBtn.onclick = () => startGame(true);
+};
 
 async function nextTurnCycle() {
     updateUI();
@@ -417,7 +382,7 @@ async function nextTurnCycle() {
         if (!state.isBonus) announce("ตาคุณ");
         spinBtn.disabled = false; spinBtn.focus();
     } else {
-        if (!state.isBonus) announce(state.isLastBoss ? "ตาของ Last Boss..." : "ตาผู้พิทักษ์");
+        if (!state.isBonus) announce("ตาผู้พิทักษ์");
         await wait(600); executeSpin();
     }
 }
@@ -446,7 +411,7 @@ async function handleResult(res) {
     let bonus = false;
     if (res.type === 'attack') {
         await playWait(`${res.id}${sfx}`);
-        let msg = `${isP ? 'คุณ' : (state.isLastBoss ? 'Last Boss' : 'ผู้พิทักษ์')}ใช้ ${res.name} `;
+        let msg = `${isP ? 'คุณ' : 'ผู้พิทักษ์'}ใช้ ${res.name} `;
         if (isP) {
             if (state.gShield) { state.gShield = false; msg += "แต่ติดเกราะ"; }
             else { 
@@ -471,13 +436,13 @@ async function handleResult(res) {
         await playWait(`hp${isP ? '' : '1'}`);
         const val = [100, 300, 500][Math.floor(Math.random()*3)];
         if(isP) { state.pHP = Math.min(1000, state.pHP + val); spawnPop('p-box', val, true); } 
-        else { state.gHP = Math.min(state.maxGHP, state.gHP + val); spawnPop('g-box', val, true); }
-        announce(`${isP ? 'คุณ' : (state.isLastBoss ? 'Last Boss' : 'ผู้พิทักษ์')}ได้ ${val} สุ่มต่อ`); 
+        else { state.gHP = Math.min(1000, state.gHP + val); spawnPop('g-box', val, true); }
+        announce(`${isP ? 'คุณ' : 'ผู้พิทักษ์'}ได้ ${val} สุ่มต่อ`); 
         bonus = true;
     } else if (res.type === 'shield') {
         await playWait(`shield${isP ? '' : '1'}`);
         if(isP) state.pShield = true; else state.gShield = true;
-        announce(`${isP ? 'คุณ' : (state.isLastBoss ? 'Last Boss' : 'ผู้พิทักษ์')}ได้รับเกราะ สุ่มต่อ`); 
+        announce(`${isP ? 'คุณ' : 'ผู้พิทักษ์'}ได้รับเกราะ สุ่มต่อ`); 
         bonus = true;
     }
     updateUI();
@@ -499,47 +464,22 @@ function checkEndGame() {
     resultScene.classList.add('active');
     const wrapper = document.getElementById('result-visual-wrapper');
     const icon = document.getElementById('result-icon');
-    
     if (win) {
-        wrapper.className = 'win-anim'; 
-        icon.innerText = state.isLastBoss ? '👑' : '🏆'; 
-        launchFireworks(state.isLastBoss ? 3 : 1); // ถ้าชนะ Last Boss พลุเยอะขึ้น 3 เท่า
-        if(!state.isLastBoss) lastBossBtn.style.display = 'inline-block'; // ถ้าชนะธรรมดา ให้ขึ้นปุ่มท้าบอส
+        wrapper.className = 'win-anim'; icon.innerText = '🏆'; launchFireworks();
     } else {
-        wrapper.className = 'lost-anim'; 
-        icon.innerText = '💀'; 
-        document.body.style.filter = 'grayscale(0.7)';
+        wrapper.className = 'lost-anim'; icon.innerText = '💀'; document.body.style.filter = 'grayscale(0.7)';
     }
-    
     announcer.innerText = ""; 
     announcer.setAttribute('aria-live', 'off');
     communityBtn.classList.remove('hidden');
-    
-    const msgPool = win ? (state.isLastBoss ? epicWinMessages : winMessages) : lostMessages;
+    const msgPool = win ? winMessages : lostMessages;
     const randomMsg = msgPool[Math.floor(Math.random() * msgPool.length)];
     document.getElementById('result-title').innerText = randomMsg.title;
     document.getElementById('result-desc').innerText = randomMsg.desc;
-    
     if(win) { playSound('winner'); } else { playSound('lost'); }
 }
 
-// --- เพิ่มสูตร Skip ---
-let skipBuffer = "";
-let skipTimeout;
-window.addEventListener('keydown', (e) => {
-    skipBuffer += e.key.toLowerCase();
-    clearTimeout(skipTimeout);
-    skipTimeout = setTimeout(() => { skipBuffer = ""; }, 2000);
-    if (skipBuffer.includes("skip")) {
-        skipBuffer = "";
-        if (state.bgm) state.bgm.stop();
-        state.gHP = 0; 
-        checkEndGame();
-    }
-});
-// --- จบส่วนสูตร ---
-
-['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp1','shield','shield1','wheel','back1','winner','lost','start1','start2'].forEach(loadSound);
+['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp1','shield','shield1','wheel','back1','winner','lost','start1'].forEach(loadSound);
 </script>
 </body>
 </html>
