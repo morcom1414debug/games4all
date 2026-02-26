@@ -19,9 +19,10 @@
             background: rgba(22, 33, 62, 0.9); backdrop-filter: blur(20px);
             border-radius: 30px; padding: 2.5rem; text-align: center;
             box-shadow: 0 25px 50px rgba(0,0,0,0.6); border: 2px solid rgba(255, 255, 255, 0.15);
-            width: 100%; max-width: 500px; position: relative;
+            width: 100%; max-width: 500px; position: relative; /* สำหรับวางปุ่มบนซ้าย */
         }
         
+        /* ปุ่มกลับสู่ชุมชน */
         #btn-community {
             position: absolute; top: 20px; left: 20px;
             background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(241, 196, 15, 0.3);
@@ -73,7 +74,7 @@
 <div id="aria-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
 
 <div id="game-container">
-    <button id="btn-community" onclick="location.href='../index.html'" aria-label="กลับสู่ชุมชน">
+    <button id="btn-community" onclick="location.href='../index.html'" aria-label="กลับสู่หน้าหลักชุมชน">
         🏠 กลับสู่ชุมชน
     </button>
 
@@ -106,8 +107,8 @@
 
     <section id="scene-result" class="scene">
         <h2 id="result-title"></h2>
-        <p id="result-desc" style="font-size: 1.1rem; line-height: 1.6;"></p>
-    </section>
+        <p id="result-desc"></p>
+        </section>
 </div>
 
 <script>
@@ -148,23 +149,6 @@ const skills = [
     {id: 'winter', name: 'ดินแดนเยือกแข็ง', dmg: 300}
 ];
 
-// รายการประโยคสุ่มตอนจบ
-const winMessages = [
-    "คุณคือตำนานบทใหม่แห่งวาลูก้า!",
-    "พลังของคุณอยู่เหนือทุกสรรพสิ่งในหอคอยนี้",
-    "ผู้พิทักษ์พ่ายแพ้ต่อจิตวิญญาณที่แข็งแกร่งของคุณ",
-    "ชัยชนะครั้งยิ่งใหญ่ถูกจารึกไว้ด้วยชื่อของคุณแล้ว",
-    "ไม่มีสิ่งใดขวางกั้นวิถีแห่งผู้กล้าของคุณได้"
-];
-
-const loseMessages = [
-    "เกือบสำเร็จแล้ว! ความพยายามคือหัวใจของผู้กล้า",
-    "อย่าเพิ่งท้อ พลังของคุณจะแข็งแกร่งขึ้นในทุกครั้งที่ลุกขึ้น",
-    "ความพ่ายแพ้คือบทเรียน ครั้งหน้าชัยชนะจะเป็นของคุณแน่นอน",
-    "แม้จะล้มลง แต่จิตวิญญาณของคุณยังคงสว่างไสวเสมอ",
-    "พักกายให้พร้อม แล้วกลับมาพิชิตหอคอยนี้อีกครั้ง!"
-];
-
 let wheelOptions = [];
 skills.forEach(s => { wheelOptions.push({...s, type: 'attack'}); });
 wheelOptions.push({id: 'hp', name: 'ได้รับน้ำยาเพิ่มพลัง', type: 'hp'});
@@ -192,13 +176,18 @@ function updateUI() {
     const pb = document.getElementById('p-box'), gb = document.getElementById('g-box');
     state.pShield ? pb.classList.add('has-shield') : pb.classList.remove('has-shield');
     state.gShield ? gb.classList.add('has-shield') : gb.classList.remove('has-shield');
+    pb.setAttribute('aria-label', `ผู้กล้า พลังชีวิต ${state.pHP} ${state.pShield ? 'มีเกราะ' : ''}`);
+    gb.setAttribute('aria-label', `ผู้พิทักษ์ พลังชีวิต ${state.gHP} ${state.gShield ? 'มีเกราะ' : ''}`);
 }
 
 document.getElementById('btn-start-game').onclick = async () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('scene-start').classList.remove('active');
     document.getElementById('scene-battle').classList.add('active');
+    
+    // ซ่อนปุ่มชุมชนตอนเริ่มสู้
     communityBtn.classList.add('hidden');
+    
     announce("เริ่มการต่อสู้!");
     await playWait('start1');
     const bgm = audioCtx.createBufferSource();
@@ -284,22 +273,20 @@ function checkEndGame() {
     if (state.bgm) state.bgm.stop();
     document.getElementById('scene-battle').classList.remove('active');
     document.getElementById('scene-result').classList.add('active');
+    
+    // แสดงปุ่มชุมชนอีกครั้งในหน้าสรุปผล
     communityBtn.classList.remove('hidden');
     
     const win = state.pHP > 0;
-    const title = document.getElementById('result-title');
-    const desc = document.getElementById('result-desc');
-
+    document.getElementById('result-title').innerText = win ? "ชัยชนะเป็นของคุณ!" : "คุณพ่ายแพ้...";
+    document.getElementById('result-desc').innerText = win ? "คุณได้พิสูจน์ตนเองในฐานะผู้กล้าแล้ว" : "หอคอยแห่งนี้ยังคงรอการพิชิตครั้งต่อไป";
+    
     if(win) {
-        title.innerText = "ชัยชนะเป็นของคุณ!";
-        desc.innerText = winMessages[Math.floor(Math.random() * winMessages.length)];
         playSound('winner');
-        announce("ยินดีด้วย! " + desc.innerText);
+        announce("ยินดีด้วย คุณชนะแล้ว!");
     } else {
-        title.innerText = "การเดินทางยังไม่สิ้นสุด";
-        desc.innerText = loseMessages[Math.floor(Math.random() * loseMessages.length)];
         playSound('lost');
-        announce(desc.innerText);
+        announce("เสียใจด้วย คุณพ่ายแพ้ในการต่อสู้");
     }
 }
 
