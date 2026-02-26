@@ -41,32 +41,15 @@
             background: rgba(0,0,0,0.3); padding: 15px; border-radius: 18px; flex: 1; 
             border: 2px solid rgba(255,255,255,0.1); transition: all 0.3s ease; outline: none;
         }
-        
-        /* เกราะเรืองแสงและการกระเพื่อม */
-        .stat-item.has-shield { 
-            border-color: var(--gold); 
-            box-shadow: 0 0 20px rgba(241, 196, 15, 0.3);
-            background: rgba(241, 196, 15, 0.05);
-        }
+        .stat-item:focus { border-color: white; background: rgba(255,255,255,0.1); }
+        .stat-item.has-shield { border-color: var(--gold); box-shadow: 0 0 15px rgba(241, 196, 15, 0.4); }
         
         .hp-label { font-size: 0.85rem; opacity: 0.8; display: block; margin-bottom: 5px; }
         .hp-val-container { font-size: 1.5rem; font-weight: 600; color: var(--gold); display: flex; justify-content: center; align-items: center; gap: 8px; }
+        .shield-icon { display: none; font-size: 1.2rem; }
+        .has-shield .shield-icon { display: inline; animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.27) forwards; }
         
-        .shield-icon { 
-            display: none; 
-            font-size: 1.2rem; 
-            filter: drop-shadow(0 0 5px var(--gold));
-        }
-        .has-shield .shield-icon { 
-            display: inline-block; 
-            animation: shieldPulse 1.5s ease-in-out infinite; 
-        }
-        
-        @keyframes shieldPulse {
-            0% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.2); opacity: 1; }
-            100% { transform: scale(1); opacity: 0.8; }
-        }
+        @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
 
         .wheel-graphic {
             width: 200px; height: 200px; margin: 20px auto; border-radius: 50%; border: 8px solid var(--gold);
@@ -78,6 +61,7 @@
             border: none; padding: 18px 45px; border-radius: 50px; color: white;
             font-size: 1.4rem; font-weight: 600; cursor: pointer; transition: 0.2s;
         }
+        .btn-main:focus { outline: 3px solid white; transform: scale(1.05); }
         .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
         .shake { animation: shake 0.3s; }
@@ -164,6 +148,7 @@ const skills = [
     {id: 'winter', name: 'ดินแดนเยือกแข็ง', dmg: 300}
 ];
 
+// รายการประโยคสุ่มตอนจบ
 const winMessages = [
     "คุณคือตำนานบทใหม่แห่งวาลูก้า!",
     "พลังของคุณอยู่เหนือทุกสรรพสิ่งในหอคอยนี้",
@@ -182,8 +167,8 @@ const loseMessages = [
 
 let wheelOptions = [];
 skills.forEach(s => { wheelOptions.push({...s, type: 'attack'}); });
-wheelOptions.push({id: 'hp', name: 'น้ำยาเพิ่มพลัง', type: 'hp'});
-wheelOptions.push({id: 'shield', name: 'เกราะแห่งแสง', type: 'shield'});
+wheelOptions.push({id: 'hp', name: 'ได้รับน้ำยาเพิ่มพลัง', type: 'hp'});
+wheelOptions.push({id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'});
 
 let state = {
     pHP: 1000, gHP: 1000,
@@ -197,7 +182,6 @@ const spinBtn = document.getElementById('btn-spin');
 const communityBtn = document.getElementById('btn-community');
 
 function announce(msg) {
-    if (!announcer.hasAttribute('aria-live')) return; // ป้องกันการประกาศในหน้าจบ
     announcer.innerText = ""; 
     setTimeout(() => { announcer.innerText = msg; }, 100);
 }
@@ -205,16 +189,9 @@ function announce(msg) {
 function updateUI() {
     document.getElementById('p-hp').innerText = state.pHP.toLocaleString();
     document.getElementById('g-hp').innerText = state.gHP.toLocaleString();
-    
     const pb = document.getElementById('p-box'), gb = document.getElementById('g-box');
-    
-    // จัดการ Class เพื่อ Visual Effect
     state.pShield ? pb.classList.add('has-shield') : pb.classList.remove('has-shield');
     state.gShield ? gb.classList.add('has-shield') : gb.classList.remove('has-shield');
-
-    // จัดการ Aria Label เพื่อ Screen Reader
-    pb.setAttribute('aria-label', `ผู้กล้า พลังชีวิต ${state.pHP} ${state.pShield ? 'มีเกราะแห่งแสง' : 'ไม่มีเกราะ'}`);
-    gb.setAttribute('aria-label', `ผู้พิทักษ์ พลังชีวิต ${state.gHP} ${state.gShield ? 'มีเกราะแห่งแสง' : 'ไม่มีเกราะ'}`);
 }
 
 document.getElementById('btn-start-game').onclick = async () => {
@@ -309,10 +286,6 @@ function checkEndGame() {
     document.getElementById('scene-result').classList.add('active');
     communityBtn.classList.remove('hidden');
     
-    // ปิดการประกาศเสียง aria-live ในหน้าสรุปผล
-    announcer.removeAttribute('aria-live');
-    announcer.removeAttribute('role');
-
     const win = state.pHP > 0;
     const title = document.getElementById('result-title');
     const desc = document.getElementById('result-desc');
@@ -321,10 +294,12 @@ function checkEndGame() {
         title.innerText = "ชัยชนะเป็นของคุณ!";
         desc.innerText = winMessages[Math.floor(Math.random() * winMessages.length)];
         playSound('winner');
+        announce("ยินดีด้วย! " + desc.innerText);
     } else {
         title.innerText = "การเดินทางยังไม่สิ้นสุด";
         desc.innerText = loseMessages[Math.floor(Math.random() * loseMessages.length)];
         playSound('lost');
+        announce(desc.innerText);
     }
 }
 
