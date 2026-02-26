@@ -9,6 +9,7 @@
         :root {
             --primary: #6a11cb; --secondary: #2575fc; --danger: #ff4b2b;
             --success: #00b09b; --gold: #f1c40f; --dark-bg: #0f0c29;
+            /* Element Colors */
             --cls-fire: #ff4b2b; --cls-water: #00d2ff; --cls-earth: #e67e22;
             --cls-wind: #2ecc71; --cls-thunder: #f1c40f; --cls-winter: #ecf0f1;
         }
@@ -16,7 +17,6 @@
             font-family: 'Kanit', sans-serif;
             background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
             color: white; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden;
-            transition: filter 1s ease;
         }
 
         /* Hit Flash Overlay */
@@ -25,13 +25,9 @@
             pointer-events: none; z-index: 99; opacity: 0; transition: opacity 0.1s;
         }
 
-        /* Particles Background */
         .particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
         .particle { position: absolute; background: white; border-radius: 50%; opacity: 0.3; animation: float 15s infinite linear; }
         @keyframes float { 0% { transform: translateY(100vh) scale(0); } 100% { transform: translateY(-10vh) scale(1); } }
-
-        /* Results FX Canvas */
-        #result-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
 
         #game-container {
             background: rgba(22, 33, 62, 0.85); backdrop-filter: blur(15px);
@@ -49,7 +45,6 @@
         }
         #btn-community:hover { background: rgba(255, 255, 255, 0.2); color: white; border-color: var(--gold); }
         #btn-community.hidden { display: none; }
-        #btn-community.show-result { animation: bounceIn 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards; }
 
         .scene { display: none; flex-direction: column; gap: 1.5rem; animation: fadeIn 0.4s ease; }
         .scene.active { display: flex; }
@@ -91,17 +86,7 @@
         .btn-main:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 15px 25px rgba(0,0,0,0.4); }
         .btn-main:focus { outline: 3px solid white; }
         .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        /* Result FX Styles */
-        #result-icon { font-size: 5rem; display: block; margin-bottom: 10px; opacity: 0; }
-        .win-anim #result-icon { animation: trophyPop 1s cubic-bezier(0.175, 0.885, 0.32, 1.27) 0.5s forwards, trophyGlow 2s infinite ease-in-out 1.5s; }
-        .lost-anim #result-icon { animation: fallDown 1.2s ease-in 0.3s forwards; filter: grayscale(1); }
         
-        @keyframes trophyPop { from { transform: scale(0) rotate(-20deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
-        @keyframes trophyGlow { 0%, 100% { filter: drop-shadow(0 0 10px var(--gold)); } 50% { filter: drop-shadow(0 0 30px var(--gold)); } }
-        @keyframes fallDown { 0% { transform: translateY(-100px); opacity: 0; } 60% { transform: translateY(0); opacity: 1; } 80% { transform: translateY(-10px); } 100% { transform: translateY(0); opacity: 0.8; } }
-        @keyframes bounceIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
         .shake { animation: shake 0.3s; }
         @keyframes shake { 0%,100% {transform:translateX(0)} 25% {transform:translateX(-10px)} 75% {transform:translateX(10px)} }
@@ -110,7 +95,6 @@
 </head>
 <body>
 
-<canvas id="result-canvas"></canvas>
 <div id="hit-flash"></div>
 <div class="particles" id="particles"></div>
 <div id="aria-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
@@ -153,60 +137,13 @@
     </section>
 
     <section id="scene-result" class="scene">
-        <div id="result-visual-wrapper">
-            <span id="result-icon" aria-hidden="true">🏆</span>
-            <h2 id="result-title"></h2>
-            <p id="result-desc"></p>
-        </div>
+        <h2 id="result-title"></h2>
+        <p id="result-desc"></p>
     </section>
 </div>
 
 <script>
-// --- Canvas FX for Fireworks ---
-const canvas = document.getElementById('result-canvas');
-const ctx = canvas.getContext('2d');
-let particles = [];
-
-function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-window.addEventListener('resize', resize);
-resize();
-
-class Firework {
-    constructor(x, y, color) {
-        this.x = x; this.y = y; this.color = color;
-        this.velocity = { x: (Math.random() - 0.5) * 8, y: (Math.random() - 0.5) * 8 };
-        this.life = 100; this.opacity = 1;
-    }
-    draw() {
-        ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${this.color}, ${this.opacity})`; ctx.fill();
-    }
-    update() {
-        this.x += this.velocity.x; this.y += this.velocity.y;
-        this.life -= 1.5; this.opacity = this.life / 100;
-    }
-}
-
-function animateFX() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    particles = particles.filter(p => p.life > 0);
-    particles.forEach(p => { p.update(); p.draw(); });
-    if (particles.length > 0) requestAnimationFrame(animateFX);
-}
-
-function launchFireworks() {
-    const colors = ['255, 215, 0', '255, 75, 43', '0, 210, 255', '46, 204, 113'];
-    const interval = setInterval(() => {
-        if (document.getElementById('scene-result').style.display === 'none') return clearInterval(interval);
-        for(let i=0; i<30; i++) {
-            particles.push(new Firework(canvas.width/2, canvas.height/2, colors[Math.floor(Math.random()*colors.length)]));
-        }
-        animateFX();
-    }, 800);
-    setTimeout(() => clearInterval(interval), 6000);
-}
-
-// --- Original Particles Background ---
+// --- Particles ---
 const pContainer = document.getElementById('particles');
 for(let i=0; i<20; i++) {
     const p = document.createElement('div');
@@ -423,37 +360,16 @@ async function handleResult(res) {
 
 function checkEndGame() {
     if (state.bgm) state.bgm.stop();
-    const win = state.pHP > 0;
-    
     document.getElementById('scene-battle').classList.remove('active');
-    const resultScene = document.getElementById('scene-result');
-    resultScene.classList.add('active');
-    
-    // Set animations based on win/lost
-    const wrapper = document.getElementById('result-visual-wrapper');
-    const icon = document.getElementById('result-icon');
-    if (win) {
-        wrapper.className = 'win-anim';
-        icon.innerText = '🏆';
-        launchFireworks();
-    } else {
-        wrapper.className = 'lost-anim';
-        icon.innerText = '💀';
-        document.body.style.filter = 'grayscale(0.7)';
-    }
-
+    document.getElementById('scene-result').classList.add('active');
     announcer.innerText = ""; 
     announcer.setAttribute('aria-live', 'off');
-    
-    // Stage button entrance
     communityBtn.classList.remove('hidden');
-    communityBtn.classList.add('show-result');
-    
+    const win = state.pHP > 0;
     const msgPool = win ? winMessages : lostMessages;
     const randomMsg = msgPool[Math.floor(Math.random() * msgPool.length)];
     document.getElementById('result-title').innerText = randomMsg.title;
     document.getElementById('result-desc').innerText = randomMsg.desc;
-    
     if(win) { playSound('winner'); } else { playSound('lost'); }
 }
 
