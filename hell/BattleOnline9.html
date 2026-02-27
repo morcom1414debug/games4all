@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -261,14 +260,17 @@ function updateUI(room) {
     room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
 
     const spinBtn = document.getElementById('btn-spin');
-    const isMyTurn = (room.turn === myRole);
-    const canSpin = isMyTurn && !window.animating && ( (room.spinCount === 0) || (room.spinCount === 1 && room.isBonus === true) );
-    spinBtn.disabled = !canSpin;
-    if (canSpin) {
-        localSpinLocked = false;
-        spinBtn.focus();
+    if (window.animating) {
+        spinBtn.disabled = true;
+    } else {
+        const isMyTurn = (room.turn === myRole);
+        // ปลดล็อค Local Lock เมื่อเข้าตาตัวเอง
+        if (isMyTurn) localSpinLocked = false; 
+        
+        spinBtn.disabled = !isMyTurn;
+        if (!room.isBonus) announce(`ตา ${room.turn === 'host' ? 'Host' : 'Guest'}`);
+        if (isMyTurn) spinBtn.focus();
     }
-    if (!room.isBonus) announce(`ตา ${room.turn === 'host' ? 'Host' : 'Guest'}`);
 }
 
 document.getElementById('btn-spin').onclick = async () => {
@@ -283,7 +285,7 @@ document.getElementById('btn-spin').onclick = async () => {
 
     // 2. เช็คเงื่อนไขจำนวนครั้ง
     const currentSpinCount = room.spinCount || 0;
-    if (currentSpinCount > 1 || (currentSpinCount === 1 && room.isBonus !== true)) {
+    if (currentSpinCount >= 2 || (currentSpinCount === 1 && !room.isBonus)) {
         return;
     }
 
@@ -404,4 +406,3 @@ document.getElementById('btn-create-room').onclick = createRoom;
 </script>
 </body>
 </html>
-```
