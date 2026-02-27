@@ -20,11 +20,13 @@
             color: white; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden;
         }
 
+        /* Effect Styles from Original */
         #hit-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; opacity: 0; transition: opacity 0.1s; }
         .particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
         .particle { position: absolute; background: var(--gold); border-radius: 50%; opacity: 0.2; animation: floatUp 10s infinite ease-in; }
         @keyframes floatUp { 0% { transform: translateY(105vh) scale(0); opacity: 0; } 50% { opacity: 0.4; } 100% { transform: translateY(-10vh) scale(1.5); opacity: 0; } }
-        
+        #result-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+
         #game-container {
             background: rgba(15, 12, 41, 0.75); backdrop-filter: blur(25px);
             border-radius: 40px; padding: 3rem 2.5rem; text-align: center;
@@ -32,7 +34,6 @@
             width: 100%; max-width: 500px; position: relative; z-index: 5;
         }
 
-        /* ปุ่มกลับสู่ชุมชนแสดงเฉพาะหน้าแรกและหน้าสรุปเกม */
         #btn-community {
             position: absolute; top: 20px; left: 20px;
             background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(241, 196, 15, 0.3);
@@ -60,29 +61,37 @@
         .btn-main { background: linear-gradient(135deg, var(--danger), var(--gold)); border: none; padding: 20px 40px; border-radius: 50px; color: white; font-size: 1.4rem; font-weight: 600; cursor: pointer; transition: 0.3s; }
         .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
         
+        .room-list { margin-top: 10px; max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .room-item { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.1); }
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+        .shake { animation: shake 0.3s; }
+        @keyframes shake { 0%,100% {transform:translateX(0)} 25% {transform:translateX(-10px)} 75% {transform:translateX(10px)} }
     </style>
 </head>
 <body>
 
+<canvas id="result-canvas"></canvas>
 <div id="hit-flash"></div>
 <div class="particles" id="particles"></div>
 <div id="aria-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
 
 <div id="game-container">
-    <button id="btn-community" onclick="location.href='../index.html'" aria-label="กลับสู่ชุมชน">🏠 กลับสู่ชุมชน</button>
+    <button id="btn-community" onclick="location.href='../index.html'" aria-label="กลับสู่ชุมชน">
+        🏠 กลับสู่ชุมชน
+    </button>
 
     <section id="scene-lobby" class="scene active">
         <h1 style="color:var(--gold); margin:0; font-size: 2.5rem;">VALUKA</h1>
         <p>ประลองยุทธ์ออนไลน์ 1 ต่อ 1</p>
         <button id="btn-create-room" class="btn-main">สร้างห้อง</button>
-        <div id="room-list" style="margin-top:15px;"></div>
+        <div class="room-list" id="room-list"></div>
     </section>
 
     <section id="scene-waiting" class="scene">
         <h2 style="color:var(--gold);">เตรียมการประลอง</h2>
         <div style="font-size: 3rem; animation: rotate 2s linear infinite;">🌀</div>
-        <p>รอคู่ต่อสู้กดเข้าร่วมห้อง...</p>
+        <p id="wait-status" tabindex="0">รอคู่ต่อสู้กดเข้าร่วมห้อง...</p>
+        <button onclick="location.reload()" class="btn-main" style="background:var(--danger); font-size: 1rem;">ยกเลิก</button>
     </section>
 
     <section id="scene-battle" class="scene">
@@ -103,10 +112,11 @@
             <div id="visual-wheel" class="wheel-graphic"></div>
         </div>
         <button id="btn-spin" class="btn-main" disabled>โยกคันโยก</button>
+        <p id="battle-log" style="font-size: 0.9rem; color: var(--gold); min-height: 1.5em;"></p>
     </section>
 
     <section id="scene-result" class="scene">
-        <span style="font-size: 5rem;">🏆</span>
+        <span id="result-icon" style="font-size: 5rem; display:block; margin-bottom: 10px;">🏆</span>
         <h2 id="result-title"></h2>
         <p id="result-desc"></p>
         <button onclick="location.reload()" class="btn-main">เล่นใหม่อีกครั้ง</button>
@@ -114,7 +124,7 @@
 </div>
 
 <script>
-// --- Configuration & Firebase ---
+// --- Configuration ---
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
@@ -128,7 +138,11 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const GAME_ID = "valuka";
 
-let myRole = null, currentRoomId = null, bgmSource = null;
+let myRole = null;
+let currentRoomId = null;
+let bgmSource = null;
+let lastUpdateLocal = 0;
+
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
@@ -146,7 +160,7 @@ const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})),
     {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
 ];
 
-// --- Audio Engine ---
+// --- Audio & Timing (Original Logic) ---
 async function loadSound(name) {
     if (audioCache[name]) return audioCache[name];
     try {
@@ -170,69 +184,95 @@ const playWait = (name) => new Promise(res => {
     s.onended = res;
 });
 
+const wait = ms => new Promise(res => setTimeout(res, ms));
+
 function announce(msg) {
     const el = document.getElementById('aria-announcer');
     el.innerText = "";
-    setTimeout(() => { el.innerText = msg; }, 100);
+    setTimeout(() => { 
+        el.innerText = msg;
+        document.getElementById('battle-log').innerText = msg;
+    }, 100);
 }
 
-// --- Online Logic ---
+// --- Online Room Management ---
 db.ref(`${GAME_ID}/rooms`).on('value', snapshot => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
     snapshot.forEach(child => {
         const room = child.val();
         if (room.status === 'waiting') {
-            const b = document.createElement('button');
-            b.innerText = `เข้าห้อง ${child.key}`;
-            b.className = "btn-main"; b.style.fontSize = "1rem"; b.style.padding = "10px";
-            b.onclick = () => joinRoom(child.key);
-            list.appendChild(b);
+            const btn = document.createElement('div');
+            btn.className = 'room-item';
+            btn.innerHTML = `<span>${child.key}</span><button class="btn-main" style="padding:5px 15px; font-size:0.9rem">เข้าร่วม</button>`;
+            btn.onclick = () => joinRoom(child.key);
+            list.appendChild(btn);
         }
     });
 });
 
 async function createRoom() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    const snap = await db.ref(`${GAME_ID}/room_counter`).transaction(curr => (curr || 0) + 1);
-    currentRoomId = `Battle${snap.snapshot.val()}`;
+    const snap = await db.ref(`${GAME_ID}/room_counter`).transaction(curr => (curr || 0) % 99999 + 1);
+    const num = String(snap.snapshot.val()).padStart(5, '0');
+    currentRoomId = `Battle${num}`;
     myRole = 'host';
+    
     await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).set({
         status: 'waiting', hostHP: 1000, guestHP: 1000,
-        hostShield: false, guestShield: false, turn: '', lastId: ''
+        hostShield: false, guestShield: false,
+        turn: '', lastUpdate: Date.now(), lastId: ''
     });
-    showScene('scene-waiting');
+
+    document.getElementById('scene-lobby').classList.remove('active');
+    document.getElementById('scene-waiting').classList.add('active');
     document.getElementById('btn-community').classList.add('hidden');
+    
+    const bgm = audioCtx.createBufferSource();
+    bgm.buffer = await loadSound('back1');
+    bgm.loop = true; bgm.connect(audioCtx.destination);
+    bgm.start(0); bgmSource = bgm;
+
+    announce("รอคู่ต่อสู้กดเข้าร่วมห้อง ถ้าคู่ต่อสู้พร้อม การประลองจะเริ่มโดยทันที");
     listenToRoom();
 }
 
 async function joinRoom(roomId) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    currentRoomId = roomId; myRole = 'guest';
+    currentRoomId = roomId;
+    myRole = 'guest';
+    
     const turnStart = Math.random() < 0.5 ? 'host' : 'guest';
-    await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({ status: 'playing', turn: turnStart });
+    await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
+        status: 'playing', turn: turnStart, lastUpdate: Date.now()
+    });
+
+    const bgm = audioCtx.createBufferSource();
+    bgm.buffer = await loadSound('back1');
+    bgm.loop = true; bgm.connect(audioCtx.destination);
+    bgm.start(0); bgmSource = bgm;
+
     listenToRoom();
 }
 
 function listenToRoom() {
-    db.ref(`${GAME_ID}/rooms/${currentRoomId}`).on('value', async snapshot => {
+    db.ref(`${GAME_ID}/rooms/${currentRoomId}`).on('value', snapshot => {
         const room = snapshot.val();
         if (!room) return;
 
-        if (room.status === 'playing' && !window.started) {
-            window.started = true;
-            showScene('scene-battle');
+        if (Date.now() - room.lastUpdate > 300000) location.reload(); // 5 min cleanup
+
+        if (room.status === 'playing') {
+            document.getElementById('scene-lobby').classList.remove('active');
+            document.getElementById('scene-waiting').classList.remove('active');
+            document.getElementById('scene-battle').classList.add('active');
             document.getElementById('btn-community').classList.add('hidden');
-            await playWait('start3');
-            announce(`ผู้ที่ได้เริ่มก่อนคือ ${room.turn === 'host' ? 'Host' : 'Guest'}`);
             updateUI(room);
         }
 
         if (room.lastAction && room.lastAction.id !== window.processedId) {
             window.processedId = room.lastAction.id;
             handleAction(room.lastAction, room);
-        } else if (room.status === 'playing') {
-            updateUI(room);
         }
 
         if (room.status === 'finished') endGame(room);
@@ -245,106 +285,130 @@ function updateUI(room) {
     document.getElementById('bar-host').style.width = (room.hostHP / 10) + '%';
     document.getElementById('bar-guest').style.width = (room.guestHP / 10) + '%';
     
-    document.getElementById('host-box').classList.toggle('active-turn', room.turn === 'host');
-    document.getElementById('guest-box').classList.toggle('active-turn', room.turn === 'guest');
-    
-    room.hostShield ? document.getElementById('host-box').classList.add('has-shield') : document.getElementById('host-box').classList.remove('has-shield');
-    room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
+    const hb = document.getElementById('host-box'), gb = document.getElementById('guest-box');
+    room.hostShield ? hb.classList.add('has-shield') : hb.classList.remove('has-shield');
+    room.guestShield ? gb.classList.add('has-shield') : gb.classList.remove('has-shield');
 
-    if (!window.animating) {
-        const isMyTurn = room.turn === myRole;
-        document.getElementById('btn-spin').disabled = !isMyTurn;
-        if (isMyTurn) {
-            if (!room.isBonus) announce(`ตา ${myRole === 'host' ? 'Host' : 'Guest'}`);
-            document.getElementById('btn-spin').focus();
-        }
+    hb.classList.toggle('active-turn', room.turn === 'host');
+    gb.classList.toggle('active-turn', room.turn === 'guest');
+
+    const isMyTurn = room.turn === myRole;
+    document.getElementById('btn-spin').disabled = !isMyTurn;
+    
+    if (isMyTurn && !window.isAnimating) {
+        announce(`ตา ${myRole === 'host' ? 'Host' : 'Guest'}`);
+        document.getElementById('btn-spin').focus();
     }
 }
 
+// --- Battle Logic (Original Rules) ---
 document.getElementById('btn-spin').onclick = async () => {
     document.getElementById('btn-spin').disabled = true;
-    const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
+    const roomRef = db.ref(`${GAME_ID}/rooms/${currentRoomId}`);
+    const snap = await roomRef.get();
     const room = snap.val();
+
     let res;
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
-        if(res.id === room.lastId) continue;
-        if(room.isBonus && res.type !== 'attack') continue;
+        // กฎต้นฉบับ: ไม่ให้ได้ผลลัพธ์เดิมซ้ำ
+        if(res.id === room.lastId) continue; 
+        // กฎต้นฉบับ: ถ้าได้ Bonus รอบต่อไปต้องเป็นการโจมตีเท่านั้น
+        if(room.isBonus && res.type !== 'attack') continue; 
         break;
     }
+
     const deg = 1440 + Math.floor(Math.random() * 360);
-    db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
-        lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg }
+    roomRef.update({
+        lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
+        lastUpdate: Date.now()
     });
 };
 
 async function handleAction(action, room) {
-    window.animating = true;
+    window.isAnimating = true;
     const { actor, result, deg } = action;
+    const isMe = actor === myRole;
+    
+    // 1. Wheel Sequence
     document.getElementById('visual-wheel').style.transform = `rotate(${deg}deg)`;
-    await playWait('wheel');
-    await new Promise(r => setTimeout(r, 800));
+    await playWait('wheel'); 
+    await wait(800);
 
-    let up = { lastId: result.id, isBonus: false };
-    let msg = "";
+    let updates = { lastUpdate: Date.now(), lastId: result.id };
+    let logMsg = "";
 
     if (result.type === 'attack') {
-        await playWait(actor === 'host' ? `${result.id}1` : result.id);
+        const sound = actor === 'host' ? `${result.id}1` : result.id;
+        await playWait(sound);
+
         const target = actor === 'host' ? 'guest' : 'host';
-        if (room[target + 'Shield']) {
-            up[target + 'Shield'] = false;
-            msg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} แต่ติดเกราะ!`;
+        const hasShield = room[target + 'Shield'];
+
+        if (hasShield) {
+            updates[target + 'Shield'] = false;
+            logMsg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} แต่ติดเกราะ!`;
         } else {
             const newHP = Math.max(0, room[target + 'HP'] - result.dmg);
-            up[target + 'HP'] = newHP;
-            msg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} ลดไป ${result.dmg} เหลือ ${newHP}`;
-            triggerFlash(result.color);
+            updates[target + 'HP'] = newHP;
+            // การประกาศ HP ที่เหลือตามต้นฉบับ
+            logMsg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} ลดไป ${result.dmg} เหลือ ${newHP}`;
+            
+            document.getElementById('hit-flash').style.backgroundColor = result.color;
+            document.getElementById('hit-flash').style.opacity = '0.4';
+            setTimeout(() => document.getElementById('hit-flash').style.opacity = '0', 150);
+            if(target === 'host' || (target === 'guest' && myRole === 'guest')) {
+                document.getElementById('game-container').classList.add('shake');
+                setTimeout(() => document.getElementById('game-container').classList.remove('shake'), 200);
+            }
         }
-        up.turn = actor === 'host' ? 'guest' : 'host';
+        updates.turn = actor === 'host' ? 'guest' : 'host';
+        updates.isBonus = false;
     } else {
+        // HP/Shield Bonus Logic
         if (result.type === 'hp') {
-            await playWait(actor === myRole ? 'hp' : 'hp2');
+            const sound = isMe ? 'hp' : 'hp2';
+            await playWait(sound);
             const val = [100, 300, 500][Math.floor(Math.random()*3)];
-            up[actor + 'HP'] = Math.min(1000, room[actor + 'HP'] + val);
-            msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้น้ำยา ${val} หน่วย และได้สุ่มต่อ!`;
+            updates[actor + 'HP'] = Math.min(1000, room[actor + 'HP'] + val);
+            logMsg = `${actor === 'host' ? 'Host' : 'Guest'} ได้น้ำยา ${val} หน่วย และได้สุ่มต่อ!`;
         } else {
-            await playWait(actor === myRole ? 'shield' : 'shield2');
-            up[actor + 'Shield'] = true;
-            msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ และได้สุ่มต่อ!`;
+            const sound = isMe ? 'shield' : 'shield2';
+            await playWait(sound);
+            updates[actor + 'Shield'] = true;
+            logMsg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ และได้สุ่มต่อ!`;
         }
-        up.isBonus = true; up.turn = actor;
+        updates.turn = actor;
+        updates.isBonus = true;
     }
 
-    announce(msg);
-    await new Promise(r => setTimeout(r, 2000));
+    announce(logMsg);
+    await wait(2000);
+
     if (myRole === 'host') {
-        if ((up.hostHP || room.hostHP) <= 0 || (up.guestHP || room.guestHP) <= 0) up.status = 'finished';
-        db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(up);
+        if (updates.hostHP === 0 || updates.guestHP === 0) updates.status = 'finished';
+        db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(updates);
     }
-    window.animating = false;
-}
-
-function showScene(id) {
-    document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-}
-
-function triggerFlash(c) {
-    const f = document.getElementById('hit-flash');
-    f.style.backgroundColor = c; f.style.opacity = '0.4';
-    setTimeout(() => f.style.opacity = '0', 150);
+    window.isAnimating = false;
 }
 
 function endGame(room) {
-    showScene('scene-result');
+    if (bgmSource) bgmSource.stop();
+    document.getElementById('scene-battle').classList.remove('active');
+    document.getElementById('scene-result').classList.add('active');
     document.getElementById('btn-community').classList.remove('hidden');
-    const win = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-    document.getElementById('result-title').innerText = win ? "ชัยชนะเป็นของ Host!" : "Host พ่ายแพ้...";
-    announce(win ? "ชัยชนะเป็นของ Host!" : "Host พ่ายแพ้...");
-    playSound(win ? 'winner1' : 'lost1');
+
+    const iWon = (myRole === 'host' && room.guestHP === 0) || (myRole === 'guest' && room.hostHP === 0);
+    document.getElementById('result-title').innerText = iWon ? "ชัยชนะเป็นของคุณ!" : "คุณพ่ายแพ้...";
+    document.getElementById('result-desc').innerText = iWon ? "คุณได้พิสูจน์ตนเองในฐานะผู้กล้าแล้ว!" : "พยายามอีกครั้ง โอกาสหน้ายังรอคุณอยู่";
+    
+    if(iWon) playSound('winner1'); else playSound('lost1');
+    announce(document.getElementById('result-title').innerText);
 }
 
-['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','winner1','lost1','start3'].forEach(loadSound);
+// Assets Load
+['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1'].forEach(loadSound);
+
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
 </body>
