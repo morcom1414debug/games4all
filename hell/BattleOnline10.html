@@ -260,14 +260,15 @@ function updateUI(room) {
     room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
 
     const spinBtn = document.getElementById('btn-spin');
-    const isMyTurn = (room.turn === myRole);
     
-    // เงื่อนไขสิทธิ์ในการกด
+    // --- คำนวณ canSpin ตามกฎ ---
+    const isMyTurn = (room.turn === myRole);
     const canSpin = isMyTurn && !window.animating && (
         (room.spinCount === 0) || 
         (room.spinCount === 1 && room.isBonus === true)
     );
 
+    // ปลดล็อค localSpinLocked เมื่อเป็นสิทธิ์ที่เรากดได้
     if (canSpin) {
         localSpinLocked = false;
     }
@@ -275,53 +276,57 @@ function updateUI(room) {
     if (window.animating) {
         spinBtn.disabled = true;
     } else {
-        // ปุ่มจะ Dim ทันทีหากไม่ได้อยู่ในเงื่อนไขที่อนุญาต หรือถูกล็อคโดย Client
+        // ปุ่มจะสว่างเฉพาะตอนเป็นตาเรา และยังไม่ได้กด หรือเป็นโบนัส
         spinBtn.disabled = !canSpin || localSpinLocked;
         if (!room.isBonus && isMyTurn && !localSpinLocked) announce(`ตาของคุณแล้ว`);
+        if (canSpin && !localSpinLocked) spinBtn.focus();
     }
 }
 
 /**
- * แก้ไขปุ่มโยกคันโยก: ล็อคทันทีที่ปลายนิ้วสัมผัส
+ * แก้ไขปุ่มกดให้ Dim ทันที และตรวจสอบสิทธิ์ Bonus
  */
 document.getElementById('btn-spin').onclick = async () => {
     const spinBtn = document.getElementById('btn-spin');
 
-    // --- จุดตาย: ล็อคทันทีไม่ต้องรอ Firebase ---
+    // 1. ล็อคปุ่มทันทีเพื่อป้องกันการกดเบิ้ล
+    spinBtn.disabled = true;
+    if (localSpinLocked) return;
     localSpinLocked = true;
-    spinBtn.disabled = true; 
-    window.animating = true; // ล็อคสถานะข้ามฟังก์ชัน updateUI
 
     updateActivity();
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
 
-    // เช็คสิทธิ์กันบั๊กซ้ำซ้อน
-    if (room.turn !== myRole) {
-        window.animating = false;
-        localSpinLocked = false;
+    // 2. ตรวจสอบเงื่อนไขความปลอดภัยก่อนหมุน
+    const currentSpinCount = room.spinCount || 0;
+    if (room.turn !== myRole || currentSpinCount > 1 || (currentSpinCount === 1 && room.isBonus !== true)) {
         return;
     }
 
     let res;
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
-        if (room.isBonus === true && res.type !== 'attack') continue;
+        
+        // 3. กฎ Bonus: ถ้ากดครั้งที่สอง ต้องได้เฉพาะ Attack เท่านั้น
+        if (room.isBonus === true) {
+            if (res.type !== 'attack') continue;
+        }
+
         if(res.id === room.lastId) continue;
         break;
     }
 
     const deg = 1440 + Math.floor(Math.random() * 360);
-    
-    // อัปเดตข้อมูลขึ้น Firebase
-    await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
+    // 4. ส่งคำสั่งไปประมวลผล
+    db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
         lastActivity: Date.now()
     });
 };
 
 async function handleAction(action, room) {
-    window.animating = true; // มั่นใจว่าปุ่มจะ Dim ตลอดช่วงแอนิเมชัน
+    window.animating = true;
     const { actor, result, deg } = action;
     document.getElementById('visual-wheel').style.transform = `rotate(${deg}deg)`;
     await playWait('wheel');
@@ -342,9 +347,11 @@ async function handleAction(action, room) {
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} ลดไป ${result.dmg} เหลือ ${newHP}`;
             triggerFlash(result.color);
         }
+        // ถ้าเป็น Attack จะเปลี่ยนตาเสมอ และรีเซตจำนวนการหมุน
         up.turn = actor === 'host' ? 'guest' : 'host';
         up.spinCount = 0; 
     } else {
+        // กรณีเป็น Bonus (HP/Shield)
         if (result.type === 'hp') {
             await playWait(actor === myRole ? 'hp' : 'hp2');
             const val = [100, 300, 500][Math.floor(Math.random()*3)];
@@ -355,6 +362,7 @@ async function handleAction(action, room) {
             up[actor + 'Shield'] = true;
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
+        // ตั้งค่าให้เล่นต่อได้อีกครั้ง
         up.isBonus = true; 
         up.turn = actor;
         up.spinCount = 1; 
@@ -366,8 +374,6 @@ async function handleAction(action, room) {
         if ((up.hostHP ?? room.hostHP) <= 0 || (up.guestHP ?? room.guestHP) <= 0) up.status = 'finished';
         db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(up);
     }
-    
-    // คลายล็อคเมื่อจบแอนิเมชันทั้งหมด
     window.animating = false;
 
     const freshSnap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
