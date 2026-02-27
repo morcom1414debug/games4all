@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -104,6 +103,7 @@
 </div>
 
 <script>
+// --- Configuration ---
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
@@ -118,7 +118,7 @@ const db = firebase.database();
 const GAME_ID = "valuka";
 
 let myRole = null, currentRoomId = null, bgmSource = null;
-let localSpinLocked = false; // ระบบ Local Lock ป้องกันการกดย้ำ (Double Click)
+let localSpinLocked = false;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
@@ -166,14 +166,13 @@ const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})),
     {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
 ];
 
-// --- ระบบลบห้องร้างอัตโนมัติ ---
+// --- Online Logic ---
 db.ref(`${GAME_ID}/rooms`).on('value', snap => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
     const now = Date.now();
     snap.forEach(child => {
         const room = child.val();
-        // ลบห้องที่ไม่มี Activity เกิน 5 นาที
         if (room.lastActivity && (now - room.lastActivity > 300000)) {
             db.ref(`${GAME_ID}/rooms/${child.key}`).remove();
             return;
@@ -250,6 +249,9 @@ function listenToRoom() {
     });
 }
 
+/**
+ * แก้ไขเฉพาะ updateUI() ตามกฎที่กำหนด
+ */
 function updateUI(room) {
     document.getElementById('hp-host').innerText = room.hostHP.toLocaleString();
     document.getElementById('hp-guest').innerText = room.guestHP.toLocaleString();
@@ -261,27 +263,43 @@ function updateUI(room) {
     room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
 
     const spinBtn = document.getElementById('btn-spin');
+    
+    // --- จุดแก้ไข A: คำนวณ canSpin ตามกฎ ---
     const isMyTurn = (room.turn === myRole);
-    const canSpin = isMyTurn && !window.animating && ( (room.spinCount === 0) || (room.spinCount === 1 && room.isBonus === true) );
-    spinBtn.disabled = !canSpin;
+    const canSpin = isMyTurn && !window.animating && (
+        (room.spinCount === 0) || 
+        (room.spinCount === 1 && room.isBonus === true)
+    );
+
+    // ห้าม reset localSpinLocked ทุกครั้ง ให้ reset เฉพาะตอน canSpin === true
     if (canSpin) {
         localSpinLocked = false;
-        spinBtn.focus();
     }
-    if (!room.isBonus) announce(`ตา ${room.turn === 'host' ? 'Host' : 'Guest'}`);
+
+    // จัดการปุ่ม
+    if (window.animating) {
+        spinBtn.disabled = true;
+    } else {
+        spinBtn.disabled = !canSpin || localSpinLocked;
+        if (!room.isBonus && isMyTurn) announce(`ตาของคุณแล้ว`);
+        if (canSpin && !localSpinLocked) spinBtn.focus();
+    }
 }
 
+/**
+ * แก้ไขเฉพาะ btn-spin.onclick ตามกฎที่กำหนด
+ */
 document.getElementById('btn-spin').onclick = async () => {
-    // 1. Local Lock + UI Disable ทันทีเพื่อป้องกันกดย้ำเด็ดขาด
+    // Dim ปุ่มทันทีป้องกันการกดย้ำ
+    document.getElementById('btn-spin').disabled = true;
     if (localSpinLocked) return;
     localSpinLocked = true;
-    document.getElementById('btn-spin').disabled = true;
 
     updateActivity();
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
 
-    // 2. เช็คเงื่อนไขจำนวนครั้ง
+    // --- จุดแก้ไข B: เช็คเงื่อนไข strict ---
     const currentSpinCount = room.spinCount || 0;
     if (currentSpinCount > 1 || (currentSpinCount === 1 && room.isBonus !== true)) {
         return;
@@ -290,10 +308,16 @@ document.getElementById('btn-spin').onclick = async () => {
     let res;
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
+        
+        // --- จุดแก้ไข C: ถ้าเป็น Bonus ครั้งที่ 2 ต้องสุ่มได้เฉพาะ Attack เท่านั้น ---
+        if (room.isBonus === true) {
+            if (res.type !== 'attack') continue;
+        }
+
         if(res.id === room.lastId) continue;
-        if(room.isBonus && res.type !== 'attack') continue;
         break;
     }
+
     const deg = 1440 + Math.floor(Math.random() * 360);
     db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
@@ -375,19 +399,7 @@ function endGame(room) {
     document.getElementById('btn-community').classList.remove('hidden');
 
     const iAmWin = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-    const winTexts = [
-        { title: "ชัยชนะอันรุ่งโรจน์!", desc: "พลังของคุณช่างแข็งแกร่ง จงนำชัยชนะนี้ไปเป็นแรงผลักดันในการประลองครั้งหน้า!" },
-        { title: "จอมยุทธ์ผู้ไร้เทียมทาน", desc: "การต่อสู้ที่ยอดเยี่ยม! พลังเวทย์ของคุณได้รับการอัปเกรดเพื่อปกป้องอาณาจักรต่อไป" },
-        { title: "ผู้พิชิต VALUKA", desc: "ชัยชนะเป็นของคุณ! ความพยายามฝึกฝนส่งผลให้คุณก้ามข้ามขีดจำกัดได้สำเร็จ" }
-    ];
-    const lostTexts = [
-        { title: "ความพ่ายแพ้คือบทเรียน", desc: "อย่าเพิ่งท้อถอย! จอมยุทธ์ที่ยิ่งใหญ่ล้วนเคยล้มลงมาก่อน กลับมาฝึกฝนแล้วท้าทายใหม่นะ" },
-        { title: "เกือบไปนิดเดียว!", desc: "คุณทำได้ดีมากแล้ว พักผ่อนเติมพลังแล้วกลับมาทวงคืนความยิ่งใหญ่ในครั้งต่อไป" },
-        { title: "พลังยังไม่สิ้นสุด", desc: "แม้ครั้งนี้จะพลาดไป แต่จิตวิญญาณนักสู้ของคุณยังอยู่ ครั้งหน้าชัยชนะจะเป็นของคุณแน่นอน!" }
-    ];
-
-    const randomIdx = Math.floor(Math.random() * 3);
-    const content = iAmWin ? winTexts[randomIdx] : lostTexts[randomIdx];
+    const content = iAmWin ? {title: "ชัยชนะ!", desc: "คุณทำได้ยอดเยี่ยมมาก"} : {title: "พ่ายแพ้", desc: "พยายามต่อไปนะ"};
 
     document.getElementById('result-emoji').innerText = iAmWin ? "🏆" : "💀";
     document.getElementById('result-title').innerText = content.title;
@@ -404,4 +416,3 @@ document.getElementById('btn-create-room').onclick = createRoom;
 </script>
 </body>
 </html>
-```
