@@ -232,11 +232,7 @@ function listenToRoom() {
             bgm.buffer = await loadSound('back1');
             bgm.loop = true; bgm.connect(audioCtx.destination);
             bgm.start(0); bgmSource = bgm;
-
-            // ประกาศคนได้เริ่มคนแรก
-            const firstTurnLabel = room.turn === 'host' ? 'Host' : 'Guest';
-            announce(`${firstTurnLabel} ได้เริ่มก่อน`); 
-
+            announce(`ผู้ที่ได้เริ่มก่อนคือ ${room.turn === 'host' ? 'Host' : 'Guest'}`);
             updateUI(room);
         }
         if (room.lastAction && room.lastAction.id !== window.processedId) {
@@ -265,7 +261,6 @@ function updateUI(room) {
     const spinBtn = document.getElementById('btn-spin');
     const isMyTurn = (room.turn === myRole);
     
-    // เงื่อนไขสิทธิ์การกดและระบบล็อคปุ่ม
     const canSpin = isMyTurn && !window.animating && !localSpinLocked && (
         (room.spinCount === 0) || 
         (room.spinCount === 1 && room.isBonus === true)
@@ -279,10 +274,9 @@ function updateUI(room) {
         spinBtn.disabled = true;
     } else {
         spinBtn.disabled = !canSpin;
-        // ประกาศ ถึงตา...
         if (!room.isBonus && !localSpinLocked) {
             const turnLabel = room.turn === 'host' ? 'Host' : 'Guest';
-            announce(`ถึงตา ${turnLabel} แล้วครับ เตรียมตัวให้พร้อม!`);
+            announce(`ตาของ ${turnLabel}`);
         }
     }
 }
@@ -307,7 +301,6 @@ document.getElementById('btn-spin').onclick = async () => {
     let res;
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
-        // โบนัสรอบสองต้องเป็น Attack เท่านั้น
         if (room.isBonus === true && res.type !== 'attack') continue;
         if(res.id === room.lastId) continue;
         break;
@@ -398,22 +391,7 @@ function endGame(room) {
     document.getElementById('btn-community').classList.remove('hidden');
 
     const iAmWin = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-
-    // ข้อความสรุปผลแบบสุ่มที่ยาวและกระตุ้นการเล่นซ้ำ
-    const winMessages = [
-        { title: "ชัยชนะอันรุ่งโรจน์!", desc: "ฝีมือของคุณยอดเยี่ยมไร้เทียมทาน! จังหวะการหมุนวงล้อช่างแม่นยำจนคู่ต่อสู้ต้องสยบ ลองไปท้าสู้คนอื่นดูไหม?" },
-        { title: "สุดยอดปรมาจารย์!", desc: "คุณคือผู้ชนะในศึกครั้งนี้! พลังแห่งธาตุอยู่ข้างคุณเสมอ ความสามารถนี้ต้องมีคนอยากมาล้างตาแน่นอน" },
-        { title: "ผู้พิชิต VALUKA!", desc: "เก่งมาก! คุณสามารถคุมเกมได้อยู่หมัดและคว้าชัยชนะมาได้สำเร็จ พร้อมสำหรับการประลองรอบต่อไปหรือยัง?" }
-    ];
-
-    const lossMessages = [
-        { title: "พ่ายแพ้อย่างสมศักดิ์ศรี", desc: "เกือบไปแล้วอีกนิดเดียวเท่านั้น! โชคอาจจะไม่เข้าข้างในรอบนี้ แต่ฝีมือคุณพัฒนาขึ้นมาก ลองกดเริ่มใหม่อีกสักตาเพื่อล้างตาไหม?" },
-        { title: "อย่าเพิ่งยอมแพ้!", desc: "ความพ่ายแพ้คือบทเรียนของผู้กล้า ครั้งหน้าวงล้ออาจจะเป็นใจให้คุณมากกว่านี้ กลับมาพิสูจน์ฝีมืออีกครั้งสิ!" },
-        { title: "สู้ได้ยอดเยี่ยมมาก", desc: "แม้รอบนี้จะพลาดท่า แต่การต่อสู้ของคุณน่าประทับใจจริงๆ ปรับกลยุทธ์อีกนิดแล้วกลับมาคว้าชัยชนะในรอบหน้ากันเถอะ!" }
-    ];
-
-    const randomIdx = Math.floor(Math.random() * 3);
-    const content = iAmWin ? winMessages[randomIdx] : lossMessages[randomIdx];
+    const content = iAmWin ? {title: "ชัยชนะ!", desc: "คุณทำได้ยอดเยี่ยมมาก"} : {title: "พ่ายแพ้", desc: "พยายามต่อไปนะ"};
 
     document.getElementById('result-emoji').innerText = iAmWin ? "🏆" : "💀";
     document.getElementById('result-title').innerText = content.title;
