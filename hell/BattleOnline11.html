@@ -262,45 +262,42 @@ function updateUI(room) {
     const spinBtn = document.getElementById('btn-spin');
     const isMyTurn = (room.turn === myRole);
     
-    // เงื่อนไขสิทธิ์ในการกด: ต้องเป็นตาเรา และไม่ติดแอนิเมชัน และไม่ติดล็อคชั่วคราว
-    const canSpin = isMyTurn && !window.animating && !localSpinLocked && (
+    // เงื่อนไขสิทธิ์ในการกด
+    const canSpin = isMyTurn && !window.animating && (
         (room.spinCount === 0) || 
         (room.spinCount === 1 && room.isBonus === true)
     );
 
-    // ปลดล็อค localSpinLocked เมื่อแอนิเมชันจบและข้อมูลซิงค์แล้ว
-    if (!window.animating && isMyTurn) {
+    if (canSpin) {
         localSpinLocked = false;
     }
 
-    if (window.animating || localSpinLocked) {
+    if (window.animating) {
         spinBtn.disabled = true;
     } else {
-        spinBtn.disabled = !canSpin;
+        // ปุ่มจะ Dim ทันทีหากไม่ได้อยู่ในเงื่อนไขที่อนุญาต หรือถูกล็อคโดย Client
+        spinBtn.disabled = !canSpin || localSpinLocked;
         if (!room.isBonus && isMyTurn && !localSpinLocked) announce(`ตาของคุณแล้ว`);
     }
 }
 
 /**
- * แก้ไขปุ่มโยกคันโยก: ปรับปรุงให้ Guest ล็อคทันทีเหมือน Host
+ * แก้ไขปุ่มโยกคันโยก: ล็อคทันทีที่ปลายนิ้วสัมผัส
  */
 document.getElementById('btn-spin').onclick = async () => {
     const spinBtn = document.getElementById('btn-spin');
 
-    // 1. ล็อคทันทีไม่ต้องรอ Firebase (ทำงานทั้ง Host และ Guest)
+    // --- จุดตาย: ล็อคทันทีไม่ต้องรอ Firebase ---
     localSpinLocked = true;
     spinBtn.disabled = true; 
-    window.animating = true; 
+    window.animating = true; // ล็อคสถานะข้ามฟังก์ชัน updateUI
 
     updateActivity();
-    
-    // ดึงค่าล่าสุดมาตรวจสอบอีกครั้ง
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
 
-    // 2. เช็คเงื่อนไขความปลอดภัย (กันส่งซ้ำทาง Network)
-    const currentSpinCount = room.spinCount || 0;
-    if (room.turn !== myRole || currentSpinCount > 1 || (currentSpinCount === 1 && room.isBonus !== true)) {
+    // เช็คสิทธิ์กันบั๊กซ้ำซ้อน
+    if (room.turn !== myRole) {
         window.animating = false;
         localSpinLocked = false;
         return;
@@ -316,16 +313,15 @@ document.getElementById('btn-spin').onclick = async () => {
 
     const deg = 1440 + Math.floor(Math.random() * 360);
     
-    // 3. บันทึกผลและเพิ่ม SpinCount เพื่อบอก Firebase ว่ามีการกดแล้ว
+    // อัปเดตข้อมูลขึ้น Firebase
     await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
-        spinCount: (room.spinCount || 0) + 1,
         lastActivity: Date.now()
     });
 };
 
 async function handleAction(action, room) {
-    window.animating = true; 
+    window.animating = true; // มั่นใจว่าปุ่มจะ Dim ตลอดช่วงแอนิเมชัน
     const { actor, result, deg } = action;
     document.getElementById('visual-wheel').style.transform = `rotate(${deg}deg)`;
     await playWait('wheel');
@@ -346,7 +342,6 @@ async function handleAction(action, room) {
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} ลดไป ${result.dmg} เหลือ ${newHP}`;
             triggerFlash(result.color);
         }
-        // จบเทิร์น: เปลี่ยนฝั่งและรีเซตสิทธิ์การกด
         up.turn = actor === 'host' ? 'guest' : 'host';
         up.spinCount = 0; 
     } else {
@@ -360,7 +355,6 @@ async function handleAction(action, room) {
             up[actor + 'Shield'] = true;
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
-        // ให้เล่นต่อ (Bonus)
         up.isBonus = true; 
         up.turn = actor;
         up.spinCount = 1; 
@@ -368,15 +362,13 @@ async function handleAction(action, room) {
 
     announce(msg);
     await new Promise(r => setTimeout(r, 2000));
-    
-    // เฉพาะ Host เป็นคนอัปเดตผลลัพธ์สุดท้าย
     if (myRole === 'host') {
         if ((up.hostHP ?? room.hostHP) <= 0 || (up.guestHP ?? room.guestHP) <= 0) up.status = 'finished';
         db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(up);
     }
     
+    // คลายล็อคเมื่อจบแอนิเมชันทั้งหมด
     window.animating = false;
-    localSpinLocked = false; // คืนสิทธิ์การกดหลังจากทุกอย่างเสร็จสิ้น
 
     const freshSnap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const freshRoom = freshSnap.val();
