@@ -21,6 +21,9 @@
         }
 
         #hit-flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; opacity: 0; transition: opacity 0.1s; }
+        .particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
+        .particle { position: absolute; background: var(--gold); border-radius: 50%; opacity: 0.2; animation: floatUp 10s infinite ease-in; }
+        @keyframes floatUp { 0% { transform: translateY(105vh) scale(0); opacity: 0; } 50% { opacity: 0.4; } 100% { transform: translateY(-10vh) scale(1.5); opacity: 0; } }
         
         #game-container {
             background: rgba(15, 12, 41, 0.75); backdrop-filter: blur(25px);
@@ -54,7 +57,7 @@
         .wheel-graphic { width: 100%; height: 100%; border-radius: 50%; border: 6px solid var(--gold); background: conic-gradient(var(--primary) 0% 12.5%, var(--secondary) 12.5% 25%, var(--primary) 25% 37.5%, var(--secondary) 37.5% 50%, var(--primary) 50% 62.5%, var(--secondary) 62.5% 75%, var(--primary) 75% 87.5%, var(--secondary) 87.5% 100%); transition: transform 2.5s cubic-bezier(0.15, 0, 0.15, 1); }
 
         .btn-main { background: linear-gradient(135deg, var(--danger), var(--gold)); border: none; padding: 20px 40px; border-radius: 50px; color: white; font-size: 1.4rem; font-weight: 600; cursor: pointer; transition: 0.3s; }
-        .btn-main:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.8); }
+        .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
         
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
     </style>
@@ -108,7 +111,6 @@
 </div>
 
 <script>
-// --- Configuration ---
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
@@ -126,7 +128,6 @@ let myRole = null, currentRoomId = null, bgmSource = null;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
-// --- Audio Engine ---
 async function loadSound(name) {
     if (audioCache[name]) return audioCache[name];
     try {
@@ -170,7 +171,6 @@ const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})),
     {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
 ];
 
-// --- Online Logic ---
 db.ref(`${GAME_ID}/rooms`).on('value', snap => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
@@ -218,7 +218,6 @@ function listenToRoom() {
             showScene('scene-battle');
             document.getElementById('btn-community').classList.add('hidden');
             
-            // เล่นเสียงเริ่มเกม (BGM เดิม)
             await playWait('start3');
             
             const bgm = audioCtx.createBufferSource();
@@ -241,7 +240,6 @@ function listenToRoom() {
     });
 }
 
-// --- จุดที่แก้ไข BUG ปุ่ม DIM ---
 function updateUI(room) {
     document.getElementById('hp-host').innerText = room.hostHP.toLocaleString();
     document.getElementById('hp-guest').innerText = room.guestHP.toLocaleString();
@@ -254,32 +252,22 @@ function updateUI(room) {
     room.hostShield ? document.getElementById('host-box').classList.add('has-shield') : document.getElementById('host-box').classList.remove('has-shield');
     room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
 
-    // ตรวจสอบสิทธิ์การกดปุ่ม (หัวใจของการแก้ Bug)
-    const spinBtn = document.getElementById('btn-spin');
-    
-    if (window.animating) {
-        // ขณะกำลังเล่น Animation ห้ามกดเด็ดขาด
-        spinBtn.disabled = true;
-    } else {
-        // ถ้าไม่มี Animation ให้เช็คว่าเป็นตาเราจริงไหม
-        const isMyTurn = (room.turn === myRole);
-        spinBtn.disabled = !isMyTurn;
-        
+    // ตรวจสอบ Turn และปลดล็อกปุ่ม
+    if (!window.animating) {
+        const isMyTurn = room.turn === myRole;
+        const btn = document.getElementById('btn-spin');
+        btn.disabled = !isMyTurn;
         if (isMyTurn) {
-            // ประกาศสถานะตาของผู้เล่น
             if (!room.isBonus) announce(`ตา ${myRole === 'host' ? 'Host' : 'Guest'}`);
-            spinBtn.focus();
+            btn.focus();
         }
     }
 }
 
 document.getElementById('btn-spin').onclick = async () => {
-    // ทันทีที่กด ให้ปิดปุ่มเพื่อป้องกันการกดซ้ำซ้อน
     document.getElementById('btn-spin').disabled = true;
-    
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
-    
     let res;
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
@@ -288,8 +276,6 @@ document.getElementById('btn-spin').onclick = async () => {
         break;
     }
     const deg = 1440 + Math.floor(Math.random() * 360);
-    
-    // บันทึก Action ลง Firebase
     db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg }
     });
@@ -297,9 +283,6 @@ document.getElementById('btn-spin').onclick = async () => {
 
 async function handleAction(action, room) {
     window.animating = true;
-    // ปิดปุ่มระหว่างจัดการผลลัพธ์
-    document.getElementById('btn-spin').disabled = true;
-
     const { actor, result, deg } = action;
     document.getElementById('visual-wheel').style.transform = `rotate(${deg}deg)`;
     await playWait('wheel');
@@ -322,7 +305,6 @@ async function handleAction(action, room) {
         }
         up.turn = actor === 'host' ? 'guest' : 'host';
     } else {
-        // กรณีได้รับ HP หรือ Shield
         if (result.type === 'hp') {
             await playWait(actor === myRole ? 'hp' : 'hp2');
             const val = [100, 300, 500][Math.floor(Math.random()*3)];
@@ -333,20 +315,16 @@ async function handleAction(action, room) {
             up[actor + 'Shield'] = true;
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
-        up.isBonus = true; 
-        up.turn = actor; // ให้คนเดิมเล่นต่อ
+        up.isBonus = true; up.turn = actor;
     }
 
     announce(msg);
     await new Promise(r => setTimeout(r, 2000));
-    
     if (myRole === 'host') {
         if ((up.hostHP ?? room.hostHP) <= 0 || (up.guestHP ?? room.guestHP) <= 0) up.status = 'finished';
         db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(up);
     }
-    
     window.animating = false;
-    // updateUI จะถูกเรียกโดยอัตโนมัติจาก listener เพื่อปลดล็อกปุ่มตามเงื่อนไขใหม่
 }
 
 function showScene(id) {
@@ -370,9 +348,7 @@ function endGame(room) {
     playSound(win ? 'winner1' : 'lost1');
 }
 
-// Assets Load
 ['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3'].forEach(loadSound);
-
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
 </body>
