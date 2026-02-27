@@ -249,9 +249,6 @@ function listenToRoom() {
     });
 }
 
-/**
- * แก้ไขเฉพาะ updateUI() ตามกฎที่กำหนด
- */
 function updateUI(room) {
     document.getElementById('hp-host').innerText = room.hostHP.toLocaleString();
     document.getElementById('hp-guest').innerText = room.guestHP.toLocaleString();
@@ -264,34 +261,36 @@ function updateUI(room) {
 
     const spinBtn = document.getElementById('btn-spin');
     
-    // --- จุดแก้ไข A: คำนวณ canSpin ตามกฎ ---
+    // --- คำนวณ canSpin ตามกฎ ---
     const isMyTurn = (room.turn === myRole);
     const canSpin = isMyTurn && !window.animating && (
         (room.spinCount === 0) || 
         (room.spinCount === 1 && room.isBonus === true)
     );
 
-    // ห้าม reset localSpinLocked ทุกครั้ง ให้ reset เฉพาะตอน canSpin === true
+    // ปลดล็อค localSpinLocked เมื่อเป็นสิทธิ์ที่เรากดได้
     if (canSpin) {
         localSpinLocked = false;
     }
 
-    // จัดการปุ่ม
     if (window.animating) {
         spinBtn.disabled = true;
     } else {
+        // ปุ่มจะสว่างเฉพาะตอนเป็นตาเรา และยังไม่ได้กด หรือเป็นโบนัส
         spinBtn.disabled = !canSpin || localSpinLocked;
-        if (!room.isBonus && isMyTurn) announce(`ตาของคุณแล้ว`);
+        if (!room.isBonus && isMyTurn && !localSpinLocked) announce(`ตาของคุณแล้ว`);
         if (canSpin && !localSpinLocked) spinBtn.focus();
     }
 }
 
 /**
- * แก้ไขเฉพาะ btn-spin.onclick ตามกฎที่กำหนด
+ * แก้ไขปุ่มกดให้ Dim ทันที และตรวจสอบสิทธิ์ Bonus
  */
 document.getElementById('btn-spin').onclick = async () => {
-    // Dim ปุ่มทันทีป้องกันการกดย้ำ
-    document.getElementById('btn-spin').disabled = true;
+    const spinBtn = document.getElementById('btn-spin');
+
+    // 1. ล็อคปุ่มทันทีเพื่อป้องกันการกดเบิ้ล
+    spinBtn.disabled = true;
     if (localSpinLocked) return;
     localSpinLocked = true;
 
@@ -299,9 +298,9 @@ document.getElementById('btn-spin').onclick = async () => {
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
 
-    // --- จุดแก้ไข B: เช็คเงื่อนไข strict ---
+    // 2. ตรวจสอบเงื่อนไขความปลอดภัยก่อนหมุน
     const currentSpinCount = room.spinCount || 0;
-    if (currentSpinCount > 1 || (currentSpinCount === 1 && room.isBonus !== true)) {
+    if (room.turn !== myRole || currentSpinCount > 1 || (currentSpinCount === 1 && room.isBonus !== true)) {
         return;
     }
 
@@ -309,7 +308,7 @@ document.getElementById('btn-spin').onclick = async () => {
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
         
-        // --- จุดแก้ไข C: ถ้าเป็น Bonus ครั้งที่ 2 ต้องสุ่มได้เฉพาะ Attack เท่านั้น ---
+        // 3. กฎ Bonus: ถ้ากดครั้งที่สอง ต้องได้เฉพาะ Attack เท่านั้น
         if (room.isBonus === true) {
             if (res.type !== 'attack') continue;
         }
@@ -319,6 +318,7 @@ document.getElementById('btn-spin').onclick = async () => {
     }
 
     const deg = 1440 + Math.floor(Math.random() * 360);
+    // 4. ส่งคำสั่งไปประมวลผล
     db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
         lastActivity: Date.now()
@@ -347,9 +347,11 @@ async function handleAction(action, room) {
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} ลดไป ${result.dmg} เหลือ ${newHP}`;
             triggerFlash(result.color);
         }
+        // ถ้าเป็น Attack จะเปลี่ยนตาเสมอ และรีเซตจำนวนการหมุน
         up.turn = actor === 'host' ? 'guest' : 'host';
         up.spinCount = 0; 
     } else {
+        // กรณีเป็น Bonus (HP/Shield)
         if (result.type === 'hp') {
             await playWait(actor === myRole ? 'hp' : 'hp2');
             const val = [100, 300, 500][Math.floor(Math.random()*3)];
@@ -360,6 +362,7 @@ async function handleAction(action, room) {
             up[actor + 'Shield'] = true;
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
+        // ตั้งค่าให้เล่นต่อได้อีกครั้ง
         up.isBonus = true; 
         up.turn = actor;
         up.spinCount = 1; 
