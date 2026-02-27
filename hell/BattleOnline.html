@@ -103,7 +103,6 @@
 </div>
 
 <script>
-// --- Configuration ---
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
@@ -118,6 +117,7 @@ const db = firebase.database();
 const GAME_ID = "valuka";
 
 let myRole = null, currentRoomId = null, bgmSource = null;
+let localSpinLocked = false; // ระบบ Local Lock ป้องกันการกดย้ำ (Double Click)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
@@ -165,21 +165,18 @@ const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})),
     {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
 ];
 
-// --- Online Logic & Auto Clear ---
+// --- ระบบลบห้องร้างอัตโนมัติ ---
 db.ref(`${GAME_ID}/rooms`).on('value', snap => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
     const now = Date.now();
     snap.forEach(child => {
         const room = child.val();
-        
-        // --- ส่วนการ Clear ห้องร้าง ---
-        // ถ้าห้องไม่มี Activity เกิน 5 นาที (300,000ms) ให้ลบทิ้งทันที
+        // ลบห้องที่ไม่มี Activity เกิน 5 นาที
         if (room.lastActivity && (now - room.lastActivity > 300000)) {
             db.ref(`${GAME_ID}/rooms/${child.key}`).remove();
             return;
         }
-
         if (room.status === 'waiting') {
             const b = document.createElement('button');
             b.innerText = `เข้าห้อง ${child.key}`;
@@ -267,6 +264,9 @@ function updateUI(room) {
         spinBtn.disabled = true;
     } else {
         const isMyTurn = (room.turn === myRole);
+        // ปลดล็อค Local Lock เมื่อเข้าตาตัวเอง
+        if (isMyTurn) localSpinLocked = false; 
+        
         spinBtn.disabled = !isMyTurn;
         if (!room.isBonus) announce(`ตา ${room.turn === 'host' ? 'Host' : 'Guest'}`);
         if (isMyTurn) spinBtn.focus();
@@ -274,17 +274,20 @@ function updateUI(room) {
 }
 
 document.getElementById('btn-spin').onclick = async () => {
-    // ล็อคปุ่มฝั่ง UI ทันทีป้องกันการเบิ้ล
+    // 1. Local Lock + UI Disable ทันทีเพื่อป้องกันกดย้ำเด็ดขาด
+    if (localSpinLocked) return;
+    localSpinLocked = true;
     document.getElementById('btn-spin').disabled = true;
 
     updateActivity();
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
 
-    // เช็ค Spin Count
+    // 2. เช็คเงื่อนไขจำนวนครั้ง
     const currentSpinCount = room.spinCount || 0;
-    if (currentSpinCount >= 2) return;
-    if (currentSpinCount === 1 && room.isBonus === false) return;
+    if (currentSpinCount >= 2 || (currentSpinCount === 1 && !room.isBonus)) {
+        return;
+    }
 
     let res;
     while(true) {
@@ -374,7 +377,6 @@ function endGame(room) {
     document.getElementById('btn-community').classList.remove('hidden');
 
     const iAmWin = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-
     const winTexts = [
         { title: "ชัยชนะอันรุ่งโรจน์!", desc: "พลังของคุณช่างแข็งแกร่ง จงนำชัยชนะนี้ไปเป็นแรงผลักดันในการประลองครั้งหน้า!" },
         { title: "จอมยุทธ์ผู้ไร้เทียมทาน", desc: "การต่อสู้ที่ยอดเยี่ยม! พลังเวทย์ของคุณได้รับการอัปเกรดเพื่อปกป้องอาณาจักรต่อไป" },
@@ -394,7 +396,6 @@ function endGame(room) {
     document.getElementById('result-desc').innerText = content.desc;
     playSound(iAmWin ? 'winner1' : 'lost1');
 
-    // ลบห้องทิ้งทันทีเมื่อเกมจบและสรุปผลเสร็จ
     if (myRole === 'host') {
         setTimeout(() => db.ref(`${GAME_ID}/rooms/${currentRoomId}`).remove(), 10000);
     }
