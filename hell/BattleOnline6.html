@@ -57,9 +57,6 @@
         .btn-main:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.8); }
         
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
-
-        /* ผลลัพธ์หน้าสรุป */
-        .result-msg { font-size: 1.2rem; color: #ccc; margin-top: 10px; line-height: 1.6; }
     </style>
 </head>
 <body>
@@ -104,12 +101,10 @@
     </section>
 
     <section id="scene-result" class="scene">
-        <div id="result-visual">
-            <span id="result-emoji" style="font-size: 5rem;">🏆</span>
-        </div>
-        <h2 id="result-title" style="margin: 10px 0;"></h2>
-        <p id="result-desc" class="result-msg"></p>
-        </section>
+        <span style="font-size: 5rem;">🏆</span>
+        <h2 id="result-title"></h2>
+        <button onclick="location.reload()" class="btn-main">เล่นใหม่อีกครั้ง</button>
+    </section>
 </div>
 
 <script>
@@ -131,7 +126,6 @@ let myRole = null, currentRoomId = null, bgmSource = null;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
-// --- Audio Engine ---
 async function loadSound(name) {
     if (audioCache[name]) return audioCache[name];
     try {
@@ -157,7 +151,6 @@ const playWait = (name) => new Promise(res => {
 
 function announce(msg) {
     const el = document.getElementById('aria-announcer');
-    if (!el || el.getAttribute('aria-live') === 'off') return;
     el.innerText = "";
     setTimeout(() => { el.innerText = msg; }, 100);
 }
@@ -176,20 +169,11 @@ const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})),
     {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
 ];
 
-// --- Online Logic & Auto Clear ---
 db.ref(`${GAME_ID}/rooms`).on('value', snap => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
-    const now = Date.now();
     snap.forEach(child => {
         const room = child.val();
-        
-        // ตรวจสอบห้องที่ไม่มีกิจกรรมเกิน 5 นาที (300,000 ms)
-        if (room.lastActivity && (now - room.lastActivity > 300000)) {
-            db.ref(`${GAME_ID}/rooms/${child.key}`).remove();
-            return;
-        }
-
         if (room.status === 'waiting') {
             const b = document.createElement('button');
             b.innerText = `เข้าห้อง ${child.key}`;
@@ -200,12 +184,6 @@ db.ref(`${GAME_ID}/rooms`).on('value', snap => {
     });
 });
 
-async function updateActivity() {
-    if (currentRoomId) {
-        db.ref(`${GAME_ID}/rooms/${currentRoomId}/lastActivity`).set(Date.now());
-    }
-}
-
 async function createRoom() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const snap = await db.ref(`${GAME_ID}/room_counter`).transaction(curr => (curr || 0) + 1);
@@ -213,8 +191,7 @@ async function createRoom() {
     myRole = 'host';
     await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).set({
         status: 'waiting', hostHP: 1000, guestHP: 1000,
-        hostShield: false, guestShield: false, turn: '', lastId: '',
-        lastActivity: Date.now()
+        hostShield: false, guestShield: false, turn: '', lastId: ''
     });
     showScene('scene-waiting');
     document.getElementById('btn-community').classList.add('hidden');
@@ -225,11 +202,7 @@ async function joinRoom(roomId) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     currentRoomId = roomId; myRole = 'guest';
     const turnStart = Math.random() < 0.5 ? 'host' : 'guest';
-    await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({ 
-        status: 'playing', 
-        turn: turnStart,
-        lastActivity: Date.now()
-    });
+    await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({ status: 'playing', turn: turnStart });
     listenToRoom();
 }
 
@@ -242,11 +215,15 @@ function listenToRoom() {
             window.started = true;
             showScene('scene-battle');
             document.getElementById('btn-community').classList.add('hidden');
+            
             await playWait('start3');
+            
             const bgm = audioCtx.createBufferSource();
             bgm.buffer = await loadSound('back1');
             bgm.loop = true; bgm.connect(audioCtx.destination);
             bgm.start(0); bgmSource = bgm;
+            
+            // ประกาศคนเริ่มก่อนตามค่าจาก Server
             announce(`ผู้ที่ได้เริ่มก่อนคือ ${room.turn === 'host' ? 'Host' : 'Guest'}`);
             updateUI(room);
         }
@@ -258,10 +235,7 @@ function listenToRoom() {
             updateUI(room);
         }
 
-        if (room.status === 'finished') {
-            db.ref(`${GAME_ID}/rooms/${currentRoomId}`).off(); // หยุด listen เมื่อจบ
-            endGame(room);
-        }
+        if (room.status === 'finished') endGame(room);
     });
 }
 
@@ -270,6 +244,7 @@ function updateUI(room) {
     document.getElementById('hp-guest').innerText = room.guestHP.toLocaleString();
     document.getElementById('bar-host').style.width = (room.hostHP / 10) + '%';
     document.getElementById('bar-guest').style.width = (room.guestHP / 10) + '%';
+    
     document.getElementById('host-box').classList.toggle('active-turn', room.turn === 'host');
     document.getElementById('guest-box').classList.toggle('active-turn', room.turn === 'guest');
     
@@ -277,19 +252,24 @@ function updateUI(room) {
     room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
 
     const spinBtn = document.getElementById('btn-spin');
+    
     if (window.animating) {
         spinBtn.disabled = true;
     } else {
         const isMyTurn = (room.turn === myRole);
         spinBtn.disabled = !isMyTurn;
-        if (!room.isBonus) announce(`ตา ${room.turn === 'host' ? 'Host' : 'Guest'}`);
+        
+        // แก้ไขจุดนี้: ประกาศชื่อตาม room.turn เสมอ เพื่อให้ทุกเครื่องพูดชื่อเดียวกัน
+        if (!room.isBonus) {
+            announce(`ตา ${room.turn === 'host' ? 'Host' : 'Guest'}`);
+        }
+        
         if (isMyTurn) spinBtn.focus();
     }
 }
 
 document.getElementById('btn-spin').onclick = async () => {
     document.getElementById('btn-spin').disabled = true;
-    updateActivity();
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
     let res;
@@ -301,19 +281,19 @@ document.getElementById('btn-spin').onclick = async () => {
     }
     const deg = 1440 + Math.floor(Math.random() * 360);
     db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
-        lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
-        lastActivity: Date.now()
+        lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg }
     });
 };
 
 async function handleAction(action, room) {
     window.animating = true;
+    document.getElementById('btn-spin').disabled = true;
     const { actor, result, deg } = action;
     document.getElementById('visual-wheel').style.transform = `rotate(${deg}deg)`;
     await playWait('wheel');
     await new Promise(r => setTimeout(r, 800));
 
-    let up = { lastId: result.id, isBonus: false, lastActivity: Date.now() };
+    let up = { lastId: result.id, isBonus: false };
     let msg = "";
 
     if (result.type === 'attack') {
@@ -351,9 +331,12 @@ async function handleAction(action, room) {
     }
     window.animating = false;
 
+    // แก้ไข Race Condition: บังคับอัปเดต UI เพื่อปลดล็อกปุ่ม
     const freshSnap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const freshRoom = freshSnap.val();
-    if (freshRoom && freshRoom.status === 'playing') updateUI(freshRoom);
+    if (freshRoom && freshRoom.status === 'playing') {
+        updateUI(freshRoom);
+    }
 }
 
 function showScene(id) {
@@ -367,42 +350,16 @@ function triggerFlash(c) {
     setTimeout(() => f.style.opacity = '0', 150);
 }
 
-// --- สรุปผลเกมที่แก้ไขใหม่ ---
 function endGame(room) {
     if (bgmSource) bgmSource.stop();
-    
-    // ปิดการประกาศเสียงในหน้าสรุปผล
-    document.getElementById('aria-announcer').setAttribute('aria-live', 'off');
-    
     showScene('scene-result');
     document.getElementById('btn-community').classList.remove('hidden');
-
-    // คำนวณว่าเราชนะหรือแพ้
-    const iAmWin = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-
-    const winTexts = [
-        { title: "ชัยชนะอันรุ่งโรจน์!", desc: "พลังของคุณช่างแข็งแกร่ง จงนำชัยชนะนี้ไปเป็นแรงผลักดันในการประลองครั้งหน้า!" },
-        { title: "จอมยุทธ์ผู้ไร้เทียมทาน", desc: "การต่อสู้ที่ยอดเยี่ยม! พลังเวทย์ของคุณได้รับการอัปเกรดเพื่อปกป้องอาณาจักรต่อไป" },
-        { title: "ผู้พิชิต VALUKA", desc: "ชัยชนะเป็นของคุณ! ความพยายามฝึกฝนส่งผลให้คุณก้าวข้ามขีดจำกัดได้สำเร็จ" }
-    ];
-
-    const lostTexts = [
-        { title: "ความพ่ายแพ้คือบทเรียน", desc: "อย่าเพิ่งท้อถอย! จอมยุทธ์ที่ยิ่งใหญ่ล้วนเคยล้มลงมาก่อน กลับมาฝึกฝนแล้วท้าทายใหม่นะ" },
-        { title: "เกือบไปนิดเดียว!", desc: "คุณทำได้ดีมากแล้ว พักผ่อนเติมพลังแล้วกลับมาทวงคืนความยิ่งใหญ่ในครั้งต่อไป" },
-        { title: "พลังยังไม่สิ้นสุด", desc: "แม้ครั้งนี้จะพลาดไป แต่จิตวิญญาณนักสู้ของคุณยังอยู่ ครั้งหน้าชัยชนะจะเป็นของคุณแน่นอน!" }
-    ];
-
-    const randomIdx = Math.floor(Math.random() * 3);
-    const content = iAmWin ? winTexts[randomIdx] : lostTexts[randomIdx];
-
-    document.getElementById('result-emoji').innerText = iAmWin ? "🏆" : "💀";
-    document.getElementById('result-title').innerText = content.title;
-    document.getElementById('result-desc').innerText = content.desc;
-
-    playSound(iAmWin ? 'winner1' : 'lost1');
+    const win = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
+    document.getElementById('result-title').innerText = win ? "ชัยชนะเป็นของ Host!" : "Host พ่ายแพ้...";
+    announce(win ? "ชัยชนะเป็นของ Host" : "Host พ่ายแพ้");
+    playSound(win ? 'winner1' : 'lost1');
 }
 
-// Assets Load
 ['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3'].forEach(loadSound);
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
