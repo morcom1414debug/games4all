@@ -126,6 +126,7 @@ let myRole = null, currentRoomId = null, bgmSource = null;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
+// --- Audio Engine ---
 async function loadSound(name) {
     if (audioCache[name]) return audioCache[name];
     try {
@@ -169,6 +170,7 @@ const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})),
     {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
 ];
 
+// --- Online Logic ---
 db.ref(`${GAME_ID}/rooms`).on('value', snap => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
@@ -223,7 +225,6 @@ function listenToRoom() {
             bgm.loop = true; bgm.connect(audioCtx.destination);
             bgm.start(0); bgmSource = bgm;
             
-            // ประกาศคนเริ่มก่อนตามค่าจาก Server
             announce(`ผู้ที่ได้เริ่มก่อนคือ ${room.turn === 'host' ? 'Host' : 'Guest'}`);
             updateUI(room);
         }
@@ -259,19 +260,19 @@ function updateUI(room) {
         const isMyTurn = (room.turn === myRole);
         spinBtn.disabled = !isMyTurn;
         
-        // แก้ไขจุดนี้: ประกาศชื่อตาม room.turn เสมอ เพื่อให้ทุกเครื่องพูดชื่อเดียวกัน
-        if (!room.isBonus) {
-            announce(`ตา ${room.turn === 'host' ? 'Host' : 'Guest'}`);
+        if (isMyTurn) {
+            if (!room.isBonus) announce(`ตา ${myRole === 'host' ? 'Host' : 'Guest'}`);
+            spinBtn.focus();
         }
-        
-        if (isMyTurn) spinBtn.focus();
     }
 }
 
 document.getElementById('btn-spin').onclick = async () => {
     document.getElementById('btn-spin').disabled = true;
+    
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
+    
     let res;
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
@@ -280,6 +281,7 @@ document.getElementById('btn-spin').onclick = async () => {
         break;
     }
     const deg = 1440 + Math.floor(Math.random() * 360);
+    
     db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg }
     });
@@ -288,6 +290,7 @@ document.getElementById('btn-spin').onclick = async () => {
 async function handleAction(action, room) {
     window.animating = true;
     document.getElementById('btn-spin').disabled = true;
+
     const { actor, result, deg } = action;
     document.getElementById('visual-wheel').style.transform = `rotate(${deg}deg)`;
     await playWait('wheel');
@@ -320,18 +323,21 @@ async function handleAction(action, room) {
             up[actor + 'Shield'] = true;
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
-        up.isBonus = true; up.turn = actor;
+        up.isBonus = true; 
+        up.turn = actor;
     }
 
     announce(msg);
     await new Promise(r => setTimeout(r, 2000));
+    
     if (myRole === 'host') {
         if ((up.hostHP ?? room.hostHP) <= 0 || (up.guestHP ?? room.guestHP) <= 0) up.status = 'finished';
         db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(up);
     }
+    
     window.animating = false;
 
-    // แก้ไข Race Condition: บังคับอัปเดต UI เพื่อปลดล็อกปุ่ม
+    // ดึง room ล่าสุดมาอัปเดต UI อีกครั้งเพื่อปลดล็อกปุ่มแน่นอน
     const freshSnap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const freshRoom = freshSnap.val();
     if (freshRoom && freshRoom.status === 'playing') {
@@ -355,12 +361,14 @@ function endGame(room) {
     showScene('scene-result');
     document.getElementById('btn-community').classList.remove('hidden');
     const win = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-    document.getElementById('result-title').innerText = win ? "ชัยชนะเป็นของ Host!" : "Host พ่ายแพ้...";
-    announce(win ? "ชัยชนะเป็นของ Host" : "Host พ่ายแพ้");
+    document.getElementById('result-title').innerText = win ? "ชัยชนะเป็นของคุณ!" : "คุณพ่ายแพ้...";
+    announce(win ? "ชัยชนะเป็นของคุณ" : "คุณพ่ายแพ้");
     playSound(win ? 'winner1' : 'lost1');
 }
 
+// Assets Load
 ['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3'].forEach(loadSound);
+
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
 </body>
