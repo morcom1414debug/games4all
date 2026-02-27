@@ -262,12 +262,13 @@ function updateUI(room) {
     const spinBtn = document.getElementById('btn-spin');
     const isMyTurn = (room.turn === myRole);
     
-    // เงื่อนไขสิทธิ์ในการกด
+    // เงื่อนไขสิทธิ์ในการกด: ต้องเป็นตาเรา และไม่ติดแอนิเมชัน และไม่ติดล็อคชั่วคราว
     const canSpin = isMyTurn && !window.animating && !localSpinLocked && (
         (room.spinCount === 0) || 
         (room.spinCount === 1 && room.isBonus === true)
     );
 
+    // ปลดล็อค localSpinLocked เมื่อแอนิเมชันจบและข้อมูลซิงค์แล้ว
     if (!window.animating && isMyTurn) {
         localSpinLocked = false;
     }
@@ -276,25 +277,28 @@ function updateUI(room) {
         spinBtn.disabled = true;
     } else {
         spinBtn.disabled = !canSpin;
-        
-        // --- แก้ไขจุดประกาศ: ให้ระบุชื่อฝ่ายแทนคำว่า "ของคุณ" ---
-        if (!room.isBonus && !localSpinLocked) {
-            const turnName = room.turn === 'host' ? 'Host' : 'Guest';
-            announce(`ตาของ ${turnName}`);
-        }
+        if (!room.isBonus && isMyTurn && !localSpinLocked) announce(`ตาของคุณแล้ว`);
     }
 }
 
+/**
+ * แก้ไขปุ่มโยกคันโยก: ปรับปรุงให้ Guest ล็อคทันทีเหมือน Host
+ */
 document.getElementById('btn-spin').onclick = async () => {
     const spinBtn = document.getElementById('btn-spin');
+
+    // 1. ล็อคทันทีไม่ต้องรอ Firebase (ทำงานทั้ง Host และ Guest)
     localSpinLocked = true;
     spinBtn.disabled = true; 
     window.animating = true; 
 
     updateActivity();
+    
+    // ดึงค่าล่าสุดมาตรวจสอบอีกครั้ง
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
 
+    // 2. เช็คเงื่อนไขความปลอดภัย (กันส่งซ้ำทาง Network)
     const currentSpinCount = room.spinCount || 0;
     if (room.turn !== myRole || currentSpinCount > 1 || (currentSpinCount === 1 && room.isBonus !== true)) {
         window.animating = false;
@@ -311,6 +315,8 @@ document.getElementById('btn-spin').onclick = async () => {
     }
 
     const deg = 1440 + Math.floor(Math.random() * 360);
+    
+    // 3. บันทึกผลและเพิ่ม SpinCount เพื่อบอก Firebase ว่ามีการกดแล้ว
     await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
         spinCount: (room.spinCount || 0) + 1,
@@ -340,6 +346,7 @@ async function handleAction(action, room) {
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ใช้ ${result.name} ลดไป ${result.dmg} เหลือ ${newHP}`;
             triggerFlash(result.color);
         }
+        // จบเทิร์น: เปลี่ยนฝั่งและรีเซตสิทธิ์การกด
         up.turn = actor === 'host' ? 'guest' : 'host';
         up.spinCount = 0; 
     } else {
@@ -353,6 +360,7 @@ async function handleAction(action, room) {
             up[actor + 'Shield'] = true;
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
+        // ให้เล่นต่อ (Bonus)
         up.isBonus = true; 
         up.turn = actor;
         up.spinCount = 1; 
@@ -361,13 +369,14 @@ async function handleAction(action, room) {
     announce(msg);
     await new Promise(r => setTimeout(r, 2000));
     
+    // เฉพาะ Host เป็นคนอัปเดตผลลัพธ์สุดท้าย
     if (myRole === 'host') {
         if ((up.hostHP ?? room.hostHP) <= 0 || (up.guestHP ?? room.guestHP) <= 0) up.status = 'finished';
         db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(up);
     }
     
     window.animating = false;
-    localSpinLocked = false;
+    localSpinLocked = false; // คืนสิทธิ์การกดหลังจากทุกอย่างเสร็จสิ้น
 
     const freshSnap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const freshRoom = freshSnap.val();
@@ -395,7 +404,7 @@ function endGame(room) {
     document.getElementById('btn-community').classList.remove('hidden');
 
     const iAmWin = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-    const content = iAmWin ? {title: \"ชัยชนะ!\", desc: \"คุณทำได้ยอดเยี่ยมมาก\"} : {title: \"พ่ายแพ้\", desc: \"พยายามต่อไปนะ\"};
+    const content = iAmWin ? {title: "ชัยชนะ!", desc: "คุณทำได้ยอดเยี่ยมมาก"} : {title: "พ่ายแพ้", desc: "พยายามต่อไปนะ"};
 
     document.getElementById('result-emoji').innerText = iAmWin ? "🏆" : "💀";
     document.getElementById('result-title').innerText = content.title;
