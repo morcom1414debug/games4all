@@ -58,6 +58,7 @@
         
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 
+        /* ผลลัพธ์หน้าสรุป */
         .result-msg { font-size: 1.2rem; color: #ccc; margin-top: 10px; line-height: 1.6; }
     </style>
 </head>
@@ -108,7 +109,7 @@
         </div>
         <h2 id="result-title" style="margin: 10px 0;"></h2>
         <p id="result-desc" class="result-msg"></p>
-    </section>
+        </section>
 </div>
 
 <script>
@@ -130,6 +131,7 @@ let myRole = null, currentRoomId = null, bgmSource = null;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
+// --- Audio Engine ---
 async function loadSound(name) {
     if (audioCache[name]) return audioCache[name];
     try {
@@ -174,16 +176,20 @@ const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})),
     {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
 ];
 
+// --- Online Logic & Auto Clear ---
 db.ref(`${GAME_ID}/rooms`).on('value', snap => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
     const now = Date.now();
     snap.forEach(child => {
         const room = child.val();
+        
+        // ตรวจสอบห้องที่ไม่มีกิจกรรมเกิน 5 นาที (300,000 ms)
         if (room.lastActivity && (now - room.lastActivity > 300000)) {
             db.ref(`${GAME_ID}/rooms/${child.key}`).remove();
             return;
         }
+
         if (room.status === 'waiting') {
             const b = document.createElement('button');
             b.innerText = `เข้าห้อง ${child.key}`;
@@ -201,9 +207,6 @@ async function updateActivity() {
 }
 
 async function createRoom() {
-    // ปัญหาที่ 1: เปิด aria-live กลับมาเมื่อเริ่มเกมใหม่
-    document.getElementById('aria-announcer').setAttribute('aria-live','assertive');
-    
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const snap = await db.ref(`${GAME_ID}/room_counter`).transaction(curr => (curr || 0) + 1);
     currentRoomId = `Battle${snap.snapshot.val()}`;
@@ -211,8 +214,7 @@ async function createRoom() {
     await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).set({
         status: 'waiting', hostHP: 1000, guestHP: 1000,
         hostShield: false, guestShield: false, turn: '', lastId: '',
-        lastActivity: Date.now(),
-        spinCount: 0 // ปัญหาที่ 2: เพิ่ม field ใหม่
+        lastActivity: Date.now()
     });
     showScene('scene-waiting');
     document.getElementById('btn-community').classList.add('hidden');
@@ -220,9 +222,6 @@ async function createRoom() {
 }
 
 async function joinRoom(roomId) {
-    // ปัญหาที่ 1: เปิด aria-live กลับมาเมื่อเริ่มเกมใหม่
-    document.getElementById('aria-announcer').setAttribute('aria-live','assertive');
-
     if (audioCtx.state === 'suspended') audioCtx.resume();
     currentRoomId = roomId; myRole = 'guest';
     const turnStart = Math.random() < 0.5 ? 'host' : 'guest';
@@ -260,7 +259,7 @@ function listenToRoom() {
         }
 
         if (room.status === 'finished') {
-            db.ref(`${GAME_ID}/rooms/${currentRoomId}`).off();
+            db.ref(`${GAME_ID}/rooms/${currentRoomId}`).off(); // หยุด listen เมื่อจบ
             endGame(room);
         }
     });
@@ -293,18 +292,10 @@ document.getElementById('btn-spin').onclick = async () => {
     updateActivity();
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
     const room = snap.val();
-
-    // ปัญหาที่ 2: เช็คเงื่อนไข Turn
-    const currentSpinCount = room.spinCount || 0;
-    if (currentSpinCount >= 2) return;
-    if (currentSpinCount === 1 && room.isBonus === false) return;
-
     let res;
     while(true) {
         res = wheelOptions[Math.floor(Math.random() * wheelOptions.length)];
         if(res.id === room.lastId) continue;
-        
-        // ปัญหาที่ 2: ถ้าเป็นโบนัสครั้งที่สอง ต้องสุ่มได้เฉพาะโจมตี
         if(room.isBonus && res.type !== 'attack') continue;
         break;
     }
@@ -322,8 +313,7 @@ async function handleAction(action, room) {
     await playWait('wheel');
     await new Promise(r => setTimeout(r, 800));
 
-    // ปัญหาที่ 2: เตรียมค่า Reset spinCount
-    let up = { lastId: result.id, isBonus: false, lastActivity: Date.now(), spinCount: 0 };
+    let up = { lastId: result.id, isBonus: false, lastActivity: Date.now() };
     let msg = "";
 
     if (result.type === 'attack') {
@@ -339,8 +329,6 @@ async function handleAction(action, room) {
             triggerFlash(result.color);
         }
         up.turn = actor === 'host' ? 'guest' : 'host';
-        up.spinCount = 0; // ปัญหาที่ 2: reset
-        up.isBonus = false; // ปัญหาที่ 2: reset
     } else {
         if (result.type === 'hp') {
             await playWait(actor === myRole ? 'hp' : 'hp2');
@@ -352,9 +340,7 @@ async function handleAction(action, room) {
             up[actor + 'Shield'] = true;
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
-        up.isBonus = true; 
-        up.turn = actor;
-        up.spinCount = 1; // ปัญหาที่ 2: ตั้งค่าโบนัส
+        up.isBonus = true; up.turn = actor;
     }
 
     announce(msg);
@@ -381,23 +367,23 @@ function triggerFlash(c) {
     setTimeout(() => f.style.opacity = '0', 150);
 }
 
+// --- สรุปผลเกมที่แก้ไขใหม่ ---
 function endGame(room) {
     if (bgmSource) bgmSource.stop();
     
-    // ปัญหาที่ 1: เคลียร์ข้อความก่อนปิด aria-live
-    const announcer = document.getElementById('aria-announcer');
-    announcer.innerText = "";
-    announcer.setAttribute('aria-live', 'off');
+    // ปิดการประกาศเสียงในหน้าสรุปผล
+    document.getElementById('aria-announcer').setAttribute('aria-live', 'off');
     
     showScene('scene-result');
     document.getElementById('btn-community').classList.remove('hidden');
 
+    // คำนวณว่าเราชนะหรือแพ้
     const iAmWin = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
 
     const winTexts = [
         { title: "ชัยชนะอันรุ่งโรจน์!", desc: "พลังของคุณช่างแข็งแกร่ง จงนำชัยชนะนี้ไปเป็นแรงผลักดันในการประลองครั้งหน้า!" },
         { title: "จอมยุทธ์ผู้ไร้เทียมทาน", desc: "การต่อสู้ที่ยอดเยี่ยม! พลังเวทย์ของคุณได้รับการอัปเกรดเพื่อปกป้องอาณาจักรต่อไป" },
-        { title: "ผู้พิชิต VALUKA", desc: "ชัยชนะเป็นของคุณ! ความพยายามฝึกฝนส่งผลให้คุณก้ามข้ามขีดจำกัดได้สำเร็จ" }
+        { title: "ผู้พิชิต VALUKA", desc: "ชัยชนะเป็นของคุณ! ความพยายามฝึกฝนส่งผลให้คุณก้าวข้ามขีดจำกัดได้สำเร็จ" }
     ];
 
     const lostTexts = [
@@ -416,6 +402,7 @@ function endGame(room) {
     playSound(iAmWin ? 'winner1' : 'lost1');
 }
 
+// Assets Load
 ['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3'].forEach(loadSound);
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
