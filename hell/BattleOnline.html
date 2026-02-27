@@ -218,7 +218,6 @@ function listenToRoom() {
             showScene('scene-battle');
             document.getElementById('btn-community').classList.add('hidden');
             
-            // เล่นเสียงเริ่มเกม (BGM เดิม)
             await playWait('start3');
             
             const bgm = audioCtx.createBufferSource();
@@ -241,7 +240,6 @@ function listenToRoom() {
     });
 }
 
-// --- จุดที่แก้ไข BUG ปุ่ม DIM ---
 function updateUI(room) {
     document.getElementById('hp-host').innerText = room.hostHP.toLocaleString();
     document.getElementById('hp-guest').innerText = room.guestHP.toLocaleString();
@@ -254,19 +252,15 @@ function updateUI(room) {
     room.hostShield ? document.getElementById('host-box').classList.add('has-shield') : document.getElementById('host-box').classList.remove('has-shield');
     room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
 
-    // ตรวจสอบสิทธิ์การกดปุ่ม (หัวใจของการแก้ Bug)
     const spinBtn = document.getElementById('btn-spin');
     
     if (window.animating) {
-        // ขณะกำลังเล่น Animation ห้ามกดเด็ดขาด
         spinBtn.disabled = true;
     } else {
-        // ถ้าไม่มี Animation ให้เช็คว่าเป็นตาเราจริงไหม
         const isMyTurn = (room.turn === myRole);
         spinBtn.disabled = !isMyTurn;
         
         if (isMyTurn) {
-            // ประกาศสถานะตาของผู้เล่น
             if (!room.isBonus) announce(`ตา ${myRole === 'host' ? 'Host' : 'Guest'}`);
             spinBtn.focus();
         }
@@ -274,7 +268,6 @@ function updateUI(room) {
 }
 
 document.getElementById('btn-spin').onclick = async () => {
-    // ทันทีที่กด ให้ปิดปุ่มเพื่อป้องกันการกดซ้ำซ้อน
     document.getElementById('btn-spin').disabled = true;
     
     const snap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
@@ -289,7 +282,6 @@ document.getElementById('btn-spin').onclick = async () => {
     }
     const deg = 1440 + Math.floor(Math.random() * 360);
     
-    // บันทึก Action ลง Firebase
     db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
         lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg }
     });
@@ -297,7 +289,6 @@ document.getElementById('btn-spin').onclick = async () => {
 
 async function handleAction(action, room) {
     window.animating = true;
-    // ปิดปุ่มระหว่างจัดการผลลัพธ์
     document.getElementById('btn-spin').disabled = true;
 
     const { actor, result, deg } = action;
@@ -322,7 +313,6 @@ async function handleAction(action, room) {
         }
         up.turn = actor === 'host' ? 'guest' : 'host';
     } else {
-        // กรณีได้รับ HP หรือ Shield
         if (result.type === 'hp') {
             await playWait(actor === myRole ? 'hp' : 'hp2');
             const val = [100, 300, 500][Math.floor(Math.random()*3)];
@@ -334,7 +324,7 @@ async function handleAction(action, room) {
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
         }
         up.isBonus = true; 
-        up.turn = actor; // ให้คนเดิมเล่นต่อ
+        up.turn = actor;
     }
 
     announce(msg);
@@ -346,7 +336,13 @@ async function handleAction(action, room) {
     }
     
     window.animating = false;
-    // updateUI จะถูกเรียกโดยอัตโนมัติจาก listener เพื่อปลดล็อกปุ่มตามเงื่อนไขใหม่
+
+    // ดึง room ล่าสุดมาอัปเดต UI อีกครั้งเพื่อปลดล็อกปุ่มแน่นอน
+    const freshSnap = await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).get();
+    const freshRoom = freshSnap.val();
+    if (freshRoom && freshRoom.status === 'playing') {
+        updateUI(freshRoom);
+    }
 }
 
 function showScene(id) {
