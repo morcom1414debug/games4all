@@ -32,6 +32,7 @@
             width: 100%; max-width: 500px; position: relative; z-index: 5;
         }
 
+        /* ปุ่มกลับสู่ชุมชนแสดงเฉพาะหน้าแรกและหน้าสรุปเกม */
         #btn-community {
             position: absolute; top: 20px; left: 20px;
             background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(241, 196, 15, 0.3);
@@ -65,16 +66,17 @@
 <body>
 
 <div id="hit-flash"></div>
+<div class="particles" id="particles"></div>
 <div id="aria-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
 
 <div id="game-container">
-    <button id="btn-community" onclick="location.href='../index.html'">🏠 กลับสู่ชุมชน</button>
+    <button id="btn-community" onclick="location.href='../index.html'" aria-label="กลับสู่ชุมชน">🏠 กลับสู่ชุมชน</button>
 
     <section id="scene-lobby" class="scene active">
         <h1 style="color:var(--gold); margin:0; font-size: 2.5rem;">VALUKA</h1>
         <p>ประลองยุทธ์ออนไลน์ 1 ต่อ 1</p>
         <button id="btn-create-room" class="btn-main">สร้างห้อง</button>
-        <div id="room-list" style="margin-top:15px; display: flex; flex-direction: column; gap: 10px;"></div>
+        <div id="room-list" style="margin-top:15px;"></div>
     </section>
 
     <section id="scene-waiting" class="scene">
@@ -85,12 +87,12 @@
 
     <section id="scene-battle" class="scene">
         <div class="stats-bar">
-            <div class="stat-item" id="host-box">
+            <div class="stat-item" id="host-box" tabindex="0">
                 <span style="font-size:0.8rem; opacity:0.7;">HOST</span>
                 <div style="font-size:1.3rem; font-weight:600;"><span id="hp-host">1000</span> <span class="shield-icon">🛡️</span></div>
                 <div class="hp-track"><div id="bar-host" class="hp-fill"></div></div>
             </div>
-            <div class="stat-item" id="guest-box">
+            <div class="stat-item" id="guest-box" tabindex="0">
                 <span style="font-size:0.8rem; opacity:0.7;">GUEST</span>
                 <div style="font-size:1.3rem; font-weight:600;"><span id="hp-guest">1000</span> <span class="shield-icon">🛡️</span></div>
                 <div class="hp-track"><div id="bar-guest" class="hp-fill"></div></div>
@@ -106,11 +108,13 @@
     <section id="scene-result" class="scene">
         <span style="font-size: 5rem;">🏆</span>
         <h2 id="result-title"></h2>
+        <p id="result-desc"></p>
         <button onclick="location.reload()" class="btn-main">เล่นใหม่อีกครั้ง</button>
     </section>
 </div>
 
 <script>
+// --- Configuration & Firebase ---
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
@@ -128,6 +132,21 @@ let myRole = null, currentRoomId = null, bgmSource = null;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
 
+const skills = [
+    {id: 'earth', name: 'ปฐพีกลืนกิน', dmg: 200, color: 'var(--cls-earth)'},
+    {id: 'fire', name: 'อัคนีพิโรธ', dmg: 400, color: 'var(--cls-fire)'},
+    {id: 'water', name: 'มหาสมุทรคลั่ง', dmg: 300, color: 'var(--cls-water)'},
+    {id: 'wind', name: 'วายุลมกลด', dmg: 100, color: 'var(--cls-wind)'},
+    {id: 'thunder', name: 'ทัณฑ์สวรรค์สายฟ้า', dmg: 500, color: 'var(--cls-thunder)'},
+    {id: 'winter', name: 'ดินแดนเยือกแข็ง', dmg: 300, color: 'var(--cls-winter)'}
+];
+
+const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})), 
+    {id: 'hp', name: 'ได้รับน้ำยาเพิ่มพลัง', type: 'hp'},
+    {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
+];
+
+// --- Audio Engine ---
 async function loadSound(name) {
     if (audioCache[name]) return audioCache[name];
     try {
@@ -157,29 +176,16 @@ function announce(msg) {
     setTimeout(() => { el.innerText = msg; }, 100);
 }
 
-const skills = [
-    {id: 'earth', name: 'ปฐพีกลืนกิน', dmg: 200, color: 'var(--cls-earth)'},
-    {id: 'fire', name: 'อัคนีพิโรธ', dmg: 400, color: 'var(--cls-fire)'},
-    {id: 'water', name: 'มหาสมุทรคลั่ง', dmg: 300, color: 'var(--cls-water)'},
-    {id: 'wind', name: 'วายุลมกลด', dmg: 100, color: 'var(--cls-wind)'},
-    {id: 'thunder', name: 'ทัณฑ์สวรรค์สายฟ้า', dmg: 500, color: 'var(--cls-thunder)'},
-    {id: 'winter', name: 'ดินแดนเยือกแข็ง', dmg: 300, color: 'var(--cls-winter)'}
-];
-
-const wheelOptions = [...skills.map(s => ({...s, type: 'attack'})), 
-    {id: 'hp', name: 'ได้รับน้ำยาเพิ่มพลัง', type: 'hp'},
-    {id: 'shield', name: 'ได้รับเกราะแห่งแสง', type: 'shield'}
-];
-
-db.ref(`${GAME_ID}/rooms`).on('value', snap => {
+// --- Online Logic ---
+db.ref(`${GAME_ID}/rooms`).on('value', snapshot => {
     const list = document.getElementById('room-list');
     list.innerHTML = "";
-    snap.forEach(child => {
+    snapshot.forEach(child => {
         const room = child.val();
         if (room.status === 'waiting') {
             const b = document.createElement('button');
             b.innerText = `เข้าห้อง ${child.key}`;
-            b.className = "btn-main"; b.style.fontSize = "1rem";
+            b.className = "btn-main"; b.style.fontSize = "1rem"; b.style.padding = "10px";
             b.onclick = () => joinRoom(child.key);
             list.appendChild(b);
         }
@@ -217,14 +223,7 @@ function listenToRoom() {
             window.started = true;
             showScene('scene-battle');
             document.getElementById('btn-community').classList.add('hidden');
-            
             await playWait('start3');
-            
-            const bgm = audioCtx.createBufferSource();
-            bgm.buffer = await loadSound('back1');
-            bgm.loop = true; bgm.connect(audioCtx.destination);
-            bgm.start(0); bgmSource = bgm;
-            
             announce(`ผู้ที่ได้เริ่มก่อนคือ ${room.turn === 'host' ? 'Host' : 'Guest'}`);
             updateUI(room);
         }
@@ -252,14 +251,12 @@ function updateUI(room) {
     room.hostShield ? document.getElementById('host-box').classList.add('has-shield') : document.getElementById('host-box').classList.remove('has-shield');
     room.guestShield ? document.getElementById('guest-box').classList.add('has-shield') : document.getElementById('guest-box').classList.remove('has-shield');
 
-    // ตรวจสอบ Turn และปลดล็อกปุ่ม
     if (!window.animating) {
         const isMyTurn = room.turn === myRole;
-        const btn = document.getElementById('btn-spin');
-        btn.disabled = !isMyTurn;
+        document.getElementById('btn-spin').disabled = !isMyTurn;
         if (isMyTurn) {
             if (!room.isBonus) announce(`ตา ${myRole === 'host' ? 'Host' : 'Guest'}`);
-            btn.focus();
+            document.getElementById('btn-spin').focus();
         }
     }
 }
@@ -309,11 +306,11 @@ async function handleAction(action, room) {
             await playWait(actor === myRole ? 'hp' : 'hp2');
             const val = [100, 300, 500][Math.floor(Math.random()*3)];
             up[actor + 'HP'] = Math.min(1000, room[actor + 'HP'] + val);
-            msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้น้ำยา ${val} หน่วย สุ่มต่อ!`;
+            msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้น้ำยา ${val} หน่วย และได้สุ่มต่อ!`;
         } else {
             await playWait(actor === myRole ? 'shield' : 'shield2');
             up[actor + 'Shield'] = true;
-            msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ สุ่มต่อ!`;
+            msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้รับเกราะ และได้สุ่มต่อ!`;
         }
         up.isBonus = true; up.turn = actor;
     }
@@ -321,7 +318,7 @@ async function handleAction(action, room) {
     announce(msg);
     await new Promise(r => setTimeout(r, 2000));
     if (myRole === 'host') {
-        if ((up.hostHP ?? room.hostHP) <= 0 || (up.guestHP ?? room.guestHP) <= 0) up.status = 'finished';
+        if ((up.hostHP || room.hostHP) <= 0 || (up.guestHP || room.guestHP) <= 0) up.status = 'finished';
         db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update(up);
     }
     window.animating = false;
@@ -339,16 +336,15 @@ function triggerFlash(c) {
 }
 
 function endGame(room) {
-    if (bgmSource) bgmSource.stop();
     showScene('scene-result');
     document.getElementById('btn-community').classList.remove('hidden');
     const win = (myRole === 'host' && room.guestHP <= 0) || (myRole === 'guest' && room.hostHP <= 0);
-    document.getElementById('result-title').innerText = win ? "ชัยชนะเป็นของคุณ!" : "คุณพ่ายแพ้...";
-    announce(win ? "ชัยชนะเป็นของคุณ" : "คุณพ่ายแพ้");
+    document.getElementById('result-title').innerText = win ? "ชัยชนะเป็นของ Host!" : "Host พ่ายแพ้...";
+    announce(win ? "ชัยชนะเป็นของ Host!" : "Host พ่ายแพ้...");
     playSound(win ? 'winner1' : 'lost1');
 }
 
-['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3'].forEach(loadSound);
+['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','winner1','lost1','start3'].forEach(loadSound);
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
 </body>
