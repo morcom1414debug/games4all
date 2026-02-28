@@ -117,7 +117,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const GAME_ID = "valuka";
 
-let myRole = null, currentRoomId = null, bgmSource = null, waitMusicSource = null;
+let myRole = null, currentRoomId = null, bgmSource = null;
 let localSpinLocked = false;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const audioCache = {};
@@ -131,15 +131,12 @@ async function loadSound(name) {
     } catch (e) { return null; }
 }
 
-function playSound(name, loop = false) {
+function playSound(name) {
     const buf = audioCache[name];
     if (!buf) return null;
     const s = audioCtx.createBufferSource();
-    s.buffer = buf; 
-    s.loop = loop;
-    s.connect(audioCtx.destination);
-    s.start(0); 
-    return s;
+    s.buffer = buf; s.connect(audioCtx.destination);
+    s.start(0); return s;
 }
 
 const playWait = (name) => new Promise(res => {
@@ -208,10 +205,6 @@ async function createRoom() {
     });
     showScene('scene-waiting');
     document.getElementById('btn-community').classList.add('hidden');
-
-    // เล่นเพลงรอ wait.mp3 แบบวนลูป
-    waitMusicSource = playSound('wait', true);
-    
     listenToRoom();
 }
 
@@ -232,13 +225,6 @@ function listenToRoom() {
         if (!room) return;
         if (room.status === 'playing' && !window.started) {
             window.started = true;
-            
-            // หยุดเพลงรอทันทีเมื่อสถานะเปลี่ยนเป็นเล่นเกม (มีคนเข้ามาแล้ว)
-            if (waitMusicSource) {
-                waitMusicSource.stop();
-                waitMusicSource = null;
-            }
-
             showScene('scene-battle');
             document.getElementById('btn-community').classList.add('hidden');
             await playWait('start3');
@@ -291,10 +277,14 @@ function updateUI(room) {
         spinBtn.disabled = true;
     } else {
         spinBtn.disabled = !canSpin;
+        
+        // 1. ปรับข้อความประกาศให้สั้นตามที่ขอ
         if (!room.isBonus && !localSpinLocked) {
             const turnLabel = room.turn === 'host' ? 'Host' : 'Guest';
             announce(`ถึงตา ${turnLabel}`);
         }
+
+        // 2. บังคับ Focus ไปที่ปุ่มเสมอในทุกกรณีที่มีสิทธิ์กด (รวมถึงสิทธิ์ Bonus)
         if (canSpin) {
             spinBtn.focus();
         }
@@ -437,8 +427,7 @@ function endGame(room) {
     }
 }
 
-// เพิ่ม 'wait' เข้าไปในรายการดาวน์โหลดเสียง
-['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3', 'wait'].forEach(loadSound);
+['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3'].forEach(loadSound);
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
 </body>
