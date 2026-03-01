@@ -240,8 +240,10 @@ function listenToRoom() {
             showScene('scene-battle');
             document.getElementById('btn-community').classList.add('hidden');
             
+            // เล่นเสียง start3 จบก่อน
             await playWait('start3');
             
+            // สุ่มได้ใครเริ่ม ให้เล่นเสียงตามเงื่อนไขใหม่ (s3 หรือ s4)
             if (room.turn === 'host') {
                 await playWait('s3');
             } else {
@@ -332,12 +334,9 @@ document.getElementById('btn-spin').onclick = async () => {
         break;
     }
 
-    // แก้ไข: สุ่มค่า HP ไว้ก่อนส่งขึ้น Firebase เพื่อให้ค่าตรงกันทั้งสองฝั่ง
-    const randomHp = [100, 300, 500][Math.floor(Math.random() * 3)];
-
     const deg = 1440 + Math.floor(Math.random() * 360);
     await db.ref(`${GAME_ID}/rooms/${currentRoomId}`).update({
-        lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg, hpValue: randomHp },
+        lastAction: { id: Date.now(), actor: myRole, result: res, deg: deg },
         spinCount: (room.spinCount || 0) + 1,
         lastActivity: Date.now()
     });
@@ -345,7 +344,7 @@ document.getElementById('btn-spin').onclick = async () => {
 
 async function handleAction(action, room) {
     window.animating = true; 
-    const { actor, result, deg, hpValue } = action;
+    const { actor, result, deg } = action;
     document.getElementById('visual-wheel').style.transform = `rotate(${deg}deg)`;
     await playWait('wheel');
     await new Promise(r => setTimeout(r, 800));
@@ -370,8 +369,7 @@ async function handleAction(action, room) {
     } else {
         if (result.type === 'hp') {
             await playWait(actor === myRole ? 'hp' : 'hp2');
-            // แก้ไข: ใช้ค่า hpValue จาก action ที่สุ่มไว้แล้วแทนการสุ่มใหม่
-            const val = hpValue || 100;
+            const val = [100, 300, 500][Math.floor(Math.random()*3)];
             up[actor + 'HP'] = Math.min(1000, room[actor + 'HP'] + val);
             msg = `${actor === 'host' ? 'Host' : 'Guest'} ได้น้ำยา ${val} หน่วย สุ่มต่อ!`;
         } else {
@@ -429,7 +427,7 @@ function endGame(room) {
     ];
 
     const lossMessages = [
-        { title: "พ่ายแพ้อย่างสมศักดิ์ศรี", desc: "เกือบไปแล้วอีกนิดเดียวเท่านั้น! โชคอาจจะไม่เข้าข้างในรอบนี้ แต่ฝีมือคุณพัฒนาขึ้นมาก ลองกดเริ่มใหมีกสักตาเพื่อล้างตาไหม?" },
+        { title: "พ่ายแพ้อย่างสมศักดิ์ศรี", desc: "เกือบไปแล้วอีกนิดเดียวเท่านั้น! โชคอาจจะไม่เข้าข้างในรอบนี้ แต่ฝีมือคุณพัฒนาขึ้นมาก ลองกดเริ่มใหม่อีกสักตาเพื่อล้างตาไหม?" },
         { title: "อย่าเพิ่งยอมแพ้!", desc: "ความพ่ายแพ้คือบทเรียนของผู้กล้า ครั้งหน้าวงล้ออาจจะเป็นใจให้คุณมากกว่านี้ กลับมาพิสูจน์ฝีมืออีกครั้งสิ!" },
         { title: "สู้ได้ยอดเยี่ยมมาก", desc: "แม้รอบนี้จะพลาดท่า แต่การต่อสู้ของคุณน่าประทับใจจริงๆ ปรับกลยุทธ์อีกนิดแล้วกลับมาคว้าชัยชนะในรอบหน้ากันเถอะ!" }
     ];
@@ -447,6 +445,7 @@ function endGame(room) {
     }
 }
 
+// โหลดไฟล์เสียง s3 และ s4 เตรียมไว้
 ['earth','earth1','fire','fire1','water','water1','wind','wind1','thunder','thunder1','winter','winter1','hp','hp2','shield','shield2','wheel','back1','winner1','lost1','start3', 'wait', 's3', 's4'].forEach(loadSound);
 document.getElementById('btn-create-room').onclick = createRoom;
 </script>
