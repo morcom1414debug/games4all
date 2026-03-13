@@ -8,8 +8,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;500&display=swap');
         body { font-family: 'Kanit', sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; text-align: center; background-color: #f8f9fa; color: #333; }
         .hidden { display: none !important; }
-        .game-card { background: white; padding: 2.5rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); position: relative; }
-        .back-btn { position: absolute; top: 10px; left: 10px; padding: 8px 12px; font-size: 0.9rem; background-color: #95a5a6; }
+        .game-card { background: white; padding: 2.5rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
         button { padding: 15px 25px; font-size: 1.1rem; cursor: pointer; border-radius: 12px; border: none; background-color: #4A90E2; color: white; margin: 10px; transition: all 0.2s; font-weight: bold; }
         button:hover:not(:disabled) { background-color: #357ABD; transform: translateY(-2px); }
         button:disabled { background-color: #bdc3c7; cursor: not-allowed; opacity: 0.5; }
@@ -23,10 +22,9 @@
 <body>
 
     <div id="start-screen" class="game-card">
-        <a href="../index.html"><button class="back-btn">กลับสู่ชุมชน</button></a>
         <h1 id="start-heading" tabindex="-1">🎵 เกมทายจำนวนคำ</h1>
         <p>กติกา: ฟังเพลงจบแล้วเลือกคำตอบที่ถูกต้อง</p>
-        <p style="color: #e74c3c;">* ผิดได้ 1 ครั้ง และฟังซ้ำได้ 2 ครั้งตลอดรอบ! *</p>
+        <p style="color: #e74c3c;">* ผิดได้ 1 ครั้ง และฟังซ้ำได้ 1 ครั้งตลอดเกม! *</p>
         <button id="btn-start">เริ่มท้าทายเลย!</button>
     </div>
 
@@ -34,13 +32,12 @@
         <h2 id="question-text" tabindex="-1">เตรียมเพลง...</h2>
         <div id="status-msg"></div>
         <div id="audio-controls">
-            <button id="btn-replay">ฟังซ้ำ (2/2)</button>
+            <button id="btn-replay">ฟังซ้ำ (1/1)</button>
         </div>
         <div id="options-container" class="options-grid"></div>
     </div>
 
     <div id="result-screen" class="game-card hidden">
-        <a href="../index.html"><button class="back-btn">กลับสู่ชุมชน</button></a>
         <h2 id="result-title" tabindex="-1">จบเกม!</h2>
         <p id="result-message" class="result-text"></p>
         <button onclick="location.reload()">เล่นใหม่อีกครั้ง</button>
@@ -52,6 +49,7 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let currentSource = null;
         const audioBuffers = {};
+
         const songData = [
             { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
             { file: 'หมี.mp3', words: [{w:'หมี', n:7}, {w:'หีบ', n:4}, {w:'หนี', n:8}, {w:'หาย', n:14}] },
@@ -70,7 +68,7 @@
             { file: 'somtam.mp3', words: [{w:'อ๊า', n:14}, {w:'โอ๊ย', n:22}, {w:'อู๊ย', n:12}, {w:'อื๊ม', n:5}] }
         ];
 
-        let currentRound = 0, lives = 1, usedSongs = [], replayCount = 0, currentSongFile = "";
+        let currentRound = 0, lives = 1, usedSongs = [], canReplay = true, currentSongFile = "";
         const statusMsg = document.getElementById('status-msg'), announcer = document.getElementById('announcer'), btnReplay = document.getElementById('btn-replay'), questionHeading = document.getElementById('question-text');
 
         async function loadSound(file) {
@@ -92,20 +90,19 @@
             currentSource.start(0);
         }
 
+        function announce(text) { announcer.textContent = text; setTimeout(() => { announcer.textContent = ""; }, 1000); }
+
         document.getElementById('btn-start').addEventListener('click', async () => {
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            currentRound = 0; lives = 1; usedSongs = []; replayCount = 0;
+            currentRound = 0; lives = 1; usedSongs = []; canReplay = true;
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
             nextQuestion();
         });
 
         btnReplay.addEventListener('click', async () => {
-            if (replayCount >= 2) return;
-            replayCount++;
-            btnReplay.textContent = `ฟังซ้ำ (${2 - replayCount}/2)`;
-            if (replayCount >= 2) btnReplay.classList.add('hidden');
-            
+            if (!canReplay) return;
+            canReplay = false; btnReplay.classList.add('hidden');
             document.getElementById('options-container').classList.add('hidden');
             statusMsg.textContent = "กำลังเล่นซ้ำ...";
             playSound(await loadSound(currentSongFile), () => {
@@ -115,15 +112,12 @@
         });
 
         async function nextQuestion() {
-            if (currentRound >= 7) { endGame(true); return; }
+            if (currentRound >= 5) { endGame(true); return; }
             statusMsg.textContent = ""; currentRound++;
-            replayCount = 0;
-            btnReplay.textContent = "ฟังซ้ำ (2/2)";
-            btnReplay.classList.remove('hidden');
-            
             let availableSongs = songData.filter(s => !usedSongs.includes(s.file));
             let selectedSong = availableSongs[Math.floor(Math.random() * availableSongs.length)];
             usedSongs.push(selectedSong.file); currentSongFile = selectedSong.file;
+            btnReplay.classList.toggle('hidden', !canReplay);
             document.getElementById('options-container').classList.add('hidden');
             questionHeading.textContent = `ข้อที่ ${currentRound}: ตั้งใจฟังเพลงนะ...`;
             playSound(await loadSound(selectedSong.file), () => {
@@ -136,7 +130,7 @@
         async function checkAnswer(isCorrect, btn, container) {
             if (isCorrect) {
                 playSound(await loadSound('t.mp3'));
-                statusMsg.textContent = "ถูกต้อง!";
+                statusMsg.textContent = "ถูกต้อง!"; announce("ถูกต้อง");
                 container.querySelectorAll('button').forEach(b => b.disabled = true);
                 btnReplay.classList.add('hidden');
                 setTimeout(nextQuestion, 2000);
