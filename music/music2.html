@@ -14,9 +14,10 @@
         button:disabled { background-color: #bdc3c7; cursor: not-allowed; opacity: 0.5; }
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px; }
         #status-msg { margin: 10px 0; font-weight: 500; min-height: 1.5em; color: #e67e22; font-size: 1.1rem; }
+        h1:focus, h2:focus { outline: none; }
+        .sr-announcer { position: absolute; clip: rect(1px, 1px, 1px, 1px); padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }
         h1, h2 { color: #2c3e50; margin-bottom: 5px; }
         .result-text { font-size: 1.5rem; margin-bottom: 20px; font-weight: bold; }
-        .sr-announcer { position: absolute; clip: rect(1px, 1px, 1px, 1px); padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }
     </style>
 </head>
 <body>
@@ -46,11 +47,13 @@
     <div id="announcer" class="sr-announcer" aria-live="assertive" aria-atomic="true"></div>
 
     <script>
+        // Web Audio API Setup
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let currentSource = null;
         const audioBuffers = {};
 
         const songData = [
+            // ข้อมูลเดิม
             { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
             { file: 'หมี.mp3', words: [{w:'หมี', n:7}, {w:'หีบ', n:4}, {w:'หนี', n:8}, {w:'หาย', n:14}] },
             { file: 'ว้าวุ่น.mp3', words: [{w:'ว้าวุ่น', n:7}, {w:'วาสนา', n:5}, {w:'ชีวิต', n:5}, {w:'สู้', n:8}] },
@@ -59,6 +62,8 @@
             { file: 'จึ้ง.mp3', words: [{w:'จึ้ง', n:8}, {w:'แกง', n:8}, {w:'ปัง', n:8}, {w:'บ้ง', n:5}] },
             { file: '1469.mp3', words: [{w:'หนึ่ง', n:8}, {w:'สี่', n:12}, {w:'หก', n:20}, {w:'เก้า', n:16}] },
             { file: 'mama.mp3', words: [{w:'มาม่า', n:8}, {w:'ไวไว', n:7}, {w:'ซื่อสัตย์', n:3}, {w:'นิสชิน', n:6}] },
+            
+            // ข้อมูลที่เพิ่มใหม่
             { file: 'kitchen.mp3', words: [{w:'หม้อ', n:9}, {w:'จาน', n:8}, {w:'ชาม', n:9}, {w:'กระทะ', n:9}] },
             { file: 'ma.mp3', words: [{w:'มะม่วง', n:6}, {w:'มะนาว', n:5}, {w:'มะยม', n:6}, {w:'มะขาม', n:7}] },
             { file: 'flower.mp3', words: [{w:'จำปี', n:5}, {w:'จำปา', n:7}, {w:'แก้ว', n:9}, {w:'มะลิ', n:18}] },
@@ -98,6 +103,8 @@
             setTimeout(() => { announcer.textContent = ""; }, 1000); 
         }
 
+        window.onload = () => document.getElementById('start-heading').focus();
+
         document.getElementById('btn-start').addEventListener('click', async () => {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             currentRound = 0; lives = 1; usedSongs = []; canReplay = true;
@@ -116,6 +123,7 @@
             playSound(buffer, () => {
                 document.getElementById('options-container').classList.remove('hidden');
                 statusMsg.textContent = "";
+                questionHeading.focus();
             });
         });
 
@@ -124,12 +132,14 @@
             statusMsg.textContent = ""; 
             currentRound++; 
             
+            if (!canReplay) btnReplay.classList.add('hidden');
+            else btnReplay.classList.remove('hidden');
+            
             let availableSongs = songData.filter(s => !usedSongs.includes(s.file));
             let selectedSong = availableSongs[Math.floor(Math.random() * availableSongs.length)];
             usedSongs.push(selectedSong.file);
             currentSongFile = selectedSong.file;
             
-            btnReplay.classList.toggle('hidden', !canReplay);
             document.getElementById('options-container').classList.add('hidden'); 
             questionHeading.textContent = `ข้อที่ ${currentRound}: ตั้งใจฟังเพลงนะ...`;
             
@@ -144,39 +154,16 @@
         function generateOptions(song) {
             const container = document.getElementById('options-container');
             container.innerHTML = "";
-            const questionType = Math.floor(Math.random() * 3);
-            let targetValues = [];
-            let options = [];
-
-            if (questionType === 0) {
-                const target = song.words[Math.floor(Math.random() * song.words.length)];
-                questionHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
-                targetValues = [target.n];
-                options = [target.n, target.n + 1, target.n - 1, target.n + 2];
-            } else {
-                const allNumbers = song.words.map(item => item.n);
-                const minVal = Math.min(...allNumbers);
-                const maxVal = Math.max(...allNumbers);
-                
-                if (questionType === 1) {
-                    questionHeading.textContent = `ข้อที่ ${currentRound}: คำใดมีจำนวน "น้อยที่สุด"? (ตอบจำนวนนั้น)`;
-                    targetValues = [minVal];
-                } else {
-                    questionHeading.textContent = `ข้อที่ ${currentRound}: คำใดมีจำนวน "มากที่สุด"? (ตอบจำนวนนั้น)`;
-                    targetValues = [maxVal];
-                }
-                options = [...new Set(allNumbers)];
-                while(options.length < 4) {
-                    let randomAdd = Math.floor(Math.random() * 20) + 1;
-                    if(!options.includes(randomAdd)) options.push(randomAdd);
-                }
-            }
-
+            let type = Math.floor(Math.random() * 4);
+            const target = song.words[type];
+            questionHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
+            
+            let options = [target.n, target.n+1, target.n-1, target.n+2].map(String);
             options.sort(() => Math.random() - 0.5).forEach(opt => {
                 const btn = document.createElement('button');
                 btn.textContent = opt;
                 btn.onclick = async () => {
-                    if (targetValues.includes(opt)) {
+                    if (opt == target.n) {
                         const buffer = await loadSound('t.mp3');
                         playSound(buffer);
                         statusMsg.textContent = "ถูกต้อง!";
@@ -192,6 +179,7 @@
                             btn.disabled = true;
                             btn.style.opacity = "0.3";
                             statusMsg.textContent = "ผิดครับ! แก้ตัวได้อีกหนึ่งครั้ง";
+                            announce("ตอบผิด แก้ตัวได้อีกครั้ง ปุ่มเดิมใช้ไม่ได้แล้ว");
                         } else { endGame(false); }
                     }
                 };
@@ -201,11 +189,17 @@
 
         async function endGame(isWin) {
             document.getElementById('game-screen').classList.add('hidden');
-            document.getElementById('result-screen').classList.remove('hidden');
-            const buffer = await loadSound(isWin ? 'end.mp3' : 'end1.mp3');
+            const resultScreen = document.getElementById('result-screen');
+            resultScreen.classList.remove('hidden');
+            
+            const effectFile = isWin ? 'end.mp3' : 'end1.mp3';
+            const buffer = await loadSound(effectFile);
             playSound(buffer);
-            document.getElementById('result-title').textContent = isWin ? "🏆 คุณชนะ!" : "💀 เกมโอเวอร์";
+            
+            const resultTitle = document.getElementById('result-title');
+            resultTitle.textContent = isWin ? "🏆 คุณชนะ!" : "💀 เกมโอเวอร์";
             document.getElementById('result-message').textContent = isWin ? "สุดยอด หูเทพมาก!" : "ไม่เป็นไรนะ ลองใหม่!";
+            resultTitle.focus();
         }
     </script>
 </body>
