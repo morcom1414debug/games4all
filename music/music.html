@@ -23,7 +23,7 @@
 
     <div id="start-screen" class="game-card">
         <h1 id="start-heading" tabindex="-1">🎵 เกมทายจำนวนคำ</h1>
-        <p>กติกา: ฟังเพลงจบแล้วทายจำนวนคำ</p>
+        <p>กติกา: ฟังเพลงจบแล้วเลือกคำตอบที่ถูกต้อง</p>
         <p style="color: #e74c3c;">* ผิดได้ 1 ครั้ง และฟังซ้ำได้ 1 ครั้งตลอดเกม! *</p>
         <button id="btn-start">เริ่มท้าทายเลย!</button>
     </div>
@@ -69,10 +69,7 @@
         ];
 
         let currentRound = 0, lives = 1, usedSongs = [], canReplay = true, currentSongFile = "";
-        const statusMsg = document.getElementById('status-msg');
-        const announcer = document.getElementById('announcer');
-        const btnReplay = document.getElementById('btn-replay');
-        const questionHeading = document.getElementById('question-text');
+        const statusMsg = document.getElementById('status-msg'), announcer = document.getElementById('announcer'), btnReplay = document.getElementById('btn-replay'), questionHeading = document.getElementById('question-text');
 
         async function loadSound(file) {
             const url = `audio/${file}`;
@@ -93,10 +90,7 @@
             currentSource.start(0);
         }
 
-        function announce(text) {
-            announcer.textContent = text;
-            setTimeout(() => { announcer.textContent = ""; }, 1000); 
-        }
+        function announce(text) { announcer.textContent = text; setTimeout(() => { announcer.textContent = ""; }, 1000); }
 
         document.getElementById('btn-start').addEventListener('click', async () => {
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -108,12 +102,10 @@
 
         btnReplay.addEventListener('click', async () => {
             if (!canReplay) return;
-            canReplay = false;
-            btnReplay.classList.add('hidden');
+            canReplay = false; btnReplay.classList.add('hidden');
             document.getElementById('options-container').classList.add('hidden');
             statusMsg.textContent = "กำลังเล่นซ้ำ...";
-            const buffer = await loadSound(currentSongFile);
-            playSound(buffer, () => {
+            playSound(await loadSound(currentSongFile), () => {
                 document.getElementById('options-container').classList.remove('hidden');
                 statusMsg.textContent = "";
             });
@@ -121,89 +113,68 @@
 
         async function nextQuestion() {
             if (currentRound >= 5) { endGame(true); return; }
-            statusMsg.textContent = ""; 
-            currentRound++; 
-            
+            statusMsg.textContent = ""; currentRound++;
             let availableSongs = songData.filter(s => !usedSongs.includes(s.file));
             let selectedSong = availableSongs[Math.floor(Math.random() * availableSongs.length)];
-            usedSongs.push(selectedSong.file);
-            currentSongFile = selectedSong.file;
-            
+            usedSongs.push(selectedSong.file); currentSongFile = selectedSong.file;
             btnReplay.classList.toggle('hidden', !canReplay);
-            document.getElementById('options-container').classList.add('hidden'); 
+            document.getElementById('options-container').classList.add('hidden');
             questionHeading.textContent = `ข้อที่ ${currentRound}: ตั้งใจฟังเพลงนะ...`;
-            
-            const buffer = await loadSound(selectedSong.file);
-            playSound(buffer, () => {
+            playSound(await loadSound(selectedSong.file), () => {
                 generateOptions(selectedSong);
                 document.getElementById('options-container').classList.remove('hidden');
                 questionHeading.focus();
             });
         }
 
+        async function checkAnswer(isCorrect, btn, container) {
+            if (isCorrect) {
+                playSound(await loadSound('t.mp3'));
+                statusMsg.textContent = "ถูกต้อง!"; announce("ถูกต้อง");
+                container.querySelectorAll('button').forEach(b => b.disabled = true);
+                btnReplay.classList.add('hidden');
+                setTimeout(nextQuestion, 2000);
+            } else if (lives > 0) {
+                lives--; btn.disabled = true; btn.style.opacity = "0.3";
+                playSound(await loadSound('f.mp3'));
+                statusMsg.textContent = "ผิดครับ! แก้ตัวได้อีกหนึ่งครั้ง";
+            } else { endGame(false); }
+        }
+
         function generateOptions(song) {
             const container = document.getElementById('options-container');
             container.innerHTML = "";
             const questionType = Math.floor(Math.random() * 3);
-            let targetValues = [];
-            let options = [];
-
+            
             if (questionType === 0) {
                 const target = song.words[Math.floor(Math.random() * song.words.length)];
                 questionHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
-                targetValues = [target.n];
-                options = [target.n, target.n + 1, target.n - 1, target.n + 2];
+                let options = [target.n, target.n + 1, target.n - 1, target.n + 2].sort(() => Math.random() - 0.5);
+                options.forEach(opt => {
+                    const btn = document.createElement('button');
+                    btn.textContent = opt;
+                    btn.onclick = () => checkAnswer(opt == target.n, btn, container);
+                    container.appendChild(btn);
+                });
             } else {
-                const allNumbers = song.words.map(item => item.n);
-                const minVal = Math.min(...allNumbers);
-                const maxVal = Math.max(...allNumbers);
+                const allCounts = song.words.map(item => item.n);
+                const limit = (questionType === 1) ? Math.min(...allCounts) : Math.max(...allCounts);
+                questionHeading.textContent = (questionType === 1) ? `ข้อที่ ${currentRound}: คำใดมีจำนวน "น้อยที่สุด"?` : `ข้อที่ ${currentRound}: คำใดมีจำนวน "มากที่สุด"?`;
                 
-                if (questionType === 1) {
-                    questionHeading.textContent = `ข้อที่ ${currentRound}: คำใดมีจำนวน "น้อยที่สุด"? (ตอบจำนวนนั้น)`;
-                    targetValues = [minVal];
-                } else {
-                    questionHeading.textContent = `ข้อที่ ${currentRound}: คำใดมีจำนวน "มากที่สุด"? (ตอบจำนวนนั้น)`;
-                    targetValues = [maxVal];
-                }
-                options = [...new Set(allNumbers)];
-                while(options.length < 4) {
-                    let randomAdd = Math.floor(Math.random() * 20) + 1;
-                    if(!options.includes(randomAdd)) options.push(randomAdd);
-                }
+                const targetWords = song.words.filter(item => item.n === limit).map(item => item.w);
+                song.words.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.textContent = item.w;
+                    btn.onclick = () => checkAnswer(targetWords.includes(item.w), btn, container);
+                    container.appendChild(btn);
+                });
             }
-
-            options.sort(() => Math.random() - 0.5).forEach(opt => {
-                const btn = document.createElement('button');
-                btn.textContent = opt;
-                btn.onclick = async () => {
-                    if (targetValues.includes(opt)) {
-                        const buffer = await loadSound('t.mp3');
-                        playSound(buffer);
-                        statusMsg.textContent = "ถูกต้อง!";
-                        announce("ถูกต้อง");
-                        container.querySelectorAll('button').forEach(b => b.disabled = true);
-                        btnReplay.classList.add('hidden');
-                        setTimeout(nextQuestion, 2000);
-                    } else {
-                        if (lives > 0) {
-                            lives--;
-                            const buffer = await loadSound('f.mp3');
-                            playSound(buffer);
-                            btn.disabled = true;
-                            btn.style.opacity = "0.3";
-                            statusMsg.textContent = "ผิดครับ! แก้ตัวได้อีกหนึ่งครั้ง";
-                        } else { endGame(false); }
-                    }
-                };
-                container.appendChild(btn);
-            });
         }
 
         async function endGame(isWin) {
             document.getElementById('game-screen').classList.add('hidden');
             document.getElementById('result-screen').classList.remove('hidden');
-            const buffer = await loadSound(isWin ? 'end.mp3' : 'end1.mp3');
-            playSound(buffer);
+            playSound(await loadSound(isWin ? 'end.mp3' : 'end1.mp3'));
             document.getElementById('result-title').textContent = isWin ? "🏆 คุณชนะ!" : "💀 เกมโอเวอร์";
             document.getElementById('result-message').textContent = isWin ? "สุดยอด หูเทพมาก!" : "ไม่เป็นไรนะ ลองใหม่!";
         }
