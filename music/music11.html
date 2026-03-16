@@ -9,20 +9,6 @@
         body { font-family: 'Kanit', sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; text-align: center; background-color: #f0f2f5; color: #333; overflow-x: hidden; }
         .hidden { display: none !important; }
         
-        /* Score Board Style */
-        #score-board {
-            position: fixed; top: 20px; right: 20px; background: #2c3e50;
-            color: #fff; padding: 10px 20px; border-radius: 50px;
-            font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            z-index: 1000; font-size: 1.2rem;
-        }
-        .score-pop { animation: pop 0.4s ease-out; }
-        @keyframes pop {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.3); color: #f1c40f; }
-            100% { transform: scale(1); }
-        }
-
         /* Game Card & Base Style */
         .game-card { background: white; padding: 2.5rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); position: relative; transition: all 0.3s ease; }
         .btn-back { position: absolute; top: 15px; left: 15px; padding: 8px 12px; font-size: 0.9rem; background-color: #95a5a6; }
@@ -30,12 +16,16 @@
         button:hover:not(:disabled) { background-color: #357ABD; transform: translateY(-2px); }
         button:disabled { background-color: #bdc3c7; cursor: not-allowed; opacity: 0.5; }
         
+        /* Layout */
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px; }
         #status-msg { margin: 10px 0; font-weight: 500; min-height: 1.5em; color: #e67e22; font-size: 1.1rem; }
         h1, h2 { color: #2c3e50; margin-bottom: 5px; outline: none; }
         .result-text { font-size: 1.5rem; margin-bottom: 20px; font-weight: bold; }
         
+        /* --- Animation Overlay --- */
         .fx-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; display: flex; justify-content: center; align-items: center; }
+        
+        /* Wrong Answer (X) */
         .wrong-x { font-size: 150px; color: #e74c3c; font-weight: bold; opacity: 0; transform: scale(0.5); }
         .animate-x { animation: pop-in-out 0.8s ease-out forwards; }
         @keyframes pop-in-out {
@@ -43,13 +33,19 @@
             50% { opacity: 1; transform: scale(1.2); }
             100% { opacity: 0; transform: scale(1.5); }
         }
+
+        /* Confetti Pop (Simplified for CSS) */
         .confetti { position: absolute; width: 10px; height: 10px; border-radius: 2px; opacity: 0; }
         .animate-confetti { animation: confetti-fall 1s ease-out forwards; }
         @keyframes confetti-fall {
             0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
             100% { transform: translate(var(--tx), var(--ty)) rotate(720deg); opacity: 0; }
         }
+
+        /* Screen Reader Announcer */
         .sr-announcer { position: absolute; clip: rect(1px, 1px, 1px, 1px); padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }
+
+        /* Lose Shake */
         .shake-screen { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
         @keyframes shake {
             10%, 90% { transform: translate3d(-1px, 0, 0); }
@@ -60,8 +56,6 @@
     </style>
 </head>
 <body>
-
-    <div id="score-board">คะแนน: <span id="display-score">0</span></div>
 
     <div id="start-screen" class="game-card">
         <button class="btn-back" onclick="window.location.href='../index.html'">กลับสู่ชุมชน</button>
@@ -89,12 +83,14 @@
     </div>
 
     <div id="fx-layer" class="fx-overlay"></div>
+
     <div id="announcer" class="sr-announcer" aria-live="assertive" aria-atomic="true"></div>
 
     <script>
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let currentSource = null, audioBuffers = {};
-        let totalScore = 0, comboCount = 0, questionStartTime = 0;
+        let currentSource = null;
+        const audioBuffers = {};
+
         const songData = [
             { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
             { file: 'หมี.mp3', words: [{w:'หมี', n:7}, {w:'หีบ', n:4}, {w:'หนี', n:8}, {w:'หาย', n:14}] },
@@ -124,13 +120,7 @@
         let currentRound = 0, lives = 1, usedSongs = [], replayCount = 3, currentSongFile = "";
         const statusMsg = document.getElementById('status-msg'), announcer = document.getElementById('announcer'), btnReplay = document.getElementById('btn-replay'), questionHeading = document.getElementById('question-text'), fxLayer = document.getElementById('fx-layer');
 
-        function updateScore(points) {
-            totalScore += points;
-            const el = document.getElementById('display-score');
-            el.textContent = totalScore;
-            el.classList.add('score-pop');
-            setTimeout(() => el.classList.remove('score-pop'), 400);
-        }
+        window.onload = () => { document.getElementById('start-heading').focus(); };
 
         async function loadSound(file) {
             const url = `audio/${file}`;
@@ -156,6 +146,7 @@
 
         function announce(text) { announcer.textContent = text; setTimeout(() => { announcer.textContent = ""; }, 1000); }
 
+        // Animation Functions
         function showWrongX() {
             fxLayer.innerHTML = '<div class="wrong-x animate-x">X</div>';
             setTimeout(() => { fxLayer.innerHTML = ""; }, 800);
@@ -176,8 +167,7 @@
 
         document.getElementById('btn-start').addEventListener('click', async () => {
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            currentRound = 0; lives = 1; usedSongs = []; replayCount = 3; totalScore = 0; comboCount = 0;
-            document.getElementById('display-score').textContent = "0";
+            currentRound = 0; lives = 1; usedSongs = []; replayCount = 3;
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
             nextQuestion();
@@ -220,31 +210,22 @@
                 generateOptions(selectedSong);
                 document.getElementById('options-container').classList.remove('hidden');
                 questionHeading.focus();
-                questionStartTime = Date.now();
             });
         }
 
         async function checkAnswer(isCorrect, btn, container) {
             if (isCorrect) {
-                const replaysUsed = 3 - replayCount;
-                const timeTaken = (Date.now() - questionStartTime) / 1000;
-                const speedBonus = Math.max(0, 500 - (timeTaken * 50));
-                comboCount++;
-                const comboMultiplier = 1 + (comboCount * 0.1);
-                const roundScore = Math.floor(Math.max(0, (1000 + speedBonus - (replaysUsed * 400))) * comboMultiplier);
-                
-                updateScore(roundScore);
                 playSound(await loadSound('t.mp3'));
-                createConfetti(30);
-                statusMsg.textContent = `ถูกต้อง! ได้รับ ${roundScore} คะแนน`; 
+                createConfetti(30); // จุดพุเล็กๆ แต่ละข้อ
+                statusMsg.textContent = "ถูกต้อง!"; 
                 announce("ถูกต้อง");
                 container.querySelectorAll('button').forEach(b => b.disabled = true);
                 btnReplay.classList.add('hidden');
                 setTimeout(nextQuestion, 2000);
             } else if (lives > 0) {
-                comboCount = 0; lives--; btn.disabled = true; btn.style.opacity = "0.3";
+                lives--; btn.disabled = true; btn.style.opacity = "0.3";
                 playSound(await loadSound('f.mp3'));
-                showWrongX();
+                showWrongX(); // แสดงกากบาทสีแดง
                 statusMsg.textContent = "ผิดครับ! แก้ตัวได้อีกหนึ่งครั้ง";
                 announce("ผิดครับ! แก้ตัวได้อีกหนึ่งครั้ง");
             } else { endGame(false); }
@@ -288,7 +269,7 @@
             
             if (isWin) {
                 resultTitle.textContent = "🏆 คุณชนะ!";
-                createConfetti(100);
+                createConfetti(100); // พุชุดใหญ่
             } else {
                 resultTitle.textContent = "💀 เกมโอเวอร์";
                 document.body.classList.add('shake-screen');
@@ -296,9 +277,7 @@
             }
             resultTitle.focus();
             playSound(await loadSound(isWin ? 'end.mp3' : 'end1.mp3'));
-            document.getElementById('result-message').innerHTML = 
-                (isWin ? "สุดยอด หูเทพมาก!" : "ไม่เป็นไรนะ ลองใหม่!") + 
-                `<br><br><strong>คะแนนรวมทั้งหมดของคุณคือ: ${totalScore}</strong>`;
+            document.getElementById('result-message').textContent = isWin ? "สุดยอด หูเทพมาก!" : "ไม่เป็นไรนะ ลองใหม่!";
         }
     </script>
 </body>
