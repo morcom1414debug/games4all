@@ -97,7 +97,6 @@
         let currentSource = null, audioBuffers = {};
         let totalScore = 0, comboCount = 0, questionStartTime = 0;
         let isExpertMode = false;
-        let usedSongs = []; // ย้ายมาเป็น Global เพื่อไม่ให้รีเซ็ตระหว่างโหมด
 
         const songData = [
             { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
@@ -132,7 +131,7 @@
             { file: 'kids.mp3', words: [{w:'เด็ก', n:9}, {w:'วัยรุ่น', n:11}, {w:'ผู้ใหญ่', n:7}, {w:'ชรา', n:5}] }
         ];
 
-        let currentRound = 0, lives = 1, replayCount = 3, currentSongFile = "";
+        let currentRound = 0, lives = 1, usedSongs = [], replayCount = 3, currentSongFile = "";
         const statusMsg = document.getElementById('status-msg'), announcer = document.getElementById('announcer'), btnReplay = document.getElementById('btn-replay'), questionHeading = document.getElementById('question-text'), fxLayer = document.getElementById('fx-layer');
 
         // --- เพิ่มระบบสูตรลับ ---
@@ -156,8 +155,8 @@
 
         function activateCheat(expert) {
             if (currentSource) currentSource.stop();
-            startNewGame(expert, true); // เพิ่ม flag บอกว่าใช้สูตร
-            currentRound = 6; 
+            startNewGame(expert);
+            currentRound = 6; // ตั้งค่าเป็นข้อที่ 6 เพื่อให้ nextQuestion() พาไปข้อที่ 7
             nextQuestion();
         }
         // -----------------------
@@ -230,18 +229,12 @@
             setTimeout(() => { fxLayer.innerHTML = ""; }, 1000);
         }
 
-        function startNewGame(expert = false, isCheat = false) {
+        function startNewGame(expert = false) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             isExpertMode = expert;
             currentRound = 0; 
-            
-            // ปรับเงื่อนไข: ล้าง usedSongs เฉพาะเมื่อเริ่มเกมใหม่จากปุ่ม "เริ่มท้าทายเลย" หรือเล่นโหมดปกติใหม่
-            // แต่ถ้าเป็นการกด "ท้าทายระดับเซียน" ต่อจากการชนะปกติ ไม่ต้องล้างเพลงที่เคยใช้แล้ว
-            if (!isExpertMode && !isCheat) {
-                usedSongs = []; 
-            }
-            
-            totalScore = (isExpertMode && !isCheat) ? totalScore : 0; // รักษาคะแนนไว้ถ้าเล่นต่อระดับเซียน
+            usedSongs = []; 
+            totalScore = 0; 
             comboCount = 0;
             
             if (isExpertMode) {
@@ -252,12 +245,12 @@
                 replayCount = 3;
             }
 
-            document.getElementById('display-score').textContent = totalScore;
+            document.getElementById('display-score').textContent = "0";
             document.getElementById('score-board').classList.remove('hidden');
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('result-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
-            if(!isCheat) nextQuestion();
+            nextQuestion();
         }
 
         document.getElementById('btn-start').addEventListener('click', () => startNewGame(false));
@@ -283,10 +276,6 @@
             if (currentRound >= 7) { endGame(true); return; }
             statusMsg.textContent = ""; currentRound++;
             let availableSongs = songData.filter(s => !usedSongs.includes(s.file));
-            
-            // กรณีเพลงหมด (ซึ่งไม่ควรเกิดถ้ามี 30 เพลงแต่เล่นแค่ 14) ให้สุ่มจากทั้งหมดใหม่
-            if (availableSongs.length === 0) availableSongs = songData; 
-            
             let selectedSong = availableSongs[Math.floor(Math.random() * availableSongs.length)];
             usedSongs.push(selectedSong.file); currentSongFile = selectedSong.file;
             
