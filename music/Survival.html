@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survival Mode - หูเพี้ยนหรือเซียนนับ</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;500;800&display=swap');
+        
+        body { 
+            font-family: 'Kanit', sans-serif; 
+            max-width: 600px; 
+            margin: 2rem auto; 
+            padding: 1rem; 
+            text-align: center; 
+            background-color: #1a1a2e; 
+            color: #fff; 
+            overflow-x: hidden; 
+        }
+
+        .hidden { display: none !important; }
+
+        /* Top Bar & Score */
+        #top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 580px;
+            z-index: 1000;
+        }
+
+        #score-board {
+            background: rgba(44, 62, 80, 0.9);
+            padding: 8px 25px;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 1.3rem;
+            border: 2px solid #e74c3c;
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+        }
+
+        /* Hearts Survival Style */
+        #lives-container {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .heart {
+            font-size: 3.5rem;
+            color: #e74c3c;
+            filter: drop-shadow(0 0 10px rgba(231, 76, 60, 0.6));
+            transition: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            display: inline-block;
+        }
+
+        .heart.broken {
+            transform: translateY(50px) rotate(45deg) scale(0.5);
+            opacity: 0;
+            filter: grayscale(1) blur(8px);
+        }
+
+        .game-card { 
+            background: rgba(255, 255, 255, 0.07); 
+            padding: 3rem 2rem; 
+            border-radius: 25px; 
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6);
+            position: relative;
+        }
+
+        h2 { font-size: 1.8rem; min-height: 2em; line-height: 1.4; outline: none; }
+
+        /* Buttons */
+        button { 
+            padding: 18px; 
+            font-size: 1.2rem; 
+            cursor: pointer; 
+            border-radius: 15px; 
+            border: none; 
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); 
+            color: white; 
+            margin: 10px auto; 
+            width: 85%;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: block;
+        }
+
+        button:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(231, 76, 60, 0.4); }
+        button:active { transform: translateY(-1px); }
+
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 30px; }
+        .options-grid button { width: auto; margin: 0; background: #34495e; border-bottom: 4px solid #2c3e50; }
+
+        /* FX */
+        .fx-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2000; display: flex; justify-content: center; align-items: center; }
+        .big-x { font-size: 250px; color: #ff4757; font-weight: 800; opacity: 0; }
+        .animate-x { animation: x-impact 0.8s ease-out forwards; }
+        
+        @keyframes x-impact {
+            0% { opacity: 0; transform: scale(5); filter: blur(10px); }
+            30% { opacity: 1; transform: scale(1); filter: blur(0); }
+            100% { opacity: 0; transform: scale(0.5); }
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="top-bar" class="hidden">
+        <div id="score-board">คะแนน: <span id="display-score">0</span></div>
+    </div>
+
+    <div id="start-screen" class="game-card">
+        <h1>โหมดเอาชีวิตรอด</h1>
+        <p>กติกา: อ่านโจทย์ก่อน 4 วินาทีแล้วค่อยฟังเพลง<br>ตอบผิดเสีย 1 ชีวิต (มี 3 ชีวิต)</p>
+        <button id="btn-start" style="margin-top: 20px; background: #e67e22;">เริ่มเอาชีวิตรอด</button>
+    </div>
+
+    <div id="game-screen" class="game-card hidden">
+        <h2 id="question-text" tabindex="-1">เตรียมตัว...</h2>
+        
+        <div id="options-container" class="options-grid"></div>
+
+        <div id="lives-container" aria-hidden="true">
+            <span class="heart" id="h1">❤️</span>
+            <span class="heart" id="h2">❤️</span>
+            <span class="heart" id="h3">❤️</span>
+        </div>
+    </div>
+
+    <div id="result-screen" class="game-card hidden">
+        <h2 id="result-title" tabindex="-1">สรุปผลการรอดชีวิต</h2>
+        <p id="result-message" style="font-size: 1.4rem; font-weight: 500;"></p>
+        <div id="result-actions" style="margin-top: 20px;">
+            <button onclick="location.reload()">ท้าทายอีกครั้ง</button>
+            <button style="background: #3498db;" onclick="window.location.href='../index.html'">กลับสู่ชุมชน</button>
+        </div>
+    </div>
+
+    <div id="fx-layer" class="fx-overlay"></div>
+    <div id="announcer" class="sr-only" aria-live="assertive"></div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let currentSource = null, audioBuffers = {};
+        let totalScore = 0, comboCount = 0, lives = 3, currentRound = 0;
+        let usedSongs = [], currentSongData = null;
+
+        const songData = [
+            { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
+            { file: 'หมี.mp3', words: [{w:'หมี', n:7}, {w:'หีบ', n:4}, {w:'หนี', n:8}, {w:'หาย', n:14}] },
+            { file: 'ว้าวุ่น.mp3', words: [{w:'ว้าวุ่น', n:7}, {w:'วาสนา', n:5}, {w:'ชีวิต', n:5}, {w:'สู้', n:8}] },
+            { file: 'ดี4.mp3', words: [{w:'ดี', n:27}, {w:'หู', n:5}, {w:'หัน', n:6}, {w:'หลาย', n:12}] },
+            { file: 'fruit.mp3', words: [{w:'แอปเปิ้ล', n:9}, {w:'มะละกอ', n:9}, {w:'กล้วย', n:10}, {w:'ส้ม', n:10}] },
+            { file: 'จึ้ง.mp3', words: [{w:'จึ้ง', n:8}, {w:'แกง', n:8}, {w:'ปัง', n:8}, {w:'บ้ง', n:5}] },
+            { file: '1469.mp3', words: [{w:'หนึ่ง', n:8}, {w:'สี่', n:12}, {w:'หก', n:20}, {w:'เก้า', n:16}] },
+            { file: 'mama.mp3', words: [{w:'มาม่า', n:8}, {w:'ไวไว', n:7}, {w:'ซื่อสัตย์', n:3}, {w:'นิสชิน', n:6}] },
+            { file: 'kitchen.mp3', words: [{w:'หม้อ', n:9}, {w:'จาน', n:8}, {w:'ชาม', n:9}, {w:'กระทะ', n:9}] },
+            { file: 'ma.mp3', words: [{w:'มะม่วง', n:6}, {w:'มะนาว', n:5}, {w:'มะยม', n:6}, {w:'มะขาม', n:7}] },
+            { file: 'flower.mp3', words: [{w:'จำปี', n:5}, {w:'จำปา', n:7}, {w:'แก้ว', n:9}, {w:'มะลิ', n:18}] },
+            { file: 'pen.mp3', words: [{w:'กระเป๋า', n:10}, {w:'ดินสอ', n:11}, {w:'ปากกา', n:12}, {w:'สมุด', n:6}] },
+            { file: 'catdog.mp3', words: [{w:'แมว', n:11}, {w:'หมา', n:7}, {w:'หมี', n:13}, {w:'กบ', n:6}] },
+            { file: 'tour.mp3', words: [{w:'ท่าน', n:6}, {w:'ทัวร์', n:4}, {w:'หาด', n:5}, {w:'ใกล้', n:7}] },
+            { file: 'somtam.mp3', words: [{w:'อ๊า', n:14}, {w:'โอ๊ย', n:22}, {w:'อู๊ย', n:12}, {w:'อื๊ม', n:5}] },
+            { file: 'iPhone.mp3', words: [{w:'iPhone', n:8}, {w:'Samsung', n:9}, {w:'Oppo', n:8}, {w:'Vivo', n:8}] },
+            { file: 'benz.mp3', words: [{w:'เบ๊น', n:10}, {w:'โตโยต้า', n:6}, {w:'ฮอนด้า', n:7}, {w:'ตุ๊ก', n:15}] },
+            { file: 'bangkok.mp3', words: [{w:'กรุงเทพ', n:6}, {w:'พัทยา', n:6}, {w:'เชียงใหม่', n:4}, {w:'สงขลา', n:9}] },
+            { file: 'lay.mp3', words: [{w:'เลย์', n:12}, {w:'คอนเน่', n:11}, {w:'เทสโต้', n:6}, {w:'ฮานามิ', n:5}] },
+            { file: 'color.mp3', words: [{w:'แดง', n:11}, {w:'เขียว', n:8}, {w:'เหลือง', n:8}, {w:'ม่วง', n:9}] },
+            { file: 'day.mp3', words: [{w:'จันทร์', n:9}, {w:'พุธ', n:6}, {w:'เสาร์', n:8}, {w:'อาทิตย์', n:7}] },
+            { file: 'month.mp3', words: [{w:'มีนา', n:7}, {w:'เมษา', n:9}, {w:'สิงหา', n:4}, {w:'กันยา', n:7}] },
+            { file: 'finger.mp3', words: [{w:'โป้ง', n:22}, {w:'ชี้', n:14}, {w:'ก้อย', n:7}, {w:'นาง', n:6}] },
+            { file: 'head.mp3', words: [{w:'หัว', n:14}, {w:'ไหล่', n:12}, {w:'ตูด', n:13}, {w:'แขน', n:3}] },
+            { file: 'table.mp3', words: [{w:'โต๊ะ', n:13}, {w:'ตู้', n:8}, {w:'เตียง', n:8}, {w:'ระเบียง', n:1}] },
+            { file: 'shark.mp3', words: [{w:'ฉลาม', n:8}, {w:'โลมา', n:4}, {w:'นีโม่', n:8}, {w:'แมวน้ำ', n:5}] },
+            { file: 'sea.mp3', words: [{w:'ภูเขา', n:4}, {w:'ทะเล', n:9}, {w:'น้ำตก', n:4}, {w:'เกาะ', n:13}] },
+            { file: 'rice.mp3', words: [{w:'ข้าวสาร', n:6}, {w:'กะปิ', n:9}, {w:'น้ำพริก', n:8}, {w:'น้ำปลา', n:6}] },
+            { file: 'million.mp3', words: [{w:'ร้อย', n:1}, {w:'หมื่น', n:7}, {w:'แสน', n:9}, {w:'ล้าน', n:18}] },
+            { file: 'kids.mp3', words: [{w:'เด็ก', n:9}, {w:'วัยรุ่น', n:11}, {w:'ผู้ใหญ่', n:7}, {w:'ชรา', n:5}] }
+        ];
+
+        const announcer = document.getElementById('announcer');
+        const qHeading = document.getElementById('question-text');
+        const fxLayer = document.getElementById('fx-layer');
+
+        function announce(txt) { announcer.textContent = txt; }
+
+        async function loadSound(file) {
+            const url = `audio/${file}`;
+            if (audioBuffers[url]) return audioBuffers[url];
+            try {
+                const res = await fetch(url);
+                const buffer = await audioCtx.decodeAudioData(await res.arrayBuffer());
+                audioBuffers[url] = buffer;
+                return buffer;
+            } catch(e) { console.error("Error loading sound", file); }
+        }
+
+        function playSound(buffer, callback) {
+            if (currentSource) currentSource.stop();
+            currentSource = audioCtx.createBufferSource();
+            currentSource.buffer = buffer;
+            currentSource.connect(audioCtx.destination);
+            currentSource.onended = callback;
+            currentSource.start(0);
+        }
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            document.getElementById('top-bar').classList.remove('hidden');
+            nextQuestion();
+        });
+
+        async function nextQuestion() {
+            if (currentRound >= 30) { endGame(true); return; }
+            if (lives <= 0) { endGame(false); return; }
+
+            currentRound++;
+            document.getElementById('options-container').innerHTML = "";
+            
+            // สุ่มเพลง
+            let available = songData.filter(s => !usedSongs.includes(s.file));
+            currentSongData = available[Math.floor(Math.random() * available.length)];
+            usedSongs.push(currentSongData.file);
+
+            // สุ่มโจทย์ (Heading บรรทัดเดียวแบบเดิม)
+            const type = Math.floor(Math.random() * 2);
+            const target = currentSongData.words[Math.floor(Math.random() * currentSongData.words.length)];
+            
+            if (type === 0) {
+                qHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
+                currentSongData.answer = target.n;
+                currentSongData.mode = "count";
+            } else {
+                qHeading.textContent = `ข้อที่ ${currentRound}: ตัวเลือกใดมีจำนวนมากที่สุด?`;
+                const maxVal = Math.max(...currentSongData.words.map(w => w.n));
+                currentSongData.answer = currentSongData.words.filter(w => w.n === maxVal).map(w => w.w);
+                currentSongData.mode = "max";
+            }
+
+            // ชี้ Focus ทันที (ไม่ประกาศผ่าน aria-live เพิ่มเติมเพื่อให้ SR อ่านจาก Focus เอง)
+            qHeading.focus();
+
+            // หน่วง 4 วินาทีแล้วเล่นเพลง
+            setTimeout(async () => {
+                const buffer = await loadSound(currentSongData.file);
+                playSound(buffer, () => {
+                    showOptions();
+                    qHeading.focus(); // เพลงจบ Focus กลับไปที่โจทย์อีกครั้ง
+                });
+            }, 4000);
+        }
+
+        function showOptions() {
+            const container = document.getElementById('options-container');
+            if (currentSongData.mode === "count") {
+                let opts = [currentSongData.answer, currentSongData.answer+1, currentSongData.answer-1, currentSongData.answer+2].filter(n=>n>=0);
+                opts = [...new Set(opts)].sort(() => Math.random() - 0.5);
+                opts.forEach(opt => {
+                    const b = document.createElement('button');
+                    b.textContent = opt;
+                    b.onclick = () => checkAnswer(opt === currentSongData.answer);
+                    container.appendChild(b);
+                });
+            } else {
+                currentSongData.words.forEach(w => {
+                    const b = document.createElement('button');
+                    b.textContent = w.w;
+                    b.onclick = () => checkAnswer(currentSongData.answer.includes(w.w));
+                    container.appendChild(b);
+                });
+            }
+        }
+
+        async function checkAnswer(isCorrect) {
+            document.getElementById('options-container').innerHTML = "";
+            if (isCorrect) {
+                comboCount++;
+                totalScore += (1000 * (1 + comboCount * 0.2));
+                document.getElementById('display-score').textContent = Math.floor(totalScore);
+                announce(`ถูกต้อง! คอมโบ ${comboCount} ข้อ`);
+                createFirework();
+                playSound(await loadSound('t.mp3'));
+                setTimeout(nextQuestion, 1500);
+            } else {
+                const heart = document.getElementById(`h${lives}`);
+                heart.classList.add('broken');
+                lives--;
+                comboCount = 0;
+                showBigX();
+                announce(`ผิด! หัวใจเหลือ ${lives} ดวง`);
+                playSound(await loadSound('f.mp3'));
+                if (lives <= 0) setTimeout(() => endGame(false), 1200);
+                else setTimeout(nextQuestion, 1500);
+            }
+        }
+
+        function createFirework() {
+            for(let i=0; i<40; i++) {
+                const p = document.createElement('div');
+                p.style.position = 'fixed'; p.style.left = '50%'; p.style.top = '50%';
+                p.style.width = '10px'; p.style.height = '10px';
+                p.style.backgroundColor = `hsl(${Math.random()*360}, 100%, 50%)`;
+                p.style.borderRadius = '50%'; p.style.zIndex = '3000';
+                fxLayer.appendChild(p);
+                const a = Math.random() * Math.PI * 2;
+                const d = 100 + Math.random() * 200;
+                p.animate([
+                    { transform: 'translate(0,0) scale(1)', opacity: 1 },
+                    { transform: `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px) scale(0)`, opacity: 0 }
+                ], { duration: 1000, easing: 'ease-out' });
+                setTimeout(() => p.remove(), 1000);
+            }
+        }
+
+        function showBigX() {
+            fxLayer.innerHTML = '<div class="big-x animate-x">X</div>';
+            document.body.style.animation = "shake 0.5s cubic-bezier(.36,.07,.19,.97) both";
+            setTimeout(() => { fxLayer.innerHTML = ""; document.body.style.animation = ""; }, 800);
+        }
+
+        async function endGame(isWin) {
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('top-bar').classList.add('hidden');
+            const screen = document.getElementById('result-screen');
+            screen.classList.remove('hidden');
+            const title = document.getElementById('result-title');
+            const msg = document.getElementById('result-message');
+
+            if (isWin) {
+                const winMsgs = ["คุณคือตำนานหูทองคำ!", "สุดยอด! รอดชีวิตมาได้จนจบ!", "คารวะท่านเซียนหูทิพย์!"];
+                title.textContent = "🏆 ผู้รอดชีวิตเพียงหนึ่งเดียว!";
+                msg.innerHTML = winMsgs[Math.floor(Math.random()*winMsgs.length)] + `<br>คะแนนรวม: ${Math.floor(totalScore)}`;
+                createFirework(); createFirework();
+                playSound(await loadSound('end.mp3'));
+            } else {
+                const loseMsgs = ["เกือบจะรอดแล้วเชียว!", "ไม่เป็นไร ฝึกหูใหม่แล้วกลับมา!", "วันนี้ยังไม่ใช่ทางของเรา..."];
+                title.textContent = "💀 ภารกิจล้มเหลว";
+                msg.innerHTML = loseMsgs[Math.floor(Math.random()*loseMsgs.length)] + `<br>คะแนนที่ทำได้: ${Math.floor(totalScore)}`;
+                playSound(await loadSound('end1.mp3'));
+            }
+            title.focus();
+            announce(`${title.textContent} ${msg.innerText}`);
+        }
+    </script>
+</body>
+</html>
