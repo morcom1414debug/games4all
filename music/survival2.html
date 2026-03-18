@@ -19,44 +19,40 @@
         }
 
         .hidden { display: none !important; }
-        
-        /* ซ่อนจากสายตาและ Screen Reader Navigation แต่ให้ aria-live อ่านได้ */
-        .sr-only { 
-            position: absolute; 
-            width: 1px; 
-            height: 1px; 
-            padding: 0; 
-            margin: -1px; 
-            overflow: hidden; 
-            clip: rect(0,0,0,0); 
-            border: 0; 
-        }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 
-        #top-bar { position: fixed; top: 15px; right: 20px; z-index: 1000; }
+        /* Top Bar */
+        #top-bar {
+            position: fixed; top: 15px; right: 20px; z-index: 1000;
+        }
         #score-board {
             background: rgba(231, 76, 60, 0.9);
             padding: 8px 20px;
             border-radius: 50px;
             font-weight: bold;
             font-size: 1.2rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
 
-        /* Hearts Visual Only */
+        /* Hearts Survival */
         #lives-container {
             display: flex; gap: 15px; justify-content: center; margin-top: 40px;
         }
         .heart {
-            font-size: 4rem; color: #e74c3c;
+            font-size: 4rem;
+            color: #e74c3c;
             filter: drop-shadow(0 0 10px rgba(231, 76, 60, 0.5));
-            transition: all 0.5s ease;
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 1;
+            transform: scale(1);
         }
-        .heart.lost { opacity: 0.1; filter: grayscale(1); transform: scale(0.8); }
+        .heart.hidden-life { opacity: 0.2; filter: grayscale(1) blur(2px); transform: scale(0.8); }
         .heart.recover-anim { animation: recover 0.6s forwards; }
         
         @keyframes recover {
-            0% { transform: scale(0.5); opacity: 0; }
-            50% { transform: scale(1.4); filter: brightness(2); }
-            100% { transform: scale(1); opacity: 1; }
+            0% { transform: scale(0.5); opacity: 0; filter: brightness(3); }
+            50% { transform: scale(1.4); }
+            100% { transform: scale(1); opacity: 1; filter: brightness(1); }
         }
 
         .game-card { 
@@ -65,25 +61,40 @@
             border-radius: 30px; 
             backdrop-filter: blur(15px);
             border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
         }
 
-        h2 { font-size: 2rem; outline: none; margin-bottom: 1.5rem; }
+        h2 { font-size: 2rem; min-height: 2.5em; outline: none; transition: color 0.3s; }
 
-        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
+        /* Options */
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 30px; }
         button.option-btn { 
             padding: 20px; font-size: 1.3rem; cursor: pointer; border-radius: 15px; border: none;
-            background: #34495e; color: white; font-weight: bold; border-bottom: 5px solid #2c3e50;
+            background: #34495e; color: white; font-weight: bold; transition: 0.2s;
+            border-bottom: 5px solid #2c3e50;
         }
+        button.option-btn:hover { background: #3d566e; transform: translateY(-3px); }
 
+        /* Start Button */
         #btn-start {
-            padding: 20px 40px; font-size: 1.5rem; background: #e74c3c;
+            padding: 20px 40px; font-size: 1.5rem; background: linear-gradient(135deg, #e74c3c, #c0392b);
             color: white; border: none; border-radius: 50px; cursor: pointer; font-weight: 800;
         }
 
+        /* FX */
         .fx-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2000; display: flex; justify-content: center; align-items: center; }
         .big-x { font-size: 300px; color: #ff4757; font-weight: 900; opacity: 0; }
         .animate-x { animation: x-impact 0.8s forwards; }
-        @keyframes x-impact { 0% { opacity: 0; transform: scale(5); } 20% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.8); } }
+        @keyframes x-impact {
+            0% { opacity: 0; transform: scale(5); }
+            20% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.8); }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translate(0,0); }
+            10%, 30%, 50%, 70%, 90% { transform: translate(-10px,0); }
+            20%, 40%, 60%, 80% { transform: translate(10px,0); }
+        }
     </style>
 </head>
 <body>
@@ -94,7 +105,10 @@
 
     <div id="start-screen" class="game-card">
         <h1>โหมดเอาชีวิตรอด</h1>
-        <p>สะสมคอมโบ 4 ข้อเพื่อฟื้นชีวิต!<br>ตั้งใจฟังให้ดี มีเพียง 3 ชีวิตเท่านั้น</p>
+        <p style="font-size: 1.2rem; margin-bottom: 2rem;">
+            ต้องรอดให้ครบ 30 ข้อ!<br>
+            <span style="color: #f1c40f;">พิเศษ: ตอบถูกติดต่อกัน 4 ข้อ ได้รับ 1 ชีวิตคืน</span>
+        </p>
         <button id="btn-start">เริ่มเอาชีวิตรอด</button>
     </div>
 
@@ -111,9 +125,9 @@
     </div>
 
     <div id="result-screen" class="game-card hidden">
-        <h2 id="result-title" tabindex="-1">ผลการทดสอบ</h2>
-        <p id="result-message"></p>
-        <button onclick="location.reload()" style="margin-top:20px; padding:15px; border-radius:10px; border:none; background:#27ae60; color:white;">ลองอีกครั้ง</button>
+        <h2 id="result-title" tabindex="-1">จบการเอาชีวิตรอด</h2>
+        <p id="result-message" style="font-size: 1.5rem;"></p>
+        <button onclick="location.reload()" style="padding: 15px 30px; font-size: 1.2rem; background: #27ae60; color:white; border:none; border-radius:10px; cursor:pointer; margin-top: 20px;">เริ่มใหม่</button>
     </div>
 
     <div id="announcer" class="sr-only" aria-live="assertive"></div>
@@ -142,7 +156,7 @@
             { file: 'tour.mp3', words: [{w:'ท่าน', n:6}, {w:'ทัวร์', n:4}, {w:'หาด', n:5}, {w:'ใกล้', n:7}] },
             { file: 'somtam.mp3', words: [{w:'อ๊า', n:14}, {w:'โอ๊ย', n:22}, {w:'อู๊ย', n:12}, {w:'อื๊ม', n:5}] },
             { file: 'iPhone.mp3', words: [{w:'iPhone', n:8}, {w:'Samsung', n:9}, {w:'Oppo', n:8}, {w:'Vivo', n:8}] },
-            { file: 'benz.mp3', words: [{w:'เบ๊น', n:10}, {w:'โตโยต้า', n:6}, {w:'ฮอนด้า', n:7}, {w:'ตุ๊ก', n:15}] },
+            { file: 'benz.mp3', words: [{w:'เบ๊น', n:10}, {w:'โตโยต้า', n:6}, {w:'ฮอน้า', n:7}, {w:'ตุ๊ก', n:15}] },
             { file: 'bangkok.mp3', words: [{w:'กรุงเทพ', n:6}, {w:'พัทยา', n:6}, {w:'เชียงใหม่', n:4}, {w:'สงขลา', n:9}] },
             { file: 'lay.mp3', words: [{w:'เลย์', n:12}, {w:'คอนเน่', n:11}, {w:'เทสโต้', n:6}, {w:'ฮานามิ', n:5}] },
             { file: 'color.mp3', words: [{w:'แดง', n:11}, {w:'เขียว', n:8}, {w:'เหลือง', n:8}, {w:'ม่วง', n:9}] },
@@ -160,18 +174,18 @@
 
         const announcer = document.getElementById('announcer');
         const qHeading = document.getElementById('question-text');
+        const fxLayer = document.getElementById('fx-layer');
 
-        function announce(txt) { 
-            announcer.textContent = ""; // เคลียร์ค่าว่างก่อนเพื่อให้ assertive ทำงานซ้ำได้
-            setTimeout(() => { announcer.textContent = txt; }, 50);
-        }
+        function announce(txt) { announcer.textContent = txt; }
 
         async function loadSound(file) {
             const url = `audio/${file}`;
             if (audioBuffers[url]) return audioBuffers[url];
-            const res = await fetch(url);
-            const buf = await audioCtx.decodeAudioData(await res.arrayBuffer());
-            audioBuffers[url] = buf; return buf;
+            try {
+                const res = await fetch(url);
+                const buf = await audioCtx.decodeAudioData(await res.arrayBuffer());
+                audioBuffers[url] = buf; return buf;
+            } catch(e) { console.error("Sound load error", file); }
         }
 
         function playSound(buffer, callback) {
@@ -209,21 +223,19 @@
                 qHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
                 currentSong.answer = target.n; currentSong.mode = "count";
             } else {
-                qHeading.textContent = `ข้อที่ ${currentRound}: คำไหนมากที่สุด?`;
+                qHeading.textContent = `ข้อที่ ${currentRound}: ตัวเลือกใดมีจำนวนมากที่สุด?`;
                 const maxV = Math.max(...currentSong.words.map(w => w.n));
                 currentSong.answer = currentSong.words.filter(w => w.n === maxV).map(w => w.w);
                 currentSong.mode = "max";
             }
 
-            // ชี้ Focus ครั้งแรกเมื่อเริ่มข้อ
-            qHeading.focus();
+            qHeading.focus(); // Focus ครั้งที่ 1: เมื่อเริ่มข้อ
 
             setTimeout(async () => {
                 const buffer = await loadSound(currentSong.file);
                 playSound(buffer, () => {
-                    // เพลงจบปุ๊บ ชี้ Focus กลับมาที่ Heading ทันที (Strict Focus)
-                    qHeading.focus(); 
                     showOptions();
+                    qHeading.focus(); // Focus ครั้งที่ 2: เมื่อเพลงจบ (ตามที่ขอ)
                 });
             }, 4000);
         }
@@ -247,41 +259,35 @@
 
         async function checkAnswer(isCorrect) {
             document.getElementById('options-container').innerHTML = "";
-            
             if (isCorrect) {
                 comboCount++;
                 totalScore += (1000 * (1 + comboCount * 0.2));
                 document.getElementById('display-score').textContent = Math.floor(totalScore);
                 
-                let bonusAudioMsg = "";
+                let bonusMsg = "";
                 // Logic: สะสมครบ 4 ข้อคืน 1 ชีวิต
                 if (comboCount > 0 && comboCount % 4 === 0) {
                     if (lives < 3) {
                         lives++;
                         const h = document.getElementById(`h${lives}`);
-                        h.classList.remove('lost');
+                        h.classList.remove('hidden-life');
                         h.classList.add('recover-anim');
                         setTimeout(() => h.classList.remove('recover-anim'), 600);
-                        bonusAudioMsg = " ได้รับหนึ่งชีวิตคืน!";
+                        bonusMsg = " ได้รับ 1 ชีวิตคืน!";
                     }
                 }
                 
-                // ประกาศผ่าน aria-live เท่านั้น (ไม่แสดงบนจอ)
-                announce(`ถูกต้อง! คอมโบ ${comboCount} ข้อ.${bonusAudioMsg} ปัจจุบันเหลือ ${lives} ชีวิต`);
-                
+                announce(`ถูกต้อง! คอมโบ ${comboCount} ข้อ.${bonusMsg} ปัจจุบันเหลือ ${lives} ชีวิต`);
                 createFirework();
                 playSound(await loadSound('t.mp3'));
                 setTimeout(nextQuestion, 1500);
             } else {
                 const h = document.getElementById(`h${lives}`);
-                h.classList.add('lost');
+                h.classList.add('hidden-life');
                 lives--;
                 comboCount = 0;
-                
-                // ประกาศผ่าน aria-live เท่านั้น
-                announce(`ผิดครับ! เหลือ ${lives} ชีวิต`);
-                
                 showBigX();
+                announce(`ผิด! หัวใจเหลือ ${lives} ชีวิต`);
                 playSound(await loadSound('f.mp3'));
                 if (lives <= 0) setTimeout(() => endGame(false), 1200);
                 else setTimeout(nextQuestion, 1500);
@@ -292,9 +298,9 @@
             for(let i=0; i<30; i++) {
                 const p = document.createElement('div');
                 p.style.position='fixed'; p.style.left='50%'; p.style.top='50%';
-                p.style.width='10px'; p.style.height='10px'; p.style.borderRadius='50%';
+                p.style.width='12px'; p.style.height='12px'; p.style.borderRadius='50%';
                 p.style.backgroundColor=`hsl(${Math.random()*360},100%,50%)`;
-                document.getElementById('fx-layer').appendChild(p);
+                fxLayer.appendChild(p);
                 const a = Math.random()*Math.PI*2, d = 150+Math.random()*150;
                 p.animate([{transform:'translate(0,0) scale(1)', opacity:1},{transform:`translate(${Math.cos(a)*d}px,${Math.sin(a)*d}px) scale(0)`, opacity:0}], {duration:800});
                 setTimeout(()=>p.remove(), 800);
@@ -302,9 +308,9 @@
         }
 
         function showBigX() {
-            const fx = document.getElementById('fx-layer');
-            fx.innerHTML = '<div class="big-x animate-x">X</div>';
-            setTimeout(() => { fx.innerHTML = ""; }, 800);
+            fxLayer.innerHTML = '<div class="big-x animate-x">X</div>';
+            document.body.style.animation = "shake 0.5s";
+            setTimeout(() => { fxLayer.innerHTML = ""; document.body.style.animation = ""; }, 800);
         }
 
         async function endGame(isWin) {
@@ -312,17 +318,16 @@
             document.getElementById('top-bar').classList.add('hidden');
             const screen = document.getElementById('result-screen');
             screen.classList.remove('hidden');
-            
             const title = document.getElementById('result-title');
             const msg = document.getElementById('result-message');
 
             if (isWin) {
-                title.textContent = "🏆 ชนะการเอาชีวิตรอด!";
+                title.textContent = "🏆 ผู้ชนะการเอาชีวิตรอด!";
                 msg.innerHTML = `สุดยอด! คุณผ่านครบ 30 ข้อ<br>คะแนนรวม: ${Math.floor(totalScore)}`;
                 playSound(await loadSound('end.mp3'));
             } else {
-                title.textContent = "💀 ภารกิจล้มเหลว";
-                msg.innerHTML = `พยายามได้ดีมาก!<br>คะแนนที่ทำได้: ${Math.floor(totalScore)}`;
+                title.textContent = "💀 เกมโอเวอร์";
+                msg.innerHTML = `พยายามได้ดีมาก!<br>คะแนน: ${Math.floor(totalScore)}`;
                 playSound(await loadSound('end1.mp3'));
             }
             title.focus();
