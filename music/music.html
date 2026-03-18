@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>หูเพี้ยนหรือเซียนนับ</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;500&display=swap');
+        body { font-family: 'Kanit', sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; text-align: center; background-color: #f0f2f5; color: #333; overflow-x: hidden; }
+        .hidden { display: none !important; }
+        
+        /* Score Board Style */
+        #score-board {
+            position: fixed; top: 20px; right: 20px; background: #2c3e50;
+            color: #fff; padding: 10px 20px; border-radius: 50px;
+            font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            z-index: 1000; font-size: 1.2rem;
+        }
+        .score-pop { animation: pop 0.4s ease-out; }
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); color: #f1c40f; }
+            100% { transform: scale(1); }
+        }
+
+        .game-card { background: white; padding: 2.5rem; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); position: relative; transition: all 0.3s ease; }
+        .btn-back { position: absolute; top: 15px; left: 15px; padding: 8px 12px; font-size: 0.9rem; background-color: #95a5a6; }
+        
+        /* สไตล์ปุ่มกดทั่วไป */
+        button { padding: 15px 25px; font-size: 1.1rem; cursor: pointer; border-radius: 12px; border: none; background-color: #4A90E2; color: white; margin: 10px; transition: all 0.2s; font-weight: bold; position: relative; z-index: 2; width: 80%; max-width: 300px; }
+        button:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        button:active { transform: translateY(-1px); }
+        button:disabled { background-color: #bdc3c7; cursor: not-allowed; opacity: 0.5; }
+        
+        /* ตกแต่งปุ่มหน้าแรกให้สวยงามเป็นพิเศษ */
+        .btn-challenge { background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%); box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); }
+        .btn-survival { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4); }
+        
+        .btn-expert { background: linear-gradient(45deg, #f1c40f, #e67e22); color: #000; border: 2px solid #fff; box-shadow: 0 0 15px rgba(241, 196, 15, 0.5); width: auto; }
+        .btn-expert:hover { background: linear-gradient(45deg, #e67e22, #f1c40f); }
+        
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px; }
+        .options-grid button { width: auto; max-width: none; margin: 0; }
+
+        #status-msg { margin: 10px 0; font-weight: 500; min-height: 1.5em; color: #e67e22; font-size: 1.1rem; }
+        h1, h2 { color: #2c3e50; margin-bottom: 5px; outline: none; }
+        .result-text { font-size: 1.5rem; margin-bottom: 20px; font-weight: bold; }
+        .fx-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; display: flex; justify-content: center; align-items: center; }
+        .wrong-x { font-size: 150px; color: #e74c3c; font-weight: bold; opacity: 0; transform: scale(0.5); }
+        .animate-x { animation: pop-in-out 0.8s ease-out forwards; }
+        @keyframes pop-in-out {
+            0% { opacity: 0; transform: scale(0.5); }
+            50% { opacity: 1; transform: scale(1.2); }
+            100% { opacity: 0; transform: scale(1.5); }
+        }
+        .confetti { position: absolute; width: 10px; height: 10px; border-radius: 2px; opacity: 0; }
+        .animate-confetti { animation: confetti-fall 1s ease-out forwards; }
+        @keyframes confetti-fall {
+            0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) rotate(720deg); opacity: 0; }
+        }
+        .sr-announcer { position: absolute; clip: rect(1px, 1px, 1px, 1px); padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }
+        .shake-screen { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="score-board" class="hidden">คะแนน: <span id="display-score">0</span></div>
+
+    <div id="start-screen" class="game-card">
+        <button class="btn-back" onclick="window.location.href='../index.html'">กลับสู่ชุมชน</button>
+        <h1 id="start-heading" tabindex="-1">หูเพี้ยนหรือเซียนนับ</h1>
+        <p>กติกา: ฟังเพลงจบแล้วเลือกคำตอบที่ถูกต้อง</p>
+        <p style="color: #e74c3c; margin-bottom: 25px;">* ผิดได้ 1 ครั้ง และฟังซ้ำได้ 3 ครั้ง! ในโหมดท้าทาย</p>
+        
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+            <button id="btn-start" class="btn-challenge">โหมดท้าทาย</button>
+            <button id="btn-survival" class="btn-survival" onclick="window.location.href='survival.html'">โหมดเอาชีวิตรอด</button>
+        </div>
+    </div>
+
+    <div id="game-screen" class="game-card hidden">
+        <h2 id="question-text" tabindex="-1">เตรียมเพลง...</h2>
+        <div id="status-msg"></div>
+        <div id="audio-controls">
+            <button id="btn-replay" style="width: auto;">ฟังซ้ำ (3/3)</button>
+        </div>
+        <div id="options-container" class="options-grid"></div>
+    </div>
+
+    <div id="result-screen" class="game-card hidden">
+        <button class="btn-back" onclick="window.location.href='../index.html'">กลับสู่ชุมชน</button>
+        <h2 id="result-title" tabindex="-1">จบเกม!</h2>
+        <p id="result-message" class="result-text"></p>
+        <div id="final-fx"></div>
+        <div id="result-actions" style="display: flex; flex-direction: column; align-items: center;"></div>
+    </div>
+
+    <div id="fx-layer" class="fx-overlay"></div>
+    <div id="announcer" class="sr-announcer" aria-live="assertive" aria-atomic="true"></div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let currentSource = null, audioBuffers = {};
+        let totalScore = 0, comboCount = 0, questionStartTime = 0;
+        let isExpertMode = false;
+        let usedSongs = []; // ย้ายมาเป็น Global เพื่อไม่ให้รีเซ็ตระหว่างโหมด
+
+        const songData = [
+            { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
+            { file: 'หมี.mp3', words: [{w:'หมี', n:7}, {w:'หีบ', n:4}, {w:'หนี', n:8}, {w:'หาย', n:14}] },
+            { file: 'ว้าวุ่น.mp3', words: [{w:'ว้าวุ่น', n:7}, {w:'วาสนา', n:5}, {w:'ชีวิต', n:5}, {w:'สู้', n:8}] },
+            { file: 'ดี4.mp3', words: [{w:'ดี', n:27}, {w:'หู', n:5}, {w:'หัน', n:6}, {w:'หลาย', n:12}] },
+            { file: 'fruit.mp3', words: [{w:'แอปเปิ้ล', n:9}, {w:'มะละกอ', n:9}, {w:'กล้วย', n:10}, {w:'ส้ม', n:10}] },
+            { file: 'จึ้ง.mp3', words: [{w:'จึ้ง', n:8}, {w:'แกง', n:8}, {w:'ปัง', n:8}, {w:'บ้ง', n:5}] },
+            { file: '1469.mp3', words: [{w:'หนึ่ง', n:8}, {w:'สี่', n:12}, {w:'หก', n:20}, {w:'เก้า', n:16}] },
+            { file: 'mama.mp3', words: [{w:'มาม่า', n:8}, {w:'ไวไว', n:7}, {w:'ซื่อสัตย์', n:3}, {w:'นิสชิน', n:6}] },
+            { file: 'kitchen.mp3', words: [{w:'หม้อ', n:9}, {w:'จาน', n:8}, {w:'ชาม', n:9}, {w:'กระทะ', n:9}] },
+            { file: 'ma.mp3', words: [{w:'มะม่วง', n:6}, {w:'มะนาว', n:5}, {w:'มะยม', n:6}, {w:'มะขาม', n:7}] },
+            { file: 'flower.mp3', words: [{w:'จำปี', n:5}, {w:'จำปา', n:7}, {w:'แก้ว', n:9}, {w:'มะลิ', n:18}] },
+            { file: 'pen.mp3', words: [{w:'กระเป๋า', n:10}, {w:'ดินสอ', n:11}, {w:'ปากกา', n:12}, {w:'สมุด', n:6}] },
+            { file: 'catdog.mp3', words: [{w:'แมว', n:11}, {w:'หมา', n:7}, {w:'หมี', n:13}, {w:'กบ', n:6}] },
+            { file: 'tour.mp3', words: [{w:'ท่าน', n:6}, {w:'ทัวร์', n:4}, {w:'หาด', n:5}, {w:'ใกล้', n:7}] },
+            { file: 'somtam.mp3', words: [{w:'อ๊า', n:14}, {w:'โอ๊ย', n:22}, {w:'อู๊ย', n:12}, {w:'อื๊ม', n:5}] },
+            { file: 'iPhone.mp3', words: [{w:'iPhone', n:8}, {w:'Samsung', n:9}, {w:'Oppo', n:8}, {w:'Vivo', n:8}] },
+            { file: 'benz.mp3', words: [{w:'เบ๊น', n:10}, {w:'โตโยต้า', n:6}, {w:'ฮอนด้า', n:7}, {w:'ตุ๊ก', n:15}] },
+            { file: 'bangkok.mp3', words: [{w:'กรุงเทพ', n:6}, {w:'พัทยา', n:6}, {w:'เชียงใหม่', n:4}, {w:'สงขลา', n:9}] },
+            { file: 'lay.mp3', words: [{w:'เลย์', n:12}, {w:'คอนเน่', n:11}, {w:'เทสโต้', n:6}, {w:'ฮานามิ', n:5}] },
+            { file: 'color.mp3', words: [{w:'แดง', n:11}, {w:'เขียว', n:8}, {w:'เหลือง', n:8}, {w:'ม่วง', n:9}] },
+            { file: 'day.mp3', words: [{w:'จันทร์', n:9}, {w:'พุธ', n:6}, {w:'เสาร์', n:8}, {w:'อาทิตย์', n:7}] },
+            { file: 'month.mp3', words: [{w:'มีนา', n:7}, {w:'เมษา', n:9}, {w:'สิงหา', n:4}, {w:'กันยา', n:7}] },
+            { file: 'finger.mp3', words: [{w:'โป้ง', n:22}, {w:'ชี้', n:14}, {w:'ก้อย', n:7}, {w:'นาง', n:6}] },
+            { file: 'head.mp3', words: [{w:'หัว', n:14}, {w:'ไหล่', n:12}, {w:'ตูด', n:13}, {w:'แขน', n:3}] },
+            { file: 'table.mp3', words: [{w:'โต๊ะ', n:13}, {w:'ตู้', n:8}, {w:'เตียง', n:8}, {w:'ระเบียง', n:1}] },
+            { file: 'shark.mp3', words: [{w:'ฉลาม', n:8}, {w:'โลมา', n:4}, {w:'นีโม่', n:8}, {w:'แมวน้ำ', n:5}] },
+            { file: 'sea.mp3', words: [{w:'ภูเขา', n:4}, {w:'ทะเล', n:9}, {w:'น้ำตก', n:4}, {w:'เกาะ', n:13}] },
+            { file: 'rice.mp3', words: [{w:'ข้าวสาร', n:6}, {w:'กะปิ', n:9}, {w:'น้ำพริก', n:8}, {w:'น้ำปลา', n:6}] },
+            { file: 'million.mp3', words: [{w:'ร้อย', n:1}, {w:'หมื่น', n:7}, {w:'แสน', n:9}, {w:'ล้าน', n:18}] },
+            { file: 'kids.mp3', words: [{w:'เด็ก', n:9}, {w:'วัยรุ่น', n:11}, {w:'ผู้ใหญ่', n:7}, {w:'ชรา', n:5}] }
+        ];
+
+        let currentRound = 0, lives = 1, replayCount = 3, currentSongFile = "";
+        const statusMsg = document.getElementById('status-msg'), announcer = document.getElementById('announcer'), btnReplay = document.getElementById('btn-replay'), questionHeading = document.getElementById('question-text'), fxLayer = document.getElementById('fx-layer');
+
+        // --- เพิ่มระบบสูตรลับ ---
+        let cheatInput = "";
+        let cheatTimer = null;
+
+        window.addEventListener('keydown', (e) => {
+            clearTimeout(cheatTimer);
+            cheatInput += e.key.toLowerCase();
+            
+            if (cheatInput === "normal") {
+                activateCheat(false);
+                cheatInput = "";
+            } else if (cheatInput === "hard") {
+                activateCheat(true);
+                cheatInput = "";
+            }
+
+            cheatTimer = setTimeout(() => { cheatInput = ""; }, 2000);
+        });
+
+        function activateCheat(expert) {
+            if (currentSource) currentSource.stop();
+            startNewGame(expert, true); // เพิ่ม flag บอกว่าใช้สูตร
+            currentRound = 6; 
+            nextQuestion();
+        }
+        // -----------------------
+
+        function showComboEffect(count) {
+            const el = document.createElement('div');
+            el.style.position = 'fixed'; el.style.bottom = '20px'; el.style.left = '50%';
+            el.style.transform = 'translateX(-50%)'; el.style.fontWeight = 'bold';
+            el.style.zIndex = '2000'; el.style.pointerEvents = 'none';
+            
+            const levels = ["", "แม่นยำ!", "เฉียบขาด!", "เหนือชั้น!", "สุดยอด!", "ตำนาน!"];
+            const text = isExpertMode ? "🔥 COMBO " + count + " 🔥" : levels[Math.min(count - 1, 5)];
+            const size = 2 + (count * 0.4);
+            el.style.fontSize = `${size}rem`;
+            el.style.color = count >= 5 ? '#f1c40f' : '#3498db';
+            el.textContent = text;
+            document.body.appendChild(el);
+            
+            el.animate([{ bottom: '20px', opacity: 0 }, { bottom: '50%', opacity: 1 }, { bottom: '60%', opacity: 0 }], { duration: 1500, easing: 'ease-out' });
+            setTimeout(() => el.remove(), 1500);
+        }
+
+        function updateScore(points) {
+            totalScore += points;
+            const el = document.getElementById('display-score');
+            el.textContent = totalScore;
+            el.classList.add('score-pop');
+            setTimeout(() => el.classList.remove('score-pop'), 400);
+        }
+
+        async function loadSound(file) {
+            const url = `audio/${file}`;
+            if (audioBuffers[url]) return audioBuffers[url];
+            try {
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                audioBuffers[url] = audioBuffer;
+                return audioBuffer;
+            } catch(e) { console.error("Sound load error", e); }
+        }
+
+        function playSound(buffer, callback) {
+            if (!buffer) { if(callback) callback(); return; }
+            if (currentSource) currentSource.stop();
+            currentSource = audioCtx.createBufferSource();
+            currentSource.buffer = buffer;
+            currentSource.connect(audioCtx.destination);
+            currentSource.onended = () => { if(callback) callback(); };
+            currentSource.start(0);
+        }
+
+        function announce(text) { announcer.textContent = text; setTimeout(() => { announcer.textContent = ""; }, 1000); }
+
+        function showWrongX() {
+            fxLayer.innerHTML = '<div class="wrong-x animate-x">X</div>';
+            setTimeout(() => { fxLayer.innerHTML = ""; }, 800);
+        }
+
+        function createConfetti(count = 20) {
+            for(let i=0; i<count; i++) {
+                const c = document.createElement('div');
+                c.className = 'confetti animate-confetti';
+                c.style.backgroundColor = `hsl(${Math.random()*360}, 100%, 50%)`;
+                c.style.left = '50%'; c.style.top = '50%';
+                c.style.setProperty('--tx', `${(Math.random()-0.5)*400}px`);
+                c.style.setProperty('--ty', `${(Math.random()-0.5)*400}px`);
+                fxLayer.appendChild(c);
+            }
+            setTimeout(() => { fxLayer.innerHTML = ""; }, 1000);
+        }
+
+        function startNewGame(expert = false, isCheat = false) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            isExpertMode = expert;
+            currentRound = 0; 
+            
+            // ปรับเงื่อนไข: ล้าง usedSongs เฉพาะเมื่อเริ่มเกมใหม่จากปุ่ม "โหมดท้าทาย" หรือเล่นโหมดปกติใหม่
+            if (!isExpertMode && !isCheat) {
+                usedSongs = []; 
+            }
+            
+            totalScore = (isExpertMode && !isCheat) ? totalScore : 0; // รักษาคะแนนไว้ถ้าเล่นต่อระดับเซียน
+            comboCount = 0;
+            
+            if (isExpertMode) {
+                lives = 0;
+                replayCount = 1;
+            } else {
+                lives = 1;
+                replayCount = 3;
+            }
+
+            document.getElementById('display-score').textContent = totalScore;
+            document.getElementById('score-board').classList.remove('hidden');
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            if(!isCheat) nextQuestion();
+        }
+
+        document.getElementById('btn-start').addEventListener('click', () => startNewGame(false));
+
+        btnReplay.addEventListener('click', async () => {
+            if (replayCount <= 0) return;
+            comboCount = 0; 
+            replayCount--;
+            btnReplay.disabled = true;
+            document.getElementById('options-container').classList.add('hidden');
+            statusMsg.textContent = "กำลังเล่นซ้ำ...";
+            playSound(await loadSound(currentSongFile), () => {
+                btnReplay.textContent = `ฟังซ้ำ (${replayCount}/${isExpertMode ? 1 : 3})`;
+                if (replayCount <= 0) btnReplay.classList.add('hidden');
+                else btnReplay.disabled = false;
+                document.getElementById('options-container').classList.remove('hidden');
+                statusMsg.textContent = "";
+                questionHeading.focus();
+            });
+        });
+
+        async function nextQuestion() {
+            if (currentRound >= 7) { endGame(true); return; }
+            statusMsg.textContent = ""; currentRound++;
+            let availableSongs = songData.filter(s => !usedSongs.includes(s.file));
+            
+            // กรณีเพลงหมด ให้สุ่มจากทั้งหมดใหม่
+            if (availableSongs.length === 0) availableSongs = songData; 
+            
+            let selectedSong = availableSongs[Math.floor(Math.random() * availableSongs.length)];
+            usedSongs.push(selectedSong.file); currentSongFile = selectedSong.file;
+            
+            if (replayCount > 0) {
+                btnReplay.classList.remove('hidden');
+                btnReplay.disabled = true;
+                btnReplay.textContent = `ฟังซ้ำ (${replayCount}/${isExpertMode ? 1 : 3})`;
+            }
+            
+            document.getElementById('options-container').classList.add('hidden');
+            questionHeading.textContent = `ข้อที่ ${currentRound}: ตั้งใจฟังเพลงนะ...`;
+            
+            playSound(await loadSound(selectedSong.file), () => {
+                if (replayCount > 0) btnReplay.disabled = false;
+                generateOptions(selectedSong);
+                document.getElementById('options-container').classList.remove('hidden');
+                questionHeading.focus();
+                questionStartTime = Date.now();
+            });
+        }
+
+        async function checkAnswer(isCorrect, btn, container) {
+            if (isCorrect) {
+                const maxReplays = isExpertMode ? 1 : 3;
+                const replaysUsed = maxReplays - replayCount;
+                const timeTaken = (Date.now() - questionStartTime) / 1000;
+                
+                const basePoints = isExpertMode ? 2000 : 1000;
+                const speedBonus = Math.max(0, 500 - (timeTaken * 50));
+                
+                comboCount++;
+                if (comboCount > 1) showComboEffect(comboCount);
+                
+                const comboMultiplier = isExpertMode ? (1 + (comboCount * 0.5)) : (1 + (comboCount * 0.1));
+                const roundScore = Math.floor(Math.max(0, (basePoints + speedBonus - (replaysUsed * 400))) * comboMultiplier);
+                
+                updateScore(roundScore);
+                playSound(await loadSound('t.mp3'));
+                createConfetti(30);
+                statusMsg.textContent = `ถูกต้อง! ได้รับ ${roundScore} คะแนน`; 
+                announce("ถูกต้อง");
+                container.querySelectorAll('button').forEach(b => b.disabled = true);
+                btnReplay.classList.add('hidden');
+                setTimeout(nextQuestion, 2000);
+            } else if (lives > 0) {
+                comboCount = 0; 
+                lives--; btn.disabled = true; btn.style.opacity = "0.3";
+                playSound(await loadSound('f.mp3'));
+                showWrongX();
+                statusMsg.textContent = "ผิดครับ! แก้ตัวได้อีกหนึ่งครั้ง";
+                announce("ผิดครับ! แก้ตัวได้อีกหนึ่งครั้ง");
+            } else { endGame(false); }
+        }
+
+        function generateOptions(song) {
+            const container = document.getElementById('options-container');
+            container.innerHTML = "";
+            const questionType = Math.floor(Math.random() * 3);
+            const targetIndex = Math.floor(Math.random() * song.words.length);
+            const target = song.words[targetIndex];
+
+            if (questionType === 0) {
+                questionHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
+                let opts = [target.n, target.n+1, target.n-1, target.n+2].filter(n=>n>=0).slice(0,4);
+                opts.sort(() => Math.random() - 0.5).forEach(opt => {
+                    const b = document.createElement('button');
+                    b.textContent = opt;
+                    b.onclick = () => checkAnswer(opt == target.n, b, container);
+                    container.appendChild(b);
+                });
+            } else {
+                const counts = song.words.map(w => w.n);
+                const limit = (questionType === 1) ? Math.min(...counts) : Math.max(...counts);
+                questionHeading.textContent = (questionType === 1) ? `ข้อที่ ${currentRound}: ตัวเลือกใดมีจำนวน "น้อยที่สุด"?` : `ข้อที่ ${currentRound}: ตัวเลือกใดมีจำนวน "มากที่สุด"?`;
+                const targets = song.words.filter(w => w.n === limit).map(w => w.w);
+                song.words.forEach(w => {
+                    const b = document.createElement('button');
+                    b.textContent = w.w;
+                    b.onclick = () => checkAnswer(targets.includes(w.w), b, container);
+                    container.appendChild(b);
+                });
+            }
+        }
+
+        async function endGame(isWin) {
+            document.getElementById('score-board').classList.add('hidden');
+            document.getElementById('game-screen').classList.add('hidden');
+            const resultScreen = document.getElementById('result-screen');
+            const resultActions = document.getElementById('result-actions');
+            resultScreen.classList.remove('hidden');
+            resultActions.innerHTML = ""; 
+
+            const resultTitle = document.getElementById('result-title');
+            const resultMsg = document.getElementById('result-message');
+            
+            if (isWin) {
+                if (isExpertMode) {
+                    const winQuotes = [
+                        "โหมดระดับเซียนยังทำอะไรคุณไม่ได้! คุณคือตำนานแห่งการฟัง!",
+                        "หูทิพย์หรือเปล่าเนี่ย?! ชนะระดับเซียนได้อย่างสมบูรณ์แบบ!",
+                        "คารวะหนึ่งจอก! คุณก้าวข้ามขีดจำกัดมนุษย์ไปแล้ว!"
+                    ];
+                    resultTitle.textContent = "🌟 มหาเทพแห่งการฟัง! 🌟";
+                    resultMsg.innerHTML = winQuotes[Math.floor(Math.random()*winQuotes.length)];
+                } else {
+                    resultTitle.textContent = "🏆 คุณชนะ!";
+                    resultMsg.innerHTML = "สุดยอด หูเทพมาก!";
+                    const expertBtn = document.createElement('button');
+                    expertBtn.textContent = "🔥 ท้าทายระดับเซียน 🔥";
+                    expertBtn.className = "btn-expert";
+                    expertBtn.onclick = () => startNewGame(true);
+                    resultActions.appendChild(expertBtn);
+                }
+                createConfetti(100);
+            } else {
+                if (isExpertMode) {
+                    const loseQuotes = [
+                        "ความผิดพลาดเพียงครั้งเดียวก็เกินพอ... อย่าเพิ่งท้อ ฝึกฝนต่อเถิดเซียน!",
+                        "ระดับเซียนมันไม่ง่าย แต่หัวใจคุณมันได้! ลองใหม่คราวหน้า!",
+                        "เกือบจะถึงจุดสูงสุดแล้ว! อีกนิดเดียวเท่านั้น!"
+                    ];
+                    resultTitle.textContent = "🌑 พลาดท่าในระดับเซียน";
+                    resultMsg.innerHTML = loseQuotes[Math.floor(Math.random()*loseQuotes.length)];
+                } else {
+                    resultTitle.textContent = "💀 เกมโอเวอร์";
+                    resultMsg.innerHTML = "ไม่เป็นไรนะ ลองใหม่!";
+                }
+                document.body.classList.add('shake-screen');
+                setTimeout(() => document.body.classList.remove('shake-screen'), 500);
+            }
+            
+            resultMsg.innerHTML += `<br><br><strong>คะแนนรวมทั้งหมดของคุณคือ: ${totalScore}</strong>`;
+            resultTitle.focus();
+            playSound(await loadSound(isWin ? 'end.mp3' : 'end1.mp3'));
+        }
+    </script>
+</body>
+</html>
