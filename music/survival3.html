@@ -20,7 +20,7 @@
 
         .hidden { display: none !important; }
         
-        /* ซ่อนจากสายตาและ Screen Reader Navigation 100% */
+        /* ซ่อนจากสายตาและ Screen Reader Navigation แต่ให้ aria-live อ่านได้ */
         .sr-only { 
             position: absolute; 
             width: 1px; 
@@ -50,7 +50,7 @@
             filter: drop-shadow(0 0 10px rgba(231, 76, 60, 0.5));
             transition: all 0.5s ease;
         }
-        .heart.lost { opacity: 0.15; filter: grayscale(1); transform: scale(0.8); }
+        .heart.lost { opacity: 0.1; filter: grayscale(1); transform: scale(0.8); }
         .heart.recover-anim { animation: recover 0.6s forwards; }
         
         @keyframes recover {
@@ -73,10 +73,7 @@
         button.option-btn { 
             padding: 20px; font-size: 1.3rem; cursor: pointer; border-radius: 15px; border: none;
             background: #34495e; color: white; font-weight: bold; border-bottom: 5px solid #2c3e50;
-            outline: none;
         }
-        /* Highlight focus ให้ชัดเจนสำหรับผู้ใช้ keyboard */
-        button.option-btn:focus { background: #e67e22; border-color: #fff; box-shadow: 0 0 15px #e67e22; }
 
         #btn-start {
             padding: 20px 40px; font-size: 1.5rem; background: #e74c3c;
@@ -97,7 +94,7 @@
 
     <div id="start-screen" class="game-card">
         <h1>โหมดเอาชีวิตรอด</h1>
-        <p>กติกา: อ่านโจทย์ ฟังเพลง แล้วรีบตอบ!<br>คอมโบ 4 ข้อ ฟื้นฟู 1 ชีวิต</p>
+        <p>สะสมคอมโบ 4 ข้อเพื่อฟื้นชีวิต!<br>ตั้งใจฟังให้ดี มีเพียง 3 ชีวิตเท่านั้น</p>
         <button id="btn-start">เริ่มเอาชีวิตรอด</button>
     </div>
 
@@ -114,12 +111,12 @@
     </div>
 
     <div id="result-screen" class="game-card hidden">
-        <h2 id="result-title" tabindex="-1">จบการเอาชีวิตรอด</h2>
+        <h2 id="result-title" tabindex="-1">ผลการทดสอบ</h2>
         <p id="result-message"></p>
-        <button onclick="location.reload()" style="margin-top:20px; padding:15px; border-radius:10px; border:none; background:#27ae60; color:white; cursor:pointer;">เล่นใหม่อีกครั้ง</button>
+        <button onclick="location.reload()" style="margin-top:20px; padding:15px; border-radius:10px; border:none; background:#27ae60; color:white;">ลองอีกครั้ง</button>
     </div>
 
-    <div id="announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+    <div id="announcer" class="sr-only" aria-live="assertive"></div>
     <div id="fx-layer" class="fx-overlay"></div>
 
     <script>
@@ -149,7 +146,7 @@
             { file: 'bangkok.mp3', words: [{w:'กรุงเทพ', n:6}, {w:'พัทยา', n:6}, {w:'เชียงใหม่', n:4}, {w:'สงขลา', n:9}] },
             { file: 'lay.mp3', words: [{w:'เลย์', n:12}, {w:'คอนเน่', n:11}, {w:'เทสโต้', n:6}, {w:'ฮานามิ', n:5}] },
             { file: 'color.mp3', words: [{w:'แดง', n:11}, {w:'เขียว', n:8}, {w:'เหลือง', n:8}, {w:'ม่วง', n:9}] },
-            { file: 'day.mp3', words: [{w:'จันทร์', n:9}, {w:'พุธ', n:6}, {w:'เสาร์', n:8}, {w:'อทิตย์', n:7}] },
+            { file: 'day.mp3', words: [{w:'จันทร์', n:9}, {w:'พุธ', n:6}, {w:'เสาร์', n:8}, {w:'อาทิตย์', n:7}] },
             { file: 'month.mp3', words: [{w:'มีนา', n:7}, {w:'เมษา', n:9}, {w:'สิงหา', n:4}, {w:'กันยา', n:7}] },
             { file: 'finger.mp3', words: [{w:'โป้ง', n:22}, {w:'ชี้', n:14}, {w:'ก้อย', n:7}, {w:'นาง', n:6}] },
             { file: 'head.mp3', words: [{w:'หัว', n:14}, {w:'ไหล่', n:12}, {w:'ตูด', n:13}, {w:'แขน', n:3}] },
@@ -164,14 +161,9 @@
         const announcer = document.getElementById('announcer');
         const qHeading = document.getElementById('question-text');
 
-        // ฟังก์ชันประกาศเสียงที่จะล้างตัวเองทิ้ง เพื่อไม่ให้มีประวัติค้างอยู่ด้านล่าง
         function announce(txt) { 
-            announcer.textContent = ""; 
-            setTimeout(() => { 
-                announcer.textContent = txt; 
-                // ล้างข้อความหลังจากผ่านไป 5 วินาที (เพื่อให้ SR อ่านจบก่อนแล้วลบทิ้ง)
-                setTimeout(() => { announcer.textContent = ""; }, 5000);
-            }, 50);
+            announcer.textContent = ""; // เคลียร์ค่าว่างก่อนเพื่อให้ assertive ทำงานซ้ำได้
+            setTimeout(() => { announcer.textContent = txt; }, 50);
         }
 
         async function loadSound(file) {
@@ -217,21 +209,21 @@
                 qHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
                 currentSong.answer = target.n; currentSong.mode = "count";
             } else {
-                qHeading.textContent = `ข้อที่ ${currentRound}: คำไหนปรากฏมากที่สุด?`;
+                qHeading.textContent = `ข้อที่ ${currentRound}: คำไหนมากที่สุด?`;
                 const maxV = Math.max(...currentSong.words.map(w => w.n));
                 currentSong.answer = currentSong.words.filter(w => w.n === maxV).map(w => w.w);
                 currentSong.mode = "max";
             }
 
+            // ชี้ Focus ครั้งแรกเมื่อเริ่มข้อ
             qHeading.focus();
 
             setTimeout(async () => {
                 const buffer = await loadSound(currentSong.file);
                 playSound(buffer, () => {
-                    // สร้างปุ่มตัวเลือกก่อน แล้วค่อยชี้ focus ไปที่ปุ่มแรก
+                    // เพลงจบปุ๊บ ชี้ Focus กลับมาที่ Heading ทันที (Strict Focus)
+                    qHeading.focus(); 
                     showOptions();
-                    const firstBtn = document.querySelector('.option-btn');
-                    if (firstBtn) firstBtn.focus(); 
                 });
             }, 4000);
         }
@@ -261,7 +253,8 @@
                 totalScore += (1000 * (1 + comboCount * 0.2));
                 document.getElementById('display-score').textContent = Math.floor(totalScore);
                 
-                let bonusMsg = "";
+                let bonusAudioMsg = "";
+                // Logic: สะสมครบ 4 ข้อคืน 1 ชีวิต
                 if (comboCount > 0 && comboCount % 4 === 0) {
                     if (lives < 3) {
                         lives++;
@@ -269,12 +262,12 @@
                         h.classList.remove('lost');
                         h.classList.add('recover-anim');
                         setTimeout(() => h.classList.remove('recover-anim'), 600);
-                        bonusMsg = " ได้รับหนึ่งชีวิตคืน!";
+                        bonusAudioMsg = " ได้รับหนึ่งชีวิตคืน!";
                     }
                 }
                 
-                // ประกาศเสียงแล้วจะถูกล้างอัตโนมัติ
-                announce(`ถูกต้อง! คอมโบ ${comboCount} ข้อ.${bonusMsg} เหลือ ${lives} ชีวิต`);
+                // ประกาศผ่าน aria-live เท่านั้น (ไม่แสดงบนจอ)
+                announce(`ถูกต้อง! คอมโบ ${comboCount} ข้อ.${bonusAudioMsg} ปัจจุบันเหลือ ${lives} ชีวิต`);
                 
                 createFirework();
                 playSound(await loadSound('t.mp3'));
@@ -285,6 +278,7 @@
                 lives--;
                 comboCount = 0;
                 
+                // ประกาศผ่าน aria-live เท่านั้น
                 announce(`ผิดครับ! เหลือ ${lives} ชีวิต`);
                 
                 showBigX();
@@ -295,7 +289,7 @@
         }
 
         function createFirework() {
-            for(let i=0; i<25; i++) {
+            for(let i=0; i<30; i++) {
                 const p = document.createElement('div');
                 p.style.position='fixed'; p.style.left='50%'; p.style.top='50%';
                 p.style.width='10px'; p.style.height='10px'; p.style.borderRadius='50%';
@@ -314,9 +308,6 @@
         }
 
         async function endGame(isWin) {
-            // ล้าง announcer เพื่อให้แน่ใจว่าไม่มีข้อความค้างก่อนจบเกม
-            announcer.textContent = ""; 
-
             document.getElementById('game-screen').classList.add('hidden');
             document.getElementById('top-bar').classList.add('hidden');
             const screen = document.getElementById('result-screen');
@@ -327,11 +318,11 @@
 
             if (isWin) {
                 title.textContent = "🏆 ชนะการเอาชีวิตรอด!";
-                msg.innerHTML = `คุณผ่านครบ 30 ข้อ!<br>คะแนนรวม: ${Math.floor(totalScore)}`;
+                msg.innerHTML = `สุดยอด! คุณผ่านครบ 30 ข้อ<br>คะแนนรวม: ${Math.floor(totalScore)}`;
                 playSound(await loadSound('end.mp3'));
             } else {
-                title.textContent = "💀 ภารกิจสิ้นสุด";
-                msg.innerHTML = `ทำได้ดีมาก!<br>คะแนนรวม: ${Math.floor(totalScore)}`;
+                title.textContent = "💀 ภารกิจล้มเหลว";
+                msg.innerHTML = `พยายามได้ดีมาก!<br>คะแนนที่ทำได้: ${Math.floor(totalScore)}`;
                 playSound(await loadSound('end1.mp3'));
             }
             title.focus();
