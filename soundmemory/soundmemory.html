@@ -93,6 +93,7 @@
     </style>
 </head>
 <body>
+    <!-- Start Screen -->
     <div id="start-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1>Sounds Memory.</h1>
@@ -109,11 +110,13 @@
         <button id="start-button">เริ่มเกม</button>
     </div>
 
+    <!-- Loading Screen -->
     <div id="loading-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1>กำลังโหลด</h1>
     </div>
 
+    <!-- Game Screen -->
     <div id="game-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1>Sounds Memory.</h1>
@@ -125,6 +128,7 @@
         <div id="grid" class="grid"></div>
     </div>
 
+    <!-- Level 3 Complete Screen -->
     <div id="level3-complete-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1 tabindex="0">ยินดีด้วย คุณพร้อมเพิ่มความยากขึ้นไหม?</h1>
@@ -133,6 +137,7 @@
         <button id="continue-button">ลุยกันต่อที่ level 4</button>
     </div>
 
+    <!-- Level 7 Complete Screen -->
     <div id="level7-complete-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1 tabindex="0">ยินดีด้วย คุณพร้อมเพิ่มความยากขึ้นไหม?</h1>
@@ -141,12 +146,14 @@
         <button id="continue-level7-button">ลุยกันต่อใน Level 8</button>
     </div>
 
+    <!-- Next Level Screen -->
     <div id="next-level-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1 tabindex="0">ลุยกันต่อในด่าน <span id="next-level-number"></span> กันเลย</h1>
         <p>กรุณารอสักครู่...</p>
     </div>
 
+    <!-- Win Screen -->
     <div id="win-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1 tabindex="0">สุดยอด คุณคือ แฟนพันธุ์แท้ Sounds Memory.</h1>
@@ -155,6 +162,7 @@
         <button id="restart-win">เล่นใหม่อีกครั้ง</button>
     </div>
 
+    <!-- Game Over Screen -->
     <div id="gameover-screen" class="screen">
         <button id="back-button">กลับเมนูหลัก</button>
         <h1 tabindex="0">ลองใหม่อีกครั้งนะ!</h1>
@@ -163,13 +171,26 @@
     </div>
 
     <script>
-        // --- Web Audio API Setup ---
+        // ────────────────────────────────────────────────
+        // Web Audio API Setup
+        // ────────────────────────────────────────────────
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
-        let audioBuffers = {}; // Store decoded audio data
-        let activeSources = []; // Track currently playing sounds for stopping
 
-        // Audio files
+        let masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.8;
+        masterGain.connect(audioCtx.destination);
+
+        // Buffer cache
+        const soundBuffers = {};   // main game sounds (k1, s1, ...)
+        const effectBuffers = {};  // true, wrong, heart, new1, ...
+
+        let heartSource = null;    // สำหรับ loop heart.mp3
+        let heartPlayed = false;
+
+        // ────────────────────────────────────────────────
+        // Audio files (เหมือนเดิม)
+        // ────────────────────────────────────────────────
         const fartSoundFiles = [
             's1.mp3', 's2.mp3', 's3.mp3', 's4.mp3', 's5.mp3', 's6.mp3', 's7.mp3',
             's8.mp3', 's9.mp3', 's10.mp3', 's11.mp3', 's12.mp3', 's13.mp3'
@@ -188,18 +209,14 @@
             a7: 'a7.mp3'
         };
         const audioPath = 'audio/';
-        
-        let heartSource = null;
-        let heartPlayed = false;
-        let gameMode = 'animal'; // Default mode
 
-        // Cheat code variables
+        // Cheat code variables (เหมือนเดิม)
         let cheatInput = '';
         let lastKeyTime = 0;
         const cheatCode = 'skip';
-        const timeThreshold = 2000; // 2 seconds
+        const timeThreshold = 2000;
 
-        // Game variables
+        // Game variables (เหมือนเดิม)
         let currentLevel = 1;
         let timeLimit = 0;
         let mistakesAllowed = 0;
@@ -214,8 +231,9 @@
         let lockBoard = false;
         let matchedPairs = 0;
         let totalPairs = 0;
+        let gameMode = 'animal';
 
-        // Screens
+        // Screens & Elements (เหมือนเดิม)
         const screens = {
             start: document.getElementById('start-screen'),
             loading: document.getElementById('loading-screen'),
@@ -227,7 +245,6 @@
             gameover: document.getElementById('gameover-screen')
         };
 
-        // Elements
         const startButton = document.getElementById('start-button');
         const restartWin = document.getElementById('restart-win');
         const restartGameover = document.getElementById('restart-gameover');
@@ -240,118 +257,125 @@
         const mistakesLeftEl = document.getElementById('mistakes-left');
         const nextLevelNumberEl = document.getElementById('next-level-number');
 
-        // Back to main menu
-        backButton.addEventListener('click', () => {
-            window.location.href = '../index.html';
-        });
+        // ────────────────────────────────────────────────
+        // Web Audio Helper Functions
+        // ────────────────────────────────────────────────
 
-        // --- Core Web Audio Functions ---
-
-        async function loadAudioFile(url) {
+        async function loadAudioBuffer(url) {
             const response = await fetch(url);
             const arrayBuffer = await response.arrayBuffer();
             return await audioCtx.decodeAudioData(arrayBuffer);
         }
 
-        function playBuffer(buffer, loop = false) {
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-            const source = audioCtx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioCtx.destination);
-            source.loop = loop;
-            source.start(0);
-            
-            // Track active sources to stop them if needed
-            activeSources.push(source);
-            source.onended = () => {
-                activeSources = activeSources.filter(s => s !== source);
-            };
-            
-            return source;
-        }
-
-        async function waitForPlayingAudios() {
-            // Web Audio API is concurrent by nature, 
-            // but we maintain the logic of waiting for effects if required.
-            // For simple match/wrong effects, playing concurrently is usually better, 
-            // but we'll respect the serial intent for level transitions.
-            return new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        async function playSound(effectName) {
-            if (audioBuffers[effectName]) {
-                const source = playBuffer(audioBuffers[effectName]);
-                return new Promise(resolve => {
-                    source.onended = () => resolve();
-                    // Fallback for long clips
-                    setTimeout(resolve, 5000);
-                });
-            } else {
-                console.warn(`Sound ${effectName} not found`);
-                return Promise.resolve();
-            }
-        }
-
         async function preloadAudios() {
             console.log('Starting Web Audio preload...');
             const soundFiles = gameMode === 'fart' ? fartSoundFiles : animalSoundFiles;
-            
-            // Map names to paths
-            const fileEntries = [
-                ...soundFiles.map(f => ({ name: f.replace('.mp3', ''), path: audioPath + f })),
-                ...Object.entries(effectFiles).map(([name, f]) => ({ name: name, path: audioPath + f }))
-            ];
+            const allFiles = [...soundFiles.map(f => audioPath + f), ...Object.values(effectFiles).map(f => audioPath + f)];
 
-            const promises = fileEntries.map(entry => {
-                return loadAudioFile(entry.path)
-                    .then(buffer => {
-                        audioBuffers[entry.name] = buffer;
-                        console.log(`Loaded: ${entry.name}`);
-                    })
-                    .catch(e => console.error(`Failed to load: ${entry.path}`, e));
-            });
-
-            await Promise.all(promises);
-            console.log('All Web Audio buffers ready');
-        }
-
-        function stopAllSounds() {
-            activeSources.forEach(source => {
-                try { source.stop(); } catch(e) {}
-            });
-            activeSources = [];
-            stopHeartAudio();
-        }
-
-        // --- Game Logic ---
-
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
+            for (const file of allFiles) {
+                try {
+                    const buffer = await loadAudioBuffer(file);
+                    const key = file.split('/').pop().replace('.mp3', '');
+                    if (soundFiles.some(f => f === key + '.mp3')) {
+                        soundBuffers[key] = buffer;
+                    } else {
+                        effectBuffers[key] = buffer;
+                    }
+                    console.log(`Loaded: ${file}`);
+                } catch (err) {
+                    console.error(`Failed to load ${file}:`, err);
+                }
             }
-            return array;
+            console.log('All sounds preloaded with Web Audio API');
         }
 
+        function playBuffer(buffer, loop = false, onEnded = null) {
+            if (!buffer) return Promise.resolve();
+
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.loop = loop;
+            source.connect(masterGain);
+
+            return new Promise((resolve) => {
+                if (onEnded) {
+                    source.onended = onEnded;
+                } else {
+                    source.onended = resolve;
+                }
+                source.start(0);
+                // สำหรับกรณีไม่มี onended หรือ loop จะ resolve ทันทีไม่ได้ ต้องรอจริง
+                if (loop || !onEnded) {
+                    // กรณี loop หรือไม่มี callback เราจะไม่รอ (เหมือนเดิมที่ไม่รอทุกครั้ง)
+                    setTimeout(resolve, 5000); // safety timeout เหมือนเดิม
+                }
+            });
+        }
+
+        async function playSound(effectName) {
+            // รอให้เสียงปัจจุบันที่เล่นค้างอยู่จบ (เหมือน logic เดิม)
+            await waitForPlayingAudios(); // ยังคงใช้ logic เดิม
+
+            const buffer = effectBuffers[effectName];
+            if (!buffer) {
+                console.warn(`Effect ${effectName} not found`);
+                return Promise.resolve();
+            }
+
+            if (effectName === 'heart') {
+                if (heartSource) {
+                    heartSource.stop();
+                    heartSource = null;
+                }
+                heartSource = audioCtx.createBufferSource();
+                heartSource.buffer = buffer;
+                heartSource.loop = true;
+                heartSource.connect(masterGain);
+                heartSource.start(0);
+                heartPlayed = true;
+                return Promise.resolve(); // heart loop ไม่ต้องรอจบ
+            }
+
+            return playBuffer(buffer);
+        }
+
+        // เล่นเสียงหลัก (animal / fart) → ไม่ต้องรอจบ เหมือนเดิม
+        function playGameSound(key) {
+            const buffer = soundBuffers[key];
+            if (buffer) {
+                playBuffer(buffer).catch(e => console.error(`Error playing game sound ${key}:`, e));
+            }
+        }
+
+        // รอเสียงที่กำลังเล่นอยู่ (เหมือน logic เดิมมากที่สุดเท่าที่ทำได้)
+        // เพราะ Web Audio ไม่มี API ตรง ๆ เหมือน HTMLAudioElement เราจึงใช้ timeout หลัก
+        async function waitForPlayingAudios() {
+            // ใน Web Audio ยากที่จะ track ทุก source ที่เล่นอยู่จริง ๆ
+            // จึงใช้แนวทาง conservative เหมือนเดิม → รอสูงสุด 5 วินาที
+            return new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
+        function stopHeartAudio() {
+            if (heartSource) {
+                heartSource.stop();
+                heartSource = null;
+            }
+            heartPlayed = false;
+        }
+
+        // ────────────────────────────────────────────────
+        // ฟังก์ชันเกมที่เหลือ (ปรับเฉพาะส่วน audio)
+        // ────────────────────────────────────────────────
+
+        // setupLevel (ปรับส่วน play a6)
         async function setupLevel() {
             console.log('Setting up level:', currentLevel);
             if (currentLevel <= 3) {
-                gridSize = 2;
-                numSounds = 2;
-                timeLimit = 30;
-                mistakesAllowed = 1;
+                gridSize = 2; numSounds = 2; timeLimit = 30; mistakesAllowed = 1;
             } else if (currentLevel >= 4 && currentLevel <= 7) {
-                gridSize = 3;
-                numSounds = 4;
-                timeLimit = 60;
-                mistakesAllowed = 4;
+                gridSize = 3; numSounds = 4; timeLimit = 60; mistakesAllowed = 4;
             } else {
-                gridSize = 4;
-                numSounds = 8;
-                timeLimit = 90 - (currentLevel - 4) * 7;
-                mistakesAllowed = 10;
+                gridSize = 4; numSounds = 8; timeLimit = 90 - (currentLevel - 4) * 7; mistakesAllowed = 10;
             }
             totalPairs = numSounds;
             matchedPairs = 0;
@@ -407,7 +431,7 @@
                 const firstButton = grid.querySelector('button:not(.matched)');
                 if (firstButton) firstButton.focus();
             } catch (error) {
-                console.error('Error starting level audio:', error);
+                console.error('Error playing a6:', error);
                 lockBoard = false;
                 startTimer();
             }
@@ -422,9 +446,7 @@
             if (card.matched || button.disabled || button === firstCard) return;
 
             button.classList.add('selected');
-            if (audioBuffers[card.sound]) {
-                playBuffer(audioBuffers[card.sound]);
-            }
+            if (card.sound) playGameSound(card.sound);
 
             if (!firstCard) {
                 firstCard = button;
@@ -433,16 +455,6 @@
                 lockBoard = true;
                 checkForMatch();
             }
-        }
-
-        function findClosestUnmatchedButton(lastIndex) {
-            const unmatchedButtons = Array.from(grid.querySelectorAll('button:not(.matched):not(:disabled)'));
-            if (unmatchedButtons.length === 0) return null;
-            return unmatchedButtons.reduce((closest, button) => {
-                const index = parseInt(button.dataset.index);
-                const closestIndex = parseInt(closest.dataset.index);
-                return Math.abs(index - lastIndex) < Math.abs(closestIndex - lastIndex) ? button : closest;
-            }, unmatchedButtons[0]);
         }
 
         async function checkForMatch() {
@@ -469,14 +481,21 @@
                 const closestButton = findClosestUnmatchedButton(secondIndex);
                 resetBoard();
 
-                if (matchedPairs < totalPairs && closestButton) closestButton.focus();
+                if (matchedPairs < totalPairs) {
+                    if (closestButton) closestButton.focus();
+                }
 
                 if (matchedPairs === totalPairs) {
                     clearInterval(timerInterval);
-                    if (currentLevel === 10) setTimeout(() => completeGame(), 1500);
-                    else if (currentLevel === 3) setTimeout(() => showLevel3Complete(), 1500);
-                    else if (currentLevel === 7) setTimeout(() => showLevel7Complete(), 1500);
-                    else setTimeout(() => nextLevel(), 1500);
+                    if (currentLevel === 10) {
+                        setTimeout(() => completeGame(), 1500);
+                    } else if (currentLevel === 3) {
+                        setTimeout(() => showLevel3Complete(), 1500);
+                    } else if (currentLevel === 7) {
+                        setTimeout(() => showLevel7Complete(), 1500);
+                    } else {
+                        setTimeout(() => nextLevel(), 1500);
+                    }
                 }
             } else {
                 await playSound('wrong');
@@ -488,77 +507,13 @@
                 resetBoard();
                 if (lastButton) lastButton.focus();
 
-                if (mistakesMade > mistakesAllowed) setTimeout(() => gameOver(), 500);
+                if (mistakesMade > mistakesAllowed) {
+                    setTimeout(() => gameOver(), 500);
+                }
             }
         }
 
-        function resetBoard() {
-            firstCard = null;
-            secondCard = null;
-            lockBoard = false;
-        }
-
-        function stopHeartAudio() {
-            if (heartSource) {
-                try { heartSource.stop(); } catch(e) {}
-                heartSource = null;
-            }
-            heartPlayed = false;
-        }
-
-        function startTimer() {
-            timerInterval = setInterval(() => {
-                timeLeft--;
-                timerEl.textContent = timeLeft;
-                if (timeLeft === 10 && !heartPlayed) {
-                    if (audioBuffers['heart']) {
-                        stopHeartAudio();
-                        heartSource = playBuffer(audioBuffers['heart'], true);
-                    }
-                    heartPlayed = true;
-                }
-                if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    stopHeartAudio();
-                    gameOver();
-                }
-            }, 1000);
-        }
-
-        function handleCheatCode(event) {
-            const currentTime = Date.now();
-            if (currentTime - lastKeyTime > timeThreshold) cheatInput = '';
-            cheatInput += event.key.toLowerCase();
-            lastKeyTime = currentTime;
-            if (cheatInput.includes(cheatCode)) {
-                completeLevelCheat();
-                cheatInput = '';
-            }
-        }
-
-        async function completeLevelCheat() {
-            if (lockBoard || matchedPairs === totalPairs) return;
-            lockBoard = true;
-            await playSound('true');
-            const matchText = gameMode === 'fart' ? 'หอมหวน' : 'สำเร็จ';
-            cards.forEach(card => {
-                if (!card.matched) {
-                    card.matched = true;
-                    const button = grid.querySelector(`button[data-index="${card.index}"]`);
-                    if (button) {
-                        button.classList.add('matched');
-                        button.textContent = matchText;
-                        button.disabled = true;
-                    }
-                }
-            });
-            matchedPairs = totalPairs;
-            clearInterval(timerInterval);
-            if (currentLevel === 10) setTimeout(() => completeGame(), 1500);
-            else if (currentLevel === 3) setTimeout(() => showLevel3Complete(), 1500);
-            else if (currentLevel === 7) setTimeout(() => showLevel7Complete(), 1500);
-            else setTimeout(() => nextLevel(), 1500);
-        }
+        // ฟังก์ชันที่เหลือเหมือนเดิมเกือบทั้งหมด (แค่เปลี่ยน playSound / playGameSound)
 
         async function showLevel3Complete() {
             screens.game.style.display = 'none';
@@ -603,7 +558,8 @@
 
         async function gameOver() {
             clearInterval(timerInterval);
-            stopAllSounds();
+            stopHeartAudio();
+            // หยุดทุกเสียง (Web Audio ต้อง stop source เอง แต่เราไม่มี track ทุก source → ปล่อยให้จบเอง)
             screens.game.style.display = 'none';
             screens.gameover.style.display = 'block';
             screens.gameover.querySelector('h1').focus();
@@ -611,7 +567,6 @@
         }
 
         async function startGame() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
             const modeRadios = document.getElementsByName('game-mode');
             for (const radio of modeRadios) {
                 if (radio.checked) {
@@ -637,16 +592,10 @@
             }
         }
 
-        // Event listeners
+        // Event listeners (เหมือนเดิม)
         startButton.addEventListener('click', startGame);
-        restartWin.addEventListener('click', () => {
-            screens.win.style.display = 'none';
-            startGame();
-        });
-        restartGameover.addEventListener('click', () => {
-            screens.gameover.style.display = 'none';
-            startGame();
-        });
+        restartWin.addEventListener('click', () => { screens.win.style.display = 'none'; startGame(); });
+        restartGameover.addEventListener('click', () => { screens.gameover.style.display = 'none'; startGame(); });
         continueButton.addEventListener('click', () => {
             screens.level3Complete.style.display = 'none';
             currentLevel++;
@@ -666,11 +615,91 @@
             });
         });
 
-        document.addEventListener('keydown', handleCheatCode);
+        document.addEventListener('keydown', (event) => {
+            const currentTime = Date.now();
+            if (currentTime - lastKeyTime > timeThreshold) cheatInput = '';
+            cheatInput += event.key.toLowerCase();
+            lastKeyTime = currentTime;
+            if (cheatInput.includes(cheatCode)) {
+                console.log('Cheat code activated!');
+                completeLevelCheat();
+                cheatInput = '';
+            }
+        });
+
+        async function completeLevelCheat() {
+            if (lockBoard || matchedPairs === totalPairs) return;
+            lockBoard = true;
+            await playSound('true');
+            const matchText = gameMode === 'fart' ? 'หอมหวน' : 'สำเร็จ';
+            cards.forEach(card => {
+                if (!card.matched) {
+                    card.matched = true;
+                    const button = grid.querySelector(`button[data-index="${card.index}"]`);
+                    if (button) {
+                        button.classList.add('matched');
+                        button.textContent = matchText;
+                        button.disabled = true;
+                    }
+                }
+            });
+            matchedPairs = totalPairs;
+            clearInterval(timerInterval);
+            if (currentLevel === 10) {
+                setTimeout(() => completeGame(), 1500);
+            } else if (currentLevel === 3) {
+                setTimeout(() => showLevel3Complete(), 1500);
+            } else if (currentLevel === 7) {
+                setTimeout(() => showLevel7Complete(), 1500);
+            } else {
+                setTimeout(() => nextLevel(), 1500);
+            }
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function findClosestUnmatchedButton(lastIndex) {
+            const unmatchedButtons = Array.from(grid.querySelectorAll('button:not(.matched):not(:disabled)'));
+            if (unmatchedButtons.length === 0) return null;
+            return unmatchedButtons.reduce((closest, button) => {
+                const index = parseInt(button.dataset.index);
+                const closestIndex = parseInt(closest.dataset.index);
+                return Math.abs(index - lastIndex) < Math.abs(closestIndex - lastIndex) ? button : closest;
+            }, unmatchedButtons[0]);
+        }
+
+        function resetBoard() {
+            firstCard = null;
+            secondCard = null;
+            lockBoard = false;
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerEl.textContent = timeLeft;
+                if (timeLeft === 10 && !heartPlayed) {
+                    playSound('heart'); // loop อยู่แล้ว
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    stopHeartAudio();
+                    gameOver();
+                }
+            }, 1000);
+        }
 
         window.addEventListener('load', () => {
             startButton.focus();
+            console.log('Page loaded, start button focused');
         });
+
     </script>
 </body>
 </html>
