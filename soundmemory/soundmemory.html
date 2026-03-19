@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sounds Memory.</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .screen {
+            display: none;
+            margin: auto;
+            max-width: 600px;
+        }
+        #start-screen {
+            display: block;
+        }
+        .grid {
+            display: grid;
+            margin: 20px auto;
+            gap: 10px;
+        }
+        .grid-2x2 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        .grid-3x3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .grid-4x4 {
+            grid-template-columns: repeat(4, 1fr);
+        }
+        button {
+            padding: 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.selected {
+            background-color: #2196F3;
+        }
+        button.matched {
+            background-color: #888;
+            cursor: not-allowed;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #game-info {
+            margin: 20px 0;
+        }
+        #timer {
+            font-size: 24px;
+            color: red;
+        }
+        #back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: #ff4444;
+            padding: 10px 15px;
+            font-size: 14px;
+        }
+        #back-button:hover {
+            background-color: #cc0000;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            margin: 20px 0;
+        }
+        .mode-selection {
+            margin: 20px 0;
+        }
+        .mode-selection label {
+            margin: 0 10px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1>Sounds Memory.</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>นี่คือเกมจับคู่เสียง มี 2 โหมดให้เลือกเล่น กดเลือกได้เลย</p>
+        <div class="mode-selection">
+            <label>
+                <input type="radio" name="game-mode" value="animal" checked> โหมดจับคู่เสียงสัตว์ เหมาะกับทุกวัย
+            </label>
+            <label>
+                <input type="radio" name="game-mode" value="fart"> โหมดจับคู่เสียงตด เหมาะกับบางคน
+            </label>
+        </div>
+        <button id="start-button">เริ่มเกม</button>
+    </div>
+
+    <div id="loading-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1>กำลังโหลด</h1>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1>Sounds Memory.</h1>
+        <div id="game-info">
+            <p>Level: <span id="current-level"></span></p>
+            <p>เวลาที่เหลือ: <span id="timer"></span> วินาที</p>
+            <p>ผิดได้เหลือ: <span id="mistakes-left"></span> ครั้ง</p>
+        </div>
+        <div id="grid" class="grid"></div>
+    </div>
+
+    <div id="level3-complete-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1 tabindex="0">ยินดีด้วย คุณพร้อมเพิ่มความยากขึ้นไหม?</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>จากนี้ชปุ่มกดฟังเสียงจะเยอะขึ้น พร้อมแล้วก็...</p>
+        <button id="continue-button">ลุยกันต่อที่ level 4</button>
+    </div>
+
+    <div id="level7-complete-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1 tabindex="0">ยินดีด้วย คุณพร้อมเพิ่มความยากขึ้นไหม?</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>จากนี้ชปุ่มกดฟังเสียงจะเยอะขึ้น พร้อมแล้วก็...</p>
+        <button id="continue-level7-button">ลุยกันต่อใน Level 8</button>
+    </div>
+
+    <div id="next-level-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1 tabindex="0">ลุยกันต่อในด่าน <span id="next-level-number"></span> กันเลย</h1>
+        <p>กรุณารอสักครู่...</p>
+    </div>
+
+    <div id="win-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1 tabindex="0">สุดยอด คุณคือ แฟนพันธุ์แท้ Sounds Memory.</h1>
+        <img src="audio/pic.png" alt="ผู้หญิงกำลังหัวเราะผู้ชายที่ถลกก้นให้ดู!">
+        <p>คุณคือผู้เชี่ยวชาญด้านเสียงจริงๆ ข้าน้อย! ขอคารวะ...</p>
+        <button id="restart-win">เล่นใหม่อีกครั้ง</button>
+    </div>
+
+    <div id="gameover-screen" class="screen">
+        <button id="back-button">กลับเมนูหลัก</button>
+        <h1 tabindex="0">ลองใหม่อีกครั้งนะ!</h1>
+        <p>จะเล่นใหม่ก็กดด้านล่างนี้เลย</p>
+        <button id="restart-gameover">เล่นใหม่อีกครั้ง</button>
+    </div>
+
+    <script>
+        // --- Web Audio API Setup ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+        let audioBuffers = {}; // Store decoded audio data
+        let activeSources = []; // Track currently playing sounds for stopping
+
+        // Audio files
+        const fartSoundFiles = [
+            's1.mp3', 's2.mp3', 's3.mp3', 's4.mp3', 's5.mp3', 's6.mp3', 's7.mp3',
+            's8.mp3', 's9.mp3', 's10.mp3', 's11.mp3', 's12.mp3', 's13.mp3'
+        ];
+        const animalSoundFiles = [
+            'k1.mp3', 'k2.mp3', 'k3.mp3', 'k4.mp3', 'k5.mp3', 'k6.mp3', 'k7.mp3',
+            'k8.mp3', 'k9.mp3', 'k10.mp3', 'k11.mp3', 'k12.mp3', 'k13.mp3'
+        ];
+        const effectFiles = {
+            true: 'true.mp3',
+            wrong: 'wrong.mp3',
+            new1: 'new1.mp3',
+            new4: 'new4.mp3',
+            a6: 'a6.mp3',
+            heart: 'heart.mp3',
+            a7: 'a7.mp3'
+        };
+        const audioPath = 'audio/';
+        
+        let heartSource = null;
+        let heartPlayed = false;
+        let gameMode = 'animal'; // Default mode
+
+        // Cheat code variables
+        let cheatInput = '';
+        let lastKeyTime = 0;
+        const cheatCode = 'skip';
+        const timeThreshold = 2000; // 2 seconds
+
+        // Game variables
+        let currentLevel = 1;
+        let timeLimit = 0;
+        let mistakesAllowed = 0;
+        let mistakesMade = 0;
+        let timerInterval;
+        let timeLeft;
+        let gridSize;
+        let numSounds;
+        let cards = [];
+        let firstCard = null;
+        let secondCard = null;
+        let lockBoard = false;
+        let matchedPairs = 0;
+        let totalPairs = 0;
+
+        // Screens
+        const screens = {
+            start: document.getElementById('start-screen'),
+            loading: document.getElementById('loading-screen'),
+            game: document.getElementById('game-screen'),
+            level3Complete: document.getElementById('level3-complete-screen'),
+            level7Complete: document.getElementById('level7-complete-screen'),
+            next: document.getElementById('next-level-screen'),
+            win: document.getElementById('win-screen'),
+            gameover: document.getElementById('gameover-screen')
+        };
+
+        // Elements
+        const startButton = document.getElementById('start-button');
+        const restartWin = document.getElementById('restart-win');
+        const restartGameover = document.getElementById('restart-gameover');
+        const backButton = document.getElementById('back-button');
+        const continueButton = document.getElementById('continue-button');
+        const continueLevel7Button = document.getElementById('continue-level7-button');
+        const grid = document.getElementById('grid');
+        const currentLevelEl = document.getElementById('current-level');
+        const timerEl = document.getElementById('timer');
+        const mistakesLeftEl = document.getElementById('mistakes-left');
+        const nextLevelNumberEl = document.getElementById('next-level-number');
+
+        // Back to main menu
+        backButton.addEventListener('click', () => {
+            window.location.href = '../index.html';
+        });
+
+        // --- Core Web Audio Functions ---
+
+        async function loadAudioFile(url) {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            return await audioCtx.decodeAudioData(arrayBuffer);
+        }
+
+        function playBuffer(buffer, loop = false) {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioCtx.destination);
+            source.loop = loop;
+            source.start(0);
+            
+            // Track active sources to stop them if needed
+            activeSources.push(source);
+            source.onended = () => {
+                activeSources = activeSources.filter(s => s !== source);
+            };
+            
+            return source;
+        }
+
+        async function waitForPlayingAudios() {
+            // Web Audio API is concurrent by nature, 
+            // but we maintain the logic of waiting for effects if required.
+            // For simple match/wrong effects, playing concurrently is usually better, 
+            // but we'll respect the serial intent for level transitions.
+            return new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        async function playSound(effectName) {
+            if (audioBuffers[effectName]) {
+                const source = playBuffer(audioBuffers[effectName]);
+                return new Promise(resolve => {
+                    source.onended = () => resolve();
+                    // Fallback for long clips
+                    setTimeout(resolve, 5000);
+                });
+            } else {
+                console.warn(`Sound ${effectName} not found`);
+                return Promise.resolve();
+            }
+        }
+
+        async function preloadAudios() {
+            console.log('Starting Web Audio preload...');
+            const soundFiles = gameMode === 'fart' ? fartSoundFiles : animalSoundFiles;
+            
+            // Map names to paths
+            const fileEntries = [
+                ...soundFiles.map(f => ({ name: f.replace('.mp3', ''), path: audioPath + f })),
+                ...Object.entries(effectFiles).map(([name, f]) => ({ name: name, path: audioPath + f }))
+            ];
+
+            const promises = fileEntries.map(entry => {
+                return loadAudioFile(entry.path)
+                    .then(buffer => {
+                        audioBuffers[entry.name] = buffer;
+                        console.log(`Loaded: ${entry.name}`);
+                    })
+                    .catch(e => console.error(`Failed to load: ${entry.path}`, e));
+            });
+
+            await Promise.all(promises);
+            console.log('All Web Audio buffers ready');
+        }
+
+        function stopAllSounds() {
+            activeSources.forEach(source => {
+                try { source.stop(); } catch(e) {}
+            });
+            activeSources = [];
+            stopHeartAudio();
+        }
+
+        // --- Game Logic ---
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        async function setupLevel() {
+            console.log('Setting up level:', currentLevel);
+            if (currentLevel <= 3) {
+                gridSize = 2;
+                numSounds = 2;
+                timeLimit = 30;
+                mistakesAllowed = 1;
+            } else if (currentLevel >= 4 && currentLevel <= 7) {
+                gridSize = 3;
+                numSounds = 4;
+                timeLimit = 60;
+                mistakesAllowed = 4;
+            } else {
+                gridSize = 4;
+                numSounds = 8;
+                timeLimit = 90 - (currentLevel - 4) * 7;
+                mistakesAllowed = 10;
+            }
+            totalPairs = numSounds;
+            matchedPairs = 0;
+            mistakesMade = 0;
+            cards = [];
+            firstCard = null;
+            secondCard = null;
+            lockBoard = true;
+
+            const soundFiles = gameMode === 'fart' ? fartSoundFiles : animalSoundFiles;
+            const selectedSounds = shuffle([...soundFiles]).slice(0, numSounds).map(f => f.replace('.mp3', ''));
+
+            let soundAssignments = [...selectedSounds, ...selectedSounds];
+            shuffle(soundAssignments);
+
+            if (currentLevel >= 4 && currentLevel <= 7) {
+                for (let i = 0; i < 8; i++) {
+                    cards.push({ index: i, sound: soundAssignments[i], matched: false });
+                }
+                cards.push({ index: 8, sound: null, matched: true });
+            } else {
+                for (let i = 0; i < gridSize * gridSize; i++) {
+                    cards.push({ index: i, sound: soundAssignments[i], matched: false });
+                }
+            }
+
+            grid.className = 'grid ' + (gridSize === 2 ? 'grid-2x2' : gridSize === 3 ? 'grid-3x3' : 'grid-4x4');
+            grid.innerHTML = '';
+            const matchText = gameMode === 'fart' ? 'หอมหวน' : 'สำเร็จ';
+            cards.forEach((card, index) => {
+                const button = document.createElement('button');
+                if (card.matched) {
+                    button.textContent = matchText;
+                    button.classList.add('matched');
+                    button.disabled = true;
+                } else {
+                    button.textContent = `ช่อง${index + 1}`;
+                    button.dataset.index = index;
+                    button.addEventListener('click', handleCardClick);
+                }
+                grid.appendChild(button);
+            });
+
+            currentLevelEl.textContent = currentLevel;
+            mistakesLeftEl.textContent = mistakesAllowed - mistakesMade;
+            timeLeft = timeLimit;
+            timerEl.textContent = timeLeft;
+
+            try {
+                await playSound('a6');
+                lockBoard = false;
+                startTimer();
+                const firstButton = grid.querySelector('button:not(.matched)');
+                if (firstButton) firstButton.focus();
+            } catch (error) {
+                console.error('Error starting level audio:', error);
+                lockBoard = false;
+                startTimer();
+            }
+        }
+
+        function handleCardClick(event) {
+            if (lockBoard) return;
+            const button = event.target;
+            const index = parseInt(button.dataset.index);
+            const card = cards[index];
+
+            if (card.matched || button.disabled || button === firstCard) return;
+
+            button.classList.add('selected');
+            if (audioBuffers[card.sound]) {
+                playBuffer(audioBuffers[card.sound]);
+            }
+
+            if (!firstCard) {
+                firstCard = button;
+            } else {
+                secondCard = button;
+                lockBoard = true;
+                checkForMatch();
+            }
+        }
+
+        function findClosestUnmatchedButton(lastIndex) {
+            const unmatchedButtons = Array.from(grid.querySelectorAll('button:not(.matched):not(:disabled)'));
+            if (unmatchedButtons.length === 0) return null;
+            return unmatchedButtons.reduce((closest, button) => {
+                const index = parseInt(button.dataset.index);
+                const closestIndex = parseInt(closest.dataset.index);
+                return Math.abs(index - lastIndex) < Math.abs(closestIndex - lastIndex) ? button : closest;
+            }, unmatchedButtons[0]);
+        }
+
+        async function checkForMatch() {
+            const firstIndex = parseInt(firstCard.dataset.index);
+            const secondIndex = parseInt(secondCard.dataset.index);
+            const firstSound = cards[firstIndex].sound;
+            const secondSound = cards[secondIndex].sound;
+            const matchText = gameMode === 'fart' ? 'หอมหวน' : 'สำเร็จ';
+
+            if (firstSound === secondSound) {
+                await playSound('true');
+                cards[firstIndex].matched = true;
+                cards[secondIndex].matched = true;
+                firstCard.classList.add('matched');
+                secondCard.classList.add('matched');
+                firstCard.textContent = matchText;
+                secondCard.textContent = matchText;
+                firstCard.disabled = true;
+                secondCard.disabled = true;
+                firstCard.classList.remove('selected');
+                secondCard.classList.remove('selected');
+                matchedPairs++;
+
+                const closestButton = findClosestUnmatchedButton(secondIndex);
+                resetBoard();
+
+                if (matchedPairs < totalPairs && closestButton) closestButton.focus();
+
+                if (matchedPairs === totalPairs) {
+                    clearInterval(timerInterval);
+                    if (currentLevel === 10) setTimeout(() => completeGame(), 1500);
+                    else if (currentLevel === 3) setTimeout(() => showLevel3Complete(), 1500);
+                    else if (currentLevel === 7) setTimeout(() => showLevel7Complete(), 1500);
+                    else setTimeout(() => nextLevel(), 1500);
+                }
+            } else {
+                await playSound('wrong');
+                mistakesMade++;
+                mistakesLeftEl.textContent = mistakesAllowed - mistakesMade;
+                firstCard.classList.remove('selected');
+                secondCard.classList.remove('selected');
+                const lastButton = secondCard;
+                resetBoard();
+                if (lastButton) lastButton.focus();
+
+                if (mistakesMade > mistakesAllowed) setTimeout(() => gameOver(), 500);
+            }
+        }
+
+        function resetBoard() {
+            firstCard = null;
+            secondCard = null;
+            lockBoard = false;
+        }
+
+        function stopHeartAudio() {
+            if (heartSource) {
+                try { heartSource.stop(); } catch(e) {}
+                heartSource = null;
+            }
+            heartPlayed = false;
+        }
+
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerEl.textContent = timeLeft;
+                if (timeLeft === 10 && !heartPlayed) {
+                    if (audioBuffers['heart']) {
+                        stopHeartAudio();
+                        heartSource = playBuffer(audioBuffers['heart'], true);
+                    }
+                    heartPlayed = true;
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    stopHeartAudio();
+                    gameOver();
+                }
+            }, 1000);
+        }
+
+        function handleCheatCode(event) {
+            const currentTime = Date.now();
+            if (currentTime - lastKeyTime > timeThreshold) cheatInput = '';
+            cheatInput += event.key.toLowerCase();
+            lastKeyTime = currentTime;
+            if (cheatInput.includes(cheatCode)) {
+                completeLevelCheat();
+                cheatInput = '';
+            }
+        }
+
+        async function completeLevelCheat() {
+            if (lockBoard || matchedPairs === totalPairs) return;
+            lockBoard = true;
+            await playSound('true');
+            const matchText = gameMode === 'fart' ? 'หอมหวน' : 'สำเร็จ';
+            cards.forEach(card => {
+                if (!card.matched) {
+                    card.matched = true;
+                    const button = grid.querySelector(`button[data-index="${card.index}"]`);
+                    if (button) {
+                        button.classList.add('matched');
+                        button.textContent = matchText;
+                        button.disabled = true;
+                    }
+                }
+            });
+            matchedPairs = totalPairs;
+            clearInterval(timerInterval);
+            if (currentLevel === 10) setTimeout(() => completeGame(), 1500);
+            else if (currentLevel === 3) setTimeout(() => showLevel3Complete(), 1500);
+            else if (currentLevel === 7) setTimeout(() => showLevel7Complete(), 1500);
+            else setTimeout(() => nextLevel(), 1500);
+        }
+
+        async function showLevel3Complete() {
+            screens.game.style.display = 'none';
+            screens.level3Complete.style.display = 'block';
+            screens.level3Complete.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new1');
+        }
+
+        async function showLevel7Complete() {
+            screens.game.style.display = 'none';
+            screens.level7Complete.style.display = 'block';
+            screens.level7Complete.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new1');
+        }
+
+        async function nextLevel() {
+            screens.game.style.display = 'none';
+            screens.next.style.display = 'block';
+            nextLevelNumberEl.textContent = currentLevel + 1;
+            screens.next.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new1');
+            screens.next.style.display = 'none';
+            currentLevel++;
+            await setupLevel();
+            screens.game.style.display = 'block';
+            setTimeout(() => {
+                const firstButton = grid.querySelector('button:not(.matched)');
+                if (firstButton) firstButton.focus();
+            }, 0);
+        }
+
+        async function completeGame() {
+            screens.game.style.display = 'none';
+            screens.win.style.display = 'block';
+            screens.win.querySelector('h1').focus();
+            stopHeartAudio();
+            await playSound('new4');
+        }
+
+        async function gameOver() {
+            clearInterval(timerInterval);
+            stopAllSounds();
+            screens.game.style.display = 'none';
+            screens.gameover.style.display = 'block';
+            screens.gameover.querySelector('h1').focus();
+            await playSound('a7');
+        }
+
+        async function startGame() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const modeRadios = document.getElementsByName('game-mode');
+            for (const radio of modeRadios) {
+                if (radio.checked) {
+                    gameMode = radio.value;
+                    break;
+                }
+            }
+            try {
+                screens.start.style.display = 'none';
+                screens.loading.style.display = 'block';
+                await preloadAudios();
+                screens.loading.style.display = 'none';
+                currentLevel = 1;
+                await setupLevel();
+                screens.game.style.display = 'block';
+                const firstButton = grid.querySelector('button:not(.matched)');
+                if (firstButton) firstButton.focus();
+            } catch (error) {
+                console.error('Error starting game:', error);
+                screens.loading.style.display = 'none';
+                screens.start.style.display = 'block';
+                alert('เกิดข้อผิดพลาดในการเริ่มเกม กรุณาลองใหม่');
+            }
+        }
+
+        // Event listeners
+        startButton.addEventListener('click', startGame);
+        restartWin.addEventListener('click', () => {
+            screens.win.style.display = 'none';
+            startGame();
+        });
+        restartGameover.addEventListener('click', () => {
+            screens.gameover.style.display = 'none';
+            startGame();
+        });
+        continueButton.addEventListener('click', () => {
+            screens.level3Complete.style.display = 'none';
+            currentLevel++;
+            setupLevel();
+            screens.game.style.display = 'block';
+        });
+        continueLevel7Button.addEventListener('click', () => {
+            screens.level7Complete.style.display = 'none';
+            currentLevel++;
+            setupLevel();
+            screens.game.style.display = 'block';
+        });
+
+        document.querySelectorAll('#back-button').forEach(button => {
+            button.addEventListener('click', () => {
+                window.location.href = '../index.html';
+            });
+        });
+
+        document.addEventListener('keydown', handleCheatCode);
+
+        window.addEventListener('load', () => {
+            startButton.focus();
+        });
+    </script>
+</body>
+</html>
