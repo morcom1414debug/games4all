@@ -137,9 +137,9 @@
          * WEB AUDIO API CORE
          */
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const audioBuffers = {};
-        let activeSources = new Set();
-        let heartSource = null;
+        const audioBuffers = {}; // Store decoded audio data
+        let activeSources = new Set(); // Track currently playing sounds
+        let heartSource = null; // Special handling for looping heart sound
 
         const audioPath = 'audio/';
         const fartSoundFiles = Array.from({length: 13}, (_, i) => `s${i+1}.mp3`);
@@ -149,6 +149,7 @@
             new4: 'new4.mp3', a6: 'a6.mp3', heart: 'heart.mp3', a7: 'a7.mp3'
         };
 
+        // Function to fetch and decode audio
         async function loadSound(filename) {
             if (audioBuffers[filename]) return audioBuffers[filename];
             try {
@@ -163,36 +164,57 @@
             }
         }
 
+        // Play sound using Web Audio API
         function playSound(filename, loop = false) {
             const buffer = audioBuffers[filename];
             if (!buffer) return null;
+
             if (audioCtx.state === 'suspended') audioCtx.resume();
+
             const source = audioCtx.createBufferSource();
             source.buffer = buffer;
             source.loop = loop;
             source.connect(audioCtx.destination);
+            
             source.start(0);
             activeSources.add(source);
-            source.onended = () => activeSources.delete(source);
+            
+            source.onended = () => {
+                activeSources.delete(source);
+            };
+
             return source;
         }
 
         async function waitForPlayingAudios() {
-            activeSources.forEach(s => { if (!s.loop) { try { s.stop(); } catch(e) {} } });
+            // In Web Audio API, we can just let sounds overlap unless it's a critical logic sound
+            // For this game's logic, we stop previous non-looping sounds if they are critical
+            activeSources.forEach(s => {
+                if (!s.loop) {
+                    try { s.stop(); } catch(e) {}
+                }
+            });
             activeSources.clear();
         }
 
+        /**
+         * PRELOAD LOGIC
+         */
         async function preloadEssentialAudios() {
             const mode = document.querySelector('input[name="game-mode"]:checked').value;
             const sounds = mode === 'fart' ? fartSoundFiles : animalSoundFiles;
+            
+            // Priority 1: Effects and first 4 sounds
             const priority = ['a6.mp3', 'true.mp3', 'wrong.mp3', 'new1.mp3', sounds[0], sounds[1], sounds[2], sounds[3]];
             await Promise.all(priority.map(f => loadSound(f)));
+            
+            // Priority 2: The rest (background)
             const others = [...sounds.slice(4), 'heart.mp3', 'new4.mp3', 'a7.mp3'];
-            others.forEach(f => loadSound(f));
+            others.forEach(f => loadSound(f)); // Don't await, let it load in background
         }
 
         /**
-         * GAME LOGIC
+         * GAME LOGIC (Restored and adapted)
          */
         let currentLevel = 1, timeLimit = 0, mistakesAllowed = 0, mistakesMade = 0;
         let timerInterval, timeLeft, gridSize, numSounds, cards = [], matchedPairs = 0, totalPairs = 0;
@@ -238,6 +260,7 @@
 
             const soundFiles = gameMode === 'fart' ? fartSoundFiles : animalSoundFiles;
             const selectedSounds = shuffle([...soundFiles]).slice(0, numSounds);
+
             let soundAssignments = [...selectedSounds, ...selectedSounds];
             shuffle(soundAssignments);
 
@@ -261,7 +284,6 @@
                 } else {
                     button.textContent = `ช่อง${index + 1}`;
                     button.dataset.index = index;
-                    button.id = `card-btn-${index}`; // Add ID for easy focusing
                     button.addEventListener('click', handleCardClick);
                 }
                 grid.appendChild(button);
@@ -276,24 +298,19 @@
             playSound('a6.mp3');
             lockBoard = false;
             startTimer();
-
-            // FIXED: Focus on Card 1 (Index 0) always on new level
-            const firstSlot = document.getElementById('card-btn-0');
-            if (firstSlot) {
-                firstSlot.focus();
-            } else {
-                // Fallback for Level with 3x3 where center might be matched already
-                grid.querySelector('button:not(.matched)')?.focus();
-            }
+            grid.querySelector('button:not(.matched)')?.focus();
         }
 
         function handleCardClick(e) {
             if (lockBoard) return;
             const button = e.target;
             const card = cards[button.dataset.index];
+
             if (card.matched || button === firstCard) return;
+
             button.classList.add('selected');
             playSound(card.sound);
+
             if (!firstCard) {
                 firstCard = button;
             } else {
@@ -318,6 +335,7 @@
                 });
                 matchedPairs++;
                 resetTurn();
+
                 if (matchedPairs === totalPairs) {
                     clearInterval(timerInterval);
                     stopHeart();
@@ -326,7 +344,6 @@
                                      currentLevel === 7 ? showLevel7Complete : nextLevel;
                     setTimeout(nextAction, 1500);
                 } else {
-                    // During the same level, focus on next available button
                     grid.querySelector('button:not(.matched)')?.focus();
                 }
             } else {
@@ -343,33 +360,53 @@
         }
 
         function resetTurn() { firstCard = null; secondCard = null; lockBoard = false; }
+
         function startTimer() {
             timerInterval = setInterval(() => {
                 timeLeft--;
                 timerEl.textContent = timeLeft;
                 if (timeLeft === 10) heartSource = playSound('heart.mp3', true);
-                if (timeLeft <= 0) { clearInterval(timerInterval); gameOver(); }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    gameOver();
+                }
             }, 1000);
         }
-        function stopHeart() { if (heartSource) { try { heartSource.stop(); } catch(e) {} heartSource = null; } }
+
+        function stopHeart() {
+            if (heartSource) {
+                try { heartSource.stop(); } catch(e) {}
+                heartSource = null;
+            }
+        }
 
         async function gameOver() {
-            clearInterval(timerInterval); stopHeart();
-            screens.game.style.display = 'none'; screens.gameover.style.display = 'block';
-            playSound('a7.mp3'); screens.gameover.querySelector('h1').focus();
+            clearInterval(timerInterval);
+            stopHeart();
+            screens.game.style.display = 'none';
+            screens.gameover.style.display = 'block';
+            playSound('a7.mp3');
+            screens.gameover.querySelector('h1').focus();
         }
+
         async function completeGame() {
-            screens.game.style.display = 'none'; screens.win.style.display = 'block';
-            playSound('new4.mp3'); screens.win.querySelector('h1').focus();
+            screens.game.style.display = 'none';
+            screens.win.style.display = 'block';
+            playSound('new4.mp3');
         }
+
         async function showLevel3Complete() {
-            screens.game.style.display = 'none'; screens.level3Complete.style.display = 'block';
-            playSound('new1.mp3'); screens.level3Complete.querySelector('h1').focus();
+            screens.game.style.display = 'none';
+            screens.level3Complete.style.display = 'block';
+            playSound('new1.mp3');
         }
+
         async function showLevel7Complete() {
-            screens.game.style.display = 'none'; screens.level7Complete.style.display = 'block';
-            playSound('new1.mp3'); screens.level7Complete.querySelector('h1').focus();
+            screens.game.style.display = 'none';
+            screens.level7Complete.style.display = 'block';
+            playSound('new1.mp3');
         }
+
         async function nextLevel() {
             screens.game.style.display = 'none';
             screens.next.style.display = 'block';
@@ -383,11 +420,16 @@
             }, 2000);
         }
 
+        /**
+         * INITIALIZATION
+         */
         document.getElementById('start-button').addEventListener('click', async () => {
             gameMode = document.querySelector('input[name="game-mode"]:checked').value;
             screens.start.style.display = 'none';
             screens.loading.style.display = 'block';
+            
             await preloadEssentialAudios();
+            
             screens.loading.style.display = 'none';
             currentLevel = 1;
             await setupLevel();
@@ -410,18 +452,23 @@
 
         document.querySelectorAll('.back-btn-nav, #restart-win, #restart-gameover').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (btn.id.includes('restart')) { location.reload(); } 
-                else { window.location.href = '../index.html'; }
+                if (btn.id.includes('restart')) {
+                    location.reload();
+                } else {
+                    window.location.href = '../index.html';
+                }
             });
         });
 
+        // Cheat Code
         let cheatBuffer = '';
         document.addEventListener('keydown', (e) => {
             cheatBuffer += e.key.toLowerCase();
             if (cheatBuffer.includes('skip')) {
                 matchedPairs = totalPairs;
-                clearInterval(timerInterval); stopHeart();
-                checkForMatch();
+                clearInterval(timerInterval);
+                stopHeart();
+                checkForMatch(); // Trigger win logic
                 cheatBuffer = '';
             }
             setTimeout(() => cheatBuffer = '', 3000);
