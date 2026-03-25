@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blind Brewer: สัมผัสแห่งกาแฟ</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+        
+        body { 
+            background-color: #2e1d15; 
+            color: #f5eedc; 
+            font-family: 'Sarabun', sans-serif; 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            overflow-x: hidden; 
+        }
+        
+        #game-container { 
+            width: 100%; 
+            max-width: 850px; 
+            padding: 20px; 
+            box-sizing: border-box; 
+            position: relative;
+        }
+
+        /* ปุ่มกลับสู่ชุมชน */
+        .community-btn {
+            position: absolute;
+            top: -50px;
+            left: 0;
+            width: auto !important;
+            background: #5d4037 !important;
+            border-color: #ffaa00 !important;
+            padding: 8px 15px !important;
+            font-size: 1rem !important;
+        }
+        
+        .screen { 
+            display: none; 
+            flex-direction: column; 
+            align-items: center; 
+            text-align: center; 
+            animation: fadeIn 0.4s ease-in-out; 
+        }
+        
+        .active { display: flex; }
+        
+        h3.main-title { 
+            font-size: 3rem; 
+            color: #ffaa00; 
+            text-shadow: 0 0 10px rgba(255, 170, 0, 0.5); 
+            margin-bottom: 10px; 
+            margin-top: 0;
+            line-height: 1.2; 
+            outline: none; 
+        }
+        h3.subtitle {
+            font-size: 2rem;
+            color: #d7ccc8;
+            margin-top: 0;
+            margin-bottom: 30px;
+            outline: none;
+        }
+        h3.rules-heading {
+            font-size: 1.5rem;
+            color: #ffaa00;
+            font-weight: bold;
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: left;
+            outline: none;
+        }
+        h3.status-title { 
+            font-size: 2.2rem; 
+            margin-bottom: 15px; 
+            margin-top: 0;
+            outline: none; 
+        }
+        .text-correct { color: #4caf50; }
+        .text-wrong { color: #f44336; }
+        
+        h3.stage-title { 
+            font-size: 1.6rem; 
+            color: #ffaa00; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            margin-bottom: 10px; 
+            margin-top: 0;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8); 
+            border-bottom: 1px solid #5d4037; 
+            width: 100%; 
+            text-align: left; 
+            padding-bottom: 5px; 
+            outline: none; 
+        }
+        
+        p { font-size: 1.2rem; line-height: 1.7; margin-bottom: 20px; text-align: left; width: 100%; }
+
+        button { 
+            background: #3e2723; 
+            color: #ffffff; 
+            border: 2px solid #ffaa00; 
+            padding: 15px 20px; 
+            font-size: 1.2rem; 
+            cursor: pointer; 
+            transition: all 0.2s; 
+            font-family: 'Sarabun', sans-serif; 
+            border-radius: 8px; 
+            margin: 8px 0; 
+            width: 100%; 
+            text-align: left;
+            line-height: 1.4;
+        }
+        .choice-btn { text-align: left; display: block; padding-left: 20px; }
+        button.center-btn { 
+            text-align: center; 
+            max-width: 400px; 
+            margin-top: 20px; 
+            background: #ffaa00; 
+            color: #3e2723; 
+            font-weight: bold; 
+        }
+        
+        button:hover, button:focus { 
+            background: #5d4037; 
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.4); 
+            outline: 3px solid #ffffff;
+        }
+
+        .info-box { 
+            text-align: left; 
+            margin-bottom: 20px; 
+            padding: 25px; 
+            background: #1e130d; 
+            border-left: 5px solid #ffaa00; 
+            border-radius: 5px; 
+            font-size: 1.3rem; 
+            width: 100%; 
+            box-sizing: border-box; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            color: #eee;
+        }
+
+        .feedback-divider {
+            border-bottom: 2px dashed #5d4037;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } }
+        .shake-screen { animation: shake 0.3s; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- ปุ่มกลับสู่ชุมชน -->
+    <button class="community-btn" onclick="exitToCommunity()">กลับสู่ชุมชน</button>
+
+    <!-- หน้าจอเริ่มเกม -->
+    <div id="start-screen" class="screen active">
+        <h3 id="start-heading" class="main-title" tabindex="-1">Blind Brewer</h3>
+        <h3 class="subtitle" tabindex="-1">สัมผัสแห่งกาแฟ</h3>
+        
+        <div class="info-box">
+            <p><strong>เนื้อเรื่อง:</strong> คุณคือ "ตะวัน" ชายหนุ่มผู้สูญเสียการมองเห็นตั้งแต่วัยเด็ก แต่ธรรมชาติได้ทดแทนด้วยประสาทสัมผัสการรับกลิ่นและรสชาติที่แม่นยำกว่าคนทั่วไป ความฝันสูงสุดของคุณคือการเปิดร้านกาแฟของตัวเอง...</p>
+            <h3 class="rules-heading" tabindex="-1">กติกาการเล่น:</h3>
+            <ul style="font-size: 1.2rem; line-height: 1.6; margin-bottom: 0;">
+                <li>ตอบคำถามเพื่อทดสอบความรู้ทั้งหมด 20 ข้อ</li>
+                <li><strong>หากตอบผิดแม้แต่ครั้งเดียว เกมจะจบลงทันที!</strong></li>
+            </ul>
+        </div>
+        <button class="center-btn" onclick="startGame()">เริ่มเกม</button>
+    </div>
+
+    <!-- หน้าจอเล่นเกมหลัก -->
+    <div id="game-screen" class="screen">
+        <div id="feedback-section" class="feedback-divider" style="width: 100%; text-align: left; display: none;">
+            <h3 id="feedback-heading" class="status-title text-correct" tabindex="-1">ถูกต้อง</h3>
+            <div class="info-box" id="feedback-text" style="margin-bottom: 0; border-left-color: #4caf50;"></div>
+        </div>
+
+        <div id="question-section" style="width: 100%;">
+            <h3 id="question-heading" class="stage-title" tabindex="-1">ข้อที่ X</h3>
+            <div id="question-text" class="info-box" style="border-left-color: #d7ccc8; margin-bottom: 25px;">คำถาม...</div>
+            <div id="choices-container" style="width: 100%;"></div>
+        </div>
+
+        <div id="summary-section" style="width: 100%; display: none;">
+            <h3 id="summary-heading" class="stage-title" tabindex="-1">สรุปผลการเล่น</h3>
+            <div id="summary-box" class="info-box"></div>
+            <button class="center-btn" onclick="resetGame()">เริ่มเล่นอีกครั้ง</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- ระบบเสียง Web Audio API ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buffers = {};
+    const sources = {};
+
+    async function loadAudio(name, url) {
+        try {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            buffers[name] = await audioCtx.decodeAudioData(arrayBuffer);
+        } catch (e) { console.error("Audio Load Error:", e); }
+    }
+
+    // โหลดไฟล์เสียง
+    loadAudio('back', 'audio/back.mp3');
+    loadAudio('t', 'audio/t.mp3');
+    loadAudio('lost', 'audio/lost.mp3');
+    loadAudio('win', 'audio/win.mp3');
+
+    function playSound(name, loop = false) {
+        stopSound(name);
+        if (!buffers[name]) return null;
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffers[name];
+        source.loop = loop;
+        source.connect(audioCtx.destination);
+        source.start(0);
+        sources[name] = source;
+        return source;
+    }
+
+    function stopSound(name) {
+        if (sources[name]) {
+            try { sources[name].stop(); } catch(e){}
+            delete sources[name];
+        }
+    }
+
+    function stopAllSounds() {
+        Object.keys(sources).forEach(name => stopSound(name));
+    }
+
+    // --- ข้อมูลข้อสอบ ---
+    const quizData = [
+        {
+            question: "สายพันธุ์กาแฟอาราบิก้า (Arabica) เหมาะกับการปลูกในพื้นที่ลักษณะใดมากที่สุด?",
+            choices: ["ก. พื้นที่ราบลุ่ม ใกล้ชายทะเล", "ข. พื้นที่สูง อากาศเย็นสบาย", "ค. พื้นที่แห้งแล้ง ทะเลทราย", "ง. พื้นที่ลุ่มน้ำขัง"],
+            correct: 1,
+            explanation: "อาราบิก้าต้องการความสูงจากระดับน้ำทะเล (มักจะ 1,000 เมตรขึ้นไป) และอากาศเย็นสบาย (15-24 องศาเซลเซียส) เพื่อให้ผลเชอร์รี่สุกช้าๆ และเมล็ดสะสมสารอาหาร ทำให้มีกลิ่นหอมและรสชาติที่ซับซ้อน"
+        },
+        {
+            question: "กาแฟสายพันธุ์โรบัสต้า (Robusta) มีจุดเด่นในเรื่องการปลูกอย่างไรเมื่อเทียบกับอาราบิก้า?",
+            choices: ["ก. ต้องการการดูแลอย่างใกล้ชิดและอ่อนแอต่อโรค", "ข. ปลูกได้ดีเฉพาะในที่ที่มีอากาศหนาวจัด", "ค. ทนทานต่อโรคและสภาพอากาศ ปลูกในพื้นที่ต่ำได้", "ง. ให้ผลผลิตน้อยกว่าอาราบิก้าถึงครึ่งหนึ่ง"],
+            correct: 2,
+            explanation: "โรบัสต้ามีจุดเด่นคือปลูกง่าย ทนทานต่อโรคและแมลง (มีคาเฟอีนสูงช่วยไล่แมลง) และสามารถเจริญเติบโตได้ดีในพื้นที่ต่ำและอากาศร้อนชื้น"
+        },
+        {
+            question: "ลักษณะดินแบบใดที่เหมาะสมที่สุดสำหรับการปลูกต้นกาแฟ?",
+            choices: ["ก. ดินเหนียวจัด อุ้มน้ำได้ดีมาก", "ข. ดินร่วนปนทราย ระบายน้ำและอากาศได้ดี", "ค. ดินทรายล้วน", "ง. ดินลูกรัง แข็งและแห้ง"],
+            correct: 1,
+            explanation: "ต้นกาแฟต้องการดินที่ระบายน้ำและอากาศได้ดีเยี่ยม เช่น ดินร่วนปนทราย (หรือดินภูเขาไฟ) หากใช้อุ้มน้ำมากไปอย่างดินเหนียว จะทำให้รากเน่าได้"
+        },
+        {
+            question: "ในการปลูกต้นกาแฟระยะแรก ต้นกล้าต้องการแสงแดดในปริมาณเท่าใด?",
+            choices: ["ก. ต้องการร่มเงา ไม่ชอบแสงแดดจัดจ้า", "ข. ต้องการแสงแดดจัด 100% ตลอดทั้งวัน", "ค. ไม่ต้องการแสงแดดเลย ควรปลูกในที่มืด", "ง. ต้องการแสงแดดเฉพาะเวลากลางคืน"],
+            correct: 0,
+            explanation: "ต้นกล้ากาแฟยังอ่อนแอ จึงต้องการร่มเงาพรางแสงแดด (Shade-grown) แดดที่จัดเกินไปจะทำให้ใบไหม้และต้นชะงักการเจริญเติบโต"
+        },
+        {
+            question: "วิธีการเก็บเกี่ยวผลเชอร์รี่กาแฟเพื่อให้ได้เมล็ดกาแฟคุณภาพสูงที่สุดคือวิธีใด?",
+            choices: ["ก. ใช้เครื่องจักรเขย่าต้นให้ผลร่วงทั้งหมด", "ข. รูดผลกาแฟทั้งกิ่งในคราวเดียว", "ค. เลือกเด็ดด้วยมือเฉพาะผลที่สุกแดงเต็มที่ทีละผล", "ง. เก็บเฉพาะผลที่ร่วงหล่นลงบนพื้นดิน"],
+            correct: 2,
+            explanation: "การเด็ดด้วยมือ (Hand-picking) ทำให้สามารถเลือกเฉพาะผลเชอร์รี่ที่สุกแดงเต็มที่ (มีน้ำตาลสูงสุด) จะได้เมล็ดกาแฟที่มีคุณภาพและรสชาติดีที่สุด"
+        },
+        {
+            question: "โดยทั่วไป ต้นกาแฟจะเริ่มให้ผลผลิตครั้งแรกเมื่อมีอายุประมาณกี่ปีหลังจากการปลูก?",
+            choices: ["ก. 6 เดือน - 1 ปี", "ข. 3 - 4 ปี", "ค. 7 - 8 ปี", "ง. 10 ปีขึ้นไป"],
+            correct: 1,
+            explanation: "โดยทั่วไปต้นกาแฟจะใช้เวลาเจริญเติบโตประมาณ 3 ถึง 4 ปี จึงจะเริ่มออกดอกและให้ผลผลิตเชอร์รี่กาแฟครั้งแรกให้เก็บเกี่ยวได้"
+        },
+        {
+            question: "ศัตรูพืชหรือโรคที่ถือว่าเป็นอันตรายร้ายแรงที่สุดสำหรับต้นกาแฟคือข้อใด?",
+            choices: ["ก. หนอนผีเสื้อ", "ข. โรคราสนิม (Coffee Leaf Rust)", "ค. เพลี้ยแป้ง", "ง. โรครากเน่าจากน้ำขัง"],
+            correct: 1,
+            explanation: "โรคราสนิม (Coffee Leaf Rust) เป็นโรคระบาดที่ร้ายแรงที่สุด ทำลายใบต้นกาแฟ ทำให้ใบหล่น ต้นแคระแกร็น และไม่สามารถให้ผลผลิตได้ (เคยทำลายไร่กาแฟทั่วโลกมาแล้ว)"
+        },
+        {
+            question: "การแปรรูปเมล็ดกาแฟแบบเปียก (Washed Process) มีขั้นตอนสำคัญอย่างไร?",
+            choices: ["ก. นำผลกาแฟไปตากแดดจนแห้งทั้งเปลือกแล้วค่อยสีออก", "ข. คั่วกาแฟทันทีหลังจากเก็บเกี่ยว", "ค. ลอกเปลือกออก แช่น้ำหมักเพื่อกำจัดเมือก แล้วล้างให้สะอาดก่อนตาก", "ง. นำเมล็ดกาแฟไปต้มในน้ำเดือดเพื่อฆ่าเชื้อ"],
+            correct: 2,
+            explanation: "Washed Process หรือการสีเปียก คือการปอกเปลือกเชอร์รี่ออกก่อน นำเมล็ดไปแช่น้ำเพื่อหมักสลายเมือก จากนั้นล้างน้ำให้สะอาดแล้วจึงนำไปตาก ทำให้ได้กาแฟรสชาติสะอาด (Clean cup)"
+        },
+        {
+            question: "ข้อใดคือวิธีขยายพันธุ์ต้นกาแฟที่เกษตรกรนิยมใช้กันมากที่สุด?",
+            choices: ["ก. การเพาะจากเมล็ด", "ข. การตอนกิ่ง", "ค. การเพาะเลี้ยงเนื้อเยื่อ", "ง. การปักชำใบ"],
+            correct: 0,
+            explanation: "การเพาะจากเมล็ด (Seed propagation) เป็นวิธีที่ประหยัด ทำได้จำนวนมาก และได้ต้นกล้าที่มีรากแก้วแข็งแรง เกษตรกรจึงนิยมใช้มากที่สุด"
+        },
+        {
+            question: "อุณหภูมิโดยเฉลี่ยที่เหมาะสมที่สุดสำหรับการเจริญเติบโตของกาแฟอาราบิก้าคือเท่าใด?",
+            choices: ["ก. 5 - 10 องศาเซลเซียส", "ข. 15 - 24 องศาเซลเซียส", "ค. 30 - 35 องศาเซลเซียส", "ง. 35 องศาเซลเซียสขึ้นไป"],
+            correct: 1,
+            explanation: "อุณหภูมิที่ 15 - 24 องศาเซลเซียส เป็นช่วงที่เหมาะสมที่สุดสำหรับอาราบิก้า หากหนาวจัดไปต้นจะตาย หากร้อนไปต้นจะเติบโตเร็วแต่เมล็ดจะไม่มีคุณภาพ"
+        },
+        {
+            question: "ส่วนผสมหลักที่เป็นหัวใจสำคัญของการทำเมนูกาแฟสากลทุกเมนูคืออะไร?",
+            choices: ["ก. น้ำเชื่อมคาราเมล", "ข. นมสด", "ค. เอสเพรสโซ่ (Espresso)", "ง. ผงโกโก้"],
+            correct: 2,
+            explanation: "เอสเพรสโซ่ (Espresso) คือน้ำกาแฟเข้มข้นที่เป็นเบส (Base) หรือหัวใจหลักในการนำไปผสมทำเมนูอื่นๆ เช่น ลาเต้ คาปูชิโน่ อเมริกาโน่ ฯลฯ"
+        },
+        {
+            question: "อเมริกาโน่ (Americano) ประกอบด้วยส่วนผสมใดบ้าง?",
+            choices: ["ก. เอสเพรสโซ่ + นมสด", "ข. เอสเพรสโซ่ + น้ำร้อน", "ค. เอสเพรสโซ่ + โกโก้", "ง. กาแฟสกัดเย็น + นมข้นหวาน"],
+            correct: 1,
+            explanation: "อเมริกาโน่เกิดจากการนำเอสเพรสโซ่ช็อตมาผสมกับน้ำร้อน (หรือน้ำเย็น/น้ำแข็งสำหรับเมนูเย็น) เพื่อเจือจางความเข้มข้นให้ดื่มง่ายขึ้น โดยไม่มีการผสมนม"
+        },
+        {
+            question: "หากต้องการกาแฟที่มีรสนมเด่นชัด ดื่มง่าย และมีฟองนมเพียงบางๆ ด้านบน ควรเลือกเมนูใด?",
+            choices: ["ก. คาปูชิโน่ (Cappuccino)", "ข. ลาเต้ (Latte)", "ค. อเมริกาโน่ (Americano)", "ง. มอคค่า (Mocha)"],
+            correct: 1,
+            explanation: "ลาเต้ (Latte) แปลว่า นม ในภาษาอิตาลี เมนูนี้จึงเน้นปริมาณนมร้อนที่เยอะ และปาดทับด้วยฟองนมเนื้อเนียนละเอียดเพียงบางๆ ด้านบน (ประมาณ 0.5-1 ซม.)"
+        },
+        {
+            question: "สัดส่วนมาตรฐานโดยประมาณของเมนู คาปูชิโน่ (Cappuccino) คือข้อใด?",
+            choices: ["ก. เอสเพรสโซ่ 1 ส่วน : นมร้อน 2 ส่วน : ไม่มีฟองนม", "ข. เอสเพรสโซ่ 1 ส่วน : นมร้อน 1 ส่วน : ฟองนม 1 ส่วน", "ค. เอสเพรสโซ่ 1 ส่วน : น้ำร้อน 2 ส่วน : ฟองนม 1 ส่วน", "ง. นมร้อน 2 ส่วน : ฟองนม 1 ส่วน (ไม่มีกาแฟ)"],
+            correct: 1,
+            explanation: "สูตรคลาสสิกของคาปูชิโน่คือการแบ่งแก้วเป็น 3 ส่วนเท่าๆ กัน ได้แก่ เอสเพรสโซ่ 1/3, นมร้อน 1/3 และฟองนมหนานุ่ม 1/3 ของแก้ว"
+        },
+        {
+            question: "เมนูมอคค่า (Mocha) เป็นการผสมผสานระหว่างกาแฟกับสิ่งใด?",
+            choices: ["ก. ชาเขียวมัทฉะ", "ข. น้ำผึ้งและมะนาว", "ค. ซอสช็อกโกแลตหรือผงโกโก้", "ง. น้ำผลไม้"],
+            correct: 2,
+            explanation: "มอคค่าคือการนำเอสเพรสโซ่มาผสมกับซอสช็อกโกแลตหรือผงโกโก้ และเติมนมร้อนลงไป ทำให้ได้รสชาติที่หอมหวานกลมกล่อมของทั้งกาแฟและช็อกโกแลต"
+        },
+        {
+            question: "โดยทั่วไป เอสเพรสโซ่ 1 ช็อต (Single Shot) จะมีปริมาตรน้ำกาแฟประมาณเท่าใด?",
+            choices: ["ก. 10 - 15 ml", "ข. 30 ml", "ค. 60 ml", "ง. 100 ml"],
+            correct: 1,
+            explanation: "มาตรฐานของเอสเพรสโซ่ 1 ช็อต (Single Shot) จะสกัดน้ำกาแฟออกมาปริมาตร 1 ออนซ์ หรือประมาณ 30 มิลลิลิตร (หาก 2 ช็อต หรือ Double Shot คือ 60 ml)"
+        },
+        {
+            question: "ลำดับการเทส่วนผสมของเมนู คาราเมลมัคคิอาโต้ แตกต่างจากลาเต้อย่างไร?",
+            choices: ["ก. เทกาแฟก่อน แล้วตามด้วยนมร้อน", "ข. เทนมและฟองนมลงแก้วก่อน แล้วค่อยเทกาแฟเอสเพรสโซ่ลงไปตรงกลาง", "ค. เททุกอย่างรวมกันแล้วคนให้เข้ากันก่อนเสิร์ฟ", "ง. เทซอสคาราเมลก้นแก้วแล้วตามด้วยน้ำร้อน"],
+            correct: 1,
+            explanation: "คำว่า มัคคิอาโต้ (Macchiato) แปลว่า 'การทำสัญลักษณ์' หรือ 'รอยด่าง' วิธีทำคือเทนมและฟองนมเตรียมไว้ในแก้วก่อน แล้วเทช็อตเอสเพรสโซ่ทะลุฟองนมลงไปให้เกิดเป็นรอยด่างตรงกลาง"
+        },
+        {
+            question: "กลิ่นไซรัป (น้ำเชื่อม) ชนิดใดที่เป็นส่วนประกอบพื้นฐานซ่อนอยู่ในนมของเมนู คาราเมลมัคคิอาโต้?",
+            choices: ["ก. ไซรัปสตรอว์เบอร์รี", "ข. ไซรัปมินต์", "ค. ไซรัปวานิลลา", "ง. ไซรัปกล้วย"],
+            correct: 2,
+            explanation: "แม้ชื่อจะเป็นคาราเมล แต่สูตรดั้งเดิมจะผสม 'ไซรัปวานิลลา' ลงไปในนมสดเพื่อให้ความหอมหวานนุ่มนวล ส่วนคาราเมลจะใช้ราดตบท้ายบนฟองนมเท่านั้น"
+        },
+        {
+            question: "ข้อใดคือความแตกต่างหลักที่สังเกตได้ง่ายที่สุดระหว่าง ลาเต้ร้อน กับ คาปูชิโน่ร้อน?",
+            choices: ["ก. อุณหภูมิของกาแฟ (คาปูชิโน่จะเย็นกว่า)", "ข. ความหนาของชั้นฟองนมด้านบน", "ค. ขนาดของแก้วที่ใช้เสิร์ฟ", "ง. ชนิดของเมล็ดกาแฟที่ใช้"],
+            correct: 1,
+            explanation: "ความหนาของฟองนมคือจุดสังเกต ลาเต้จะมีฟองนมบางๆ (เน้นปริมาณน้ำนม) ส่วนคาปูชิโน่จะมีฟองนมหนาฟูเป็นโดมอย่างชัดเจน (ประมาณ 1 ซม. ขึ้นไป)"
+        },
+        {
+            question: "ขั้นตอนสุดท้ายในการตกแต่งหน้าตาของเมนู คาราเมลมัคคิอาโต้ คืออะไร?",
+            choices: ["ก. โรยผงซินนามอน (อบเชย)", "ข. โรยช็อกโกแลตชิพ", "ค. ราดซอสคาราเมลเป็นลายตาข่ายบนฟองนม", "ง. บีบวิปครีมให้พูน"],
+            correct: 2,
+            explanation: "ขั้นตอนสุดท้ายที่เป็นเอกลักษณ์คือการนำซอสคาราเมล (Caramel Sauce) มาราดทับบนฟองนมเป็นรูปตารางตาข่าย (Crosshatch pattern) เพื่อความสวยงามและเพิ่มรสหวาน"
+        }
+    ];
+
+    let currentQuestionIndex = 0;
+    let score = 0;
+
+    const screens = document.querySelectorAll('.screen');
+    const feedbackSection = document.getElementById('feedback-section');
+    const feedbackText = document.getElementById('feedback-text');
+    const questionSection = document.getElementById('question-section');
+    const choicesContainer = document.getElementById('choices-container');
+    const summarySection = document.getElementById('summary-section');
+    const summaryBox = document.getElementById('summary-box');
+
+    function switchScreen(screenId, focusId) {
+        screens.forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        if (focusId) {
+            setTimeout(() => document.getElementById(focusId).focus(), 100);
+        }
+    }
+
+    function startGame() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        currentQuestionIndex = 0;
+        score = 0;
+        
+        stopAllSounds();
+        playSound('back', true);
+
+        feedbackSection.style.display = 'none';
+        summarySection.style.display = 'none';
+        questionSection.style.display = 'block';
+
+        renderQuestion();
+        switchScreen('game-screen', 'question-heading');
+    }
+
+    function renderQuestion() {
+        const qData = quizData[currentQuestionIndex];
+        document.getElementById('question-heading').innerText = `ข้อที่ ${currentQuestionIndex + 1}`;
+        document.getElementById('question-text').innerHTML = `<strong>คำถาม:</strong> ${qData.question}`;
+        
+        choicesContainer.innerHTML = '';
+        qData.choices.forEach((choice, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'choice-btn';
+            btn.innerText = choice;
+            btn.onclick = () => handleAnswer(index);
+            choicesContainer.appendChild(btn);
+        });
+    }
+
+    function handleAnswer(selectedIndex) {
+        const qData = quizData[currentQuestionIndex];
+        const isCorrect = (selectedIndex === qData.correct);
+        
+        stopSound('t'); // หยุดเสียง t.mp3 ทันทีถ้าตอบข้อต่อไปเร็ว
+
+        if (isCorrect) {
+            score++;
+            playSound('t');
+            feedbackText.innerHTML = `<strong>เฉลย:</strong> ${qData.explanation}`;
+            feedbackSection.style.display = 'block';
+
+            if (currentQuestionIndex >= quizData.length - 1) {
+                // ข้อสุดท้าย
+                const tSource = sources['t'];
+                if (tSource) {
+                    tSource.onended = () => {
+                        stopSound('back');
+                        playSound('win');
+                    };
+                } else {
+                    stopSound('back');
+                    playSound('win');
+                }
+                
+                questionSection.style.display = 'none';
+                summarySection.style.display = 'block';
+                document.getElementById('summary-heading').innerHTML = `<span class="text-correct">ยินดีด้วย ตะวัน!</span>`;
+                summaryBox.innerHTML = `<p>คุณตอบผ่านครบ 20 ข้อ! ร้าน "Blind Brewer" พร้อมเปิดแล้ว!</p><strong>คะแนน: ${score} / 20</strong>`;
+                switchScreen('game-screen', 'summary-heading');
+            } else {
+                currentQuestionIndex++;
+                renderQuestion();
+                setTimeout(() => document.getElementById('feedback-heading').focus(), 100);
+            }
+        } else {
+            stopSound('back');
+            playSound('lost');
+            document.body.classList.add('shake-screen');
+            setTimeout(() => document.body.classList.remove('shake-screen'), 300);
+            
+            feedbackSection.style.display = 'none';
+            questionSection.style.display = 'none';
+            summarySection.style.display = 'block';
+            document.getElementById('summary-heading').innerHTML = `<span class="text-wrong">พลาดซะแล้ว!</span>`;
+            summaryBox.innerHTML = `<p>ทบทวนความรู้แล้วกลับมาใหม่นะ!</p><strong>คะแนน: ${score} / 20</strong>`;
+            switchScreen('game-screen', 'summary-heading');
+        }
+    }
+
+    function resetGame() {
+        stopAllSounds();
+        switchScreen('start-screen', 'start-heading');
+    }
+
+    function exitToCommunity() {
+        stopAllSounds();
+        window.location.href = '../index.html';
+    }
+</script>
+
+</body>
+</html>
