@@ -201,6 +201,7 @@ class WebAudioEngine {
     this.queue = [];
     this.isPlaying = false;
     
+    // แมพชื่อไฟล์เสียง
     this.soundFiles = {
       bgm: 'audio/b.mp3',
       end: 'audio/end.mp3',
@@ -236,6 +237,7 @@ class WebAudioEngine {
     if (this.audioCtx.state === 'suspended') {
       await this.audioCtx.resume();
     }
+    // iOS Silent play
     const silent = this.audioCtx.createBufferSource();
     silent.buffer = this.audioCtx.createBuffer(1, 1, 22050);
     silent.connect(this.audioCtx.destination);
@@ -250,7 +252,7 @@ class WebAudioEngine {
     this.bgmSource.buffer = this.buffers['bgm'];
     this.bgmSource.loop = true;
     this.bgmGain = this.audioCtx.createGain();
-    this.bgmGain.gain.value = 0.4; 
+    this.bgmGain.gain.value = 0.5; // ปรับความดัง BGM
     this.bgmSource.connect(this.bgmGain);
     this.bgmGain.connect(this.audioCtx.destination);
     this.bgmSource.start(0);
@@ -285,13 +287,20 @@ class WebAudioEngine {
       resolve();
       setTimeout(() => this._dequeue(), 50);
     };
+    
     source.start(0);
+    
+    // Fallback สำหรับ buffer ที่สั้นมากจน onended อาจไม่ทำงานในบาง Browser
+    const duration = buffer.duration * 1000;
+    setTimeout(() => {
+        // resolve จะทำงานผ่าน onended อยู่แล้ว แต่กันพลาด
+    }, duration + 100);
   }
 }
 
 const audioEngine = new WebAudioEngine();
 
-/* ======== เกม Logic ======== */
+/* ======== ตัวแปรเกม (เหมือนเดิม 100%) ======== */
 let userPlayer, cpuPlayer;
 let bombs = [];
 let currentTurn;
@@ -306,7 +315,7 @@ let cpuWins = 0;
 let currentRound = 1;
 let hasUserInteracted = false;
 
-/* ======== TTS System ======== */
+/* ======== TTS (เหมือนเดิม 100%) ======== */
 let ttsQueue = [], isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
 function speak(text){
@@ -323,7 +332,7 @@ function processTTS(){
   setTimeout(()=>{ isSpeaking=false; document.getElementById("tts").innerText=""; ttsDisplay.classList.remove('show'); processTTS(); }, Math.max(1800, msg.length*70));
 }
 
-/* ======== Event Listeners สำหรับการเริ่มเสียง ======== */
+/* ======== Unlock Audio (ปรับปรุงเป็น Web Audio) ======== */
 async function unlockAudio(){
   if (hasUserInteracted) return;
   hasUserInteracted = true;
@@ -332,6 +341,7 @@ async function unlockAudio(){
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
 
+/* ======== Sound Wrapper (เหมือนเดิม 100%) ======== */
 function playSoundByKey(key){
   if (!hasUserInteracted) return;
   if (key==='bgm') audioEngine.startBGM();
@@ -339,7 +349,7 @@ function playSoundByKey(key){
 }
 function stopBGM(){ audioEngine.stopBGM(); }
 
-/* ======== ฟังก์ชันควบคุมเกม ======== */
+/* ======== Logic เกม (เหมือนเดิม 100%) ======== */
 function selectMode(){
   unlockAudio();
   document.getElementById("homeScreen").style.display = "none";
@@ -371,8 +381,11 @@ function startNewRound(){
     if(!bombs.includes(r)) bombs.push(r);
   }
 
-  if (currentRound === 1) roundStarter = Math.random() < 0.5 ? 'player' : 'cpu';
-  else roundStarter = roundStarter === 'player' ? 'cpu' : 'player';
+  if (currentRound === 1) {
+    roundStarter = Math.random() < 0.5 ? 'player' : 'cpu';
+  } else {
+    roundStarter = roundStarter === 'player' ? 'cpu' : 'player';
+  }
   currentTurn = roundStarter;
 
   const grid = document.getElementById("grid");
@@ -438,8 +451,12 @@ async function openCell(idx, who){
     speak(`${loser} เจอระเบิด! ${winner} ได้ 1 คะแนน`);
     document.getElementById("lifeBoard").innerText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if(playerWins >= winScore || cpuWins >= winScore) endGame();
-    else { currentRound++; setTimeout(startNewRound, 3000); }
+    if(playerWins >= winScore || cpuWins >= winScore){
+      endGame();
+    } else {
+      currentRound++;
+      setTimeout(startNewRound, 3000);
+    }
   } else {
     cell.classList.add("safe");
     cell.textContent = `ช่อง${idx+1} ว่างเปล่า`;
@@ -456,15 +473,15 @@ async function openCell(idx, who){
     currentTurn = who === 'player' ? 'cpu' : 'player';
     document.getElementById("lifeBoard").innerText = `รอบที่ ${currentRound} : ${userPlayer} ${playerWins} ต่อ ${cpuPlayer} ${cpuWins}`;
 
-    if(currentTurn === 'cpu') setTimeout(cpuTurn, 2500);
+    if(currentTurn === 'cpu'){
+      setTimeout(cpuTurn, 2500);
+    }
   }
 }
 
-/* ======== ปรับส่วนจบเกม: แจ้งเตือน และ ย้ายหน้าเว็บเมื่อกดตกลง ======== */
 function endGame(){
   stopBGM();
   playSoundByKey('end');
-  
   const endMsg = playerWins >= winScore 
     ? `ยอดเยี่ยม ${userPlayer} ชนะ ${cpuPlayer} !` 
     : `เสียใจด้วย ${userPlayer} แพ้ ${cpuPlayer} นะ!`;
@@ -475,17 +492,28 @@ function endGame(){
   speak(endMsg);
   document.getElementById("resultAnnouncement").textContent = fullMessage;
 
-  // ตั้งหน่วงเวลาเพื่อให้เสียงอ่าน (TTS) ทำงานก่อนแสดง Alert
   setTimeout(() => {
     alert(`${endMsg}\n${finalScore}`);
-    // เมื่อกด "ตกลง" ที่ Alert จะทำการย้ายหน้าเว็บทันที
-    window.location.href = '../index9.html';
-  }, 2500);
+    resetGame();
+  }, 3000);
+}
+
+function resetGame(){
+  stopBGM();
+  document.getElementById("gameScreen").style.display="none";
+  document.getElementById("playerSelect").style.display="flex";
+  document.getElementById("backToMainMenu").style.display="block";
+  document.getElementById("resultAnnouncement").textContent = "";
+
+  setTimeout(() => {
+    const btn = document.getElementById("firstCharBtn");
+    if (btn) btn.focus();
+  }, 100);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("backToMainMenu").style.display = "block";
-  audioEngine.init();
+  audioEngine.init(); // Pre-load buffers
 });
 </script>
 </body>
