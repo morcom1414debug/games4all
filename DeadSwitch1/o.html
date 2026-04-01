@@ -29,7 +29,6 @@
 <body>
 
 <button id="backToMainMenu" onclick="location.href='../index.html'">กลับเมนูหลัก</button>
-
 <div aria-live="polite" aria-atomic="true" class="sr-only" id="ariaAnnouncer"></div>
 
 <div id="lobby">
@@ -77,14 +76,14 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const GAME_ID = "dead_switch_v1";
 
-// ==================== Web Audio Engine ====================
+// ==================== Web Audio Engine (Stable Version) ====================
 class WebAudioEngine {
   constructor() {
     this.audioCtx = null;
     this.buffers = {};
     this.isUnlocked = false;
-    this.queue = [];
     this.bgmSource = null;
+    this.lastPlayed = {}; // ป้องกันเสียงเดียวกันดังซ้อนกันในเสี้ยววินาที
   }
   async init() {
     if (this.audioCtx) return;
@@ -95,7 +94,7 @@ class WebAudioEngine {
         const res = await fetch(`audio/${f}`);
         const buf = await this.audioCtx.decodeAudioData(await res.arrayBuffer());
         this.buffers[f.replace('.mp3', '')] = buf;
-      } catch(e) { console.error("Audio error:", f); }
+      } catch(e) { console.warn("Audio Load Fail:", f); }
     });
     await Promise.all(loadPromises);
   }
@@ -103,34 +102,33 @@ class WebAudioEngine {
     if (this.isUnlocked) return;
     await this.init();
     if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
-    const s = this.audioCtx.createBufferSource();
-    s.buffer = this.audioCtx.createBuffer(1, 1, 22050);
-    s.connect(this.audioCtx.destination);
-    s.start(0);
     this.isUnlocked = true;
-    this._processQueue();
   }
   async startBGM() {
-    if (!this.isUnlocked) await this.unlock();
+    await this.unlock();
     if (this.bgmSource) this.stopBGM();
     const b = this.buffers['bgm']; if (!b) return;
     const s = this.audioCtx.createBufferSource();
     s.buffer = b; s.loop = true;
     const g = this.audioCtx.createGain();
+    g.gain.value = 0.4; // ลดระดับเสียง BGM เล็กน้อยเพื่อความนุ่มนวล
     s.connect(g); g.connect(this.audioCtx.destination);
     s.start(0); this.bgmSource = s;
   }
   stopBGM() { if (this.bgmSource) { try { this.bgmSource.stop(); } catch(e){} this.bgmSource = null; } }
-  async playEffect(k) {
-    if (!this.isUnlocked) { this.queue.push(k); return; }
-    const b = this.buffers[k]; if (!b) return;
+  playEffect(k) {
+    if (!this.isUnlocked || !this.buffers[k]) return;
+    const now = Date.now();
+    // ป้องกันปัญหาเสียงเดิมดังซ้ำกันเอง (Debounce)
+    if (this.lastPlayed[k] && now - this.lastPlayed[k] < 150) return;
+    this.lastPlayed[k] = now;
+
     const s = this.audioCtx.createBufferSource();
-    s.buffer = b; s.connect(this.audioCtx.destination); s.start(0);
-  }
-  async _processQueue() {
-    if (!this.queue.length) return;
-    const sounds = [...this.queue]; this.queue = [];
-    for (const k of sounds) { this.playEffect(k); }
+    s.buffer = this.buffers[k];
+    const g = this.audioCtx.createGain();
+    g.gain.value = 0.8; // ปรับความดัง Effect ให้พอดี
+    s.connect(g); g.connect(this.audioCtx.destination);
+    s.start(0);
   }
 }
 
@@ -139,7 +137,7 @@ let hasUserInteracted = false;
 function unlockAudio() {
   if (hasUserInteracted) return;
   hasUserInteracted = true;
-  audio.unlock(); // ทำงานแบบ Background ไม่ใช้ await ขวาง
+  audio.unlock().catch(console.error); 
 }
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
@@ -163,8 +161,9 @@ async function playSound(f) {
 function startSoundListener() {
   if (soundListener) soundListener.off();
   soundListener = db.ref(`games/${GAME_ID}/rooms/${roomId}/sound`);
-  soundListener.on("value", async s => {
-    const d = s.val(); if (!d || Date.now() - d.time > 2000 || d.time <= lastSoundTimestamp) return;
+  soundListener.on("value", s => {
+    const d = s.val(); 
+    if (!d || Date.now() - d.time > 2000 || d.time <= lastSoundTimestamp) return;
     lastSoundTimestamp = d.time;
     audio.playEffect(d.file.replace(".mp3", ""));
   });
@@ -176,10 +175,9 @@ document.addEventListener("DOMContentLoaded", () => {
   loadRooms();
 });
 
-// ฟังก์ชันสร้างห้องแบบ One-Click Fix
+// One-Click Create Room Fix
 document.getElementById("createRoomBtn").onclick = () => {
-  unlockAudio(); // เรียกปลดล็อคเสียงทันที
-  
+  unlockAudio();
   const countRef = db.ref(`games/${GAME_ID}/roomCount`);
   countRef.transaction((current) => (current || 0) + 1, async (err, comm, snap) => {
     if (comm) {
@@ -203,7 +201,7 @@ async function joinRoom(id) {
   roomId = id; myRole = "Guest";
   await db.ref(`games/${GAME_ID}/rooms/${roomId}/players/${playerId}`).set("Guest");
   db.ref(`games/${GAME_ID}/rooms/${roomId}/players/${playerId}`).onDisconnect().remove();
-  setTimeout(() => { playSound("friend.mp3"); }, 300);
+  setTimeout(() => { playSound("friend.mp3"); }, 400);
   showRoom();
 }
 
