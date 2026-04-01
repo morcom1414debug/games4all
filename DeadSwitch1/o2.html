@@ -84,6 +84,8 @@ class WebAudioEngine {
     this.buffers = {};
     this.isUnlocked = false;
     this.queue = [];
+    this.lastPlayedSound = null;
+    this.lastPlayedTime = 0;
     this.bgmSource = null;
   }
   async init() {
@@ -91,39 +93,36 @@ class WebAudioEngine {
     this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const soundFiles = ['bgm.mp3','end.mp3','t3.mp3','t2.mp3','f3.mp3','f2.mp3','s3.mp3','s4.mp3','friend.mp3'];
     const loadPromises = soundFiles.map(async f => {
-      try {
-        const res = await fetch(`audio/${f}`);
-        const buf = await this.audioCtx.decodeAudioData(await res.arrayBuffer());
-        this.buffers[f.replace('.mp3', '')] = buf;
-      } catch(e) { console.error("Load sound error:", f); }
+      const res = await fetch(`audio/${f}`);
+      const buf = await this.audioCtx.decodeAudioData(await res.arrayBuffer());
+      this.buffers[f.replace('.mp3', '')] = buf;
     });
     await Promise.all(loadPromises);
   }
   async unlock() {
     if (this.isUnlocked) return;
     await this.init();
-    if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
     const s = this.audioCtx.createBufferSource();
     s.buffer = this.audioCtx.createBuffer(1, 1, 22050);
     s.connect(this.audioCtx.destination);
     s.start(0);
     this.isUnlocked = true;
-    this._processQueue();
   }
   async startBGM() {
     if (!this.isUnlocked) await this.unlock();
     if (this.bgmSource) this.stopBGM();
     const s = this.audioCtx.createBufferSource();
-    s.buffer = this.buffers['bgm']; 
-    if (!s.buffer) return;
-    s.loop = true;
+    s.buffer = this.buffers['bgm']; s.loop = true;
     const g = this.audioCtx.createGain();
     s.connect(g); g.connect(this.audioCtx.destination);
     s.start(0); this.bgmSource = s;
   }
-  stopBGM() { if (this.bgmSource) { try { this.bgmSource.stop(); } catch(e){} this.bgmSource = null; } }
+  stopBGM() { if (this.bgmSource) { this.bgmSource.stop(); this.bgmSource = null; } }
   async playEffect(k) {
     if (!this.isUnlocked) { this.queue.push(k); return; }
+    const now = Date.now();
+    if (this.lastPlayedSound === k && now - this.lastPlayedTime < 500) return;
+    this.lastPlayedSound = k; this.lastPlayedTime = now;
     const b = this.buffers[k]; if (!b) return;
     const s = this.audioCtx.createBufferSource();
     s.buffer = b; s.connect(this.audioCtx.destination); s.start(0);
@@ -131,7 +130,7 @@ class WebAudioEngine {
   async _processQueue() {
     if (!this.queue.length) return;
     const sounds = [...this.queue]; this.queue = [];
-    for (const k of sounds) { this.playEffect(k); }
+    for (const k of sounds) { await this.playEffect(k); await new Promise(r => setTimeout(r, 100)); }
   }
 }
 
@@ -140,12 +139,14 @@ let hasUserInteracted = false;
 async function unlockAudio() {
   if (hasUserInteracted) return;
   hasUserInteracted = true;
-  audio.unlock(); // สั่งแบบ Background
+  await audio.unlock();
+  audio._processQueue();
+  if (roomId) audio.startBGM();
 }
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
 
-// ==================== Gameplay Logic ====================
+// ==================== Logic ====================
 let roomId = "", playerId = Math.random().toString(36).substr(2,9);
 let isHost = false, myRole = "";
 let currentRoomListener = null, soundListener = null, lobbyListener = null;
@@ -167,7 +168,7 @@ function startSoundListener() {
   soundListener.on("value", async s => {
     const d = s.val(); if (!d || Date.now() - d.time > 2000 || d.time <= lastSoundTimestamp) return;
     lastSoundTimestamp = d.time;
-    audio.playEffect(d.file.replace(".mp3", ""));
+    if (audio.isUnlocked) await audio.playEffect(d.file.replace(".mp3", ""));
   });
 }
 
@@ -177,9 +178,9 @@ document.addEventListener("DOMContentLoaded", () => {
   loadRooms();
 });
 
-// แก้ไขฟังก์ชันสร้างห้อง: ตัด await ออกเพื่อความเร็วบน Windows
-document.getElementById("createRoomBtn").onclick = () => {
-  unlockAudio(); // เรียกใช้แต่ไม่ต้องรอโหลดจนจบ
+// ฟังก์ชันสร้างห้องแบบ Auto-Naming (อ้างอิงจาก Tank Assassin)
+document.getElementById("createRoomBtn").onclick = async () => {
+  await unlockAudio();
   
   const countRef = db.ref(`games/${GAME_ID}/roomCount`);
   countRef.transaction((current) => (current || 0) + 1, async (err, comm, snap) => {
@@ -197,14 +198,14 @@ document.getElementById("createRoomBtn").onclick = () => {
 };
 
 async function joinRoom(id) {
-  unlockAudio();
+  await unlockAudio();
   const snap = await db.ref(`games/${GAME_ID}/rooms/${id}`).once("value");
   const room = snap.val();
   if (!room || room.status !== "waiting" || Object.keys(room.players || {}).length >= 2) return;
   roomId = id; myRole = "Guest";
   await db.ref(`games/${GAME_ID}/rooms/${roomId}/players/${playerId}`).set("Guest");
   db.ref(`games/${GAME_ID}/rooms/${roomId}/players/${playerId}`).onDisconnect().remove();
-  setTimeout(() => { playSound("friend.mp3"); }, 300);
+  setTimeout(() => { if (audio.isUnlocked) playSound("friend.mp3"); }, 300);
   showRoom();
 }
 
@@ -229,13 +230,11 @@ function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
   document.getElementById("backToMainMenu").style.display = "none";
-  startSoundListener(); 
-  audio.startBGM();
-  
+  startSoundListener(); audio.startBGM();
   if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`games/${GAME_ID}/rooms/${roomId}`);
   currentRoomListener.on("value", snap => {
-    const r = snap.val(); if (!r) return;
+    const r = snap.val(); if (!r) return location.reload();
     document.getElementById("roomName").textContent = `ห้อง: ${r.name}`;
     document.getElementById("playerList").innerHTML = Object.values(r.players || {}).map(p => `<li>${p}</li>`).join("");
     if (Object.keys(r.players || {}).length === 2) {
@@ -287,7 +286,7 @@ function createBoard() {
   const g = document.getElementById("grid"); g.innerHTML = "";
   for (let i = 0; i < 16; i++) {
     const c = document.createElement("button"); c.className = "cell"; c.textContent = `ช่อง ${i+1}`;
-    c.onclick = () => { unlockAudio(); playerClick(i); };
+    c.onclick = async () => { await unlockAudio(); playerClick(i); };
     g.appendChild(c);
   }
 }
@@ -319,7 +318,7 @@ function showResult(r) {
   document.getElementById("resultTitle").textContent = `${winner} ชนะ!`;
   document.getElementById("resultMessage").textContent = h > g ? `Host ชนะ ${h}-${g}` : `Guest ชนะ ${g}-${h}`;
   setTimeout(() => announce(`${winner} ชนะ!`), 500);
-  document.getElementById("okButton").onclick = () => { unlockAudio(); audio.playEffect("end"); setTimeout(() => location.href = "../index.html", 1500); };
+  document.getElementById("okButton").onclick = async () => { await unlockAudio(); await audio.playEffect("end"); setTimeout(() => location.href = "../index.html", 2000); };
 }
 </script>
 </body>
