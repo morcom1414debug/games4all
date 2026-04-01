@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>กดติด...ตาย : Dead switch</title>
 <style>
-/* --- ส่วนที่คงเดิม 100% --- */
 body { 
   font-family: Tahoma, sans-serif; 
   background:#111; 
@@ -50,7 +49,6 @@ body {
   color:#ffff00;
   text-shadow: 3px 3px 6px #000;
   min-width:500px;
-  transition: all 0.3s ease; /* เพิ่ม transition */
 }
 
 #grid-container {
@@ -60,7 +58,6 @@ body {
   background: #000;
   border-radius: 20px;
   box-shadow: 0 0 30px rgba(255,255,0,0.6);
-  transition: transform 0.3s ease; /* เพิ่ม transition */
 }
 
 #grid {
@@ -80,7 +77,7 @@ body {
   border-radius: 15px;
   box-shadow: 0 8px 20px rgba(0,0,0,0.7);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* ปรับความลื่นไหล */
+  transition: all 0.2s;
   font-weight: bold;
   font-size: 32px;
   color: #000;
@@ -94,23 +91,6 @@ body {
 }
 .cell:active { transform: scale(0.95); }
 
-/* --- เพิ่ม Animation เฉพาะส่วนการมองเห็น --- */
-@keyframes shake {
-  0% { transform: translate(1px, 1px) rotate(0deg); }
-  20% { transform: translate(-3px, 0px) rotate(1deg); }
-  40% { transform: translate(3px, 2px) rotate(-1deg); }
-  100% { transform: translate(0, 0) rotate(0deg); }
-}
-.shake { animation: shake 0.5s ease-in-out; }
-
-@keyframes pop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.15); }
-  100% { transform: scale(1); }
-}
-.pop-effect { animation: pop 0.4s ease-out; }
-
-/* คง Style เดิมไว้ 100% */
 .cell.safe { 
   background: #00ff00 !important; 
   color: white; 
@@ -210,7 +190,7 @@ body {
 <div id="resultAnnouncement" aria-live="assertive" role="alert"></div>
 
 <script>
-/* ======== Web Audio API Engine (คงเดิม 100%) ======== */
+/* ======== Web Audio API Engine ======== */
 class WebAudioEngine {
   constructor() {
     this.audioCtx = null;
@@ -311,7 +291,7 @@ class WebAudioEngine {
 
 const audioEngine = new WebAudioEngine();
 
-/* ======== เกม Logic (คงเดิม 100%) ======== */
+/* ======== เกม Logic ======== */
 let userPlayer, cpuPlayer;
 let bombs = [];
 let currentTurn;
@@ -326,7 +306,7 @@ let cpuWins = 0;
 let currentRound = 1;
 let hasUserInteracted = false;
 
-/* ======== TTS System (คงเดิม 100%) ======== */
+/* ======== TTS System ======== */
 let ttsQueue = [], isSpeaking = false;
 const ttsDisplay = document.getElementById("ttsDisplay");
 function speak(text){
@@ -343,7 +323,7 @@ function processTTS(){
   setTimeout(()=>{ isSpeaking=false; document.getElementById("tts").innerText=""; ttsDisplay.classList.remove('show'); processTTS(); }, Math.max(1800, msg.length*70));
 }
 
-/* ======== Event Listeners (คงเดิม 100%) ======== */
+/* ======== Event Listeners สำหรับการเริ่มเสียง ======== */
 async function unlockAudio(){
   if (hasUserInteracted) return;
   hasUserInteracted = true;
@@ -359,7 +339,7 @@ function playSoundByKey(key){
 }
 function stopBGM(){ audioEngine.stopBGM(); }
 
-/* ======== ฟังก์ชันควบคุมเกม (คงเดิม 100%) ======== */
+/* ======== ฟังก์ชันควบคุมเกม ======== */
 function selectMode(){
   unlockAudio();
   document.getElementById("homeScreen").style.display = "none";
@@ -445,11 +425,7 @@ async function openCell(idx, who){
 
   const isBomb = bombs.includes(idx);
   if(isBomb){
-    /* --- เพิ่มเฉพาะ Visual Effect --- */
-    cell.classList.add("boom", "pop-effect");
-    document.getElementById("grid-container").classList.add("shake");
-    setTimeout(() => document.getElementById("grid-container").classList.remove("shake"), 500);
-    
+    cell.classList.add("boom");
     cell.textContent = "ระเบิด!";
     cell.setAttribute("aria-label", `ช่อง ${idx+1} ระเบิด`);
 
@@ -465,9 +441,7 @@ async function openCell(idx, who){
     if(playerWins >= winScore || cpuWins >= winScore) endGame();
     else { currentRound++; setTimeout(startNewRound, 3000); }
   } else {
-    /* --- เพิ่มเฉพาะ Visual Effect --- */
-    cell.classList.add("safe", "pop-effect");
-    
+    cell.classList.add("safe");
     cell.textContent = `ช่อง${idx+1} ว่างเปล่า`;
     cell.setAttribute("aria-label", `ช่อง ${idx+1} ว่างเปล่า`);
 
@@ -486,7 +460,7 @@ async function openCell(idx, who){
   }
 }
 
-/* ======== endGame (คงเดิม 100%) ======== */
+/* ======== ปรับส่วนจบเกม: แจ้งเตือน และ ย้ายหน้าเว็บเมื่อกดตกลง ======== */
 function endGame(){
   stopBGM();
   playSoundByKey('end');
@@ -501,8 +475,10 @@ function endGame(){
   speak(endMsg);
   document.getElementById("resultAnnouncement").textContent = fullMessage;
 
+  // ตั้งหน่วงเวลาเพื่อให้เสียงอ่าน (TTS) ทำงานก่อนแสดง Alert
   setTimeout(() => {
     alert(`${endMsg}\n${finalScore}`);
+    // เมื่อกด "ตกลง" ที่ Alert จะทำการย้ายหน้าเว็บทันที
     window.location.href = '../index9.html';
   }, 2500);
 }
