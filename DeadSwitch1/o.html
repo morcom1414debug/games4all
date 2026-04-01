@@ -95,7 +95,7 @@ class WebAudioEngine {
         const res = await fetch(`audio/${f}`);
         const buf = await this.audioCtx.decodeAudioData(await res.arrayBuffer());
         this.buffers[f.replace('.mp3', '')] = buf;
-      } catch(e) { console.error("Load sound error:", f); }
+      } catch(e) { console.error("Audio error:", f); }
     });
     await Promise.all(loadPromises);
   }
@@ -113,10 +113,9 @@ class WebAudioEngine {
   async startBGM() {
     if (!this.isUnlocked) await this.unlock();
     if (this.bgmSource) this.stopBGM();
+    const b = this.buffers['bgm']; if (!b) return;
     const s = this.audioCtx.createBufferSource();
-    s.buffer = this.buffers['bgm']; 
-    if (!s.buffer) return;
-    s.loop = true;
+    s.buffer = b; s.loop = true;
     const g = this.audioCtx.createGain();
     s.connect(g); g.connect(this.audioCtx.destination);
     s.start(0); this.bgmSource = s;
@@ -137,10 +136,10 @@ class WebAudioEngine {
 
 const audio = new WebAudioEngine();
 let hasUserInteracted = false;
-async function unlockAudio() {
+function unlockAudio() {
   if (hasUserInteracted) return;
   hasUserInteracted = true;
-  audio.unlock(); // สั่งแบบ Background
+  audio.unlock(); // ทำงานแบบ Background ไม่ใช้ await ขวาง
 }
 document.addEventListener("touchstart", unlockAudio, {once:true, passive:true});
 document.addEventListener("click", unlockAudio, {once:true});
@@ -177,9 +176,9 @@ document.addEventListener("DOMContentLoaded", () => {
   loadRooms();
 });
 
-// แก้ไขฟังก์ชันสร้างห้อง: ตัด await ออกเพื่อความเร็วบน Windows
+// ฟังก์ชันสร้างห้องแบบ One-Click Fix
 document.getElementById("createRoomBtn").onclick = () => {
-  unlockAudio(); // เรียกใช้แต่ไม่ต้องรอโหลดจนจบ
+  unlockAudio(); // เรียกปลดล็อคเสียงทันที
   
   const countRef = db.ref(`games/${GAME_ID}/roomCount`);
   countRef.transaction((current) => (current || 0) + 1, async (err, comm, snap) => {
@@ -229,9 +228,7 @@ function showRoom() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("room").style.display = "block";
   document.getElementById("backToMainMenu").style.display = "none";
-  startSoundListener(); 
-  audio.startBGM();
-  
+  startSoundListener(); audio.startBGM();
   if (currentRoomListener) currentRoomListener.off();
   currentRoomListener = db.ref(`games/${GAME_ID}/rooms/${roomId}`);
   currentRoomListener.on("value", snap => {
