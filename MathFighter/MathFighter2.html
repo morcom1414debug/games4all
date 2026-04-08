@@ -58,7 +58,7 @@
             -webkit-text-fill-color: transparent;
             filter: drop-shadow(5px 5px 0px #000);
             margin-bottom: 20px;
-            outline: none;
+            outline: none; /* ลบเส้น focus สำหรับ heading เพื่อความสวยงามแต่ยังคง focus ได้ */
         }
 
         .btn-start {
@@ -74,7 +74,7 @@
 
         .btn-start:hover { transform: scale(1.1); background: #fff; }
 
-        /* Battle Arena */
+        /* ส่วนของ Battle */
         #battle-arena {
             display: none;
             padding: 20px;
@@ -121,11 +121,10 @@
             background-repeat: no-repeat;
             background-position: bottom;
             position: relative;
-            border-bottom: 10px solid #555;
         }
         
-        #player-char { border-bottom-color: var(--player-color); }
-        #bot-char { border-bottom-color: var(--bot-color); }
+        #player-char { border-bottom: 10px solid var(--player-color); }
+        #bot-char { border-bottom: 10px solid var(--bot-color); }
 
         #quiz-container {
             margin-top: 20px;
@@ -137,7 +136,6 @@
             margin-bottom: 20px;
             text-shadow: 2px 2px 4px #000;
             outline: none;
-            min-height: 2.5rem;
         }
 
         .options-grid {
@@ -158,13 +156,13 @@
             transition: all 0.2s;
         }
 
-        .option-btn:hover:not(:disabled) { background: rgba(255,255,255,0.3); border-color: #fff; }
-        .option-btn:disabled { cursor: default; opacity: 0.5; }
+        .option-btn:hover { background: rgba(255,255,255,0.3); border-color: #fff; }
 
         #timer-bar-bg {
             width: 100%;
+            height: 100%;
             background: #222;
-            margin-bottom: 10px;
+            margin-top: 10px;
             height: 8px;
         }
         #timer-fill { height: 100%; width: 100%; background: #ffcc00; transition: width 0.1s linear; }
@@ -201,7 +199,7 @@
 
     <div id="start-screen">
         <h1 class="title" id="main-title" tabindex="-1">Math Fighter</h1>
-        <p style="margin-bottom: 30px;">ตอบคำถามเพื่อกำจัดศัตรู! พลังชีวิตฝ่ายละ 1,000 หน่วย</p>
+        <p style="margin-bottom: 30px;">ศึกจ้าวนักคำนวณ ตอบคำถามเพื่อพิชิตบอท!</p>
         <button class="btn-start" onclick="startGame()">เริ่มต่อสู้</button>
     </div>
 
@@ -209,13 +207,17 @@
         <div class="hud">
             <div class="health-box">
                 <div class="name-label">Player (YOU)</div>
-                <div class="hp-bar-bg"><div id="player-hp-fill" class="hp-fill"></div></div>
-                <div id="player-hp-text" class="sr-only"></div>
+                <div class="hp-bar-bg">
+                    <div id="player-hp-fill" class="hp-fill"></div>
+                </div>
+                <div id="player-hp-text" class="sr-only">พลังชีวิต 1000</div>
             </div>
             <div class="health-box" style="text-align: right;">
                 <div class="name-label">CPU BOT</div>
-                <div class="hp-bar-bg" style="transform: skewX(20deg);"><div id="bot-hp-fill" class="hp-fill" style="margin-left: auto;"></div></div>
-                <div id="bot-hp-text" class="sr-only"></div>
+                <div class="hp-bar-bg" style="transform: skewX(20deg);">
+                    <div id="bot-hp-fill" class="hp-fill" style="margin-left: auto;"></div>
+                </div>
+                <div id="bot-hp-text" class="sr-only">พลังชีวิต 1000</div>
             </div>
         </div>
 
@@ -261,6 +263,7 @@ let currentQuestion = null;
 let timerInterval = null;
 let lastPlayerAtk = "", lastBotAtk = "";
 
+// สร้างคำถาม
 const questions = [];
 const operators = [
     { name: 'บวก', func: (a, b) => a + b },
@@ -278,6 +281,7 @@ for (let i = 0; i < 50; i++) {
     questions.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
 }
 
+// Focus หน้าแรกเมื่อโหลด
 window.onload = () => document.getElementById('main-title').focus();
 
 function playSound(name) {
@@ -301,8 +305,7 @@ function playBGM() {
 }
 
 function announce(msg) {
-    document.getElementById('sr-announcer').textContent = "";
-    setTimeout(() => { document.getElementById('sr-announcer').textContent = msg; }, 50);
+    document.getElementById('sr-announcer').textContent = msg;
 }
 
 function startGame() {
@@ -324,6 +327,9 @@ function nextQuestion() {
     const qEl = document.getElementById('question-text');
     qEl.textContent = currentQuestion.q;
     
+    // Focus ไปที่คำถามทันที
+    qEl.focus();
+
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
     [...currentQuestion.options].sort(() => Math.random() - 0.5).forEach(opt => {
@@ -334,13 +340,11 @@ function nextQuestion() {
         grid.appendChild(btn);
     });
 
-    // หน่วงเวลาการ Focus เล็กน้อยเพื่อให้ SR อ่านการโจมตีจบก่อนเริ่มข้อใหม่
-    setTimeout(() => { qEl.focus(); }, 100);
     startTimer();
 }
 
 function startTimer() {
-    let timeLeft = 7000;
+    let timeLeft = 7000; // ปรับเป็น 7 วินาที
     const bar = document.getElementById('timer-fill');
     clearInterval(timerInterval);
     timerInterval = setInterval(() => {
@@ -355,9 +359,6 @@ function startTimer() {
 
 function checkAnswer(sel) {
     clearInterval(timerInterval);
-    const btns = document.querySelectorAll('.option-btn');
-    btns.forEach(b => b.disabled = true); // ปิดการกดซ้ำระหว่างหน่วงเวลา
-
     const correct = sel === currentQuestion.a;
 
     if (correct) {
@@ -391,12 +392,8 @@ function checkAnswer(sel) {
     }
 
     updateUI();
-
-    // หน่วงเวลา 2 วินาทีก่อนไปข้อถัดไปหรือจบเกม
-    setTimeout(() => {
-        if (playerHP > 0 && botHP > 0) nextQuestion();
-        else endGame();
-    }, 2000);
+    if (playerHP > 0 && botHP > 0) setTimeout(nextQuestion, 1200);
+    else endGame();
 }
 
 function updateUI() {
@@ -421,24 +418,24 @@ function endGame() {
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
     
-    let endSound = botHP <= 0 ? 'win' : 'lost';
-    let endMsg = botHP <= 0 ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
-    let srMsg = botHP <= 0 ? "คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ" : "คุณพ่ายแพ้ พยายามใหม่ในรอบหน้านะครับ";
+    if (botHP <= 0) {
+        playSound('win');
+        qEl.innerHTML = "YOU WIN!<br>ยินดีด้วย คุณชนะแล้ว";
+        announce("คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ");
+    } else {
+        playSound('lost');
+        qEl.innerHTML = "GAME OVER<br>พยายามเข้า สู้ใหม่อีกครั้ง";
+        announce("คุณแพ้แล้ว แต่ไม่เป็นไร กลับมาสู้ใหม่นะ");
+    }
 
-    const finalSound = playSound(endSound);
-    announce(srMsg);
+    // Focus ไปที่สรุปผล (H2) ทันทีที่จบเกม
+    qEl.focus();
 
-    // รอให้เสียงจบก่อนค่อยแสดงปุ่มเล่นใหม่
-    finalSound.onended = () => {
-        qEl.innerHTML = endMsg;
-        qEl.focus();
-
-        const rb = document.createElement('button');
-        rb.className = 'btn-start';
-        rb.textContent = "เล่นอีกครั้ง";
-        rb.onclick = () => location.reload();
-        grid.appendChild(rb);
-    };
+    const rb = document.createElement('button');
+    rb.className = 'btn-start';
+    rb.textContent = "เล่นอีกครั้ง";
+    rb.onclick = () => location.reload();
+    grid.appendChild(rb);
 }
 </script>
 </body>
