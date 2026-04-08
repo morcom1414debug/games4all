@@ -178,6 +178,7 @@
         }
         #timer-fill { height: 100%; width: 100%; background: #ffcc00; transition: width 0.1s linear; }
 
+        /* Animations */
         @keyframes hit-shake {
             0% { transform: translateX(0); }
             25% { transform: translateX(10px); }
@@ -273,9 +274,12 @@ let currentQIndex = 0;
 let timerInterval = null;
 let lastPlayerAtk = "", lastBotAtk = "";
 
+// ฟังก์ชันสร้างคำถามแบบ Shuffled
 function generateQuestions() {
     const easySet = [];
     const hardSet = [];
+
+    // สร้างโหมดง่าย 100 ข้อ (บวก ลบ)
     for (let i = 0; i < 100; i++) {
         let op = Math.random() > 0.5 ? { name: 'บวก', func: (a, b) => a + b } : { name: 'ลบ', func: (a, b) => a - b };
         let a = Math.floor(Math.random() * 90) + 10;
@@ -285,6 +289,8 @@ function generateQuestions() {
         let opts = [ans, ans + 2, ans - 5, ans + 10].sort(() => Math.random() - 0.5);
         easySet.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
     }
+
+    // สร้างโหมดยาก 100 ข้อ (คูณ หาร)
     for (let i = 0; i < 100; i++) {
         let isDiv = Math.random() > 0.5;
         let q, ans;
@@ -302,6 +308,7 @@ function generateQuestions() {
         let opts = [ans, ans + 1, ans - 2, ans + 5].sort(() => Math.random() - 0.5);
         hardSet.push({ q: q, a: ans, options: opts });
     }
+
     return { easy: easySet, hard: hardSet };
 }
 
@@ -340,11 +347,14 @@ function startGame(mode) {
     if (mode === 'easy') {
         sessionQuestions = [...allData.easy].sort(() => Math.random() - 0.5);
     } else {
+        // ยาก = ง่าย 100 + ยาก 100 มาผสมกันแล้วสุ่ม
         sessionQuestions = [...allData.easy, ...allData.hard].sort(() => Math.random() - 0.5);
     }
+
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('battle-arena').style.display = 'block';
+    
     currentQIndex = 0;
     const s = playSound('start');
     s.onended = () => {
@@ -355,12 +365,14 @@ function startGame(mode) {
 
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) return;
-    if (currentQIndex >= sessionQuestions.length) currentQIndex = 0;
+    if (currentQIndex >= sessionQuestions.length) currentQIndex = 0; // วนลูปถ้าข้อหมด (ซึ่งไม่น่าหมด)
+
     const currentQuestion = sessionQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
     qEl.textContent = ""; 
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
+
     setTimeout(() => {
         qEl.textContent = currentQuestion.q;
         currentQuestion.options.forEach(opt => {
@@ -370,6 +382,7 @@ function nextQuestion() {
             btn.onclick = () => checkAnswer(opt, currentQuestion.a);
             grid.appendChild(btn);
         });
+
         document.activeElement.blur();
         setTimeout(() => { qEl.focus(); }, 100);
         startTimer();
@@ -385,7 +398,7 @@ function startTimer() {
         bar.style.width = (timeLeft / 7000) * 100 + "%";
         if (timeLeft <= 0) {
             clearInterval(timerInterval);
-            checkAnswer(null, null); // ส่งค่า null เพื่อแจ้งว่าหมดเวลา
+            checkAnswer(null, null);
         }
     }, 100);
 }
@@ -395,8 +408,7 @@ function checkAnswer(sel, correctVal) {
     const btns = document.querySelectorAll('.option-btn');
     btns.forEach(b => b.disabled = true); 
 
-    // เงื่อนไข: ถ้าตอบถูก และต้องไม่ใช่กรณีหมดเวลา (sel !== null)
-    const correct = (sel !== null) && (sel === correctVal);
+    const correct = sel === correctVal;
 
     if (correct) {
         playerCombo++; botCombo = 0;
@@ -413,7 +425,6 @@ function checkAnswer(sel, correctVal) {
         }
         botHP -= dmg; animate('bot-char', 'flash-green');
     } else {
-        // กรณีตอบผิด หรือ หมดเวลา (sel === null) จะมาเข้าเงื่อนไขนี้ทั้งหมด
         botCombo++; playerCombo = 0;
         let dmg = Math.floor(Math.random() * 101) + 50;
         if (botCombo >= 5) {
@@ -424,7 +435,6 @@ function checkAnswer(sel, correctVal) {
             let pool = ['en1','en2','en3'].filter(s => s !== lastBotAtk);
             let s = pool[Math.floor(Math.random() * pool.length)];
             playSound(s); lastBotAtk = s;
-            // แยกประกาศข้อความระหว่าง ตอบผิด กับ หมดเวลา เพื่อความชัดเจน
             announce(sel === null ? `หมดเวลา! โดนโจมตีเสียพลัง ${dmg} หน่วย` : `ผิดพลาด โดนโจมตีเสียพลัง ${dmg} หน่วย`);
         }
         playerHP -= dmg; animate('player-char', 'flash-red');
@@ -432,6 +442,7 @@ function checkAnswer(sel, correctVal) {
 
     updateUI();
     currentQIndex++;
+
     setTimeout(() => {
         if (playerHP > 0 && botHP > 0) nextQuestion();
         else endGame();
@@ -460,15 +471,19 @@ function endGame() {
     const grid = document.getElementById('options-grid');
     qEl.textContent = "กำลังประมวลผลการต่อสู้...";
     grid.innerHTML = '';
+    
     let endSound = botHP <= 0 ? 'win' : 'lost';
     let endMsg = botHP <= 0 ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
     let srMsg = botHP <= 0 ? "จบการต่อสู้ คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ" : "จบการต่อสู้ คุณพ่ายแพ้ พยายามใหม่ในรอบหน้านะครับ";
+
     const finalSound = playSound(endSound);
     announce(srMsg);
+
     finalSound.onended = () => {
         qEl.textContent = endMsg;
         document.activeElement.blur();
         setTimeout(() => { qEl.focus(); }, 150);
+
         const rb = document.createElement('button');
         rb.className = 'btn-start';
         rb.style.marginTop = "20px";
