@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Fighter - ศึกจ้าวนักคำนวณ</title>
+    <style>
+        :root {
+            --player-color: #00ffcc;
+            --bot-color: #ff3300;
+            --bg-dark: #1a1a1a;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 1000px;
+            height: 600px;
+            position: relative;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9)), 
+                        url('https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=1000');
+            background-size: cover;
+            border: 4px solid #444;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        /* หน้าแรก */
+        #start-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .title {
+            font-size: 5rem;
+            text-transform: uppercase;
+            font-style: italic;
+            background: linear-gradient(to bottom, #fff 20%, #ffcc00 50%, #ff6600 80%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(5px 5px 0px #000);
+            margin-bottom: 20px;
+        }
+
+        .btn-start {
+            padding: 15px 50px;
+            font-size: 1.5rem;
+            background: #ffcc00;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+            transition: transform 0.2s;
+        }
+
+        .btn-start:hover { transform: scale(1.1); background: #fff; }
+
+        /* ส่วนของ Battle */
+        #battle-arena {
+            display: none;
+            padding: 20px;
+        }
+
+        /* Health Bars */
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 50px;
+        }
+
+        .health-box { width: 40%; }
+        .name-label { font-weight: bold; margin-bottom: 5px; text-transform: uppercase; }
+        
+        .hp-bar-bg {
+            height: 30px;
+            background: #333;
+            border: 2px solid #fff;
+            transform: skewX(-20deg);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hp-fill {
+            height: 100%;
+            width: 100%;
+            transition: width 0.3s ease-out;
+        }
+        #player-hp-fill { background: var(--player-color); box-shadow: 0 0 15px var(--player-color); }
+        #bot-hp-fill { background: var(--bot-color); box-shadow: 0 0 15px var(--bot-color); }
+
+        /* Characters */
+        .stage {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            height: 250px;
+            padding: 0 50px;
+        }
+
+        .char {
+            width: 150px;
+            height: 200px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: bottom;
+            position: relative;
+        }
+        
+        /* ใส่ Placeholder หรือใช้ CSS วาดตัวละครพื้นฐาน */
+        #player-char { border-bottom: 10px solid var(--player-color); }
+        #bot-char { border-bottom: 10px solid var(--bot-color); }
+
+        /* Quiz Section */
+        #quiz-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        #question-text {
+            font-size: 2rem;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .option-btn {
+            padding: 15px;
+            font-size: 1.2rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #666;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .option-btn:hover { background: rgba(255,255,255,0.3); border-color: #fff; }
+
+        /* Timer */
+        #timer-bar-bg {
+            width: 100%;
+            height: 5px;
+            background: #222;
+            margin-top: 10px;
+        }
+        #timer-fill { height: 100%; width: 100%; background: #ffcc00; transition: width 0.1s linear; }
+
+        /* Animations */
+        @keyframes hit-shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(10px); }
+            50% { transform: translateX(-10px); }
+            75% { transform: translateX(5px); }
+            100% { transform: translateX(0); }
+        }
+
+        .shake { animation: hit-shake 0.2s; }
+        
+        .flash-red { background: rgba(255,0,0,0.5) !important; }
+        .flash-green { background: rgba(0,255,0,0.5) !important; }
+
+        /* SR Only */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="sr-announcer" class="sr-only" aria-live="assertive"></div>
+
+    <div id="start-screen">
+        <h1 class="title">Math Fighter</h1>
+        <p style="margin-bottom: 30px;">ตอบคำถามคณิตศาสตร์เพื่อทำคอมโบโจมตีคู่ต่อสู้!</p>
+        <button class="btn-start" onclick="startGame()">เริ่มต่อสู้</button>
+    </div>
+
+    <div id="battle-arena">
+        <div class="hud">
+            <div class="health-box">
+                <div class="name-label">Player (YOU)</div>
+                <div class="hp-bar-bg">
+                    <div id="player-hp-fill" class="hp-fill"></div>
+                </div>
+                <div id="player-hp-text" class="sr-only">พลังชีวิต 1000</div>
+            </div>
+            <div class="health-box" style="text-align: right;">
+                <div class="name-label">CPU BOT</div>
+                <div class="hp-bar-bg" style="transform: skewX(20deg);">
+                    <div id="bot-hp-fill" class="hp-fill" style="margin-left: auto;"></div>
+                </div>
+                <div id="bot-hp-text" class="sr-only">พลังชีวิต 1000</div>
+            </div>
+        </div>
+
+        <div class="stage">
+            <div id="player-char" class="char"></div>
+            <div id="bot-char" class="char"></div>
+        </div>
+
+        <div id="quiz-container">
+            <div id="timer-bar-bg"><div id="timer-fill"></div></div>
+            <h2 id="question-text">เตรียมตัว...</h2>
+            <div class="options-grid" id="options-grid">
+                </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * WEB AUDIO API SETUP
+ */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const sounds = {};
+
+async function loadSound(name, url) {
+    try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        sounds[name] = await audioCtx.decodeAudioData(arrayBuffer);
+    } catch (e) { console.error("Error loading sound:", name); }
+}
+
+// โหลดไฟล์เสียง
+const soundFiles = [
+    ['start', 'audio/start.mp3'],
+    ['back', 'audio/back.mp3'],
+    ['at1', 'audio/at1.mp3'], ['at2', 'audio/at2.mp3'], ['at3', 'audio/at3.mp3'],
+    ['en1', 'audio/en1.mp3'], ['en2', 'audio/en2.mp3'], ['en3', 'audio/en3.mp3'],
+    ['atc', 'audio/atc.mp3'], ['enc', 'audio/enc.mp3'],
+    ['win', 'audio/win.mp3'], ['lost', 'audio/lost.mp3']
+];
+
+soundFiles.forEach(f => loadSound(f[0], f[1]));
+
+let bgmSource = null;
+function playBGM() {
+    if (sounds.back) {
+        bgmSource = audioCtx.createBufferSource();
+        bgmSource.buffer = sounds.back;
+        bgmSource.loop = true;
+        bgmSource.connect(audioCtx.destination);
+        bgmSource.start();
+    }
+}
+
+function playSound(name) {
+    if (sounds[name]) {
+        const source = audioCtx.createBufferSource();
+        source.buffer = sounds[name];
+        source.connect(audioCtx.destination);
+        source.start();
+        return source;
+    }
+}
+
+/**
+ * GAME LOGIC
+ */
+let playerHP = 1000;
+let botHP = 1000;
+let playerCombo = 0;
+let botCombo = 0;
+let currentQuestion = null;
+let timerInterval = null;
+let lastPlayerAtk = 0;
+let lastBotAtk = 0;
+
+// สร้างคำถาม 50 ข้อ
+const questions = [];
+const operators = [
+    { name: 'บวก', func: (a, b) => a + b },
+    { name: 'ลบ', func: (a, b) => a - b },
+    { name: 'คูณด้วย', func: (a, b) => a * b },
+    { name: 'หารด้วย', func: (a, b) => Math.floor(a / b) }
+];
+
+for (let i = 0; i < 50; i++) {
+    let op = operators[Math.floor(Math.random() * operators.length)];
+    let a = Math.floor(Math.random() * 50) + 1;
+    let b = Math.floor(Math.random() * 20) + 1;
+    if (op.name === 'หารด้วย') a = b * (Math.floor(Math.random() * 10) + 1); // ให้หารลงตัวง่ายๆ
+    
+    let ans = op.func(a, b);
+    let options = [ans, ans + 2, ans - 2, ans + 5].sort(() => Math.random() - 0.5);
+    questions.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options });
+}
+
+function announce(msg) {
+    document.getElementById('sr-announcer').textContent = msg;
+}
+
+async function startGame() {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('battle-arena').style.display = 'block';
+    
+    const startAudio = playSound('start');
+    startAudio.onended = () => {
+        playBGM();
+        nextQuestion();
+    };
+}
+
+function nextQuestion() {
+    if (playerHP <= 0 || botHP <= 0) return;
+
+    currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+    document.getElementById('question-text').textContent = currentQuestion.q;
+    
+    const grid = document.getElementById('options-grid');
+    grid.innerHTML = '';
+    
+    // สลับตัวเลือก
+    const shuffledOptions = [...currentQuestion.options].sort(() => Math.random() - 0.5);
+    
+    shuffledOptions.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.textContent = opt;
+        btn.onclick = () => checkAnswer(opt);
+        grid.appendChild(btn);
+    });
+
+    startTimer();
+}
+
+function startTimer() {
+    let timeLeft = 5000;
+    const bar = document.getElementById('timer-fill');
+    clearInterval(timerInterval);
+    
+    timerInterval = setInterval(() => {
+        timeLeft -= 100;
+        bar.style.width = (timeLeft / 5000) * 100 + "%";
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            checkAnswer(null); // หมดเวลาถือว่าผิด
+        }
+    }, 100);
+}
+
+function checkAnswer(selected) {
+    clearInterval(timerInterval);
+    const isCorrect = selected === currentQuestion.a;
+
+    if (isCorrect) {
+        playerCombo++;
+        botCombo = 0;
+        let dmg = Math.floor(Math.random() * 101) + 50;
+        
+        // คอมโบผู้เล่น
+        if (playerCombo >= 5) {
+            dmg = Math.floor(Math.random() * 151) + 200;
+            playSound('atc');
+            announce(`คอมโบสุดยอด! โจมตีหนักหน่วงเสียพลัง ${dmg} หน่วย`);
+            playerCombo = 0;
+        } else {
+            let sfx = ['at1', 'at2', 'at3'].filter(s => s !== lastPlayerAtk);
+            let chosen = sfx[Math.floor(Math.random() * sfx.length)];
+            playSound(chosen);
+            lastPlayerAtk = chosen;
+            announce(`ถูกต้อง! โจมตีบอทเสียพลัง ${dmg} หน่วย`);
+        }
+
+        botHP -= dmg;
+        animateHit('bot-char', 'flash-green');
+    } else {
+        botCombo++;
+        playerCombo = 0;
+        let dmg = Math.floor(Math.random() * 101) + 50;
+
+        // คอมโบบอท
+        if (botCombo >= 5) {
+            dmg = Math.floor(Math.random() * 151) + 200;
+            playSound('enc');
+            announce(`ระวัง! บอทใช้ท่าไม้ตาย โดนโจมตีเสียพลัง ${dmg} หน่วย`);
+            botCombo = 0;
+        } else {
+            let sfx = ['en1', 'en2', 'en3'].filter(s => s !== lastBotAtk);
+            let chosen = sfx[Math.floor(Math.random() * sfx.length)];
+            playSound(chosen);
+            lastBotAtk = chosen;
+            announce(`ผิดพลาด! โดนบอทโจมตีเสียพลัง ${dmg} หน่วย`);
+        }
+
+        playerHP -= dmg;
+        animateHit('player-char', 'flash-red');
+    }
+
+    updateUI();
+    
+    if (playerHP > 0 && botHP > 0) {
+        setTimeout(nextQuestion, 1000);
+    } else {
+        endGame();
+    }
+}
+
+function updateUI() {
+    const pFill = document.getElementById('player-hp-fill');
+    const bFill = document.getElementById('bot-hp-fill');
+    
+    pFill.style.width = Math.max(0, (playerHP / 1000) * 100) + "%";
+    bFill.style.width = Math.max(0, (botHP / 1000) * 100) + "%";
+    
+    document.getElementById('player-hp-text').textContent = `พลังชีวิตของคุณเหลือ ${Math.max(0, playerHP)}`;
+    document.getElementById('bot-hp-text').textContent = `พลังชีวิตบอทเหลือ ${Math.max(0, botHP)}`;
+}
+
+function animateHit(id, flashClass) {
+    const el = document.getElementById(id);
+    const arena = document.getElementById('battle-arena');
+    el.classList.add('shake');
+    arena.classList.add(flashClass);
+    setTimeout(() => {
+        el.classList.remove('shake');
+        arena.classList.remove(flashClass);
+    }, 300);
+}
+
+function endGame() {
+    if (bgmSource) bgmSource.stop();
+    const grid = document.getElementById('options-grid');
+    grid.innerHTML = '';
+    
+    if (botHP <= 0) {
+        playSound('win');
+        document.getElementById('question-text').innerHTML = "<span style='color:var(--player-color); font-size:3rem;'>K.O. YOU WIN!</span><br>ยินดีด้วย คุณคือจ้าวนักคำนวณ!";
+        announce("คุณชนะแล้ว! ยินดีด้วยคุณคือจ้าวนักคำนวณ");
+    } else {
+        playSound('lost');
+        document.getElementById('question-text').innerHTML = "<span style='color:var(--bot-color); font-size:3rem;'>DEFEATED...</span><br>ไม่เป็นไรนะ พยายามเข้า สู้ใหม่อีกครั้ง!";
+        announce("คุณพ่ายแพ้ ไม่เป็นไรนะ พยายามเข้า สู้ใหม่อีกครั้ง");
+    }
+    
+    const restartBtn = document.createElement('button');
+    restartBtn.className = 'btn-start';
+    restartBtn.style.marginTop = "20px";
+    restartBtn.textContent = "กลับไปหน้าหลัก";
+    restartBtn.onclick = () => location.reload();
+    grid.appendChild(restartBtn);
+}
+</script>
+</body>
+</html>
