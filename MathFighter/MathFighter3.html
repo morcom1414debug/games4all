@@ -210,12 +210,12 @@
             <div class="health-box">
                 <div class="name-label">Player (YOU)</div>
                 <div class="hp-bar-bg"><div id="player-hp-fill" class="hp-fill"></div></div>
-                <div id="player-hp-text" class="sr-only">พลังชีวิตผู้เล่น 1000</div>
+                <div id="player-hp-text" class="sr-only"></div>
             </div>
             <div class="health-box" style="text-align: right;">
                 <div class="name-label">CPU BOT</div>
                 <div class="hp-bar-bg" style="transform: skewX(20deg);"><div id="bot-hp-fill" class="hp-fill" style="margin-left: auto;"></div></div>
-                <div id="bot-hp-text" class="sr-only">พลังชีวิตบอท 1000</div>
+                <div id="bot-hp-text" class="sr-only"></div>
             </div>
         </div>
 
@@ -226,7 +226,7 @@
 
         <div id="quiz-container">
             <div id="timer-bar-bg"><div id="timer-fill"></div></div>
-            <h2 id="question-text" tabindex="-1"></h2>
+            <h2 id="question-text" tabindex="-1">เตรียมตัว...</h2>
             <div class="options-grid" id="options-grid"></div>
         </div>
     </div>
@@ -269,7 +269,6 @@ const operators = [
     { name: 'หารด้วย', func: (a, b) => Math.floor(a / b) }
 ];
 
-// สร้างคำถาม 50 ข้อ
 for (let i = 0; i < 50; i++) {
     let op = operators[Math.floor(Math.random() * operators.length)];
     let a = Math.floor(Math.random() * 50) + 5, b = Math.floor(Math.random() * 20) + 1;
@@ -279,10 +278,7 @@ for (let i = 0; i < 50; i++) {
     questions.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
 }
 
-window.onload = () => {
-    // บังคับ Focus ที่ชื่อเกมในหน้าแรก
-    setTimeout(() => { document.getElementById('main-title').focus(); }, 500);
-};
+window.onload = () => document.getElementById('main-title').focus();
 
 function playSound(name) {
     if (sounds[name]) {
@@ -305,9 +301,8 @@ function playBGM() {
 }
 
 function announce(msg) {
-    const announcer = document.getElementById('sr-announcer');
-    announcer.textContent = ""; // Clear เก่า
-    setTimeout(() => { announcer.textContent = msg; }, 50);
+    document.getElementById('sr-announcer').textContent = "";
+    setTimeout(() => { document.getElementById('sr-announcer').textContent = msg; }, 50);
 }
 
 function startGame() {
@@ -327,28 +322,21 @@ function nextQuestion() {
 
     currentQuestion = questions[Math.floor(Math.random() * questions.length)];
     const qEl = document.getElementById('question-text');
+    qEl.textContent = currentQuestion.q;
     
-    // เคลียร์ค่าเก่าก่อนแสดงโจทย์ใหม่
-    qEl.textContent = ""; 
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
+    [...currentQuestion.options].sort(() => Math.random() - 0.5).forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.textContent = opt;
+        btn.onclick = () => checkAnswer(opt);
+        grid.appendChild(btn);
+    });
 
-    // แสดงโจทย์ใหม่
-    setTimeout(() => {
-        qEl.textContent = currentQuestion.q;
-        [...currentQuestion.options].sort(() => Math.random() - 0.5).forEach(opt => {
-            const btn = document.createElement('button');
-            btn.className = 'option-btn';
-            btn.textContent = opt;
-            btn.onclick = () => checkAnswer(opt);
-            grid.appendChild(btn);
-        });
-
-        // บังคับล้าง focus เดิมแล้วชี้ไปที่โจทย์ใหม่
-        document.activeElement.blur();
-        setTimeout(() => { qEl.focus(); }, 100);
-        startTimer();
-    }, 50);
+    // หน่วงเวลาการ Focus เล็กน้อยเพื่อให้ SR อ่านการโจมตีจบก่อนเริ่มข้อใหม่
+    setTimeout(() => { qEl.focus(); }, 100);
+    startTimer();
 }
 
 function startTimer() {
@@ -368,7 +356,7 @@ function startTimer() {
 function checkAnswer(sel) {
     clearInterval(timerInterval);
     const btns = document.querySelectorAll('.option-btn');
-    btns.forEach(b => b.disabled = true); 
+    btns.forEach(b => b.disabled = true); // ปิดการกดซ้ำระหว่างหน่วงเวลา
 
     const correct = sel === currentQuestion.a;
 
@@ -404,14 +392,11 @@ function checkAnswer(sel) {
 
     updateUI();
 
-    // หน่วงเวลา 3 วินาทีก่อนไปข้อถัดไป เพื่อให้ SR ประกาศจบก่อน
+    // หน่วงเวลา 2 วินาทีก่อนไปข้อถัดไปหรือจบเกม
     setTimeout(() => {
-        if (playerHP > 0 && botHP > 0) {
-            nextQuestion();
-        } else {
-            endGame();
-        }
-    }, 3000);
+        if (playerHP > 0 && botHP > 0) nextQuestion();
+        else endGame();
+    }, 2000);
 }
 
 function updateUI() {
@@ -434,29 +419,23 @@ function endGame() {
     if (bgmSource) bgmSource.stop();
     const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
-    
-    // เคลียร์ UI เดิมออกให้หมด
-    qEl.textContent = "กำลังประมวลผลการต่อสู้...";
     grid.innerHTML = '';
     
     let endSound = botHP <= 0 ? 'win' : 'lost';
     let endMsg = botHP <= 0 ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
-    let srMsg = botHP <= 0 ? "จบการต่อสู้ คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ" : "จบการต่อสู้ คุณพ่ายแพ้ พยายามใหม่ในรอบหน้านะครับ";
+    let srMsg = botHP <= 0 ? "คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ" : "คุณพ่ายแพ้ พยายามใหม่ในรอบหน้านะครับ";
 
-    // เล่นเสียงตอนจบ
     const finalSound = playSound(endSound);
     announce(srMsg);
 
-    // เมื่อเสียงจบการต่อสู้เล่นจบ จึงจะแสดงปุ่มและชี้โฟกัสไปที่ข้อความยินดี/เสียใจ
+    // รอให้เสียงจบก่อนค่อยแสดงปุ่มเล่นใหม่
     finalSound.onended = () => {
-        qEl.textContent = endMsg;
-        document.activeElement.blur();
-        setTimeout(() => { qEl.focus(); }, 150);
+        qEl.innerHTML = endMsg;
+        qEl.focus();
 
         const rb = document.createElement('button');
         rb.className = 'btn-start';
-        rb.style.marginTop = "20px";
-        rb.textContent = "กลับไปเริ่มใหม่";
+        rb.textContent = "เล่นอีกครั้ง";
         rb.onclick = () => location.reload();
         grid.appendChild(rb);
     };
