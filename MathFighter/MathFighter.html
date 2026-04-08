@@ -178,7 +178,10 @@
         }
         #timer-fill { height: 100%; width: 100%; background: #ffcc00; transition: width 0.1s linear; }
 
-        /* Animations */
+        .shake { animation: hit-shake 0.2s; }
+        .flash-red { background: rgba(255,0,0,0.5) !important; }
+        .flash-green { background: rgba(0,255,0,0.5) !important; }
+
         @keyframes hit-shake {
             0% { transform: translateX(0); }
             25% { transform: translateX(10px); }
@@ -186,10 +189,6 @@
             75% { transform: translateX(5px); }
             100% { transform: translateX(0); }
         }
-
-        .shake { animation: hit-shake 0.2s; }
-        .flash-red { background: rgba(255,0,0,0.5) !important; }
-        .flash-green { background: rgba(0,255,0,0.5) !important; }
 
         .sr-only {
             position: absolute;
@@ -210,10 +209,10 @@
 
     <div id="start-screen">
         <h1 class="title" id="main-title" tabindex="-1">Math Fighter</h1>
-        <p style="margin-bottom: 10px;">เลือกโหมดเพื่อเริ่มการต่อสู้</p>
+        <p style="margin-bottom: 10px;">เลือกโหมดเพื่อเริ่มการต่อสู้ (7 วินาทีต่อข้อ)</p>
         <div class="mode-container">
             <button class="btn-start btn-easy" onclick="startGame('easy')">โหมดง่าย (บวก/ลบ)</button>
-            <button class="btn-start btn-hard" onclick="startGame('hard')">โหมดยาก (จัดเต็ม)</button>
+            <button class="btn-start btn-hard" onclick="startGame('hard')">โหมดยาก (บวก ลบ คูณ หาร)</button>
         </div>
     </div>
 
@@ -270,59 +269,52 @@ let bgmSource = null;
 let playerHP = 1000, botHP = 1000;
 let playerCombo = 0, botCombo = 0;
 let sessionQuestions = [];
-let currentQIndex = 0;
+let currentQIdx = 0;
 let timerInterval = null;
 let lastPlayerAtk = "", lastBotAtk = "";
 
-// ฟังก์ชันสร้างคำถามแบบ Shuffled
 function generateQuestions() {
     const easySet = [];
     const hardSet = [];
-
-    // สร้างโหมดง่าย 100 ข้อ (บวก ลบ)
-    for (let i = 0; i < 100; i++) {
-        let op = Math.random() > 0.5 ? { name: 'บวก', func: (a, b) => a + b } : { name: 'ลบ', func: (a, b) => a - b };
-        let a = Math.floor(Math.random() * 90) + 10;
-        let b = Math.floor(Math.random() * 80) + 5;
-        if (op.name === 'ลบ' && a < b) [a, b] = [b, a];
-        let ans = op.func(a, b);
-        let opts = [ans, ans + 2, ans - 5, ans + 10].sort(() => Math.random() - 0.5);
-        easySet.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
+    
+    // Easy 100
+    for(let i=0; i<100; i++) {
+        let op = Math.random() > 0.5 ? { n: 'บวก', f: (a,b)=>a+b } : { n: 'ลบ', f: (a,b)=>a-b };
+        let a = Math.floor(Math.random()*90)+10, b = Math.floor(Math.random()*80)+5;
+        if(op.n==='ลบ' && a<b) [a,b] = [b,a];
+        let ans = op.f(a,b);
+        let opts = [ans, ans+2, ans-3, ans+10].sort(()=>Math.random()-0.5);
+        easySet.push({q: `${a} ${op.n} ${b} เท่ากับเท่าไหร่?`, a: ans, o: opts});
     }
-
-    // สร้างโหมดยาก 100 ข้อ (คูณ หาร)
-    for (let i = 0; i < 100; i++) {
+    // Hard 100 (Mul/Div)
+    for(let i=0; i<100; i++) {
         let isDiv = Math.random() > 0.5;
         let q, ans;
-        if (isDiv) {
-            let b = Math.floor(Math.random() * 12) + 2;
-            ans = Math.floor(Math.random() * 12) + 2;
+        if(isDiv) {
+            let b = Math.floor(Math.random()*12)+2;
+            ans = Math.floor(Math.random()*12)+2;
             let a = ans * b;
             q = `${a} หารด้วย ${b} เท่ากับเท่าไหร่?`;
         } else {
-            let a = Math.floor(Math.random() * 12) + 2;
-            let b = Math.floor(Math.random() * 15) + 2;
-            ans = a * b;
+            let a = Math.floor(Math.random()*12)+2, b = Math.floor(Math.random()*12)+2;
+            ans = a*b;
             q = `${a} คูณด้วย ${b} เท่ากับเท่าไหร่?`;
         }
-        let opts = [ans, ans + 1, ans - 2, ans + 5].sort(() => Math.random() - 0.5);
-        hardSet.push({ q: q, a: ans, options: opts });
+        let opts = [ans, ans+1, ans-2, ans+5].sort(()=>Math.random()-0.5);
+        hardSet.push({q, a: ans, o: opts});
     }
-
-    return { easy: easySet, hard: hardSet };
+    return { easySet, hardSet };
 }
 
-window.onload = () => {
-    setTimeout(() => { document.getElementById('main-title').focus(); }, 500);
-};
+window.onload = () => { setTimeout(() => document.getElementById('main-title').focus(), 500); };
 
 function playSound(name) {
     if (sounds[name]) {
-        const source = audioCtx.createBufferSource();
-        source.buffer = sounds[name];
-        source.connect(audioCtx.destination);
-        source.start();
-        return source;
+        const s = audioCtx.createBufferSource();
+        s.buffer = sounds[name];
+        s.connect(audioCtx.destination);
+        s.start();
+        return s;
     }
 }
 
@@ -343,48 +335,40 @@ function announce(msg) {
 }
 
 function startGame(mode) {
-    const allData = generateQuestions();
-    if (mode === 'easy') {
-        sessionQuestions = [...allData.easy].sort(() => Math.random() - 0.5);
-    } else {
-        // ยาก = ง่าย 100 + ยาก 100 มาผสมกันแล้วสุ่ม
-        sessionQuestions = [...allData.easy, ...allData.hard].sort(() => Math.random() - 0.5);
-    }
+    const data = generateQuestions();
+    if(mode === 'easy') sessionQuestions = data.easySet.sort(()=>Math.random()-0.5);
+    else sessionQuestions = [...data.easySet, ...data.hardSet].sort(()=>Math.random()-0.5);
 
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('battle-arena').style.display = 'block';
     
-    currentQIndex = 0;
+    currentQIdx = 0;
     const s = playSound('start');
-    s.onended = () => {
-        playBGM();
-        nextQuestion();
-    };
+    s.onended = () => { playBGM(); nextQuestion(); };
 }
 
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) return;
-    if (currentQIndex >= sessionQuestions.length) currentQIndex = 0; // วนลูปถ้าข้อหมด (ซึ่งไม่น่าหมด)
-
-    const currentQuestion = sessionQuestions[currentQIndex];
+    const qData = sessionQuestions[currentQIdx % sessionQuestions.length];
     const qEl = document.getElementById('question-text');
-    qEl.textContent = ""; 
     const grid = document.getElementById('options-grid');
+    
+    qEl.textContent = ""; 
     grid.innerHTML = '';
 
     setTimeout(() => {
-        qEl.textContent = currentQuestion.q;
-        currentQuestion.options.forEach(opt => {
+        qEl.textContent = qData.q;
+        qData.o.forEach(opt => {
             const btn = document.createElement('button');
             btn.className = 'option-btn';
             btn.textContent = opt;
-            btn.onclick = () => checkAnswer(opt, currentQuestion.a);
+            btn.onclick = () => checkAnswer(opt, qData.a);
             grid.appendChild(btn);
         });
 
         document.activeElement.blur();
-        setTimeout(() => { qEl.focus(); }, 100);
+        setTimeout(() => qEl.focus(), 150);
         startTimer();
     }, 50);
 }
@@ -396,57 +380,42 @@ function startTimer() {
     timerInterval = setInterval(() => {
         timeLeft -= 100;
         bar.style.width = (timeLeft / 7000) * 100 + "%";
-        if (timeLeft <= 0) {
-            clearInterval(timerInterval);
-            checkAnswer(null, null);
-        }
+        if (timeLeft <= 0) { clearInterval(timerInterval); checkAnswer(null, null); }
     }, 100);
 }
 
 function checkAnswer(sel, correctVal) {
     clearInterval(timerInterval);
-    const btns = document.querySelectorAll('.option-btn');
-    btns.forEach(b => b.disabled = true); 
+    document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
 
-    const correct = sel === correctVal;
-
-    if (correct) {
+    const isCorrect = sel === correctVal;
+    if (isCorrect) {
         playerCombo++; botCombo = 0;
-        let dmg = Math.floor(Math.random() * 101) + 50;
-        if (playerCombo >= 5) {
-            dmg = Math.floor(Math.random() * 151) + 200;
-            playSound('atc'); announce(`คอมโบโจมตีแรงพิเศษ ${dmg} หน่วย!`);
-            playerCombo = 0;
+        let dmg = Math.floor(Math.random()*101)+50;
+        if(playerCombo >= 5) {
+            dmg += 150; playSound('atc'); announce(`คอมโบโจมตีแรงพิเศษ ${dmg} หน่วย!`); playerCombo = 0;
         } else {
-            let pool = ['at1','at2','at3'].filter(s => s !== lastPlayerAtk);
-            let s = pool[Math.floor(Math.random() * pool.length)];
+            let s = ['at1','at2','at3'].filter(x=>x!==lastPlayerAtk)[Math.floor(Math.random()*2)];
             playSound(s); lastPlayerAtk = s;
             announce(`ถูกต้อง โจมตีบอทเสียพลัง ${dmg} หน่วย`);
         }
         botHP -= dmg; animate('bot-char', 'flash-green');
     } else {
         botCombo++; playerCombo = 0;
-        let dmg = Math.floor(Math.random() * 101) + 50;
-        if (botCombo >= 5) {
-            dmg = Math.floor(Math.random() * 151) + 200;
-            playSound('enc'); announce(`อันตราย! บอทใช้คอมโบโจมตีคุณ ${dmg} หน่วย!`);
-            botCombo = 0;
+        let dmg = Math.floor(Math.random()*101)+50;
+        if(botCombo >= 5) {
+            dmg += 150; playSound('enc'); announce(`อันตราย! บอทใช้คอมโบโจมตีคุณ ${dmg} หน่วย!`); botCombo = 0;
         } else {
-            let pool = ['en1','en2','en3'].filter(s => s !== lastBotAtk);
-            let s = pool[Math.floor(Math.random() * pool.length)];
+            let s = ['en1','en2','en3'].filter(x=>x!==lastBotAtk)[Math.floor(Math.random()*2)];
             playSound(s); lastBotAtk = s;
-            announce(sel === null ? `หมดเวลา! โดนโจมตีเสียพลัง ${dmg} หน่วย` : `ผิดพลาด โดนโจมตีเสียพลัง ${dmg} หน่วย`);
+            announce(sel===null ? `หมดเวลา! โดนโจมตีเสียพลัง ${dmg} หน่วย` : `ผิดพลาด โดนโจมตีเสียพลัง ${dmg} หน่วย`);
         }
         playerHP -= dmg; animate('player-char', 'flash-red');
     }
 
     updateUI();
-    currentQIndex++;
-
-    setTimeout(() => {
-        if (playerHP > 0 && botHP > 0) nextQuestion();
-        else endGame();
-    }, 3000);
+    currentQIdx++;
+    setTimeout(() => { if(playerHP > 0 && botHP > 0) nextQuestion(); else endGame(); }, 3000);
 }
 
 function updateUI() {
@@ -457,10 +426,11 @@ function updateUI() {
 }
 
 function animate(id, cls) {
-    document.getElementById(id).classList.add('shake');
+    const el = document.getElementById(id);
+    el.classList.add('shake');
     document.getElementById('battle-arena').classList.add(cls);
     setTimeout(() => {
-        document.getElementById(id).classList.remove('shake');
+        el.classList.remove('shake');
         document.getElementById('battle-arena').classList.remove(cls);
     }, 300);
 }
@@ -469,20 +439,17 @@ function endGame() {
     if (bgmSource) bgmSource.stop();
     const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
-    qEl.textContent = "กำลังประมวลผลการต่อสู้...";
+    qEl.textContent = "การต่อสู้สิ้นสุดลง...";
     grid.innerHTML = '';
     
-    let endSound = botHP <= 0 ? 'win' : 'lost';
-    let endMsg = botHP <= 0 ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
-    let srMsg = botHP <= 0 ? "จบการต่อสู้ คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ" : "จบการต่อสู้ คุณพ่ายแพ้ พยายามใหม่ในรอบหน้านะครับ";
-
-    const finalSound = playSound(endSound);
-    announce(srMsg);
+    let isWin = botHP <= 0;
+    const finalSound = playSound(isWin ? 'win' : 'lost');
+    announce(isWin ? "จบการต่อสู้ คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ" : "จบการต่อสู้ คุณพ่ายแพ้ พยายามใหม่ในรอบหน้านะครับ");
 
     finalSound.onended = () => {
-        qEl.textContent = endMsg;
+        qEl.textContent = isWin ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
         document.activeElement.blur();
-        setTimeout(() => { qEl.focus(); }, 150);
+        setTimeout(() => qEl.focus(), 150);
 
         const rb = document.createElement('button');
         rb.className = 'btn-start';
