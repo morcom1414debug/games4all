@@ -209,7 +209,7 @@
 
     <div id="start-screen">
         <h1 class="title" id="main-title" tabindex="-1">Math Fighter</h1>
-        <p style="margin-bottom: 10px;">เลือกโหมดเพื่อเริ่มการต่อสู้</p>
+        <p style="margin-bottom: 10px;">เลือกโหมดเพื่อเริ่มการต่อสู้ (7 วินาทีต่อข้อ)</p>
         <div class="mode-container">
             <button class="btn-start btn-easy" onclick="startGame('easy')">โหมดง่าย (บวก/ลบ)</button>
             <button class="btn-start btn-hard" onclick="startGame('hard')">โหมดยาก (จัดเต็ม)</button>
@@ -276,6 +276,7 @@ let lastPlayerAtk = "", lastBotAtk = "";
 function generateQuestions() {
     const easySet = [];
     const hardSet = [];
+    // สร้างโหมดง่าย 100 ข้อ
     for (let i = 0; i < 100; i++) {
         let op = Math.random() > 0.5 ? { name: 'บวก', func: (a, b) => a + b } : { name: 'ลบ', func: (a, b) => a - b };
         let a = Math.floor(Math.random() * 90) + 10;
@@ -285,6 +286,7 @@ function generateQuestions() {
         let opts = [ans, ans + 2, ans - 5, ans + 10].sort(() => Math.random() - 0.5);
         easySet.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
     }
+    // สร้างโหมดยาก 100 ข้อ
     for (let i = 0; i < 100; i++) {
         let isDiv = Math.random() > 0.5;
         let q, ans;
@@ -385,7 +387,7 @@ function startTimer() {
         bar.style.width = (timeLeft / 7000) * 100 + "%";
         if (timeLeft <= 0) {
             clearInterval(timerInterval);
-            checkAnswer(null, null); // ส่งค่า null เพื่อแจ้งว่าหมดเวลา
+            checkAnswer(null, null); // กรณีหมดเวลา
         }
     }, 100);
 }
@@ -395,7 +397,7 @@ function checkAnswer(sel, correctVal) {
     const btns = document.querySelectorAll('.option-btn');
     btns.forEach(b => b.disabled = true); 
 
-    // เงื่อนไข: ถ้าตอบถูก และต้องไม่ใช่กรณีหมดเวลา (sel !== null)
+    // Logic: ต้องกดเลือก และค่าที่เลือกตรงกับคำตอบ ถึงจะถือว่าถูก
     const correct = (sel !== null) && (sel === correctVal);
 
     if (correct) {
@@ -413,7 +415,7 @@ function checkAnswer(sel, correctVal) {
         }
         botHP -= dmg; animate('bot-char', 'flash-green');
     } else {
-        // กรณีตอบผิด หรือ หมดเวลา (sel === null) จะมาเข้าเงื่อนไขนี้ทั้งหมด
+        // Logic สำหรับทั้ง 2 โหมด: ถ้ากดผิด (sel !== correctVal) หรือ ไม่ได้กด (sel === null) ให้นับเป็นผิด
         botCombo++; playerCombo = 0;
         let dmg = Math.floor(Math.random() * 101) + 50;
         if (botCombo >= 5) {
@@ -424,7 +426,6 @@ function checkAnswer(sel, correctVal) {
             let pool = ['en1','en2','en3'].filter(s => s !== lastBotAtk);
             let s = pool[Math.floor(Math.random() * pool.length)];
             playSound(s); lastBotAtk = s;
-            // แยกประกาศข้อความระหว่าง ตอบผิด กับ หมดเวลา เพื่อความชัดเจน
             announce(sel === null ? `หมดเวลา! โดนโจมตีเสียพลัง ${dmg} หน่วย` : `ผิดพลาด โดนโจมตีเสียพลัง ${dmg} หน่วย`);
         }
         playerHP -= dmg; animate('player-char', 'flash-red');
