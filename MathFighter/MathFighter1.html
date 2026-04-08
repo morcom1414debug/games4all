@@ -58,7 +58,6 @@
             -webkit-text-fill-color: transparent;
             filter: drop-shadow(5px 5px 0px #000);
             margin-bottom: 20px;
-            outline: none; /* ลบเส้น focus สำหรับ heading เพื่อความสวยงามแต่ยังคง focus ได้ */
         }
 
         .btn-start {
@@ -80,6 +79,7 @@
             padding: 20px;
         }
 
+        /* Health Bars */
         .hud {
             display: flex;
             justify-content: space-between;
@@ -106,6 +106,7 @@
         #player-hp-fill { background: var(--player-color); box-shadow: 0 0 15px var(--player-color); }
         #bot-hp-fill { background: var(--bot-color); box-shadow: 0 0 15px var(--bot-color); }
 
+        /* Characters */
         .stage {
             display: flex;
             justify-content: space-between;
@@ -123,9 +124,11 @@
             position: relative;
         }
         
+        /* ใส่ Placeholder หรือใช้ CSS วาดตัวละครพื้นฐาน */
         #player-char { border-bottom: 10px solid var(--player-color); }
         #bot-char { border-bottom: 10px solid var(--bot-color); }
 
+        /* Quiz Section */
         #quiz-container {
             margin-top: 20px;
             text-align: center;
@@ -135,7 +138,6 @@
             font-size: 2rem;
             margin-bottom: 20px;
             text-shadow: 2px 2px 4px #000;
-            outline: none;
         }
 
         .options-grid {
@@ -158,12 +160,12 @@
 
         .option-btn:hover { background: rgba(255,255,255,0.3); border-color: #fff; }
 
+        /* Timer */
         #timer-bar-bg {
             width: 100%;
-            height: 100%;
+            height: 5px;
             background: #222;
             margin-top: 10px;
-            height: 8px;
         }
         #timer-fill { height: 100%; width: 100%; background: #ffcc00; transition: width 0.1s linear; }
 
@@ -177,9 +179,11 @@
         }
 
         .shake { animation: hit-shake 0.2s; }
+        
         .flash-red { background: rgba(255,0,0,0.5) !important; }
         .flash-green { background: rgba(0,255,0,0.5) !important; }
 
+        /* SR Only */
         .sr-only {
             position: absolute;
             width: 1px;
@@ -198,8 +202,8 @@
     <div id="sr-announcer" class="sr-only" aria-live="assertive"></div>
 
     <div id="start-screen">
-        <h1 class="title" id="main-title" tabindex="-1">Math Fighter</h1>
-        <p style="margin-bottom: 30px;">ศึกจ้าวนักคำนวณ ตอบคำถามเพื่อพิชิตบอท!</p>
+        <h1 class="title">Math Fighter</h1>
+        <p style="margin-bottom: 30px;">ตอบคำถามคณิตศาสตร์เพื่อทำคอมโบโจมตีคู่ต่อสู้!</p>
         <button class="btn-start" onclick="startGame()">เริ่มต่อสู้</button>
     </div>
 
@@ -228,13 +232,17 @@
 
         <div id="quiz-container">
             <div id="timer-bar-bg"><div id="timer-fill"></div></div>
-            <h2 id="question-text" tabindex="-1">เตรียมตัว...</h2>
-            <div class="options-grid" id="options-grid"></div>
+            <h2 id="question-text">เตรียมตัว...</h2>
+            <div class="options-grid" id="options-grid">
+                </div>
         </div>
     </div>
 </div>
 
 <script>
+/**
+ * WEB AUDIO API SETUP
+ */
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const sounds = {};
 
@@ -246,8 +254,10 @@ async function loadSound(name, url) {
     } catch (e) { console.error("Error loading sound:", name); }
 }
 
+// โหลดไฟล์เสียง
 const soundFiles = [
-    ['start', 'audio/start.mp3'], ['back', 'audio/back.mp3'],
+    ['start', 'audio/start.mp3'],
+    ['back', 'audio/back.mp3'],
     ['at1', 'audio/at1.mp3'], ['at2', 'audio/at2.mp3'], ['at3', 'audio/at3.mp3'],
     ['en1', 'audio/en1.mp3'], ['en2', 'audio/en2.mp3'], ['en3', 'audio/en3.mp3'],
     ['atc', 'audio/atc.mp3'], ['enc', 'audio/enc.mp3'],
@@ -257,32 +267,15 @@ const soundFiles = [
 soundFiles.forEach(f => loadSound(f[0], f[1]));
 
 let bgmSource = null;
-let playerHP = 1000, botHP = 1000;
-let playerCombo = 0, botCombo = 0;
-let currentQuestion = null;
-let timerInterval = null;
-let lastPlayerAtk = "", lastBotAtk = "";
-
-// สร้างคำถาม
-const questions = [];
-const operators = [
-    { name: 'บวก', func: (a, b) => a + b },
-    { name: 'ลบ', func: (a, b) => a - b },
-    { name: 'คูณด้วย', func: (a, b) => a * b },
-    { name: 'หารด้วย', func: (a, b) => Math.floor(a / b) }
-];
-
-for (let i = 0; i < 50; i++) {
-    let op = operators[Math.floor(Math.random() * operators.length)];
-    let a = Math.floor(Math.random() * 50) + 5, b = Math.floor(Math.random() * 20) + 1;
-    if (op.name === 'หารด้วย') a = b * (Math.floor(Math.random() * 10) + 1);
-    let ans = op.func(a, b);
-    let opts = [ans, ans + 2, ans - 3, ans + 10].sort(() => Math.random() - 0.5);
-    questions.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
+function playBGM() {
+    if (sounds.back) {
+        bgmSource = audioCtx.createBufferSource();
+        bgmSource.buffer = sounds.back;
+        bgmSource.loop = true;
+        bgmSource.connect(audioCtx.destination);
+        bgmSource.start();
+    }
 }
-
-// Focus หน้าแรกเมื่อโหลด
-window.onload = () => document.getElementById('main-title').focus();
 
 function playSound(name) {
     if (sounds[name]) {
@@ -294,27 +287,49 @@ function playSound(name) {
     }
 }
 
-function playBGM() {
-    if (sounds.back) {
-        bgmSource = audioCtx.createBufferSource();
-        bgmSource.buffer = sounds.back;
-        bgmSource.loop = true;
-        bgmSource.connect(audioCtx.destination);
-        bgmSource.start();
-    }
+/**
+ * GAME LOGIC
+ */
+let playerHP = 1000;
+let botHP = 1000;
+let playerCombo = 0;
+let botCombo = 0;
+let currentQuestion = null;
+let timerInterval = null;
+let lastPlayerAtk = 0;
+let lastBotAtk = 0;
+
+// สร้างคำถาม 50 ข้อ
+const questions = [];
+const operators = [
+    { name: 'บวก', func: (a, b) => a + b },
+    { name: 'ลบ', func: (a, b) => a - b },
+    { name: 'คูณด้วย', func: (a, b) => a * b },
+    { name: 'หารด้วย', func: (a, b) => Math.floor(a / b) }
+];
+
+for (let i = 0; i < 50; i++) {
+    let op = operators[Math.floor(Math.random() * operators.length)];
+    let a = Math.floor(Math.random() * 50) + 1;
+    let b = Math.floor(Math.random() * 20) + 1;
+    if (op.name === 'หารด้วย') a = b * (Math.floor(Math.random() * 10) + 1); // ให้หารลงตัวง่ายๆ
+    
+    let ans = op.func(a, b);
+    let options = [ans, ans + 2, ans - 2, ans + 5].sort(() => Math.random() - 0.5);
+    questions.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options });
 }
 
 function announce(msg) {
     document.getElementById('sr-announcer').textContent = msg;
 }
 
-function startGame() {
+async function startGame() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('battle-arena').style.display = 'block';
     
-    const s = playSound('start');
-    s.onended = () => {
+    const startAudio = playSound('start');
+    startAudio.onended = () => {
         playBGM();
         nextQuestion();
     };
@@ -324,15 +339,15 @@ function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) return;
 
     currentQuestion = questions[Math.floor(Math.random() * questions.length)];
-    const qEl = document.getElementById('question-text');
-    qEl.textContent = currentQuestion.q;
+    document.getElementById('question-text').textContent = currentQuestion.q;
     
-    // Focus ไปที่คำถามทันที
-    qEl.focus();
-
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
-    [...currentQuestion.options].sort(() => Math.random() - 0.5).forEach(opt => {
+    
+    // สลับตัวเลือก
+    const shuffledOptions = [...currentQuestion.options].sort(() => Math.random() - 0.5);
+    
+    shuffledOptions.forEach(opt => {
         const btn = document.createElement('button');
         btn.className = 'option-btn';
         btn.textContent = opt;
@@ -344,98 +359,120 @@ function nextQuestion() {
 }
 
 function startTimer() {
-    let timeLeft = 7000; // ปรับเป็น 7 วินาที
+    let timeLeft = 5000;
     const bar = document.getElementById('timer-fill');
     clearInterval(timerInterval);
+    
     timerInterval = setInterval(() => {
         timeLeft -= 100;
-        bar.style.width = (timeLeft / 7000) * 100 + "%";
+        bar.style.width = (timeLeft / 5000) * 100 + "%";
         if (timeLeft <= 0) {
             clearInterval(timerInterval);
-            checkAnswer(null);
+            checkAnswer(null); // หมดเวลาถือว่าผิด
         }
     }, 100);
 }
 
-function checkAnswer(sel) {
+function checkAnswer(selected) {
     clearInterval(timerInterval);
-    const correct = sel === currentQuestion.a;
+    const isCorrect = selected === currentQuestion.a;
 
-    if (correct) {
-        playerCombo++; botCombo = 0;
+    if (isCorrect) {
+        playerCombo++;
+        botCombo = 0;
         let dmg = Math.floor(Math.random() * 101) + 50;
+        
+        // คอมโบผู้เล่น
         if (playerCombo >= 5) {
             dmg = Math.floor(Math.random() * 151) + 200;
-            playSound('atc'); announce(`คอมโบโจมตีแรงพิเศษ ${dmg} หน่วย!`);
+            playSound('atc');
+            announce(`คอมโบสุดยอด! โจมตีหนักหน่วงเสียพลัง ${dmg} หน่วย`);
             playerCombo = 0;
         } else {
-            let pool = ['at1','at2','at3'].filter(s => s !== lastPlayerAtk);
-            let s = pool[Math.floor(Math.random() * pool.length)];
-            playSound(s); lastPlayerAtk = s;
-            announce(`ถูกต้อง โจมตีบอทเสียพลัง ${dmg} หน่วย`);
+            let sfx = ['at1', 'at2', 'at3'].filter(s => s !== lastPlayerAtk);
+            let chosen = sfx[Math.floor(Math.random() * sfx.length)];
+            playSound(chosen);
+            lastPlayerAtk = chosen;
+            announce(`ถูกต้อง! โจมตีบอทเสียพลัง ${dmg} หน่วย`);
         }
-        botHP -= dmg; animate('bot-char', 'flash-green');
+
+        botHP -= dmg;
+        animateHit('bot-char', 'flash-green');
     } else {
-        botCombo++; playerCombo = 0;
+        botCombo++;
+        playerCombo = 0;
         let dmg = Math.floor(Math.random() * 101) + 50;
+
+        // คอมโบบอท
         if (botCombo >= 5) {
             dmg = Math.floor(Math.random() * 151) + 200;
-            playSound('enc'); announce(`อันตราย! บอทใช้คอมโบโจมตีคุณ ${dmg} หน่วย!`);
+            playSound('enc');
+            announce(`ระวัง! บอทใช้ท่าไม้ตาย โดนโจมตีเสียพลัง ${dmg} หน่วย`);
             botCombo = 0;
         } else {
-            let pool = ['en1','en2','en3'].filter(s => s !== lastBotAtk);
-            let s = pool[Math.floor(Math.random() * pool.length)];
-            playSound(s); lastBotAtk = s;
-            announce(`ผิดพลาด โดนโจมตีเสียพลัง ${dmg} หน่วย`);
+            let sfx = ['en1', 'en2', 'en3'].filter(s => s !== lastBotAtk);
+            let chosen = sfx[Math.floor(Math.random() * sfx.length)];
+            playSound(chosen);
+            lastBotAtk = chosen;
+            announce(`ผิดพลาด! โดนบอทโจมตีเสียพลัง ${dmg} หน่วย`);
         }
-        playerHP -= dmg; animate('player-char', 'flash-red');
+
+        playerHP -= dmg;
+        animateHit('player-char', 'flash-red');
     }
 
     updateUI();
-    if (playerHP > 0 && botHP > 0) setTimeout(nextQuestion, 1200);
-    else endGame();
+    
+    if (playerHP > 0 && botHP > 0) {
+        setTimeout(nextQuestion, 1000);
+    } else {
+        endGame();
+    }
 }
 
 function updateUI() {
-    document.getElementById('player-hp-fill').style.width = Math.max(0, playerHP/10) + "%";
-    document.getElementById('bot-hp-fill').style.width = Math.max(0, botHP/10) + "%";
-    document.getElementById('player-hp-text').textContent = `คุณเหลือพลัง ${Math.max(0, playerHP)}`;
-    document.getElementById('bot-hp-text').textContent = `บอทเหลือพลัง ${Math.max(0, botHP)}`;
+    const pFill = document.getElementById('player-hp-fill');
+    const bFill = document.getElementById('bot-hp-fill');
+    
+    pFill.style.width = Math.max(0, (playerHP / 1000) * 100) + "%";
+    bFill.style.width = Math.max(0, (botHP / 1000) * 100) + "%";
+    
+    document.getElementById('player-hp-text').textContent = `พลังชีวิตของคุณเหลือ ${Math.max(0, playerHP)}`;
+    document.getElementById('bot-hp-text').textContent = `พลังชีวิตบอทเหลือ ${Math.max(0, botHP)}`;
 }
 
-function animate(id, cls) {
-    document.getElementById(id).classList.add('shake');
-    document.getElementById('battle-arena').classList.add(cls);
+function animateHit(id, flashClass) {
+    const el = document.getElementById(id);
+    const arena = document.getElementById('battle-arena');
+    el.classList.add('shake');
+    arena.classList.add(flashClass);
     setTimeout(() => {
-        document.getElementById(id).classList.remove('shake');
-        document.getElementById('battle-arena').classList.remove(cls);
+        el.classList.remove('shake');
+        arena.classList.remove(flashClass);
     }, 300);
 }
 
 function endGame() {
     if (bgmSource) bgmSource.stop();
-    const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
     
     if (botHP <= 0) {
         playSound('win');
-        qEl.innerHTML = "YOU WIN!<br>ยินดีด้วย คุณชนะแล้ว";
-        announce("คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ");
+        document.getElementById('question-text').innerHTML = "<span style='color:var(--player-color); font-size:3rem;'>K.O. YOU WIN!</span><br>ยินดีด้วย คุณคือจ้าวนักคำนวณ!";
+        announce("คุณชนะแล้ว! ยินดีด้วยคุณคือจ้าวนักคำนวณ");
     } else {
         playSound('lost');
-        qEl.innerHTML = "GAME OVER<br>พยายามเข้า สู้ใหม่อีกครั้ง";
-        announce("คุณแพ้แล้ว แต่ไม่เป็นไร กลับมาสู้ใหม่นะ");
+        document.getElementById('question-text').innerHTML = "<span style='color:var(--bot-color); font-size:3rem;'>DEFEATED...</span><br>ไม่เป็นไรนะ พยายามเข้า สู้ใหม่อีกครั้ง!";
+        announce("คุณพ่ายแพ้ ไม่เป็นไรนะ พยายามเข้า สู้ใหม่อีกครั้ง");
     }
-
-    // Focus ไปที่สรุปผล (H2) ทันทีที่จบเกม
-    qEl.focus();
-
-    const rb = document.createElement('button');
-    rb.className = 'btn-start';
-    rb.textContent = "เล่นอีกครั้ง";
-    rb.onclick = () => location.reload();
-    grid.appendChild(rb);
+    
+    const restartBtn = document.createElement('button');
+    restartBtn.className = 'btn-start';
+    restartBtn.style.marginTop = "20px";
+    restartBtn.textContent = "กลับไปหน้าหลัก";
+    restartBtn.onclick = () => location.reload();
+    grid.appendChild(restartBtn);
 }
 </script>
 </body>
