@@ -246,11 +246,7 @@ let currentQIndex = 0;
 let timerInterval = null;
 let lastPlayerAtk = "", lastBotAtk = "";
 
-// สัญลักษณ์ Unicode
-const MINUS = '\u2212';
-const MULTIPLY = '\u00d7';
-const DIVIDE = '\u00f7';
-
+// ฟังก์ชันสร้างตัวเลือกหลอกที่ใกล้เคียง
 function generateOptions(ans) {
     let opts = new Set([ans]);
     while (opts.size < 4) {
@@ -262,18 +258,19 @@ function generateOptions(ans) {
     return Array.from(opts).sort(() => Math.random() - 0.5);
 }
 
+// ฟังก์ชันสร้างคำถามแบบ Dynamic ตามโหมด
 function generateQuestions() {
     const easySet = []; const hardSet = [];
     const usedQuestions = new Set();
 
-    // โหมดง่าย: บวก/ลบ 2 หลัก
+    // สร้างโหมดง่าย 500 ข้อ (บวก/ลบ 2 หลัก)
     while (easySet.length < 500) {
         let a = Math.floor(Math.random() * 90) + 10;
         let b = Math.floor(Math.random() * 90) + 10;
         let isAdd = Math.random() > 0.5;
         let qText, ans;
         if (isAdd) { ans = a + b; qText = `${a} + ${b} = ?`; }
-        else { if (a < b) [a, b] = [b, a]; ans = a - b; qText = `${a} ${MINUS} ${b} = ?`; }
+        else { if (a < b) [a, b] = [b, a]; ans = a - b; qText = `${a} - ${b} = ?`; }
         if (!usedQuestions.has(qText)) {
             easySet.push({ q: qText, a: ans, options: generateOptions(ans) });
             usedQuestions.add(qText);
@@ -282,26 +279,26 @@ function generateQuestions() {
 
     usedQuestions.clear();
 
-    // โหมดยาก: บวก/ลบ (3 หลัก กับ 2 หลัก), คูณ/หาร แม่ 2-12
+    // สร้างโหมดยาก 500 ข้อ (บวก/ลบ 3 หลัก, คูณ/หาร แม่ 2-12)
     while (hardSet.length < 500) {
         let type = Math.floor(Math.random() * 4); 
         let qText, ans;
-        if (type === 0) { // บวก
+        if (type === 0) { // บวก 3 หลัก
             let a = Math.floor(Math.random() * 800) + 100;
-            let b = Math.floor(Math.random() * 90) + 10;
+            let b = Math.floor(Math.random() * 800) + 100;
             ans = a + b; qText = `${a} + ${b} = ?`;
-        } else if (type === 1) { // ลบ
+        } else if (type === 1) { // ลบ 3 หลัก
             let a = Math.floor(Math.random() * 800) + 200;
-            let b = Math.floor(Math.random() * 90) + 10;
-            ans = a - b; qText = `${a} ${MINUS} ${b} = ?`;
-        } else if (type === 2) { // คูณ
+            let b = Math.floor(Math.random() * (a - 50)) + 50;
+            ans = a - b; qText = `${a} - ${b} = ?`;
+        } else if (type === 2) { // คูณ แม่ 2-12
             let a = Math.floor(Math.random() * 11) + 2;
             let b = Math.floor(Math.random() * 11) + 2;
-            ans = a * b; qText = `${a} ${MULTIPLY} ${b} = ?`;
-        } else { // หาร
+            ans = a * b; qText = `${a} × ${b} = ?`;
+        } else { // หาร แม่ 2-12
             let b = Math.floor(Math.random() * 11) + 2;
             ans = Math.floor(Math.random() * 11) + 2;
-            let a = ans * b; qText = `${a} ${DIVIDE} ${b} = ?`;
+            let a = ans * b; qText = `${a} ÷ ${b} = ?`;
         }
         if (!usedQuestions.has(qText)) {
             hardSet.push({ q: qText, a: ans, options: generateOptions(ans) });
@@ -311,7 +308,9 @@ function generateQuestions() {
     return { easy: easySet, hard: hardSet };
 }
 
-window.onload = () => { setTimeout(() => { document.getElementById('main-title').focus(); }, 500); };
+window.onload = () => {
+    setTimeout(() => { document.getElementById('main-title').focus(); }, 500);
+};
 
 function playSound(name) {
     if (sounds[name]) {
@@ -344,11 +343,21 @@ function showDamage(amount, side, isCombo = false) {
     const damageEl = document.createElement('div');
     damageEl.className = `damage-popup animate-damage ${isCombo ? 'damage-critical' : ''}`;
     damageEl.textContent = isCombo ? `COMBO! -${amount}` : `-${amount}`;
-    if (side === 'player') { damageEl.style.color = 'var(--bot-color)'; damageEl.style.left = '15%'; damageEl.style.bottom = '120px'; }
-    else { damageEl.style.color = 'var(--combo-color)'; damageEl.style.right = '15%'; damageEl.style.bottom = '120px'; }
+    
+    if (side === 'player') {
+        damageEl.style.color = 'var(--bot-color)'; 
+        damageEl.style.left = '15%'; damageEl.style.bottom = '120px';
+    } else {
+        damageEl.style.color = 'var(--combo-color)'; 
+        damageEl.style.right = '15%'; damageEl.style.bottom = '120px';
+    }
     container.appendChild(damageEl);
     setTimeout(() => damageEl.remove(), 1200);
-    if (isCombo) { container.classList.add('shake-heavy'); setTimeout(() => container.classList.remove('shake-heavy'), 500); }
+
+    if (isCombo) {
+        container.classList.add('shake-heavy');
+        setTimeout(() => container.classList.remove('shake-heavy'), 500);
+    }
 }
 
 function startGame(mode) {
@@ -371,22 +380,10 @@ function nextQuestion() {
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
     qEl.textContent = currentQuestion.q;
-
-    // ระบบ Accessibility: แปลงสัญลักษณ์เป็นคำอ่านไทย
-    let spoken = currentQuestion.q
-        .replace('+', ' บวก ')
-        .replace(MINUS, ' ลบ ')
-        .replace(MULTIPLY, ' คูณ ')
-        .replace(DIVIDE, ' หาร ')
-        .replace('=', ' เท่ากับ ')
-        .replace('?', ' เท่าไหร่ ');
-    qEl.setAttribute('aria-label', spoken);
-
     currentQuestion.options.forEach(opt => {
         const btn = document.createElement('button');
         btn.className = 'option-btn';
         btn.textContent = opt;
-        btn.setAttribute('aria-label', `คำตอบคือ ${opt}`);
         btn.onclick = (e) => checkAnswer(opt, currentQuestion.a, e.target);
         grid.appendChild(btn);
     });
@@ -469,7 +466,10 @@ function checkAnswer(sel, correctVal, clickedBtn) {
 
     updateUI();
     currentQIndex++;
-    setTimeout(() => { if (playerHP > 0 && botHP > 0) nextQuestion(); else endGame(); }, 2800);
+    setTimeout(() => {
+        if (playerHP > 0 && botHP > 0) nextQuestion();
+        else endGame();
+    }, 2800);
 }
 
 function updateUI() {
@@ -485,16 +485,27 @@ function endGame() {
     const playerGraphic = document.querySelector('#player-group .game-icon');
     const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
+    
     qEl.textContent = "แป๊บ"; grid.innerHTML = '';
+    
     let endSound = botHP <= 0 ? 'win' : 'lost';
     let endMsg = botHP <= 0 ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
-    if (botHP <= 0) { playerGraphic.classList.add('victory-aura'); container.style.boxShadow = "inset 0 0 100px var(--combo-color)"; }
-    else { container.classList.add('game-over-filter'); }
+    
+    if (botHP <= 0) {
+        playerGraphic.classList.add('victory-aura');
+        container.style.boxShadow = "inset 0 0 100px var(--combo-color)"; 
+    } else {
+        container.classList.add('game-over-filter');
+    }
+
     const finalSound = playSound(endSound);
     finalSound.onended = () => {
-        qEl.textContent = endMsg; qEl.classList.add('final-msg-anim'); qEl.focus();
+        qEl.textContent = endMsg;
+        qEl.classList.add('final-msg-anim');
+        qEl.focus();
         const rb = document.createElement('button');
-        rb.className = 'btn-start'; rb.style.marginTop = "20px";
+        rb.className = 'btn-start';
+        rb.style.marginTop = "20px";
         rb.textContent = "กลับหน้าหลักชุมชน";
         rb.onclick = () => location.reload();
         grid.appendChild(rb);
