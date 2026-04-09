@@ -39,7 +39,6 @@
 
         /* --- Animation Styles --- */
         .game-icon { width: 100%; height: 100%; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-        
         @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .idle { animation: idleMove 2.5s ease-in-out infinite; }
         .delay-idle { animation-delay: 1.2s; }
@@ -56,24 +55,20 @@
         /* --- UI Styles --- */
         #start-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; padding: 20px; }
         .title { font-size: 5rem; text-transform: uppercase; font-style: italic; background: linear-gradient(to bottom, #fff 20%, #ffcc00 50%, #ff6600 80%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(5px 5px 0px #000); margin-bottom: 20px; outline: none; }
-        
         .btn-start { padding: 15px 40px; font-size: 1.5rem; background: #ffcc00; border: none; cursor: pointer; font-weight: bold; clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%); transition: 0.2s; }
         .btn-start:hover { transform: scale(1.1); filter: brightness(1.2); }
 
         #battle-arena { display: none; padding: 15px; flex-direction: column; height: 100%; }
-        
-        /* Layout การจัดวาง Player และ CPU */
-        .battle-layout { display: flex; justify-content: space-between; align-items: flex-start; flex-grow: 1; padding: 0 20px; }
-        
-        .side-group { width: 40%; display: flex; flex-direction: column; align-items: center; gap: 20px; }
-        
-        /* Health Bar Styles */
-        .health-box { width: 100%; }
-        .hp-bar-bg { height: 25px; background: #333; border: 2px solid #fff; position: relative; overflow: hidden; }
+        .hud { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .health-box { width: 40%; }
+        .hp-bar-bg { height: 25px; background: #333; border: 2px solid #fff; transform: skewX(-20deg); position: relative; overflow: hidden; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.3s ease-out; }
-        
-        /* Character Graphic Container */
-        .char-graphic { width: 120px; height: 120px; margin-top: 10px; }
+        #player-hp-fill { background: var(--player-color); }
+        #bot-hp-fill { background: var(--bot-color); }
+
+        .stage { display: flex; justify-content: space-between; align-items: flex-end; height: 220px; padding: 0 50px; }
+        .char-group { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .char-graphic { width: 120px; height: 120px; }
 
         #quiz-container { margin-top: auto; text-align: center; padding-bottom: 10px; }
         #question-text { font-size: 2rem; margin-bottom: 15px; outline: none; min-height: 2.5rem; }
@@ -91,56 +86,53 @@
 
     <div id="start-screen">
         <h1 class="title" id="main-title" tabindex="-1">Math Fighter</h1>
-        <p style="margin-bottom: 15px; font-size: 1.2rem; max-width: 600px;">ศึกจ้าวนักคำนวณ: ตอบคำถามให้ถูกต้องเพื่อโจมตีคู่ต่อสู้ คุณมีเวลาเพียง 7 วินาทีต่อข้อ!</p>
+        <p style="margin-bottom: 10px; font-size: 1.1rem;">เลือกโหมดเพื่อเริ่มการต่อสู้ (7 วินาทีต่อข้อ)</p>
         <div style="display: flex; gap: 20px; margin-top: 10px;">
             <button class="btn-start" onclick="startGame('easy')" style="background:#00ff88; color:#000;">โหมดง่าย (บวก/ลบ)</button>
-            <button class="btn-start" onclick="startGame('hard')" style="background:#ff4400; color:#fff;">โหมดยาก (คูณ/หาร)</button>
+            <button class="btn-start" onclick="startGame('hard')" style="background:#ff4400; color:#fff;">โหมดยาก (จัดเต็ม)</button>
         </div>
     </div>
 
     <div id="battle-arena">
-        <div class="battle-layout">
-            
-            <section id="player-group" class="side-group idle" role="region" aria-labelledby="p-label">
-                <div class="health-box">
-                    <div id="p-label" style="font-weight:bold; color:var(--player-color); font-size:1.1rem; margin-bottom:5px;">PLAYER (YOU)</div>
-                    <div class="hp-bar-bg" style="transform: skewX(-20deg);">
-                        <div id="player-hp-fill" class="hp-fill" style="background: var(--player-color);"></div>
-                    </div>
-                    <div id="player-hp-text" class="sr-only">พลังชีวิต 1000 เต็ม 1000</div>
-                </div>
+        <div class="hud">
+            <div class="health-box">
+                <div style="font-weight:bold; font-size:0.8rem; text-transform: uppercase;">Player (YOU)</div>
+                <div class="hp-bar-bg"><div id="player-hp-fill" class="hp-fill"></div></div>
+                <div id="player-hp-text" class="sr-only"></div>
+            </div>
+            <div class="health-box" style="text-align: right;">
+                <div style="font-weight:bold; font-size:0.8rem; text-transform: uppercase;">CPU BOT</div>
+                <div class="hp-bar-bg" style="transform: skewX(20deg);"><div id="bot-hp-fill" class="hp-fill" style="margin-left: auto;"></div></div>
+                <div id="bot-hp-text" class="sr-only"></div>
+            </div>
+        </div>
+
+        <div class="stage">
+            <div id="player-char-container" class="char-group idle" role="group" aria-label="ตัวละครผู้เล่น">
                 <div class="char-graphic">
-                    <svg class="game-icon" viewBox="0 0 24 24" stroke="var(--player-color)">
+                    <svg class="game-icon" viewBox="0 0 24 24" stroke="#00ffcc">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                         <circle cx="12" cy="7" r="4"></circle>
                     </svg>
                 </div>
-            </section>
+                <div style="font-weight:bold; color:#00ffcc; font-size:0.9rem;">PLAYER</div>
+            </div>
 
-            <div style="font-size: 2rem; font-weight: bold; color: #555; align-self: center; margin-bottom: 50px;">VS</div>
-
-            <section id="bot-group" class="side-group idle delay-idle" role="region" aria-labelledby="c-label">
-                <div class="health-box" style="text-align: right;">
-                    <div id="c-label" style="font-weight:bold; color:var(--bot-color); font-size:1.1rem; margin-bottom:5px;">CPU BOT</div>
-                    <div class="hp-bar-bg" style="transform: skewX(20deg);">
-                        <div id="bot-hp-fill" class="hp-fill" style="background: var(--bot-color); margin-left: auto;"></div>
-                    </div>
-                    <div id="bot-hp-text" class="sr-only">พลังชีวิต 1000 เต็ม 1000</div>
-                </div>
+            <div id="bot-char-container" class="char-group idle delay-idle" role="group" aria-label="ตัวละครบอท">
                 <div class="char-graphic">
-                    <svg class="game-icon" viewBox="0 0 24 24" stroke="var(--bot-color)">
+                    <svg class="game-icon" viewBox="0 0 24 24" stroke="#ff3300">
                         <rect x="3" y="11" width="18" height="10" rx="2"></rect>
                         <circle cx="7" cy="15" r="0.5" fill="currentColor"></circle>
                         <circle cx="17" cy="15" r="0.5" fill="currentColor"></circle>
                         <path d="M12 11V7M8 7h8M12 3v4"></path>
                     </svg>
                 </div>
-            </section>
-
+                <div style="font-weight:bold; color:#ff3300; font-size:0.9rem;">CPU</div>
+            </div>
         </div>
 
         <div id="quiz-container">
-            <div style="width:100%; background:#222; height:8px; margin-bottom:15px">
+            <div style="width:100%; background:#222; height:6px; margin-bottom:10px">
                 <div id="timer-fill" style="height:100%; width:100%; background:#ffcc00"></div>
             </div>
             <h2 id="question-text" tabindex="-1"></h2>
@@ -150,7 +142,7 @@
 </div>
 
 <script>
-// --- LOGIC พื้นฐานจากไฟล์ต้นฉบับ ---
+// --- LOGIC เดิมทั้งหมดจากไฟล์ของคุณ ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const sounds = {};
 async function loadSound(name, url) {
@@ -264,10 +256,10 @@ function startTimer() {
     }, 100);
 }
 
-// ระบบ Combat Animation
+// Combat Animation
 function triggerCombatAnimation(attacker) {
-    const p = document.getElementById('player-group');
-    const c = document.getElementById('bot-group');
+    const p = document.getElementById('player-char-container');
+    const c = document.getElementById('bot-char-container');
 
     if (attacker === 'player') {
         p.classList.remove('idle');
@@ -335,10 +327,8 @@ function checkAnswer(sel, correctVal) {
 function updateUI() {
     document.getElementById('player-hp-fill').style.width = Math.max(0, playerHP/10) + "%";
     document.getElementById('bot-hp-fill').style.width = Math.max(0, botHP/10) + "%";
-    
-    // อัปเดตข้อความสำหรับ SR ให้ครบถ้วน
-    document.getElementById('player-hp-text').textContent = `พลังชีวิตผู้เล่นเหลือ ${Math.max(0, playerHP)} จาก 1000`;
-    document.getElementById('bot-hp-text').textContent = `พลังชีวิตบอทเหลือ ${Math.max(0, botHP)} จาก 1000`;
+    document.getElementById('player-hp-text').textContent = `คุณเหลือพลัง ${Math.max(0, playerHP)}`;
+    document.getElementById('bot-hp-text').textContent = `บอทเหลือพลัง ${Math.max(0, botHP)}`;
 }
 
 function endGame() {
