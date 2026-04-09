@@ -329,7 +329,6 @@ function showDamage(amount, side, isCombo = false) {
 
 function startGame(mode) {
     const allData = generateQuestions();
-    // แก้ไข: แยกโหมดให้เด็ดขาด
     sessionQuestions = (mode === 'easy') ? [...allData.easy].sort(() => Math.random() - 0.5) : [...allData.hard].sort(() => Math.random() - 0.5);
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
@@ -341,12 +340,7 @@ function startGame(mode) {
 }
 
 function nextQuestion() {
-    // แก้ไข: เช็ค HP ก่อนเริ่มข้อใหม่เสมอ
-    if (playerHP <= 0 || botHP <= 0) {
-        endGame();
-        return;
-    }
-    
+    if (playerHP <= 0 || botHP <= 0) return;
     if (currentQIndex >= sessionQuestions.length) currentQIndex = 0;
     const currentQuestion = sessionQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
@@ -450,7 +444,7 @@ function checkAnswer(sel, correctVal, clickedBtn) {
 
     updateUI();
     
-    // แก้ไข: ตัดการทำงานทันทีถ้ามีคนแพ้
+    // สำคัญ: เช็คเลือดก่อนไปข้อถัดไป
     if (playerHP <= 0 || botHP <= 0) {
         setTimeout(endGame, 2800);
     } else {
@@ -467,10 +461,7 @@ function updateUI() {
 }
 
 function endGame() {
-    // แก้ไข: หยุด Timer ให้ขาด
-    clearInterval(timerInterval);
-
-    // แก้ไข: ปิดการประกาศของ SR ทันทีเพื่อไม่ให้มีเสียงแทรก
+    // 1. ล้างสถานะ SR และโจทย์เก่าออกให้หมด
     const announcer = document.getElementById('sr-announcer');
     announcer.setAttribute('aria-live', 'off');
     announcer.textContent = "";
@@ -481,11 +472,12 @@ function endGame() {
     const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
     
-    // แก้ไข: ล้างข้อมูลหน้าจอทันทีเพื่อป้องกันข้อความโจทย์ค้าง
+    // ลบ aria-label เดิมของโจทย์ออก
     qEl.removeAttribute('aria-label');
     qEl.textContent = "แป๊บ"; 
     grid.innerHTML = '';
     
+    // 2. ชุดข้อความสุ่ม
     const winMsgs = [
         "YOU WIN! ยินดีด้วย คุณคือจ้าวนักคำนวณ!",
         "สุดยอดไปเลย! ชนะขาดลอย สมกับเป็นยอดฝีมือ",
@@ -515,11 +507,12 @@ function endGame() {
 
     const finalSound = playSound(endSound);
     finalSound.onended = () => {
-        // อัปเดตข้อความจบเกมที่ Heading
+        // แสดงข้อความยินดีหรือให้กำลังใจที่หัวข้อ (Heading)
         qEl.textContent = endMsg;
         qEl.classList.add('final-msg-anim');
         qEl.focus();
         
+        // สร้างปุ่มกลับหน้าหลัก
         const rb = document.createElement('button');
         rb.className = 'btn-start';
         rb.style.marginTop = "20px";
