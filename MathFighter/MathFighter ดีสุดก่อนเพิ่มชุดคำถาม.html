@@ -46,6 +46,7 @@
             transition: filter 2s ease-in-out, box-shadow 1s ease-out;
         }
 
+        /* --- New Damage & Combo Animations --- */
         .damage-popup {
             position: absolute;
             font-size: 2.5rem;
@@ -87,11 +88,13 @@
         }
         .shake-heavy { animation: screen-shake-heavy 0.5s ease-in-out; }
 
+        /* --- End Game Effects --- */
         .victory-aura { filter: drop-shadow(0 0 20px #ffcc00) brightness(1.5); transform: scale(1.3); transition: all 1s ease-out; }
         .game-over-filter { filter: grayscale(1) contrast(1.2); }
         .final-msg-anim { animation: titlePop 0.8s cubic-bezier(0.17, 0.89, 0.32, 1.49); }
         @keyframes titlePop { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1.2); opacity: 1; } }
 
+        /* --- Existing Animations --- */
         .game-icon { width: 100%; height: 100%; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
         @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .idle { animation: idleMove 2.5s ease-in-out infinite; }
@@ -131,7 +134,7 @@
         .char-graphic { width: 120px; height: 120px; }
 
         #quiz-container { margin-top: auto; text-align: center; padding-bottom: 10px; }
-        #question-text { font-size: 2.5rem; font-weight: bold; margin-bottom: 20px; text-shadow: 2px 2px 4px #000; outline: none; }
+        #question-text { font-size: 2.2rem; margin-bottom: 20px; text-shadow: 2px 2px 4px #000; outline: none; }
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 600px; margin: 0 auto; }
 
         .option-btn {
@@ -152,7 +155,6 @@
             .title { font-size: 3rem; }
             .char-graphic { width: 80px; height: 80px; }
             .option-btn { font-size: 1.2rem; padding: 15px; }
-            #question-text { font-size: 2rem; }
         }
     </style>
 </head>
@@ -246,64 +248,30 @@ let currentQIndex = 0;
 let timerInterval = null;
 let lastPlayerAtk = "", lastBotAtk = "";
 
-// ฟังก์ชันสร้างตัวเลือกหลอกที่ใกล้เคียง
-function generateOptions(ans) {
-    let opts = new Set([ans]);
-    while (opts.size < 4) {
-        let offset = Math.floor(Math.random() * 21) - 10; 
-        if (offset === 0) offset = (Math.random() > 0.5 ? 5 : -5);
-        let wrongAns = ans + offset;
-        if (wrongAns >= 0) opts.add(wrongAns);
-    }
-    return Array.from(opts).sort(() => Math.random() - 0.5);
-}
-
-// ฟังก์ชันสร้างคำถามแบบ Dynamic ตามโหมด
 function generateQuestions() {
     const easySet = []; const hardSet = [];
-    const usedQuestions = new Set();
-
-    // สร้างโหมดง่าย 500 ข้อ (บวก/ลบ 2 หลัก)
-    while (easySet.length < 500) {
+    for (let i = 0; i < 100; i++) {
+        let op = Math.random() > 0.5 ? { name: 'บวก', func: (a, b) => a + b } : { name: 'ลบ', func: (a, b) => a - b };
         let a = Math.floor(Math.random() * 90) + 10;
-        let b = Math.floor(Math.random() * 90) + 10;
-        let isAdd = Math.random() > 0.5;
-        let qText, ans;
-        if (isAdd) { ans = a + b; qText = `${a} + ${b} = ?`; }
-        else { if (a < b) [a, b] = [b, a]; ans = a - b; qText = `${a} - ${b} = ?`; }
-        if (!usedQuestions.has(qText)) {
-            easySet.push({ q: qText, a: ans, options: generateOptions(ans) });
-            usedQuestions.add(qText);
-        }
+        let b = Math.floor(Math.random() * 80) + 5;
+        if (op.name === 'ลบ' && a < b) [a, b] = [b, a];
+        let ans = op.func(a, b);
+        let opts = [ans, ans + 2, ans - 5, ans + 10].sort(() => Math.random() - 0.5);
+        easySet.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
     }
-
-    usedQuestions.clear();
-
-    // สร้างโหมดยาก 500 ข้อ (บวก/ลบ 3 หลัก, คูณ/หาร แม่ 2-12)
-    while (hardSet.length < 500) {
-        let type = Math.floor(Math.random() * 4); 
-        let qText, ans;
-        if (type === 0) { // บวก 3 หลัก
-            let a = Math.floor(Math.random() * 800) + 100;
-            let b = Math.floor(Math.random() * 800) + 100;
-            ans = a + b; qText = `${a} + ${b} = ?`;
-        } else if (type === 1) { // ลบ 3 หลัก
-            let a = Math.floor(Math.random() * 800) + 200;
-            let b = Math.floor(Math.random() * (a - 50)) + 50;
-            ans = a - b; qText = `${a} - ${b} = ?`;
-        } else if (type === 2) { // คูณ แม่ 2-12
-            let a = Math.floor(Math.random() * 11) + 2;
-            let b = Math.floor(Math.random() * 11) + 2;
-            ans = a * b; qText = `${a} × ${b} = ?`;
-        } else { // หาร แม่ 2-12
-            let b = Math.floor(Math.random() * 11) + 2;
-            ans = Math.floor(Math.random() * 11) + 2;
-            let a = ans * b; qText = `${a} ÷ ${b} = ?`;
+    for (let i = 0; i < 100; i++) {
+        let isDiv = Math.random() > 0.5; let q, ans;
+        if (isDiv) {
+            let b = Math.floor(Math.random() * 12) + 2;
+            ans = Math.floor(Math.random() * 12) + 2;
+            let a = ans * b; q = `${a} หารด้วย ${b} เท่ากับเท่าไหร่?`;
+        } else {
+            let a = Math.floor(Math.random() * 12) + 2;
+            let b = Math.floor(Math.random() * 15) + 2;
+            ans = a * b; q = `${a} คูณด้วย ${b} เท่ากับเท่าไหร่?`;
         }
-        if (!usedQuestions.has(qText)) {
-            hardSet.push({ q: qText, a: ans, options: generateOptions(ans) });
-            usedQuestions.add(qText);
-        }
+        let opts = [ans, ans + 1, ans - 2, ans + 5].sort(() => Math.random() - 0.5);
+        hardSet.push({ q: q, a: ans, options: opts });
     }
     return { easy: easySet, hard: hardSet };
 }
@@ -362,7 +330,7 @@ function showDamage(amount, side, isCombo = false) {
 
 function startGame(mode) {
     const allData = generateQuestions();
-    sessionQuestions = (mode === 'easy') ? [...allData.easy].sort(() => Math.random() - 0.5) : [...allData.hard].sort(() => Math.random() - 0.5);
+    sessionQuestions = (mode === 'easy') ? [...allData.easy].sort(() => Math.random() - 0.5) : [...allData.easy, ...allData.hard].sort(() => Math.random() - 0.5);
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('battle-arena').style.display = 'flex';
@@ -506,7 +474,7 @@ function endGame() {
         const rb = document.createElement('button');
         rb.className = 'btn-start';
         rb.style.marginTop = "20px";
-        rb.textContent = "กลับหน้าหลักชุมชน";
+        rb.textContent = "กลับไปเริ่มใหม่";
         rb.onclick = () => location.reload();
         grid.appendChild(rb);
     };
