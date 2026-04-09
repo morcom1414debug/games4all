@@ -46,6 +46,7 @@
             transition: filter 2s ease-in-out, box-shadow 1s ease-out;
         }
 
+        /* --- New Damage & Combo Animations --- */
         .damage-popup {
             position: absolute;
             font-size: 2.5rem;
@@ -87,11 +88,13 @@
         }
         .shake-heavy { animation: screen-shake-heavy 0.5s ease-in-out; }
 
+        /* --- End Game Effects --- */
         .victory-aura { filter: drop-shadow(0 0 20px #ffcc00) brightness(1.5); transform: scale(1.3); transition: all 1s ease-out; }
         .game-over-filter { filter: grayscale(1) contrast(1.2); }
         .final-msg-anim { animation: titlePop 0.8s cubic-bezier(0.17, 0.89, 0.32, 1.49); }
         @keyframes titlePop { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1.2); opacity: 1; } }
 
+        /* --- Existing Animations --- */
         .game-icon { width: 100%; height: 100%; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
         @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .idle { animation: idleMove 2.5s ease-in-out infinite; }
@@ -131,7 +134,7 @@
         .char-graphic { width: 120px; height: 120px; }
 
         #quiz-container { margin-top: auto; text-align: center; padding-bottom: 10px; }
-        #question-text { font-size: 2.5rem; font-weight: bold; margin-bottom: 20px; text-shadow: 2px 2px 4px #000; outline: none; }
+        #question-text { font-size: 2.2rem; margin-bottom: 20px; text-shadow: 2px 2px 4px #000; outline: none; }
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 600px; margin: 0 auto; }
 
         .option-btn {
@@ -152,7 +155,6 @@
             .title { font-size: 3rem; }
             .char-graphic { width: 80px; height: 80px; }
             .option-btn { font-size: 1.2rem; padding: 15px; }
-            #question-text { font-size: 2rem; }
         }
     </style>
 </head>
@@ -246,69 +248,37 @@ let currentQIndex = 0;
 let timerInterval = null;
 let lastPlayerAtk = "", lastBotAtk = "";
 
-const MINUS = '\u2212';
-const MULTIPLY = '\u00d7';
-const DIVIDE = '\u00f7';
-
-function generateOptions(ans) {
-    let opts = new Set([ans]);
-    while (opts.size < 4) {
-        let offset = Math.floor(Math.random() * 21) - 10; 
-        if (offset === 0) offset = (Math.random() > 0.5 ? 5 : -5);
-        let wrongAns = ans + offset;
-        if (wrongAns >= 0) opts.add(wrongAns);
-    }
-    return Array.from(opts).sort(() => Math.random() - 0.5);
-}
-
 function generateQuestions() {
     const easySet = []; const hardSet = [];
-    const usedQuestions = new Set();
-
-    while (easySet.length < 500) {
+    for (let i = 0; i < 100; i++) {
+        let op = Math.random() > 0.5 ? { name: 'บวก', func: (a, b) => a + b } : { name: 'ลบ', func: (a, b) => a - b };
         let a = Math.floor(Math.random() * 90) + 10;
-        let b = Math.floor(Math.random() * 90) + 10;
-        let isAdd = Math.random() > 0.5;
-        let qText, ans;
-        if (isAdd) { ans = a + b; qText = `${a} + ${b} = ?`; }
-        else { if (a < b) [a, b] = [b, a]; ans = a - b; qText = `${a} ${MINUS} ${b} = ?`; }
-        if (!usedQuestions.has(qText)) {
-            easySet.push({ q: qText, a: ans, options: generateOptions(ans) });
-            usedQuestions.add(qText);
-        }
+        let b = Math.floor(Math.random() * 80) + 5;
+        if (op.name === 'ลบ' && a < b) [a, b] = [b, a];
+        let ans = op.func(a, b);
+        let opts = [ans, ans + 2, ans - 5, ans + 10].sort(() => Math.random() - 0.5);
+        easySet.push({ q: `${a} ${op.name} ${b} เท่ากับเท่าไหร่?`, a: ans, options: opts });
     }
-
-    usedQuestions.clear();
-
-    while (hardSet.length < 500) {
-        let type = Math.floor(Math.random() * 4); 
-        let qText, ans;
-        if (type === 0) {
-            let a = Math.floor(Math.random() * 800) + 100;
-            let b = Math.floor(Math.random() * 90) + 10;
-            ans = a + b; qText = `${a} + ${b} = ?`;
-        } else if (type === 1) {
-            let a = Math.floor(Math.random() * 800) + 200;
-            let b = Math.floor(Math.random() * 90) + 10;
-            ans = a - b; qText = `${a} ${MINUS} ${b} = ?`;
-        } else if (type === 2) {
-            let a = Math.floor(Math.random() * 11) + 2;
-            let b = Math.floor(Math.random() * 11) + 2;
-            ans = a * b; qText = `${a} ${MULTIPLY} ${b} = ?`;
+    for (let i = 0; i < 100; i++) {
+        let isDiv = Math.random() > 0.5; let q, ans;
+        if (isDiv) {
+            let b = Math.floor(Math.random() * 12) + 2;
+            ans = Math.floor(Math.random() * 12) + 2;
+            let a = ans * b; q = `${a} หารด้วย ${b} เท่ากับเท่าไหร่?`;
         } else {
-            let b = Math.floor(Math.random() * 11) + 2;
-            ans = Math.floor(Math.random() * 11) + 2;
-            let a = ans * b; qText = `${a} ${DIVIDE} ${b} = ?`;
+            let a = Math.floor(Math.random() * 12) + 2;
+            let b = Math.floor(Math.random() * 15) + 2;
+            ans = a * b; q = `${a} คูณด้วย ${b} เท่ากับเท่าไหร่?`;
         }
-        if (!usedQuestions.has(qText)) {
-            hardSet.push({ q: qText, a: ans, options: generateOptions(ans) });
-            usedQuestions.add(qText);
-        }
+        let opts = [ans, ans + 1, ans - 2, ans + 5].sort(() => Math.random() - 0.5);
+        hardSet.push({ q: q, a: ans, options: opts });
     }
     return { easy: easySet, hard: hardSet };
 }
 
-window.onload = () => { setTimeout(() => { document.getElementById('main-title').focus(); }, 500); };
+window.onload = () => {
+    setTimeout(() => { document.getElementById('main-title').focus(); }, 500);
+};
 
 function playSound(name) {
     if (sounds[name]) {
@@ -341,16 +311,26 @@ function showDamage(amount, side, isCombo = false) {
     const damageEl = document.createElement('div');
     damageEl.className = `damage-popup animate-damage ${isCombo ? 'damage-critical' : ''}`;
     damageEl.textContent = isCombo ? `COMBO! -${amount}` : `-${amount}`;
-    if (side === 'player') { damageEl.style.color = 'var(--bot-color)'; damageEl.style.left = '15%'; damageEl.style.bottom = '120px'; }
-    else { damageEl.style.color = 'var(--combo-color)'; damageEl.style.right = '15%'; damageEl.style.bottom = '120px'; }
+    
+    if (side === 'player') {
+        damageEl.style.color = 'var(--bot-color)'; 
+        damageEl.style.left = '15%'; damageEl.style.bottom = '120px';
+    } else {
+        damageEl.style.color = 'var(--combo-color)'; 
+        damageEl.style.right = '15%'; damageEl.style.bottom = '120px';
+    }
     container.appendChild(damageEl);
     setTimeout(() => damageEl.remove(), 1200);
-    if (isCombo) { container.classList.add('shake-heavy'); setTimeout(() => container.classList.remove('shake-heavy'), 500); }
+
+    if (isCombo) {
+        container.classList.add('shake-heavy');
+        setTimeout(() => container.classList.remove('shake-heavy'), 500);
+    }
 }
 
 function startGame(mode) {
     const allData = generateQuestions();
-    sessionQuestions = (mode === 'easy') ? [...allData.easy].sort(() => Math.random() - 0.5) : [...allData.hard].sort(() => Math.random() - 0.5);
+    sessionQuestions = (mode === 'easy') ? [...allData.easy].sort(() => Math.random() - 0.5) : [...allData.easy, ...allData.hard].sort(() => Math.random() - 0.5);
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('battle-arena').style.display = 'flex';
@@ -368,21 +348,10 @@ function nextQuestion() {
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
     qEl.textContent = currentQuestion.q;
-
-    let spoken = currentQuestion.q
-        .replace('+', ' บวก ')
-        .replace(MINUS, ' ลบ ')
-        .replace(MULTIPLY, ' คูณ ')
-        .replace(DIVIDE, ' หาร ')
-        .replace('=', ' เท่ากับ ')
-        .replace('?', ' '); 
-    qEl.setAttribute('aria-label', spoken);
-
     currentQuestion.options.forEach(opt => {
         const btn = document.createElement('button');
         btn.className = 'option-btn';
         btn.textContent = opt;
-        btn.setAttribute('aria-label', opt); 
         btn.onclick = (e) => checkAnswer(opt, currentQuestion.a, e.target);
         grid.appendChild(btn);
     });
@@ -465,7 +434,10 @@ function checkAnswer(sel, correctVal, clickedBtn) {
 
     updateUI();
     currentQIndex++;
-    setTimeout(() => { if (playerHP > 0 && botHP > 0) nextQuestion(); else endGame(); }, 2800);
+    setTimeout(() => {
+        if (playerHP > 0 && botHP > 0) nextQuestion();
+        else endGame();
+    }, 2800);
 }
 
 function updateUI() {
@@ -476,11 +448,6 @@ function updateUI() {
 }
 
 function endGame() {
-    // 1. ปิดการประกาศของ SR ทันทีเพื่อไม่ให้มีเสียงแทรก
-    const announcer = document.getElementById('sr-announcer');
-    announcer.setAttribute('aria-live', 'off');
-    announcer.textContent = "";
-
     if (bgmSource) bgmSource.stop();
     const container = document.getElementById('game-container');
     const playerGraphic = document.querySelector('#player-group .game-icon');
@@ -489,25 +456,8 @@ function endGame() {
     
     qEl.textContent = "แป๊บ"; grid.innerHTML = '';
     
-    // 2. ชุดข้อความสุ่ม
-    const winMsgs = [
-        "YOU WIN! ยินดีด้วย คุณคือจ้าวนักคำนวณ!",
-        "สุดยอดไปเลย! ชนะขาดลอย สมกับเป็นยอดฝีมือ",
-        "ชัยชนะเป็นของคุณ! ทักษะคณิตศาสตร์ของคุณยอดเยี่ยมมาก",
-        "ยินดีด้วย! คุณเอาชนะบอทได้อย่างเหนือชั้น",
-        "สำเร็จ! ชนะแล้ว พลังสมองของคุณแข็งแกร่งจริงๆ"
-    ];
-    
-    const loseMsgs = [
-        "GAME OVER พยายามเข้า สู้ใหม่อีกครั้งนะ",
-        "เกือบชนะแล้ว! ลองอีกนิด ฝึกฝนอีกหน่อยเก่งแน่นอน",
-        "ไม่เป็นไรนะ วันนี้บอทมาแรงจริงๆ กลับมาแก้มือใหม่ได้เสมอ",
-        "อย่ายอมแพ้! ทุกความพยายามทำให้คุณเก่งขึ้น",
-        "จบเกมแล้ว แต่ความสามารถคุณพัฒนาขึ้นมาก สู้ต่อไป!"
-    ];
-
     let endSound = botHP <= 0 ? 'win' : 'lost';
-    let endMsg = botHP <= 0 ? winMsgs[Math.floor(Math.random() * winMsgs.length)] : loseMsgs[Math.floor(Math.random() * loseMsgs.length)];
+    let endMsg = botHP <= 0 ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
     
     if (botHP <= 0) {
         playerGraphic.classList.add('victory-aura');
@@ -524,7 +474,7 @@ function endGame() {
         const rb = document.createElement('button');
         rb.className = 'btn-start';
         rb.style.marginTop = "20px";
-        rb.textContent = "กลับหน้าหลักชุมชน";
+        rb.textContent = "กลับไปเริ่มใหม่";
         rb.onclick = () => location.reload();
         grid.appendChild(rb);
     };
