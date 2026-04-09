@@ -308,20 +308,11 @@ function playBGM() {
     }
 }
 
-// จุดที่ปรับแก้: ล้างค่าประกาศอัตโนมัติเพื่อไม่ให้ค้างในข้อถัดไป
 function announce(msg) {
     const announcer = document.getElementById('sr-announcer');
     if (announcer.getAttribute('aria-live') === 'off') return;
     announcer.textContent = ""; 
-    setTimeout(() => { 
-        announcer.textContent = msg; 
-        // ล้างค่าทิ้งหลังจากประกาศไปแล้ว 2 วินาที เพื่อไม่ให้ SR เก็บไว้ใน Virtual Cursor
-        setTimeout(() => {
-            if (announcer.getAttribute('aria-live') !== 'off') {
-                announcer.textContent = "";
-            }
-        }, 2000);
-    }, 50);
+    setTimeout(() => { announcer.textContent = msg; }, 50);
 }
 
 function showDamage(amount, side, isCombo = false) {
@@ -338,6 +329,7 @@ function showDamage(amount, side, isCombo = false) {
 
 function startGame(mode) {
     const allData = generateQuestions();
+    // แก้ไข: แยกโหมดให้เด็ดขาด
     sessionQuestions = (mode === 'easy') ? [...allData.easy].sort(() => Math.random() - 0.5) : [...allData.hard].sort(() => Math.random() - 0.5);
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
@@ -349,17 +341,12 @@ function startGame(mode) {
 }
 
 function nextQuestion() {
+    // แก้ไข: เช็ค HP ก่อนเริ่มข้อใหม่เสมอ
     if (playerHP <= 0 || botHP <= 0) {
         endGame();
         return;
     }
     
-    // ล้างคำประกาศก่อนเริ่มข้อใหม่
-    const announcer = document.getElementById('sr-announcer');
-    if (announcer.getAttribute('aria-live') !== 'off') {
-        announcer.textContent = "";
-    }
-
     if (currentQIndex >= sessionQuestions.length) currentQIndex = 0;
     const currentQuestion = sessionQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
@@ -463,6 +450,7 @@ function checkAnswer(sel, correctVal, clickedBtn) {
 
     updateUI();
     
+    // แก้ไข: ตัดการทำงานทันทีถ้ามีคนแพ้
     if (playerHP <= 0 || botHP <= 0) {
         setTimeout(endGame, 2800);
     } else {
@@ -479,7 +467,10 @@ function updateUI() {
 }
 
 function endGame() {
+    // แก้ไข: หยุด Timer ให้ขาด
     clearInterval(timerInterval);
+
+    // แก้ไข: ปิดการประกาศของ SR ทันทีเพื่อไม่ให้มีเสียงแทรก
     const announcer = document.getElementById('sr-announcer');
     announcer.setAttribute('aria-live', 'off');
     announcer.textContent = "";
@@ -490,8 +481,9 @@ function endGame() {
     const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
     
-    qEl.textContent = ""; 
+    // แก้ไข: ล้างข้อมูลหน้าจอทันทีเพื่อป้องกันข้อความโจทย์ค้าง
     qEl.removeAttribute('aria-label');
+    qEl.textContent = "แป๊บ"; 
     grid.innerHTML = '';
     
     const winMsgs = [
@@ -523,8 +515,8 @@ function endGame() {
 
     const finalSound = playSound(endSound);
     finalSound.onended = () => {
+        // อัปเดตข้อความจบเกมที่ Heading
         qEl.textContent = endMsg;
-        qEl.setAttribute('aria-label', endMsg); 
         qEl.classList.add('final-msg-anim');
         qEl.focus();
         
@@ -532,7 +524,6 @@ function endGame() {
         rb.className = 'btn-start';
         rb.style.marginTop = "20px";
         rb.textContent = "กลับหน้าหลักชุมชน";
-        rb.setAttribute('aria-label', "กลับหน้าหลักชุมชน");
         rb.onclick = () => location.reload();
         grid.appendChild(rb);
     };
