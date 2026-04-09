@@ -46,23 +46,6 @@
             transition: filter 2s ease-in-out, box-shadow 1s ease-out;
         }
 
-        /* --- New Particle Effects Section --- */
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            z-index: 100;
-            font-size: 2.5rem;
-            filter: drop-shadow(0 0 5px rgba(0,0,0,0.5));
-            animation: particleAnim 2.5s ease-out forwards;
-        }
-
-        @keyframes particleAnim {
-            0% { transform: translateY(0) rotate(0deg) scale(0); opacity: 0; }
-            20% { opacity: 1; transform: translateY(-20px) scale(1.2); }
-            100% { transform: translateY(var(--move-y)) rotate(var(--rot)) scale(1); opacity: 0; }
-        }
-        /* ------------------------------------ */
-
         .damage-popup {
             position: absolute;
             font-size: 2.5rem;
@@ -325,12 +308,14 @@ function playBGM() {
     }
 }
 
+// จุดที่ปรับแก้: ล้างค่าประกาศอัตโนมัติเพื่อไม่ให้ค้างในข้อถัดไป
 function announce(msg) {
     const announcer = document.getElementById('sr-announcer');
     if (announcer.getAttribute('aria-live') === 'off') return;
     announcer.textContent = ""; 
     setTimeout(() => { 
         announcer.textContent = msg; 
+        // ล้างค่าทิ้งหลังจากประกาศไปแล้ว 2 วินาที เพื่อไม่ให้ SR เก็บไว้ใน Virtual Cursor
         setTimeout(() => {
             if (announcer.getAttribute('aria-live') !== 'off') {
                 announcer.textContent = "";
@@ -369,6 +354,7 @@ function nextQuestion() {
         return;
     }
     
+    // ล้างคำประกาศก่อนเริ่มข้อใหม่
     const announcer = document.getElementById('sr-announcer');
     if (announcer.getAttribute('aria-live') !== 'off') {
         announcer.textContent = "";
@@ -492,34 +478,6 @@ function updateUI() {
     document.getElementById('bot-group').setAttribute('aria-label', `บอท พลังเหลือ ${Math.max(0, botHP)}`);
 }
 
-/* --- New Particle Spawn Function --- */
-function spawnEndEffects(type) {
-    const container = document.getElementById('game-container');
-    const symbol = (type === 'win') ? '🏆' : '💀';
-    const count = 25; 
-
-    for (let i = 0; i < count; i++) {
-        const p = document.createElement('div');
-        p.className = 'particle';
-        p.textContent = symbol;
-        p.style.left = Math.random() * 90 + 5 + '%';
-        
-        if (type === 'win') {
-            p.style.bottom = "-50px";
-            p.style.setProperty('--move-y', '-600px');
-        } else {
-            p.style.top = "-50px";
-            p.style.setProperty('--move-y', '600px');
-        }
-        
-        p.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
-        p.style.animationDelay = (Math.random() * 1.5) + 's';
-        
-        container.appendChild(p);
-        setTimeout(() => p.remove(), 4000);
-    }
-}
-
 function endGame() {
     clearInterval(timerInterval);
     const announcer = document.getElementById('sr-announcer');
@@ -564,9 +522,6 @@ function endGame() {
     }
 
     const finalSound = playSound(endSound);
-    // Call particle effects when sound starts
-    spawnEndEffects(isWin ? 'win' : 'lost');
-
     finalSound.onended = () => {
         qEl.textContent = endMsg;
         qEl.setAttribute('aria-label', endMsg); 
