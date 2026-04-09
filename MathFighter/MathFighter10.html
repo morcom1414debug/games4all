@@ -41,7 +41,7 @@
             flex-direction: column;
         }
 
-        /* --- Animations --- */
+        /* --- Animations จาก MathFighter10 --- */
         .game-icon { width: 100%; height: 100%; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
         @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .idle { animation: idleMove 2.5s ease-in-out infinite; }
@@ -53,6 +53,7 @@
         @keyframes is-hit { 0%, 100% { transform: scale(1); filter: none; } 20% { transform: scale(0.9) rotate(-10deg); filter: drop-shadow(0 0 20px red) brightness(2); } 50% { transform: scale(1.1) rotate(10deg); } }
         .hit-effect { animation: is-hit 0.4s ease-out !important; }
 
+        /* --- Start Screen --- */
         #start-screen {
             position: absolute;
             inset: 0;
@@ -89,6 +90,7 @@
             transition: all 0.2s;
         }
 
+        /* --- Battle Arena UI --- */
         #battle-arena {
             display: none;
             padding: 15px;
@@ -104,6 +106,7 @@
             padding: 0 20px;
         }
 
+        /* Side Group สำหรับ SR และ Visuals */
         .side-group {
             width: 40%;
             display: flex;
@@ -248,6 +251,7 @@
 </div>
 
 <script>
+// --- LOGIC เดิม 100% ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const sounds = {};
 
@@ -347,10 +351,6 @@ function startGame(mode) {
 
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) return;
-    
-    // จุดที่ปรับปรุง 1: ล้างข้อความ aria-live ทันทีที่ขึ้นข้อใหม่ เพื่อไม่ให้ SR ย้อนกลับไปอ่านเจอของเดิม
-    document.getElementById('sr-announcer').textContent = "";
-
     if (currentQIndex >= sessionQuestions.length) currentQIndex = 0;
     const currentQuestion = sessionQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
@@ -379,6 +379,7 @@ function startTimer() {
     }, 100);
 }
 
+// ฟังก์ชัน Animation จาก MathFighter10
 function triggerCombatAnimation(attacker) {
     const p = document.getElementById('player-group');
     const c = document.getElementById('bot-group');
@@ -439,6 +440,8 @@ function checkAnswer(sel, correctVal) {
 function updateUI() {
     document.getElementById('player-hp-fill').style.width = Math.max(0, playerHP/10) + "%";
     document.getElementById('bot-hp-fill').style.width = Math.max(0, botHP/10) + "%";
+    
+    // อัปเดต aria-label สำหรับ SR (Group label)
     document.getElementById('player-group').setAttribute('aria-label', `ผู้เล่น พลังเหลือ ${Math.max(0, playerHP)}`);
     document.getElementById('bot-group').setAttribute('aria-label', `บอท พลังเหลือ ${Math.max(0, botHP)}`);
 }
@@ -449,13 +452,11 @@ function endGame() {
     const grid = document.getElementById('options-grid');
     qEl.textContent = "กำลังประมวลผลการต่อสู้...";
     grid.innerHTML = '';
-    
     let endSound = botHP <= 0 ? 'win' : 'lost';
     let endMsg = botHP <= 0 ? "YOU WIN! ยินดีด้วย คุณชนะแล้ว" : "GAME OVER พยายามเข้า สู้ใหม่อีกครั้ง";
-    
-    // จุดที่ปรับปรุง 2: นำการประกาศ announce(srMsg) ออกไปตามคำขอ เพื่อไม่ให้มีการประกาศ aria-live ตอนจบเกม
-    
+    let srMsg = botHP <= 0 ? "จบการต่อสู้ คุณชนะบอทได้สำเร็จ ยินดีด้วยครับ" : "จบการต่อสู้ คุณพ่ายแพ้ พยายามใหม่ในรอบหน้านะครับ";
     const finalSound = playSound(endSound);
+    announce(srMsg);
     finalSound.onended = () => {
         qEl.textContent = endMsg;
         qEl.focus();
