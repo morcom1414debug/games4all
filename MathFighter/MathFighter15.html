@@ -9,9 +9,6 @@
             --player-color: #00ffcc;
             --bot-color: #ff3300;
             --bg-dark: #1a1a1a;
-            --correct-color: #2ecc71;
-            --wrong-color: #e74c3c;
-            --focus-glow: #ffcc00;
         }
 
         body {
@@ -55,14 +52,6 @@
         .c-attack { animation: attack-left 0.4s ease-out !important; }
         @keyframes is-hit { 0%, 100% { transform: scale(1); filter: none; } 20% { transform: scale(0.9) rotate(-10deg); filter: drop-shadow(0 0 20px red) brightness(2); } 50% { transform: scale(1.1) rotate(10deg); } }
         .hit-effect { animation: is-hit 0.4s ease-out !important; }
-
-        /* การสั่นเมื่อตอบผิด */
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-10px); }
-            75% { transform: translateX(10px); }
-        }
-        .shake-anim { animation: shake 0.2s ease-in-out 2; }
 
         #start-screen {
             position: absolute;
@@ -152,8 +141,8 @@
         }
 
         #question-text {
-            font-size: 2.2rem;
-            margin-bottom: 20px;
+            font-size: 2rem;
+            margin-bottom: 15px;
             text-shadow: 2px 2px 4px #000;
             outline: none;
         }
@@ -161,44 +150,19 @@
         .options-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
+            gap: 10px;
             max-width: 600px;
             margin: 0 auto;
         }
 
-        /* --- ปรับปรุงปุ่มตัวเลือกใหม่ --- */
         .option-btn {
-            padding: 20px;
-            font-size: 1.5rem;
-            background: rgba(255,255,255,0.15);
-            border: none;
+            padding: 15px;
+            font-size: 1.2rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #666;
             color: white;
             cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            /* ทรง 6 เหลี่ยม */
-            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
-            position: relative;
-        }
-
-        .option-btn:hover, .option-btn:focus {
-            background: rgba(255,255,255,0.3);
-            transform: scale(1.1);
-            filter: drop-shadow(0 0 10px var(--focus-glow));
-            outline: none;
-        }
-
-        /* สถานะเมื่อตอบถูก */
-        .option-btn.correct {
-            background-color: var(--correct-color) !important;
-            filter: drop-shadow(0 0 20px var(--correct-color));
-            transform: scale(1.15);
-            z-index: 2;
-        }
-
-        /* สถานะเมื่อตอบผิด */
-        .option-btn.wrong {
-            background-color: var(--wrong-color) !important;
-            filter: drop-shadow(0 0 20px var(--wrong-color));
+            transition: all 0.2s;
         }
 
         #timer-bar-bg { width: 100%; background: #222; height: 8px; margin-bottom: 15px; }
@@ -219,7 +183,6 @@
             .title { font-size: 3rem; }
             .battle-layout { padding: 0 5px; }
             .char-graphic { width: 80px; height: 80px; }
-            .option-btn { font-size: 1.2rem; padding: 15px; }
         }
     </style>
 </head>
@@ -397,7 +360,7 @@ function nextQuestion() {
         const btn = document.createElement('button');
         btn.className = 'option-btn';
         btn.textContent = opt;
-        btn.onclick = (e) => checkAnswer(opt, currentQuestion.a, e.target);
+        btn.onclick = () => checkAnswer(opt, currentQuestion.a);
         grid.appendChild(btn);
     });
     setTimeout(() => { qEl.focus(); }, 100);
@@ -411,7 +374,7 @@ function startTimer() {
     timerInterval = setInterval(() => {
         timeLeft -= 100;
         bar.style.width = (timeLeft / 7000) * 100 + "%";
-        if (timeLeft <= 0) { clearInterval(timerInterval); checkAnswer(null, null, null); }
+        if (timeLeft <= 0) { clearInterval(timerInterval); checkAnswer(null, null); }
     }, 100);
 }
 
@@ -427,27 +390,12 @@ function triggerCombatAnimation(attacker) {
     }
 }
 
-function checkAnswer(sel, correctVal, clickedBtn) {
+function checkAnswer(sel, correctVal) {
     clearInterval(timerInterval);
     const btns = document.querySelectorAll('.option-btn');
     btns.forEach(b => b.disabled = true); 
 
     const correct = (sel !== null) && (sel === correctVal);
-
-    // ปรับปรุง Visual Feedback
-    if (clickedBtn) {
-        if (correct) {
-            clickedBtn.classList.add('correct');
-        } else {
-            clickedBtn.classList.add('wrong');
-            document.getElementById('game-container').classList.add('shake-anim');
-            setTimeout(() => document.getElementById('game-container').classList.remove('shake-anim'), 400);
-        }
-    } else if (sel === null) {
-        // กรณีหมดเวลา
-        document.getElementById('game-container').classList.add('shake-anim');
-        setTimeout(() => document.getElementById('game-container').classList.remove('shake-anim'), 400);
-    }
 
     if (correct) {
         playerCombo++; botCombo = 0;
@@ -497,6 +445,7 @@ function updateUI() {
 function endGame() {
     if (bgmSource) bgmSource.stop();
     
+    // จุดแก้ไข 1: ล้างข้อความใน aria-live ทันทีและห้ามมีคำประกาศใดๆ
     const announcer = document.getElementById('sr-announcer');
     announcer.textContent = ""; 
     
@@ -511,8 +460,12 @@ function endGame() {
     
     const finalSound = playSound(endSound);
     
+    // จุดแก้ไข 2: รอจนกว่าไฟล์เสียงจบเท่านั้น ถึงจะทำการย้าย focus ไปอ่านผลสรุป
     finalSound.onended = () => {
+        // อัปเดตข้อความจาก "กำลังประมวลผล" เป็นผลลัพธ์สุดท้าย
         qEl.textContent = endMsg;
+        
+        // สั่งโฟกัสที่นี่เป็นครั้งแรกหลังจากที่เสียงเพลงจบลง เพื่อให้อ่านผลลัพธ์ทันที
         qEl.focus();
         
         const rb = document.createElement('button');
