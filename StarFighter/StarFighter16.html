@@ -289,7 +289,7 @@ const questions = [
   { q: "จามาล มูเซียลา เป็นสตาร์ของทีมชาติใด", options: ["เยอรมนี","ฝรั่งเศส","โปแลนด์"], answer: 0 },
   { q: "โยชโก กวาร์ดิโอล เป็นสตาร์ของทีมชาติใด", options: ["โครเอเชีย","เซอร์เบีย","สโลวีเนีย"], answer: 0 },
   { q: "ฮูเลียน อัลวาเรซ เป็นสตาร์ของทีมชาติใด", options: ["อาร์เจนตินา","บราซิล","อุรุกวัย"], answer: 0 },
-  { q: "ชอินจิ คากาวะ เป็นสตาร์ของทีมชาติใด", options: ["ญี่ปุ่น","ไทย","เวียดนาม"], answer: 0 },
+  { q: "ชินจิ คากาวะ เป็นสตาร์ของทีมชาติใด", options: ["ญี่ปุ่น","ไทย","เวียดนาม"], answer: 0 },
   { q: "ซน ฮึง-มิน เป็นสตาร์ของทีมชาติใด", options: ["เกาหลีใต้","ญี่ปุ่น","ออสเตรเลีย"], answer: 0 },
   { q: "ชนาธิป สรงกระสินธ์ เป็นสตาร์ของทีมชาติใด", options: ["ไทย","ลาว","กัมพูชา"], answer: 0 },
   { q: "เกียติศักดิ์ เสนาเมือง เป็นสตาร์ของทีมชาติใด", options: ["ไทย","มาเลเซีย","สิงคโปร์"], answer: 0 },
@@ -303,6 +303,7 @@ let sounds = {}; let bgmSource = null;
 let playerHP = 1000, botHP = 1000, playerCombo = 0, botCombo = 0;
 let currentQ = []; let timer = null;
 
+// เก็บชื่อไฟล์เสียงล่าสุดเพื่อป้องกันการเล่นซ้ำติดต่อกัน
 let lastPlayerSound = '';
 let lastBotSound = '';
 
@@ -313,12 +314,6 @@ async function initSounds() {
 initSounds();
 
 function playSound(n) { if(!sounds[n]) return; const s = audioCtx.createBufferSource(); s.buffer = sounds[n]; s.connect(audioCtx.destination); s.start(); return s; }
-
-function announce(txt) {
-    const el = document.getElementById('sr-announcer');
-    el.textContent = ""; 
-    setTimeout(() => { el.textContent = txt; }, 50);
-}
 
 function goToCommunity() { window.location.href = "../index9.html"; }
 
@@ -386,49 +381,46 @@ function nextQuestion() {
 
 function checkAnswer(idx, correct) {
     clearInterval(timer);
-    const allButtons = document.querySelectorAll('.option-btn');
-    allButtons.forEach(btn => btn.disabled = true);
-
     const isCorrect = idx === correct;
     const p = document.getElementById('player'), b = document.getElementById('bot'), ball = document.getElementById('ball');
     
     if (isCorrect) {
         playerCombo++; botCombo = 0;
-        let isSuper = playerCombo >= 5;
-        let dmg = isSuper ? 250 : 100;
+        let dmg = playerCombo >= 5 ? 250 : 100;
         botHP -= dmg;
         p.classList.add('kick-anim'); ball.className = 'ball-goal';
         
-        let msg = isSuper ? "Combo! เยี่ยม ยิงได้ 5 ลูกติด" : "ถูกต้อง! ยิงเข้าประตู";
-        announce(`${msg} บอทเสียพลัง ${dmg}`);
-
-        if (isSuper) {
+        if (playerCombo >= 5) {
             playSound('atc');
             playerCombo = 0;
             lastPlayerSound = 'atc';
         } else {
+            // สุ่มเสียงโจมตีโดยไม่ให้ซ้ำกับครั้งล่าสุด
             let randomAtk;
-            do { randomAtk = 'at' + (Math.floor(Math.random() * 3) + 1); } while (randomAtk === lastPlayerSound);
+            do {
+                randomAtk = 'at' + (Math.floor(Math.random() * 3) + 1);
+            } while (randomAtk === lastPlayerSound);
+            
             playSound(randomAtk);
             lastPlayerSound = randomAtk;
         }
     } else {
         botCombo++; playerCombo = 0;
-        let isSuperBot = botCombo >= 5;
-        let dmg = isSuperBot ? 200 : 120;
+        let dmg = botCombo >= 5 ? 200 : 120;
         playerHP -= dmg;
         ball.className = 'ball-fail'; b.classList.add('save-anim');
         
-        let msg = isSuperBot ? "Combo! บอทซุปเปอร์เซฟได้ 5 ลูกต่อเนื่อง" : "พลาด! บอทป้องกันไว้ได้";
-        announce(`${msg} คุณเสียพลัง ${dmg}`);
-
-        if (isSuperBot) {
+        if (botCombo >= 5) {
             playSound('enc');
             botCombo = 0;
             lastBotSound = 'enc';
         } else {
+            // สุ่มเสียงถูกโจมตีโดยไม่ให้ซ้ำกับครั้งล่าสุด
             let randomEn;
-            do { randomEn = 'en' + (Math.floor(Math.random() * 3) + 1); } while (randomEn === lastBotSound);
+            do {
+                randomEn = 'en' + (Math.floor(Math.random() * 3) + 1);
+            } while (randomEn === lastBotSound);
+            
             playSound(randomEn);
             lastBotSound = randomEn;
         }
@@ -438,7 +430,7 @@ function checkAnswer(idx, correct) {
     setTimeout(() => {
         p.className = 'character'; b.className = 'character'; ball.className = '';
         nextQuestion();
-    }, 3800);
+    }, 2000);
 }
 
 function updateUI() {
@@ -449,7 +441,7 @@ function updateUI() {
 }
 
 function endGame() {
-    if (bgmSource) { try { bgmSource.stop(); } catch(e){} bgmSource = null; }
+    if (bgmSource) { bgmSource.stop(); bgmSource = null; }
     const isWin = botHP <= 0;
     const p = document.getElementById('player'), bot = document.getElementById('bot');
     
