@@ -303,10 +303,6 @@ let sounds = {}; let bgmSource = null;
 let playerHP = 1000, botHP = 1000, playerCombo = 0, botCombo = 0;
 let currentQ = []; let timer = null;
 
-// เก็บชื่อไฟล์เสียงล่าสุดเพื่อป้องกันการเล่นซ้ำติดต่อกัน
-let lastPlayerSound = '';
-let lastBotSound = '';
-
 async function initSounds() {
     const files = [['start','audio/start.mp3'],['back','audio/back.mp3'],['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],['atc','audio/atc.mp3'],['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],['en3','audio/en3.mp3'],['enc','audio/enc.mp3'],['win','audio/win.mp3'],['lost','audio/lost.mp3']];
     for(let f of files) { try { const r = await fetch(f[1]); const b = await r.arrayBuffer(); sounds[f[0]] = await audioCtx.decodeAudioData(b); } catch(e){} }
@@ -390,19 +386,13 @@ function checkAnswer(idx, correct) {
         botHP -= dmg;
         p.classList.add('kick-anim'); ball.className = 'ball-goal';
         
+        // สุ่มไฟล์เสียงโจมตี at1-at3 หรือเล่น atc เมื่อคอมโบครบ
         if (playerCombo >= 5) {
             playSound('atc');
             playerCombo = 0;
-            lastPlayerSound = 'atc';
         } else {
-            // สุ่มเสียงโจมตีโดยไม่ให้ซ้ำกับครั้งล่าสุด
-            let randomAtk;
-            do {
-                randomAtk = 'at' + (Math.floor(Math.random() * 3) + 1);
-            } while (randomAtk === lastPlayerSound);
-            
+            const randomAtk = 'at' + (Math.floor(Math.random() * 3) + 1);
             playSound(randomAtk);
-            lastPlayerSound = randomAtk;
         }
     } else {
         botCombo++; playerCombo = 0;
@@ -410,19 +400,13 @@ function checkAnswer(idx, correct) {
         playerHP -= dmg;
         ball.className = 'ball-fail'; b.classList.add('save-anim');
         
+        // สุ่มไฟล์เสียงถูกโจมตี en1-en3 หรือเล่น enc เมื่อคอมโบครบ
         if (botCombo >= 5) {
             playSound('enc');
             botCombo = 0;
-            lastBotSound = 'enc';
         } else {
-            // สุ่มเสียงถูกโจมตีโดยไม่ให้ซ้ำกับครั้งล่าสุด
-            let randomEn;
-            do {
-                randomEn = 'en' + (Math.floor(Math.random() * 3) + 1);
-            } while (randomEn === lastBotSound);
-            
+            const randomEn = 'en' + (Math.floor(Math.random() * 3) + 1);
             playSound(randomEn);
-            lastBotSound = randomEn;
         }
     }
     
