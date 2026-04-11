@@ -84,30 +84,33 @@
             background-size: 100% 50px;
         }
 
+        /* --- ส่วนที่เพิ่ม: ประตูฟุตบอลฝั่งขวา --- */
         #goal-post {
             position: absolute;
             right: 0;
-            bottom: 50px;
+            bottom: 50px; /* ยกระดับขึ้นจากพื้นสนามเล็กน้อย */
             width: 60px;
             height: 180px;
-            border-left: 6px solid white;
-            border-top: 6px solid white;
-            border-bottom: 6px solid white;
-            background: rgba(255, 255, 255, 0.1);
-            z-index: 1;
+            border-left: 6px solid white; /* เสาซ้าย */
+            border-top: 6px solid white;  /* คาน */
+            border-bottom: 6px solid white; /* พื้นประตู */
+            background: rgba(255, 255, 255, 0.1); /* ลายตาข่ายจางๆ */
+            z-index: 1; /* อยู่หลังตัวละครและบอล */
         }
 
         .character { width: 120px; height: 120px; z-index: 5; transition: transform 0.3s; }
         
+        /* --- ส่วนที่ปรับปรุง: ลูกฟุตบอลแสดงตลอดและมีลวดลาย --- */
         #ball {
             position: absolute; 
             width: 35px; 
             height: 35px;
             border-radius: 50%;
-            bottom: 70px;
+            bottom: 70px; /* ตำแหน่งที่เท้าผู้เล่น */
             left: 150px; 
-            display: block;
+            display: block; /* แสดงตลอดเวลา */
             z-index: 6;
+            /* ลวดลายลูกฟุตบอลคลาสสิก ขาว-ดำ */
             background-color: white;
             background-image: 
                 radial-gradient(circle at 50% 50%, transparent 50%, rgba(0,0,0,0.1) 100%),
@@ -117,30 +120,16 @@
             transition: opacity 0.3s;
         }
 
-        /* --- Animations พื้นฐาน --- */
         @keyframes kick { 0% { transform: scale(1); } 50% { transform: scale(1.2) translateX(20px); } 100% { transform: scale(1); } }
         .kick-anim { animation: kick 0.4s ease; }
         @keyframes save { 0% { transform: translateY(0); } 50% { transform: translateY(-30px) rotate(-10deg); } 100% { transform: translateY(0); } }
         .save-anim { animation: save 0.5s ease; }
 
-        /* --- แอนิเมชัน ดีใจ และ เสียใจ (ที่เพิ่มใหม่) --- */
-        @keyframes celebrate {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-30px); }
-        }
-        .victory-anim { animation: celebrate 0.3s infinite; }
-
-        @keyframes frustrated {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-8px) rotate(-5deg); }
-            75% { transform: translateX(8px) rotate(5deg); }
-        }
-        .sad-anim { animation: frustrated 0.2s infinite; }
-
-        /* --- ทิศทางบอล --- */
+        /* --- ส่วนที่ปรับปรุง: ปรับทิศทางบอลให้เข้าประตูตรงเป๊ะ --- */
         .ball-goal { display: block !important; animation: toGoal 0.8s forwards; }
         @keyframes toGoal { 
             0% { left: 150px; bottom: 70px; } 
+            /* พุ่งไปที่ตำแหน่งประตูขวาสุด (right:0 คือ leftประมาณ 940) และยกลอยขึ้นกึ่งกลางประตู */
             100% { left: 930px; bottom: 130px; opacity: 0; } 
         }
         
@@ -191,6 +180,7 @@
 
 <div id="game-container">
     <div id="sr-announcer" class="sr-only" aria-live="assertive"></div>
+    
     <button id="home-btn" class="home-btn-hex" aria-label="กลับหน้าหลัก" onclick="window.location.reload()">🏠</button>
 
     <div id="start-screen">
@@ -226,7 +216,6 @@
 </div>
 
 <script>
-// ข้อมูลคำถาม (เหมือนเดิม)
 const questions = [
   { q: "ลิโอเนล เมสซี เป็นสตาร์ของทีมชาติใด", options: ["บราซิล","อาร์เจนตินา","โปรตุเกส"], answer: 1 },
   { q: "คริสเตียโน โรนัลโด เป็นสตาร์ของทีมชาติใด", options: ["โปรตุเกส","สเปน","อิตาลี"], answer: 0 },
@@ -291,8 +280,10 @@ function startGame() {
     playerHP = 1000; botHP = 1000; playerCombo = 0; botCombo = 0;
     currentQ = [...questions].sort(() => Math.random() - 0.5);
     updateUI();
+    
     const h = document.getElementById('question-text'); h.textContent = "เตรียมตัว..."; h.focus();
     const s = playSound('start');
+    
     if(s) s.onended = () => { 
         bgmSource = audioCtx.createBufferSource(); 
         bgmSource.buffer = sounds.back; 
@@ -308,16 +299,23 @@ function nextQuestion() {
     document.getElementById('sr-announcer').textContent = "";
     if(playerHP <= 0 || botHP <= 0) return endGame();
     if(currentQ.length === 0) currentQ = [...questions].sort(() => Math.random() - 0.5);
+    
     const data = currentQ.pop();
-    const correctText = data.options[data.answer];
+    const correctText = data.options[data.answer]; // เก็บคำตอบที่ถูกไว้ก่อนสลับ
+    
+    // สุ่มสลับตำแหน่งตัวเลือก (Shuffle)
     let shuffledOptions = [...data.options].sort(() => Math.random() - 0.5);
-    let newAnswerIndex = shuffledOptions.indexOf(correctText);
-    const h = document.getElementById('question-text'); h.textContent = data.q; h.focus();
+    let newAnswerIndex = shuffledOptions.indexOf(correctText); // หา index ใหม่ของคำตอบที่ถูก
+
+    const h = document.getElementById('question-text'); 
+    h.textContent = data.q; h.focus();
+    
     const grid = document.getElementById('options-grid'); grid.innerHTML = '';
     shuffledOptions.forEach((opt, i) => {
         const b = document.createElement('button'); b.className = 'option-btn'; b.textContent = opt;
         b.onclick = () => checkAnswer(i, newAnswerIndex); grid.appendChild(b);
     });
+
     let timeLeft = 7000;
     const bar = document.getElementById('timer-fill');
     clearInterval(timer);
@@ -339,16 +337,11 @@ function checkAnswer(idx, correct) {
         botHP -= dmg;
         p.classList.add('kick-anim'); ball.className = 'ball-goal';
         
-        // หน่วงเวลาให้ดีใจหลังจากบอลพุ่งไปถึงประตู (0.8s)
-        setTimeout(() => {
-            p.classList.add('victory-anim');
-            b.classList.add('sad-anim');
-        }, 600);
-
         let sName = isSuper ? 'atc' : ['at1','at2','at3'].filter(x=>x!==lastPlayerAtk)[Math.floor(Math.random()*2)];
         lastPlayerAtk = sName;
         playSound(sName);
         showDmg(dmg, 'bot', isSuper);
+
         let msg = isSuper ? "Combo! เยี่ยม ยิงได้ 5 ลูกติด" : "ถูกต้อง! ยิงเข้าประตู";
         announce(`${msg} บอทเสียพลัง ${dmg}`);
         if(isSuper) playerCombo = 0; 
@@ -359,16 +352,11 @@ function checkAnswer(idx, correct) {
         playerHP -= dmg;
         p.classList.add('kick-anim'); ball.className = 'ball-fail'; b.classList.add('save-anim');
         
-        // หน่วงเวลาให้บอทดีใจหลังจากเซฟลูกได้ (0.5s)
-        setTimeout(() => {
-            b.classList.add('victory-anim');
-            p.classList.add('sad-anim');
-        }, 500);
-
         let sName = isSuperBot ? 'enc' : ['en1','en2','en3'].filter(x=>x!==lastBotAtk)[Math.floor(Math.random()*2)];
         lastBotAtk = sName;
         playSound(sName);
         showDmg(dmg, 'player', isSuperBot);
+
         let msg = isSuperBot ? "Combo! บอทซุปเปอร์เซฟได้ 5 ลูกต่อเนื่อง" : "พลาด! บอทป้องกันไว้ได้";
         announce(`${msg} คุณเสียพลัง ${dmg}`);
         if(isSuperBot) botCombo = 0;
@@ -376,9 +364,8 @@ function checkAnswer(idx, correct) {
     
     updateUI();
     setTimeout(() => {
-        // Reset ทุกอย่างกลับมาสถานะเริ่มต้น
-        p.classList.remove('kick-anim', 'victory-anim', 'sad-anim'); 
-        b.classList.remove('save-anim', 'victory-anim', 'sad-anim');
+        p.classList.remove('kick-anim'); b.classList.remove('save-anim');
+        /* --- ส่วนที่ปรับปรุง: Reset บอลกลับมาที่เท้าผู้เล่น --- */
         ball.className = ''; 
         nextQuestion();
     }, 3500); 
@@ -408,20 +395,26 @@ function endGame() {
     const isWin = botHP <= 0;
     const endSound = playSound(isWin ? 'win' : 'lost');
     announce(isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!");
+    
+    // ฟังก์ชันย้ายหน้าจอและ Focus
     const showResult = () => {
         document.getElementById('top-ui').style.display = 'none';
         document.getElementById('pitch').style.display = 'none';
         document.getElementById('bottom-ui').style.display = 'none';
         document.getElementById('home-btn').style.display = 'flex';
+        
         const s = document.getElementById('start-screen');
         const h = document.getElementById('main-heading');
         s.style.display = 'flex';
         h.textContent = isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!";
         h.focus();
+        
         const b = s.querySelector('.btn-start');
         b.textContent = "เล่นใหม่อีกครั้ง";
         b.onclick = () => window.location.reload();
     };
+
+    // รอให้เสียงจบก่อนค่อย Focus
     if(endSound) endSound.onended = showResult;
     else showResult();
 }
