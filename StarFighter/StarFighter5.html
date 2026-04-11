@@ -250,6 +250,7 @@ function startGame() {
     const h = document.getElementById('question-text'); h.textContent = "เตรียมตัว..."; h.focus();
     const s = playSound('start');
     
+    // จุดแก้ไขที่ 1: ให้คำถามปรากฏและ Focus ทันทีที่เสียงเริ่มจบ
     if(s) s.onended = () => { 
         bgmSource = audioCtx.createBufferSource(); 
         bgmSource.buffer = sounds.back; 
@@ -262,24 +263,20 @@ function startGame() {
 }
 
 function nextQuestion() {
+    // จุดแก้ไขที่ 4: ล้างข้อความประกาศเดิมทิ้ง เพื่อไม่ให้ SR อ่านค้าง
     document.getElementById('sr-announcer').textContent = "";
+
     if(playerHP <= 0 || botHP <= 0) return endGame();
     if(currentQ.length === 0) currentQ = [...questions].sort(() => Math.random() - 0.5);
     
     const data = currentQ.pop();
-    const correctText = data.options[data.answer]; // เก็บคำตอบที่ถูกไว้ก่อนสลับ
-    
-    // สุ่มสลับตำแหน่งตัวเลือก (Shuffle)
-    let shuffledOptions = [...data.options].sort(() => Math.random() - 0.5);
-    let newAnswerIndex = shuffledOptions.indexOf(correctText); // หา index ใหม่ของคำตอบที่ถูก
-
     const h = document.getElementById('question-text'); 
     h.textContent = data.q; h.focus();
     
     const grid = document.getElementById('options-grid'); grid.innerHTML = '';
-    shuffledOptions.forEach((opt, i) => {
+    data.options.forEach((opt, i) => {
         const b = document.createElement('button'); b.className = 'option-btn'; b.textContent = opt;
-        b.onclick = () => checkAnswer(i, newAnswerIndex); grid.appendChild(b);
+        b.onclick = () => checkAnswer(i, data.answer); grid.appendChild(b);
     });
 
     let timeLeft = 7000;
@@ -287,7 +284,7 @@ function nextQuestion() {
     clearInterval(timer);
     timer = setInterval(() => {
         timeLeft -= 100; bar.style.width = (timeLeft/7000)*100 + "%";
-        if(timeLeft <= 0) { clearInterval(timer); checkAnswer(-1, newAnswerIndex); }
+        if(timeLeft <= 0) { clearInterval(timer); checkAnswer(-1, data.answer); }
     }, 100);
 }
 
@@ -308,6 +305,7 @@ function checkAnswer(idx, correct) {
         playSound(sName);
         showDmg(dmg, 'bot', isSuper);
 
+        // จุดแก้ไขที่ 3: บอกพลังที่บอทเสียไปต่อท้าย
         let msg = isSuper ? "Combo! เยี่ยม ยิงได้ 5 ลูกติด" : "ถูกต้อง! ยิงเข้าประตู";
         announce(`${msg} บอทเสียพลัง ${dmg}`);
         if(isSuper) playerCombo = 0; 
@@ -323,12 +321,14 @@ function checkAnswer(idx, correct) {
         playSound(sName);
         showDmg(dmg, 'player', isSuperBot);
 
+        // จุดแก้ไขที่ 3: บอกพลังที่คุณเสียไปต่อท้าย
         let msg = isSuperBot ? "Combo! บอทซุปเปอร์เซฟได้ 5 ลูกต่อเนื่อง" : "พลาด! บอทป้องกันไว้ได้";
         announce(`${msg} คุณเสียพลัง ${dmg}`);
         if(isSuperBot) botCombo = 0;
     }
     
     updateUI();
+    // จุดแก้ไขที่ 2: ปรับเวลาไปยังข้อถัดไปเป็น 3.5 วินาที (3500ms)
     setTimeout(() => {
         p.classList.remove('kick-anim'); b.classList.remove('save-anim');
         ball.className = '';
@@ -340,7 +340,11 @@ function showDmg(amt, side, crit) {
     const container = document.getElementById('pitch');
     const d = document.createElement('div');
     d.className = crit ? 'damage-popup combo-text' : 'damage-popup';
-    d.textContent = crit ? (side === 'bot' ? `SUPER GOAL! -${amt}` : `COMBO ATTACK! -${amt}`) : `-${amt}`;
+    if (crit) {
+        d.textContent = side === 'bot' ? `SUPER GOAL! -${amt}` : `COMBO ATTACK! -${amt}`;
+    } else {
+        d.textContent = `-${amt}`;
+    }
     d.style.color = side === 'bot' ? 'var(--combo-color)' : 'var(--wrong-color)';
     d.style.left = side === 'bot' ? '65%' : '10%';
     d.style.top = '10px'; 
@@ -358,30 +362,23 @@ function updateUI() {
 function endGame() {
     if (bgmSource) bgmSource.stop();
     const isWin = botHP <= 0;
-    const endSound = playSound(isWin ? 'win' : 'lost');
+    playSound(isWin ? 'win' : 'lost');
     announce(isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!");
     
-    // ฟังก์ชันย้ายหน้าจอและ Focus
-    const showResult = () => {
-        document.getElementById('top-ui').style.display = 'none';
-        document.getElementById('pitch').style.display = 'none';
-        document.getElementById('bottom-ui').style.display = 'none';
-        document.getElementById('home-btn').style.display = 'flex';
-        
-        const s = document.getElementById('start-screen');
-        const h = document.getElementById('main-heading');
-        s.style.display = 'flex';
-        h.textContent = isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!";
-        h.focus();
-        
-        const b = s.querySelector('.btn-start');
-        b.textContent = "เล่นใหม่อีกครั้ง";
-        b.onclick = () => window.location.reload();
-    };
-
-    // รอให้เสียงจบก่อนค่อย Focus
-    if(endSound) endSound.onended = showResult;
-    else showResult();
+    document.getElementById('top-ui').style.display = 'none';
+    document.getElementById('pitch').style.display = 'none';
+    document.getElementById('bottom-ui').style.display = 'none';
+    document.getElementById('home-btn').style.display = 'flex';
+    
+    const s = document.getElementById('start-screen');
+    const h = document.getElementById('main-heading');
+    s.style.display = 'flex';
+    h.textContent = isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!";
+    h.focus();
+    
+    const b = s.querySelector('.btn-start');
+    b.textContent = "เล่นใหม่อีกครั้ง";
+    b.onclick = () => window.location.reload();
 }
 </script>
 </body>
