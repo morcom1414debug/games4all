@@ -33,16 +33,14 @@
             display: flex; flex-direction: column; overflow: hidden;
         }
 
-        /* ข้อ 2: ปรับปรุงปุ่มโฮม */
         .home-btn-hex {
             width: 60px; height: 60px;
             background-color: var(--combo-color);
             color: #000; font-size: 1.8rem;
             display: flex; justify-content: center; align-items: center;
-            cursor: pointer; border: none; z-index: 220;
+            cursor: pointer; border: none; z-index: 120;
             position: absolute; top: 20px; left: 20px;
             clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
-            text-decoration: none;
         }
 
         #top-ui {
@@ -115,13 +113,16 @@
         .kick-anim { animation: kick 0.4s ease; }
         @keyframes save { 0% { transform: translateY(0); } 50% { transform: translateY(-30px) rotate(-10deg); } 100% { transform: translateY(0); } }
         .save-anim { animation: save 0.5s ease; }
+
         @keyframes celebrate { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-30px); } }
         .victory-anim { animation: celebrate 0.3s infinite; }
+
         @keyframes frustrated { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px) rotate(-5deg); } 75% { transform: translateX(8px) rotate(5deg); } }
         .sad-anim { animation: frustrated 0.2s infinite; }
 
         .ball-goal { display: block !important; animation: toGoal 0.8s forwards; }
         @keyframes toGoal { 0% { left: 150px; bottom: 70px; } 100% { left: 930px; bottom: 130px; opacity: 0; } }
+        
         .ball-fail { display: block !important; animation: toFail 0.8s forwards; }
         @keyframes toFail { 0% { left: 150px; bottom: 70px; } 50% { left: 750px; bottom: 120px; } 100% { left: 600px; bottom: 40px; opacity: 0; } }
 
@@ -140,18 +141,8 @@
         .hp-bar-bg { height: 18px; background: #333; border: 2px solid #fff; border-radius: 9px; overflow: hidden; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.4s ease-out; }
 
-        /* ข้อ 3: ปรับพื้นหลังฉากเริ่ม/จบ ให้เห็นสนามด้านหลัง */
-        #start-screen { 
-            position: absolute; inset: 0; 
-            background: rgba(0,0,0,0.7); 
-            display: flex; flex-direction: column; justify-content: center; align-items: center; 
-            z-index: 200; 
-        }
-        .title { 
-            font-size: 3.5rem; color: var(--combo-color); 
-            margin-bottom: 30px; text-align: center; 
-            text-shadow: 2px 2px 10px #000; outline: none;
-        }
+        #start-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; }
+        .title { font-size: 3.5rem; color: var(--combo-color); margin-bottom: 30px; text-align: center; }
         .btn-start { padding: 15px 60px; font-size: 1.8rem; background: var(--correct-color); border: none; cursor: pointer; border-radius: 50px; color: white; font-weight: bold; }
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
     </style>
@@ -160,8 +151,7 @@
 
 <div id="game-container">
     <div id="sr-announcer" class="sr-only" aria-live="assertive"></div>
-    
-    <a href="../index9.html" id="home-btn" class="home-btn-hex" aria-label="กลับสู่ชุมชน">🏠</a>
+    <button id="home-btn" class="home-btn-hex" aria-label="กลับหน้าหลัก" onclick="window.location.reload()">🏠</button>
 
     <div id="start-screen">
         <h1 class="title" id="main-heading" tabindex="-1">Star nameFighter</h1>
@@ -175,8 +165,7 @@
     </div>
 
     <div id="pitch">
-        <div id="goal-post"></div> <div id="ball"></div> 
-        <div id="player" class="character">
+        <div id="goal-post"></div> <div id="ball"></div> <div id="player" class="character">
             <svg viewBox="0 0 100 100"><circle cx="50" cy="30" r="15" fill="#fbd38d"/><rect x="35" y="45" width="30" height="40" fill="var(--player-color)"/></svg>
         </div>
         <div id="bot" class="character">
@@ -368,47 +357,36 @@ function updateUI() {
     document.getElementById('bot-hp-group').setAttribute('aria-label', `บอท พลังเหลือ ${botHP}`);
 }
 
-// ข้อ 1 & 3: ปรับปรุงหน้าจบเกม
 function endGame() {
     if (bgmSource) bgmSource.stop();
-    
-    // ล้างข้อความ aria-live ทันทีตามต้องการ
+    // 1. ล้างข้อความ aria-live ทันทีที่จบเกม
     document.getElementById('sr-announcer').textContent = "";
     
     const isWin = botHP <= 0;
     const endSound = playSound(isWin ? 'win' : 'lost');
     
+    // ประกาศผลลัพธ์สุดท้ายเพียงอย่างเดียว
+    setTimeout(() => {
+        announce(isWin ? "จบเกม ชัยชนะเป็นของคุณ!" : "จบเกม พ่ายแพ้ในสนามแข่ง!");
+    }, 100);
+
     const showResult = () => {
-        // ซ่อนเฉพาะ UI ด้านบน (คำถาม) แต่คงสนามและแถบพลังไว้
         document.getElementById('top-ui').style.display = 'none';
-        
-        // แสดงปุ่ม Home (กลับสู่ชุมชน)
+        document.getElementById('pitch').style.display = 'none';
+        document.getElementById('bottom-ui').style.display = 'none';
+        // แสดงปุ่ม Home เพื่อเริ่มใหม่
         document.getElementById('home-btn').style.display = 'flex';
         
         const s = document.getElementById('start-screen');
         const h = document.getElementById('main-heading');
         s.style.display = 'flex';
-        
-        // ข้อ 1: ชี้ focus ที่ heading ผลลัพธ์
         h.textContent = isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!";
         h.focus();
 
-        // เอาปุ่มเริ่มเล่นหน้าแรกออกในหน้าจบ
+        // 2. นำปุ่มเริ่มเล่นใหม่ด้านล่างออก
         const b = document.getElementById('start-game-btn');
         if(b) b.style.display = 'none';
-
-        // แสดงท่าทางสุดท้ายของตัวละครค้างไว้
-        const p = document.getElementById('player');
-        const bot = document.getElementById('bot');
-        if(isWin) {
-            p.classList.add('victory-anim');
-            bot.classList.add('sad-anim');
-        } else {
-            bot.classList.add('victory-anim');
-            p.classList.add('sad-anim');
-        }
     };
-    
     if(endSound) endSound.onended = showResult;
     else showResult();
 }
