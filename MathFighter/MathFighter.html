@@ -44,7 +44,6 @@
             transition: filter 2s ease-in-out, box-shadow 1s ease-out;
         }
 
-        /* --- สไตล์ปุ่มหกเหลี่ยมรูปบ้าน --- */
         .home-btn-hex {
             width: 60px;
             height: 60px;
@@ -162,16 +161,10 @@
             filter: drop-shadow(5px 5px 0px #000); margin-bottom: 20px; outline: none;
         }
 
-        .btn-group {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            width: 85%;
-            max-width: 450px;
-        }
+        .btn-group { display: flex; flex-direction: column; gap: 15px; width: 85%; max-width: 450px; }
 
         .btn-start {
-            padding: 15px 40px; font-size: 1.5rem; background: #ffcc00; border: none; cursor: pointer; font-weight: bold;
+            padding: 15px 40px; font-size: 1.5rem; border: none; cursor: pointer; font-weight: bold;
             clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%); transition: all 0.2s;
         }
 
@@ -187,18 +180,11 @@
         .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 600px; margin: 0 auto; }
 
         .option-btn {
-            padding: 20px; 
-            font-size: 1.5rem; 
-            -webkit-appearance: none;
-            appearance: none;
-            background-color: #4d4d4d !important; 
-            border: none; 
-            color: white; 
-            cursor: pointer;
+            padding: 20px; font-size: 1.5rem; -webkit-appearance: none; appearance: none;
+            background-color: #4d4d4d !important; border: none; color: white; cursor: pointer;
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
-            outline: none;
-            -webkit-tap-highlight-color: transparent;
+            outline: none; -webkit-tap-highlight-color: transparent;
         }
 
         .option-btn:hover { background-color: #666666 !important; transform: scale(1.1); }
@@ -329,7 +315,7 @@ function generateQuestions() {
     const sets = { kids: [], easy: [], hard: [] };
     const used = new Set();
 
-    // 1. Kids: 1-digit +/- 1-digit or 2-digit +/- 1-digit
+    // Kids: เลขหลักเดียว บวกลบง่ายๆ
     while (sets.kids.length < 500) {
         let a = Math.floor(Math.random() * 20) + 1;
         let b = Math.floor(Math.random() * 9) + 1;
@@ -341,7 +327,7 @@ function generateQuestions() {
     }
     used.clear();
 
-    // 2. Easy (Normal): 2-digit +/- 2-digit & Simple Multiply/Divide (2, 5, 10)
+    // Easy (โหมดทั่วไป): บวกลบสองหลัก และคูณหารแม่ 2, 5, 10
     while (sets.easy.length < 500) {
         let type = Math.floor(Math.random() * 4);
         let q, ans;
@@ -361,7 +347,7 @@ function generateQuestions() {
     }
     used.clear();
 
-    // 3. Hard: 3-digit +/- 2-digit & Multiply/Divide (2-15)
+    // Hard: บวกลบเลขสามหลัก และคูณหารแม่ 2-15
     while (sets.hard.length < 500) {
         let type = Math.floor(Math.random() * 4);
         let q, ans;
@@ -427,18 +413,24 @@ function showDamage(amount, side, isCombo = false) {
 
 function startGame(mode) {
     const allData = generateQuestions();
+    // ดึงข้อมูลตาม Key ให้ถูกต้อง (kids, easy, hard)
     sessionQuestions = [...allData[mode]].sort(() => Math.random() - 0.5);
+    
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('battle-arena').style.display = 'flex';
     document.getElementById('sr-announcer').setAttribute('aria-live', 'assertive');
+    
     currentQIndex = 0; playerHP = 1000; botHP = 1000;
     updateUI();
+
     const s = playSound('start');
     const qEl = document.getElementById('question-text');
     qEl.style.fontSize = "5rem"; qEl.style.color = "var(--combo-color)"; qEl.textContent = "3";
+
     setTimeout(() => { if (!bgmSource) qEl.textContent = "2"; }, 450);
     setTimeout(() => { if (!bgmSource) { qEl.textContent = "FIGHT"; qEl.style.color = "#ff3300"; } }, 900);
+
     s.onended = () => {
         qEl.style.fontSize = ""; qEl.style.color = "";
         playBGM();
@@ -449,15 +441,20 @@ function startGame(mode) {
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
     if (document.activeElement) document.activeElement.blur();
+
     const announcer = document.getElementById('sr-announcer');
     if (announcer.getAttribute('aria-live') !== 'off') announcer.textContent = "";
+
     if (currentQIndex >= sessionQuestions.length) currentQIndex = 0;
     const currentQuestion = sessionQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
+
     let spoken = currentQuestion.q.replace('+', ' บวก ').replace(MINUS, ' ลบ ').replace(MULTIPLY, ' คูณ ').replace(DIVIDE, ' หาร ').replace('=', ' เท่ากับ ').replace('?', ' '); 
+
     qEl.innerHTML = `<span aria-hidden="true">${currentQuestion.q}</span><span class="sr-only">${spoken}</span>`;
+
     currentQuestion.options.forEach(opt => {
         const btn = document.createElement('button');
         btn.className = 'option-btn';
@@ -466,6 +463,7 @@ function nextQuestion() {
         btn.onclick = (e) => checkAnswer(opt, currentQuestion.a, e.target);
         grid.appendChild(btn);
     });
+    
     setTimeout(() => { qEl.focus(); }, 150);
     startTimer();
 }
@@ -498,6 +496,7 @@ function checkAnswer(sel, correctVal, clickedBtn) {
     const btns = document.querySelectorAll('.option-btn');
     btns.forEach(b => b.disabled = true); 
     const correct = (sel !== null) && (sel === correctVal);
+
     if (clickedBtn) {
         if (correct) clickedBtn.classList.add('correct');
         else {
@@ -509,6 +508,7 @@ function checkAnswer(sel, correctVal, clickedBtn) {
         document.getElementById('game-container').classList.add('shake-anim');
         setTimeout(() => document.getElementById('game-container').classList.remove('shake-anim'), 400);
     }
+
     if (correct) {
         playerCombo++; botCombo = 0;
         let dmg = Math.floor(Math.random() * 101) + 50;
@@ -540,6 +540,7 @@ function checkAnswer(sel, correctVal, clickedBtn) {
         }
         playerHP -= dmg; showDamage(dmg, 'player', isCrit); triggerCombatAnimation('bot');
     }
+
     updateUI();
     if (playerHP <= 0 || botHP <= 0) setTimeout(endGame, 2800);
     else { currentQIndex++; setTimeout(nextQuestion, 2800); }
@@ -557,7 +558,8 @@ function spawnEndEffects(type) {
     const symbol = (type === 'win') ? '🏆' : '💀';
     for (let i = 0; i < 25; i++) {
         const p = document.createElement('div');
-        p.className = 'particle'; p.textContent = symbol; p.style.left = Math.random() * 90 + 5 + '%';
+        p.className = 'particle'; p.textContent = symbol;
+        p.style.left = Math.random() * 90 + 5 + '%';
         if (type === 'win') { p.style.bottom = "-50px"; p.style.setProperty('--move-y', '-600px'); }
         else { p.style.top = "-50px"; p.style.setProperty('--move-y', '600px'); }
         p.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
@@ -577,7 +579,7 @@ function endGame() {
     const qEl = document.getElementById('question-text');
     const grid = document.getElementById('options-grid');
     qEl.textContent = ""; grid.innerHTML = '';
-    const winMsgs = ["YOU WIN! ยินดีด้วย คุณคือจ้าวนักคำนวณ!", "สุดยอดไปเลย! ชนะขาดลอย สมกับเป็นยอดฝีมือ", "ชัยชนะเป็นของคุณ!", "ยินดีด้วย! คุณเอาชนะบอทได้แล้ว", "สำเร็จ! ชนะแล้ว พลังสมองของคุณแข็งแกร่งจริงๆ"];
+    const winMsgs = ["YOU WIN! ยินดีด้วย คุณคือจ้าวนักคำนวณ!", "สุดยอดไปเลย! ชนะขาดลอย สมกับเป็นยอดฝีมือ", "ชัยชนะเป็นของคุณ!", "ยินดีด้วย! คุณเอาชนะบอทได้อย่างเหนือชั้น", "สำเร็จ! ชนะแล้ว พลังสมองของคุณแข็งแกร่งจริงๆ"];
     const loseMsgs = ["GAME OVER พยายามเข้า สู้ใหมีกครั้งนะ", "เกือบชนะแล้ว! ลองอีกนิด", "ไม่เป็นไรนะ กลับมาแก้มือใหม่ได้เสมอ", "อย่ายอมแพ้! ทุกความพยายามทำให้คุณเก่งขึ้น", "จบเกมแล้ว สู้ต่อไป!"];
     let isWin = botHP <= 0;
     let endSound = isWin ? 'win' : 'lost';
