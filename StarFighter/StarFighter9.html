@@ -76,6 +76,7 @@
             font-weight: bold; transition: all 0.2s;
         }
 
+        /* เพิ่มสถานะ Disabled เพื่อความชัดเจน */
         .option-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -155,7 +156,7 @@
 
     <div id="start-screen">
         <h1 class="title" id="main-heading" tabindex="-1">Star nameFighter</h1>
-        <button class="btn-start" id="start-game-btn" onclick="startGame()">เริ่มเขี่ยลูก</button>
+        <button class="btn-start" onclick="startGame()">เริ่มเขี่ยลูก</button>
     </div>
 
     <div id="top-ui">
@@ -224,7 +225,7 @@ let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let sounds = {}; let bgmSource = null;
 let playerHP = 1000, botHP = 1000, playerCombo = 0, botCombo = 0;
 let currentQ = []; let timer = null;
-let lastPlayerAtk = ""; let lastBotAtk = "";
+let lastPlayerAtk = "", lastBotAtk = "";
 
 async function initSounds() {
     const files = [['start','audio/start.mp3'],['back','audio/back.mp3'],['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],['atc','audio/atc.mp3'],['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],['en3','audio/en3.mp3'],['enc','audio/enc.mp3'],['win','audio/win.mp3'],['lost','audio/lost.mp3']];
@@ -293,8 +294,13 @@ function nextQuestion() {
 
 function checkAnswer(idx, correct) {
     clearInterval(timer);
+    
+    // --- จุดที่ปรับปรุง: ล็อคปุ่มทันทีที่เลือกคำตอบ ---
     const allButtons = document.querySelectorAll('.option-btn');
-    allButtons.forEach(btn => { btn.disabled = true; });
+    allButtons.forEach(btn => {
+        btn.disabled = true; // ปิดการใช้งานปุ่ม
+    });
+    // ------------------------------------------
 
     const isCorrect = idx === correct;
     const p = document.getElementById('player'), b = document.getElementById('bot'), ball = document.getElementById('ball');
@@ -305,7 +311,12 @@ function checkAnswer(idx, correct) {
         let dmg = isSuper ? 250 : 100;
         botHP -= dmg;
         p.classList.add('kick-anim'); ball.className = 'ball-goal';
-        setTimeout(() => { p.classList.add('victory-anim'); b.classList.add('sad-anim'); }, 600);
+        
+        setTimeout(() => {
+            p.classList.add('victory-anim');
+            b.classList.add('sad-anim');
+        }, 600);
+
         let sName = isSuper ? 'atc' : ['at1','at2','at3'].filter(x=>x!==lastPlayerAtk)[Math.floor(Math.random()*2)];
         lastPlayerAtk = sName;
         playSound(sName);
@@ -319,7 +330,12 @@ function checkAnswer(idx, correct) {
         let dmg = isSuperBot ? 200 : 120;
         playerHP -= dmg;
         p.classList.add('kick-anim'); ball.className = 'ball-fail'; b.classList.add('save-anim');
-        setTimeout(() => { b.classList.add('victory-anim'); p.classList.add('sad-anim'); }, 500);
+        
+        setTimeout(() => {
+            b.classList.add('victory-anim');
+            p.classList.add('sad-anim');
+        }, 500);
+
         let sName = isSuperBot ? 'enc' : ['en1','en2','en3'].filter(x=>x!==lastBotAtk)[Math.floor(Math.random()*2)];
         lastBotAtk = sName;
         playSound(sName);
@@ -359,33 +375,22 @@ function updateUI() {
 
 function endGame() {
     if (bgmSource) bgmSource.stop();
-    // 1. ล้างข้อความ aria-live ทันทีที่จบเกม
-    document.getElementById('sr-announcer').textContent = "";
-    
     const isWin = botHP <= 0;
     const endSound = playSound(isWin ? 'win' : 'lost');
-    
-    // ประกาศผลลัพธ์สุดท้ายเพียงอย่างเดียว
-    setTimeout(() => {
-        announce(isWin ? "จบเกม ชัยชนะเป็นของคุณ!" : "จบเกม พ่ายแพ้ในสนามแข่ง!");
-    }, 100);
-
+    announce(isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!");
     const showResult = () => {
         document.getElementById('top-ui').style.display = 'none';
         document.getElementById('pitch').style.display = 'none';
         document.getElementById('bottom-ui').style.display = 'none';
-        // แสดงปุ่ม Home เพื่อเริ่มใหม่
         document.getElementById('home-btn').style.display = 'flex';
-        
         const s = document.getElementById('start-screen');
         const h = document.getElementById('main-heading');
         s.style.display = 'flex';
         h.textContent = isWin ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ในสนามแข่ง!";
         h.focus();
-
-        // 2. นำปุ่มเริ่มเล่นใหม่ด้านล่างออก
-        const b = document.getElementById('start-game-btn');
-        if(b) b.style.display = 'none';
+        const b = s.querySelector('.btn-start');
+        b.textContent = "เล่นใหม่อีกครั้ง";
+        b.onclick = () => window.location.reload();
     };
     if(endSound) endSound.onended = showResult;
     else showResult();
