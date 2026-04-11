@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Star nameFighter - ศึกจ้าวนักเตะระดับโลก</title>
+    <style>
+        :root {
+            --player-color: #3498db;
+            --bot-color: #e67e22;
+            --field-green: #27ae60;
+            --correct-color: #2ecc71;
+            --wrong-color: #e74c3c;
+            --combo-color: #f1c40f;
+            --ui-bg: rgba(0, 0, 0, 0.8);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            position: fixed;
+            width: 100%;
+        }
+
+        #game-container {
+            width: 95%;
+            max-width: 1000px;
+            height: 95vh;
+            max-height: 700px;
+            position: relative;
+            background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), 
+                        url('https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&q=80&w=1000');
+            background-size: cover;
+            background-position: center;
+            border: 5px solid #333;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- UI ส่วนบน: คำถามและตัวเลือก --- */
+        #top-ui {
+            background: var(--ui-bg);
+            padding: 20px;
+            z-index: 10;
+            border-bottom: 3px solid var(--combo-color);
+        }
+
+        #question-text {
+            font-size: 1.8rem;
+            text-align: center;
+            margin: 0 0 20px 0;
+            min-height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .option-btn {
+            padding: 15px 5px;
+            font-size: 1.2rem;
+            background: #444;
+            border: 2px solid #666;
+            color: white;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+
+        .option-btn:hover { background: #555; transform: translateY(-2px); }
+        .option-btn.correct { background: var(--correct-color) !important; border-color: #fff; }
+        .option-btn.wrong { background: var(--wrong-color) !important; border-color: #fff; }
+
+        /* --- สนามแข่ง (กลาง) --- */
+        #pitch {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 50px;
+        }
+
+        .goal {
+            position: absolute;
+            width: 20px;
+            height: 150px;
+            background: rgba(255,255,255,0.3);
+            border: 4px solid white;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .goal-left { left: 0; border-left: none; }
+        .goal-right { right: 0; border-right: none; }
+
+        .character {
+            width: 120px;
+            height: 120px;
+            position: relative;
+            z-index: 5;
+        }
+
+        #ball {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: white;
+            border-radius: 50%;
+            left: 140px;
+            bottom: 50px;
+            background: radial-gradient(circle at 30% 30%, #fff, #999);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 6;
+        }
+
+        /* --- UI ส่วนล่าง: แถบพลัง --- */
+        #bottom-ui {
+            background: var(--ui-bg);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 3px solid var(--player-color);
+        }
+
+        .hp-container { width: 40%; }
+        .hp-label { font-weight: bold; margin-bottom: 5px; font-size: 1rem; }
+        .hp-bar-bg { height: 20px; background: #333; border: 2px solid #fff; border-radius: 10px; overflow: hidden; }
+        .hp-fill { height: 100%; width: 100%; transition: width 0.4s ease-out; }
+
+        /* --- Animations --- */
+        @keyframes shoot-goal {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(700px, -50px) scale(0.5); }
+        }
+        @keyframes shoot-fail {
+            0% { transform: translate(0, 0); }
+            50% { transform: translate(600px, -30px); }
+            100% { transform: translate(550px, 50px); }
+        }
+        .ball-goal { display: block !important; animation: shoot-goal 0.6s ease-in forwards; }
+        .ball-fail { display: block !important; animation: shoot-fail 0.6s ease-out forwards; }
+
+        .kick-anim { animation: kick 0.4s ease; }
+        @keyframes kick { 0% { transform: rotate(0); } 50% { transform: rotate(-30deg) translateX(10px); } 100% { transform: rotate(0); } }
+
+        .save-anim { animation: save 0.4s ease; }
+        @keyframes save { 0% { transform: translateY(0); } 50% { transform: translateY(-30px) scale(1.1); } 100% { transform: translateY(0); } }
+
+        /* --- Same as MathFighter --- */
+        .home-btn-hex {
+            position: absolute; top: 10px; right: 10px; width: 50px; height: 50px;
+            background: var(--combo-color); color: #000; display: flex;
+            justify-content: center; align-items: center; cursor: pointer;
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+            border: none; z-index: 100; font-size: 1.5rem;
+        }
+        .damage-popup {
+            position: absolute; font-size: 2.5rem; font-weight: bold; pointer-events: none; z-index: 50;
+            text-shadow: 2px 2px 0px #000; animation: floatUp 1s ease-out forwards;
+        }
+        @keyframes floatUp { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-100px); opacity: 0; } }
+        
+        #start-screen {
+            position: absolute; inset: 0; background: rgba(0,0,0,0.9);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200;
+        }
+        .title { font-size: 4rem; color: var(--combo-color); font-style: italic; text-transform: uppercase; margin-bottom: 30px; }
+        .btn-start { padding: 20px 60px; font-size: 1.5rem; background: var(--correct-color); border: none; font-weight: bold; cursor: pointer; clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%); }
+
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+        
+        @media (max-width: 600px) {
+            .options-grid { grid-template-columns: 1fr; }
+            .title { font-size: 2.5rem; }
+            #pitch { padding: 0 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="sr-announcer" class="sr-only" aria-live="assertive"></div>
+    
+    <div id="start-screen">
+        <h1 class="title">Star nameFighter</h1>
+        <button class="btn-start" onclick="startGame()">เริ่มเขี่ยลูก</button>
+    </div>
+
+    <div id="top-ui">
+        <div id="timer-bar-bg" style="width:100%; height:5px; background:#222; margin-bottom:10px;">
+            <div id="timer-fill" style="width:100%; height:100%; background:var(--combo-color);"></div>
+        </div>
+        <h2 id="question-text" tabindex="-1">กดเริ่มเกมเพื่อเล่น</h2>
+        <div class="options-grid" id="options-grid"></div>
+    </div>
+
+    <div id="pitch">
+        <div class="goal goal-left"></div>
+        <div class="goal goal-right"></div>
+        
+        <div id="ball"></div>
+
+        <div id="player" class="character">
+            <svg viewBox="0 0 100 100">
+                <circle cx="50" cy="30" r="15" fill="#fbd38d"/> <rect x="35" y="45" width="30" height="40" fill="var(--player-color)"/> <rect x="35" y="85" width="12" height="15" fill="#fff"/> <rect x="53" y="85" width="12" height="15" fill="#fff"/> </svg>
+        </div>
+
+        <div id="bot" class="character">
+            <svg viewBox="0 0 100 100">
+                <rect x="30" y="15" width="40" height="30" fill="#7f8c8d"/> <rect x="35" y="45" width="30" height="40" fill="var(--bot-color)"/> <circle cx="40" cy="25" r="3" fill="red"/> <circle cx="60" cy="25" r="3" fill="red"/> <rect x="35" y="85" width="12" height="15" fill="#333"/>
+                <rect x="53" y="85" width="12" height="15" fill="#333"/>
+            </svg>
+        </div>
+    </div>
+
+    <div id="bottom-ui">
+        <div class="hp-container">
+            <div class="hp-label" style="color:var(--player-color)">PLAYER (YOU)</div>
+            <div class="hp-bar-bg">
+                <div id="player-hp-fill" class="hp-fill" style="background:var(--player-color)"></div>
+            </div>
+        </div>
+        <div class="hp-container">
+            <div class="hp-label" style="color:var(--bot-color); text-align:right;">BOT (CPU)</div>
+            <div class="hp-bar-bg">
+                <div id="bot-hp-fill" class="hp-fill" style="background:var(--bot-color); margin-left:auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <button class="home-btn-hex" onclick="window.location.reload()">🏠</button>
+</div>
+
+<script>
+// --- ชุดข้อมูลคำถาม ---
+const questions = [
+  { q: "ลิโอเนล เมสซี เป็นสตาร์ของทีมชาติใด", options: ["บราซิล","อาร์เจนตินา","โปรตุเกส"], answer: 1 },
+  { q: "คริสเตียโน โรนัลโด เป็นสตาร์ของทีมชาติใด", options: ["โปรตุเกส","สเปน","อิตาลี"], answer: 0 },
+  { q: "เปเล่ เป็นสตาร์ของทีมชาติใด", options: ["บราซิล","อาร์เจนตินา","โคลอมเบีย"], answer: 0 },
+  { q: "ดีเอโก มาราโดนา เป็นสตาร์ของทีมชาติใด", options: ["อาร์เจนตินา","อุรุกวัย","ชิลี"], answer: 0 },
+  { q: "โยฮัน ครัฟฟ์ เป็นสตาร์ของทีมชาติใด", options: ["เนเธอร์แลนด์","เยอรมนี","เบลเยียม"], answer: 0 },
+  { q: "ซีเนดีน ซีดาน เป็นสตาร์ของทีมชาติใด", options: ["ฝรั่งเศส","โมร็อกโก","เบลเยียม"], answer: 0 },
+  { q: "โรนัลดินโญ เป็นสตาร์ของทีมชาติใด", options: ["บราซิล","โปรตุเกส","อาร์เจนตินา"], answer: 0 },
+  { q: "เนย์มาร์ เป็นสตาร์ของทีมชาติใด", options: ["บราซิล","สเปน","ฝรั่งเศส"], answer: 0 },
+  { q: "ฟรานซ์ เบ็คเคนเบาเออร์ เป็นสตาร์ของทีมชาติใด", options: ["เยอรมนี","ออสเตรีย","สวิตเซอร์แลนด์"], answer: 0 },
+  { q: "เปาโล มัลดินี เป็นสตาร์ของทีมชาติใด", options: ["อิตาลี","สเปน","โปรตุเกส"], answer: 0 },
+  { q: "มาร์โก ฟาน บัสเทิน เป็นสตาร์ของทีมชาติใด", options: ["เนเธอร์แลนด์","เบลเยียม","เดนมาร์ก"], answer: 0 },
+  { q: "มิเชล พลาตินี เป็นสตาร์ของทีมชาติใด", options: ["ฝรั่งเศส","สวิตเซอร์แลนด์","อิตาลี"], answer: 0 },
+  { q: "โรแบร์โต บักโจ เป็นสตาร์ของทีมชาติใด", options: ["อิตาลี","บราซิล","อาร์เจนตินา"], answer: 0 },
+  { q: "เธียร์รี อองรี เป็นสตาร์ของทีมชาติใด", options: ["ฝรั่งเศส","ไอวอรีโคสต์","เบลเยียม"], answer: 0 },
+  { q: "จอร์จ เบสต์ เป็นสตาร์ของทีมชาติใด", options: ["ไอร์แลนด์เหนือ","ไอร์แลนด์","สกอตแลนด์"], answer: 0 },
+  { q: "บ็อบบี ชาร์ลตัน เป็นสตาร์ของทีมชาติใด", options: ["อังกฤษ","สกอตแลนด์","เวลส์"], answer: 0 },
+  { q: "เปาโล รอสซี เป็นสตาร์ของทีมชาติใด", options: ["อิตาลี","อาร์เจนตินา","บราซิล"], answer: 0 },
+  { q: "ซลาตัน อิบราฮิโมวิช เป็นสตาร์ของทีมชาติใด", options: ["สวีเดน","โครเอเชีย","นอร์เวย์"], answer: 0 },
+  { q: "โรนัลโด นาซาริโอ เป็นสตาร์ของทีมชาติใด", options: ["บราซิล","อาร์เจนตินา","โปรตุเกส"], answer: 0 },
+  { q: "โรแบร์โต คาร์ลอส เป็นสตาร์ของทีมชาติใด", options: ["บราซิล","โปรตุเกส","สเปน"], answer: 0 },
+  { q: "อลัน เชียเรอร์ เป็นสตาร์ของทีมชาติใด", options: ["อังกฤษ","ไอร์แลนด์เหนือ","สกอตแลนด์"], answer: 0 },
+  { q: "เซร์คิโอ รามอส เป็นสตาร์ของทีมชาติใด", options: ["สเปน","โปรตุเกส","ฝรั่งเศส"], answer: 0 },
+  { q: "อันเดรส อิเนียสตา เป็นสตาร์ของทีมชาติใด", options: ["สเปน","อาร์เจนตินา","บราซิล"], answer: 0 },
+  { q: "ลูกา โมดริช เป็นสตาร์ของทีมชาติใด", options: ["โครเอเชีย","โปแลนด์","สโลวีเนีย"], answer: 0 },
+  { q: "เควิน เดอ บรอยน์ เป็นสตาร์ของทีมชาติใด", options: ["เบลเยียม","เนเธอร์แลนด์","สวิตเซอร์แลนด์"], answer: 0 },
+  { q: "คิลิยัน เอ็มบัปเป้ เป็นสตาร์ของทีมชาติใด", options: ["ฝรั่งเศส","เบลเยียม","โปรตุเกส"], answer: 0 },
+  { q: "เออร์ลิง ฮาแลนด์ เป็นสตาร์ของทีมชาติใด", options: ["นอร์เวย์","เดนมาร์ก","สวีเดน"], answer: 0 },
+  { q: "เลวานดอฟสกี เป็นสตาร์ของทีมชาติใด", options: ["โปแลนด์","เยอรมนี","ออสเตรีย"], answer: 0 },
+  { q: "ซาดิโอ มาเน่ เป็นสตาร์ของทีมชาติใด", options: ["เซเนกัล","ไอวอรีโคสต์","กานา"], answer: 0 },
+  { q: "โมฮาเหม็ด ซาลาห์ เป็นสตาร์ของทีมชาติใด", options: ["อียิปต์","โมร็อกโก","ตูนิเซีย"], answer: 0 },
+  { q: "จิอันลุยจิ บุฟฟอน เป็นสตาร์ของทีมชาติใด", options: ["อิตาลี","สเปน","ฝรั่งเศส"], answer: 0 }
+];
+
+// --- Audio & Game Logic ---
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const sounds = {};
+let bgmSource = null, playerHP = 1000, botHP = 1000, combo = 0, currentQ = null, timer = null;
+
+async function loadSound(name, url) {
+    try {
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        sounds[name] = await audioCtx.decodeAudioData(buf);
+    } catch(e) {}
+}
+
+const files = [['start','audio/start.mp3'],['back','audio/back.mp3'],['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['atc','audio/atc.mp3'],['en1','audio/en1.mp3'],['enc','audio/enc.mp3'],['win','audio/win.mp3'],['lost','audio/lost.mp3']];
+files.forEach(f => loadSound(f[0], f[1]));
+
+function playSound(name) {
+    if (sounds[name]) {
+        const s = audioCtx.createBufferSource();
+        s.buffer = sounds[name];
+        s.connect(audioCtx.destination);
+        s.start();
+        return s;
+    }
+}
+
+function announce(msg) { document.getElementById('sr-announcer').textContent = msg; }
+
+function startGame() {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    document.getElementById('start-screen').style.display = 'none';
+    playerHP = 1000; botHP = 1000; combo = 0;
+    updateUI();
+    
+    const qEl = document.getElementById('question-text');
+    const s = playSound('start');
+    qEl.textContent = "3";
+    setTimeout(() => qEl.textContent = "2", 500);
+    setTimeout(() => qEl.textContent = "GOAL!", 1000);
+    
+    s.onended = () => {
+        if (!bgmSource) {
+            bgmSource = audioCtx.createBufferSource();
+            bgmSource.buffer = sounds.back;
+            bgmSource.loop = true;
+            bgmSource.connect(audioCtx.destination);
+            bgmSource.start();
+        }
+        nextQuestion();
+    };
+}
+
+function nextQuestion() {
+    if (playerHP <= 0 || botHP <= 0) return endGame();
+    
+    currentQ = questions[Math.floor(Math.random() * questions.length)];
+    document.getElementById('question-text').textContent = currentQ.q;
+    const grid = document.getElementById('options-grid');
+    grid.innerHTML = '';
+    
+    currentQ.options.forEach((opt, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.textContent = opt;
+        btn.onclick = () => checkAnswer(idx);
+        grid.appendChild(btn);
+    });
+    
+    startTimer();
+}
+
+function startTimer() {
+    let left = 7000;
+    const bar = document.getElementById('timer-fill');
+    clearInterval(timer);
+    timer = setInterval(() => {
+        left -= 100;
+        bar.style.width = (left/7000)*100 + "%";
+        if (left <= 0) { clearInterval(timer); checkAnswer(-1); }
+    }, 100);
+}
+
+function checkAnswer(idx) {
+    clearInterval(timer);
+    const btns = document.querySelectorAll('.option-btn');
+    btns.forEach(b => b.disabled = true);
+    
+    const isCorrect = idx === currentQ.answer;
+    const ball = document.getElementById('ball');
+    const p = document.getElementById('player');
+    const b = document.getElementById('bot');
+
+    if (isCorrect) {
+        combo++;
+        let dmg = combo >= 3 ? 250 : 100;
+        botHP -= dmg;
+        p.classList.add('kick-anim');
+        ball.className = 'ball-goal';
+        playSound(combo >= 3 ? 'atc' : 'at1');
+        showDmg(dmg, 'bot', combo >= 3);
+        announce("ยอดเยี่ยม! ยิงเข้าประตูไปเลย!");
+    } else {
+        combo = 0;
+        let dmg = 120;
+        playerHP -= dmg;
+        p.classList.add('kick-anim');
+        ball.className = 'ball-fail';
+        b.classList.add('save-anim');
+        playSound('en1');
+        showDmg(dmg, 'player', false);
+        announce("โอ้โห! บอทรับลูกได้ คุณโดนสวนกลับ!");
+    }
+
+    updateUI();
+    setTimeout(() => {
+        p.classList.remove('kick-anim');
+        b.classList.remove('save-anim');
+        ball.className = '';
+        nextQuestion();
+    }, 2500);
+}
+
+function showDmg(amt, side, crit) {
+    const d = document.createElement('div');
+    d.className = 'damage-popup';
+    d.textContent = crit ? `SUPER GOAL! -${amt}` : `-${amt}`;
+    d.style.color = side === 'bot' ? 'var(--combo-color)' : 'var(--wrong-color)';
+    d.style.left = side === 'bot' ? '70%' : '20%';
+    d.style.top = '50%';
+    document.getElementById('game-container').appendChild(d);
+    setTimeout(() => d.remove(), 1000);
+}
+
+function updateUI() {
+    document.getElementById('player-hp-fill').style.width = (playerHP/10) + "%";
+    document.getElementById('bot-hp-fill').style.width = (botHP/10) + "%";
+}
+
+function endGame() {
+    if (bgmSource) bgmSource.stop();
+    const isWin = botHP <= 0;
+    playSound(isWin ? 'win' : 'lost');
+    
+    const winMsgs = ["แชมป์โลกสมัยนี้เป็นของคุณ!", "คุณคือดาวยิงระดับตำนาน!", "ชัยชนะที่ยิ่งใหญ่ ยินดีด้วยกัปตัน!"];
+    const loseMsgs = ["แพ้ในรอบชิง! กลับไปซ้อมมาใหม่นะ", "บอทเหนียวเกินไป พยายามเข้าสู้ใหม่!", "เกือบจะได้ชูถ้วยแล้ว อีกนิดเดียว!"];
+    
+    const msg = isWin ? winMsgs[Math.floor(Math.random()*winMsgs.length)] : loseMsgs[Math.floor(Math.random()*loseMsgs.length)];
+    
+    document.getElementById('question-text').innerHTML = `<span style="font-size:2rem; color:var(--combo-color)">${msg}</span>`;
+    document.getElementById('options-grid').innerHTML = '<button class="btn-start" onclick="window.location.reload()">เล่นใหม่อีกครั้ง</button>';
+}
+</script>
+</body>
+</html>
