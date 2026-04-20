@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survival Mode - หูเพี้ยนหรือเซียนนับ</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;500;800&display=swap');
+        
+        body { 
+            font-family: 'Kanit', sans-serif; 
+            max-width: 600px; 
+            margin: 2rem auto; 
+            padding: 1rem; 
+            text-align: center; 
+            background-color: #1a1a2e; 
+            color: #fff; 
+            overflow-x: hidden; 
+        }
+
+        .hidden { display: none !important; }
+        
+        .sr-only { 
+            position: absolute; 
+            width: 1px; 
+            height: 1px; 
+            padding: 0; 
+            margin: -1px; 
+            overflow: hidden; 
+            clip: rect(0,0,0,0); 
+            border: 0; 
+        }
+
+        /* Top Navigation & HUD */
+        #top-hud { position: fixed; top: 15px; width: 90%; max-width: 580px; left: 50%; transform: translateX(-50%); display: flex; justify-content: space-between; align-items: center; z-index: 1000; }
+        
+        .btn-community {
+            background: rgba(52, 152, 219, 0.9);
+            color: white;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 50px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: 0.3s;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .btn-community:hover { background: #2980b9; transform: scale(1.05); }
+
+        #score-board {
+            background: rgba(231, 76, 60, 0.9);
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        /* Hearts Visual Only */
+        #lives-container { display: flex; gap: 15px; justify-content: center; margin-top: 40px; }
+        .heart {
+            font-size: 4rem; color: #e74c3c;
+            filter: drop-shadow(0 0 10px rgba(231, 76, 60, 0.5));
+            transition: all 0.5s ease;
+        }
+        .heart.lost { opacity: 0.15; filter: grayscale(1); transform: scale(0.8); }
+        .heart.recover-anim { animation: recover 0.6s forwards; }
+        
+        @keyframes recover {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.4); filter: brightness(2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .game-card { 
+            background: rgba(255, 255, 255, 0.08); 
+            padding: 3rem 2rem; 
+            border-radius: 30px; 
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.1);
+            position: relative;
+        }
+
+        h2 { font-size: 2rem; outline: none; margin-bottom: 1.5rem; }
+
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
+        button.option-btn { 
+            padding: 20px; font-size: 1.3rem; cursor: pointer; border-radius: 15px; border: none;
+            background: #34495e; color: white; font-weight: bold; border-bottom: 5px solid #2c3e50;
+            outline: none;
+        }
+        button.option-btn:focus { background: #e67e22; border-color: #fff; box-shadow: 0 0 15px #e67e22; }
+
+        #btn-start {
+            padding: 20px 40px; font-size: 1.5rem; background: #e74c3c;
+            color: white; border: none; border-radius: 50px; cursor: pointer; font-weight: 800;
+        }
+
+        .fx-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2000; display: flex; justify-content: center; align-items: center; }
+        .big-x { font-size: 300px; color: #ff4757; font-weight: 900; opacity: 0; }
+        .animate-x { animation: x-impact 0.8s forwards; }
+        @keyframes x-impact { 0% { opacity: 0; transform: scale(5); } 20% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.8); } }
+    </style>
+</head>
+<body>
+
+    <div id="top-hud">
+        <button id="nav-community" class="btn-community" onclick="window.location.href='../index.html'">กลับสู่ชุมชน</button>
+        <div id="score-board" class="hidden">คะแนน: <span id="display-score">0</span></div>
+    </div>
+
+    <div id="start-screen" class="game-card">
+        <h1>โหมดเอาชีวิตรอด</h1>
+        <p>สะสมคอมโบ 4 ข้อเพื่อฟื้นชีวิต!<br>ตั้งใจฟังให้ดี มีเพียง 3 ชีวิตเท่านั้น</p>
+        <button id="btn-start">เริ่มเอาชีวิตรอด</button>
+    </div>
+
+    <div id="game-screen" class="game-card hidden">
+        <h2 id="question-text" tabindex="-1">เตรียมตัว...</h2>
+        <div id="options-container" class="options-grid"></div>
+        <div id="lives-container" aria-hidden="true">
+            <span class="heart" id="h1">❤️</span>
+            <span class="heart" id="h2">❤️</span>
+            <span class="heart" id="h3">❤️</span>
+        </div>
+    </div>
+
+    <div id="result-screen" class="game-card hidden">
+        <h2 id="result-title" tabindex="-1">สรุปการรอดชีวิต</h2>
+        <p id="result-message" style="font-size: 1.4rem;"></p>
+    </div>
+
+    <div id="announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+    <div id="fx-layer" class="fx-overlay"></div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let currentSource = null, audioBuffers = {};
+        let totalScore = 0, comboCount = 0, lives = 3, currentRound = 0;
+        let usedSongs = [], currentSong = null;
+        let lastType = -1; // ตัวแปรสำหรับเก็บประเภทคำถามล่าสุดเพื่อป้องกันการสุ่มซ้ำติดกัน
+
+        const songData = [
+            { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
+            { file: 'หมี.mp3', words: [{w:'หมี', n:7}, {w:'หีบ', n:4}, {w:'หนี', n:8}, {w:'หาย', n:14}] },
+            { file: 'ว้าวุ่น.mp3', words: [{w:'ว้าวุ่น', n:7}, {w:'วาสนา', n:5}, {w:'ชีวิต', n:5}, {w:'สู้', n:8}] },
+            { file: 'ดี4.mp3', words: [{w:'ดี', n:27}, {w:'หู', n:5}, {w:'หัน', n:6}, {w:'หลาย', n:12}] },
+            { file: 'fruit.mp3', words: [{w:'แอปเปิ้ล', n:9}, {w:'มะละกอ', n:9}, {w:'กล้วย', n:10}, {w:'ส้ม', n:10}] },
+            { file: 'จึ้ง.mp3', words: [{w:'จึ้ง', n:8}, {w:'แกง', n:8}, {w:'ปัง', n:8}, {w:'บ้ง', n:5}] },
+            { file: '1469.mp3', words: [{w:'หนึ่ง', n:8}, {w:'สี่', n:12}, {w:'หก', n:20}, {w:'เก้า', n:16}] },
+            { file: 'mama.mp3', words: [{w:'มาม่า', n:8}, {w:'ไวไว', n:7}, {w:'ซื่อสัตย์', n:3}, {w:'นิสชิน', n:6}] },
+            { file: 'kitchen.mp3', words: [{w:'หม้อ', n:9}, {w:'จาน', n:8}, {w:'ชาม', n:9}, {w:'กระทะ', n:9}] },
+            { file: 'ma.mp3', words: [{w:'มะม่วง', n:6}, {w:'มะนาว', n:5}, {w:'มะยม', n:6}, {w:'มะขาม', n:7}] },
+            { file: 'flower.mp3', words: [{w:'จำปี', n:5}, {w:'จำปา', n:7}, {w:'แก้ว', n:9}, {w:'มะลิ', n:18}] },
+            { file: 'pen.mp3', words: [{w:'กระเป๋า', n:10}, {w:'ดินสอ', n:11}, {w:'ปากกา', n:12}, {w:'สมุด', n:6}] },
+            { file: 'catdog.mp3', words: [{w:'แมว', n:11}, {w:'หมา', n:7}, {w:'หมี', n:13}, {w:'กบ', n:6}] },
+            { file: 'tour.mp3', words: [{w:'ท่าน', n:6}, {w:'ทัวร์', n:4}, {w:'หาด', n:5}, {w:'ใกล้', n:7}] },
+            { file: 'somtam.mp3', words: [{w:'อ๊า', n:14}, {w:'โอ๊ย', n:22}, {w:'อู๊ย', n:12}, {w:'อื๊ม', n:5}] },
+            { file: 'iPhone.mp3', words: [{w:'iPhone', n:8}, {w:'Samsung', n:9}, {w:'Oppo', n:8}, {w:'Vivo', n:8}] },
+            { file: 'benz.mp3', words: [{w:'เบ๊น', n:10}, {w:'โตโยต้า', n:6}, {w:'ฮอนด้า', n:7}, {w:'ตุ๊ก', n:15}] },
+            { file: 'bangkok.mp3', words: [{w:'กรุงเทพ', n:6}, {w:'พัทยา', n:6}, {w:'เชียงใหม่', n:4}, {w:'สงขลา', n:9}] },
+            { file: 'lay.mp3', words: [{w:'เลย์', n:12}, {w:'คอนเน่', n:11}, {w:'เทสโต้', n:6}, {w:'ฮานามิ', n:5}] },
+            { file: 'color.mp3', words: [{w:'แดง', n:11}, {w:'เขียว', n:8}, {w:'เหลือง', n:8}, {w:'ม่วง', n:9}] },
+            { file: 'day.mp3', words: [{w:'จันทร์', n:9}, {w:'พุธ', n:6}, {w:'เสาร์', n:8}, {w:'อาทิตย์', n:7}] },
+            { file: 'month.mp3', words: [{w:'มีนา', n:7}, {w:'เมษา', n:9}, {w:'สิงหา', n:4}, {w:'กันยา', n:7}] },
+            { file: 'finger.mp3', words: [{w:'โป้ง', n:22}, {w:'ชี้', n:14}, {w:'ก้อย', n:7}, {w:'นาง', n:6}] },
+            { file: 'head.mp3', words: [{w:'หัว', n:14}, {w:'ไหล่', n:12}, {w:'ตูด', n:13}, {w:'แขน', n:3}] },
+            { file: 'table.mp3', words: [{w:'โต๊ะ', n:13}, {w:'ตู้', n:8}, {w:'เตียง', n:8}, {w:'ระเบียง', n:1}] },
+            { file: 'shark.mp3', words: [{w:'ฉลาม', n:8}, {w:'โลมา', n:4}, {w:'นีโม่', n:8}, {w:'แมวน้ำ', n:5}] },
+            { file: 'sea.mp3', words: [{w:'ภูเขา', n:4}, {w:'ทะเล', n:9}, {w:'น้ำตก', n:4}, {w:'เกาะ', n:13}] },
+            { file: 'rice.mp3', words: [{w:'ข้าวสาร', n:6}, {w:'กะปิ', n:9}, {w:'น้ำพริก', n:8}, {w:'น้ำปลา', n:6}] },
+            { file: 'million.mp3', words: [{w:'ร้อย', n:1}, {w:'หมื่น', n:7}, {w:'แสน', n:9}, {w:'ล้าน', n:18}] },
+{ file: 'eye.mp3', words: [{w:'หู', n:13}, {w:'คอ', n:9}, {w:'ตา', n:1}, {w:'ปาก', n:19}] },
+            { file: 'ping.mp3', words: [{w:'ปิง', n:7}, {w:'วัง', n:14}, {w:'ยม', n:8}, {w:'น่าน', n:22}] },
+            { file: 'ta.mp3', words: [{w:'ปู่', n:16}, {w:'ย่า', n:12}, {w:'ตา', n:14}, {w:'ยาย', n:15}] },
+            { file: 'die.mp3', words: [{w:'เกิด', n:7}, {w:'แก่', n:12}, {w:'เจ็บ', n:13}, {w:'ตาย', n:19}] },
+            { file: 'dok.mp3', words: [{w:'กิ่ง', n:20}, {w:'ก้าน', n:10}, {w:'ใบ', n:13}, {w:'ดอก', n:9}] },
+            { file: 'real.mp3', words: [{w:'อนิจจัง', n:7}, {w:'ทุกขัง', n:8}, {w:'อนัตตา', n:6}, {w:'จริงแท้', n:3}] },
+            { file: 'home.mp3', words: [{w:'วัด', n:18}, {w:'บ้าน', n:9}, {w:'โรงเรียน', n:11}, {w:'ตลาด', n:12}] },
+            { file: 'expensive.mp3', words: [{w:'ข้าว', n:8}, {w:'ยาก', n:9}, {w:'หมาก', n:12}, {w:'แพง', n:17}] },
+            { file: 'tri.mp3', words: [{w:'ตรี', n:7}, {w:'คฑา', n:7}, {w:'จักร', n:8}, {w:'สังข์', n:13}] },
+            { file: 'soil.mp3', words: [{w:'ดิน', n:10}, {w:'น้ำ', n:7}, {w:'ลม', n:11}, {w:'ไฟ', n:12}] },
+            { file: 'kids.mp3', words: [{w:'เด็ก', n:9}, {w:'วัยรุ่น', n:11}, {w:'ผู้ใหญ่', n:7}, {w:'ชรา', n:5}] }
+        ];
+
+        const announcer = document.getElementById('announcer');
+        const qHeading = document.getElementById('question-text');
+        const navComm = document.getElementById('nav-community');
+
+        function announce(txt) { 
+            announcer.textContent = ""; 
+            setTimeout(() => { 
+                announcer.textContent = txt; 
+                setTimeout(() => { announcer.textContent = ""; }, 5000);
+            }, 50);
+        }
+
+        async function loadSound(file) {
+            const url = `audio/${file}`;
+            if (audioBuffers[url]) return audioBuffers[url];
+            const res = await fetch(url);
+            const buf = await audioCtx.decodeAudioData(await res.arrayBuffer());
+            audioBuffers[url] = buf; return buf;
+        }
+
+        function playSound(buffer, callback) {
+            if (currentSource) currentSource.stop();
+            currentSource = audioCtx.createBufferSource();
+            currentSource.buffer = buffer;
+            currentSource.connect(audioCtx.destination);
+            currentSource.onended = callback;
+            currentSource.start(0);
+        }
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            document.getElementById('score-board').classList.remove('hidden');
+            navComm.classList.add('hidden'); 
+            nextQuestion();
+        });
+
+        async function nextQuestion() {
+            if (currentRound >= 30) { endGame(true); return; }
+            if (lives <= 0) { endGame(false); return; }
+
+            currentRound++;
+            document.getElementById('options-container').innerHTML = "";
+            let available = songData.filter(s => !usedSongs.includes(s.file));
+            currentSong = available[Math.floor(Math.random() * available.length)];
+            usedSongs.push(currentSong.file);
+
+            // ปรับปรุง: สุ่มโหมดคำถามแบบไม่ให้ซ้ำข้อล่าสุด
+            let type = Math.floor(Math.random() * 3); 
+            while (type === lastType) {
+                type = Math.floor(Math.random() * 3);
+            }
+            lastType = type; // เก็บค่าไว้ใช้ตรวจสอบในข้อถัดไป
+
+            const target = currentSong.words[Math.floor(Math.random() * currentSong.words.length)];
+            
+            if (type === 0) {
+                qHeading.textContent = `ข้อที่ ${currentRound}: มีคำว่า "${target.w}" กี่ครั้ง?`;
+                currentSong.answer = target.n; currentSong.mode = "count";
+            } else if (type === 1) {
+                qHeading.textContent = `ข้อที่ ${currentRound}: ตัวเลือกใดปรากฏมากที่สุด?`;
+                const maxV = Math.max(...currentSong.words.map(w => w.n));
+                currentSong.answer = currentSong.words.filter(w => w.n === maxV).map(w => w.w);
+                currentSong.mode = "maxmin";
+            } else {
+                qHeading.textContent = `ข้อที่ ${currentRound}: ตัวเลือกใดปรากฏน้อยที่สุด?`;
+                const minV = Math.min(...currentSong.words.map(w => w.n));
+                currentSong.answer = currentSong.words.filter(w => w.n === minV).map(w => w.w);
+                currentSong.mode = "maxmin";
+            }
+
+            qHeading.focus();
+
+            setTimeout(async () => {
+                const buffer = await loadSound(currentSong.file);
+                playSound(buffer, () => {
+                    showOptions();
+                    const firstBtn = document.querySelector('.option-btn');
+                    if (firstBtn) firstBtn.focus(); 
+                });
+            }, 3000);
+        }
+
+        function showOptions() {
+            const container = document.getElementById('options-container');
+            let opts = currentSong.mode === "count" ? 
+                [...new Set([currentSong.answer, currentSong.answer+1, currentSong.answer-1, currentSong.answer+2])].filter(n=>n>=0) :
+                currentSong.words.map(w => w.w);
+            
+            opts.sort(() => Math.random() - 0.5).forEach(opt => {
+                const b = document.createElement('button');
+                b.className = "option-btn";
+                b.textContent = opt;
+                b.onclick = () => checkAnswer(currentSong.mode === "count" ? opt === currentSong.answer : currentSong.answer.includes(opt));
+                container.appendChild(b);
+            });
+        }
+
+        async function checkAnswer(isCorrect) {
+            document.getElementById('options-container').innerHTML = "";
+            if (isCorrect) {
+                comboCount++;
+                totalScore += (1000 * (1 + comboCount * 0.2));
+                document.getElementById('display-score').textContent = Math.floor(totalScore);
+                let bonusMsg = "";
+                if (comboCount > 0 && comboCount % 4 === 0 && lives < 3) {
+                    lives++;
+                    const h = document.getElementById(`h${lives}`);
+                    h.classList.remove('lost');
+                    h.classList.add('recover-anim');
+                    setTimeout(() => h.classList.remove('recover-anim'), 600);
+                    bonusMsg = " ได้รับหนึ่งชีวิตคืน!";
+                }
+                announce(`ถูกต้อง! คอมโบ ${comboCount} ข้อ.${bonusMsg} เหลือ ${lives} ชีวิต`);
+                createFirework();
+                playSound(await loadSound('t.mp3'));
+                setTimeout(nextQuestion, 1500);
+            } else {
+                const h = document.getElementById(`h${lives}`);
+                h.classList.add('lost');
+                lives--;
+                comboCount = 0;
+                announce(`ผิดครับ! เหลือ ${lives} ชีวิต`);
+                showBigX();
+                playSound(await loadSound('f.mp3'));
+                if (lives <= 0) setTimeout(() => endGame(false), 1200);
+                else setTimeout(nextQuestion, 1500);
+            }
+        }
+
+        function createFirework() {
+            for(let i=0; i<25; i++) {
+                const p = document.createElement('div');
+                p.style.position='fixed'; p.style.left='50%'; p.style.top='50%';
+                p.style.width='10px'; p.style.height='10px'; p.style.borderRadius='50%';
+                p.style.backgroundColor=`hsl(${Math.random()*360},100%,50%)`;
+                document.getElementById('fx-layer').appendChild(p);
+                const a = Math.random()*Math.PI*2, d = 150+Math.random()*150;
+                p.animate([{transform:'translate(0,0) scale(1)', opacity:1},{transform:`translate(${Math.cos(a)*d}px,${Math.sin(a)*d}px) scale(0)`, opacity:0}], {duration:800});
+                setTimeout(()=>p.remove(), 800);
+            }
+        }
+
+        function showBigX() {
+            const fx = document.getElementById('fx-layer');
+            fx.innerHTML = '<div class="big-x animate-x">X</div>';
+            setTimeout(() => { fx.innerHTML = ""; }, 800);
+        }
+
+        async function endGame(isWin) {
+            announcer.textContent = ""; 
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('score-board').classList.add('hidden');
+            document.getElementById('result-screen').classList.remove('hidden');
+            navComm.classList.remove('hidden'); 
+
+            const title = document.getElementById('result-title');
+            const msg = document.getElementById('result-message');
+            if (isWin) {
+                title.textContent = "🏆 ชนะการเอาชีวิตรอด!";
+                msg.innerHTML = `คุณผ่านครบ 30 ข้อ!<br>คะแนนรวม: ${Math.floor(totalScore)}`;
+                playSound(await loadSound('end.mp3'));
+            } else {
+                title.textContent = "💀 ภารกิจสิ้นสุด";
+                msg.innerHTML = `พยายามได้ดีมาก!<br>คะแนนที่ทำได้: ${Math.floor(totalScore)}`;
+                playSound(await loadSound('end1.mp3'));
+            }
+            title.focus();
+            announce(`${title.textContent}. ${msg.innerText}`);
+        }
+    </script>
+</body>
+</html>
