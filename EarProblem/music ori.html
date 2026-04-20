@@ -110,8 +110,7 @@
         let currentSource = null, audioBuffers = {};
         let totalScore = 0, comboCount = 0, questionStartTime = 0;
         let isExpertMode = false;
-        let usedSongs = []; 
-        let lastQuestionType = -1; // ตัวแปรสำหรับจดจำรูปแบบคำถามล่าสุด
+        let usedSongs = []; // ย้ายมาเป็น Global เพื่อไม่ให้รีเซ็ตระหว่างโหมด
 
         const songData = [
             { file: 'espresso.mp3', words: [{w:'อเมริกาโน่', n:6}, {w:'เอสเพรซโซ่', n:8}, {w:'ลาเต้', n:14}, {w:'คาปูชิโน่', n:6}] },
@@ -143,7 +142,7 @@
             { file: 'sea.mp3', words: [{w:'ภูเขา', n:4}, {w:'ทะเล', n:9}, {w:'น้ำตก', n:4}, {w:'เกาะ', n:13}] },
             { file: 'rice.mp3', words: [{w:'ข้าวสาร', n:6}, {w:'กะปิ', n:9}, {w:'น้ำพริก', n:8}, {w:'น้ำปลา', n:6}] },
             { file: 'million.mp3', words: [{w:'ร้อย', n:1}, {w:'หมื่น', n:7}, {w:'แสน', n:9}, {w:'ล้าน', n:18}] },
-            { file: 'eye.mp3', words: [{w:'หู', n:13}, {w:'คอ', n:9}, {w:'ตา', n:1}, {w:'ปาก', n:19}] },
+{ file: 'eye.mp3', words: [{w:'หู', n:13}, {w:'คอ', n:9}, {w:'ตา', n:1}, {w:'ปาก', n:19}] },
             { file: 'ping.mp3', words: [{w:'ปิง', n:7}, {w:'วัง', n:14}, {w:'ยม', n:8}, {w:'น่าน', n:22}] },
             { file: 'ta.mp3', words: [{w:'ปู่', n:16}, {w:'ย่า', n:12}, {w:'ตา', n:14}, {w:'ยาย', n:15}] },
             { file: 'die.mp3', words: [{w:'เกิด', n:7}, {w:'แก่', n:12}, {w:'เจ็บ', n:13}, {w:'ตาย', n:19}] },
@@ -180,7 +179,7 @@
 
         function activateCheat(expert) {
             if (currentSource) currentSource.stop();
-            startNewGame(expert, true); 
+            startNewGame(expert, true); // เพิ่ม flag บอกว่าใช้สูตร
             currentRound = 6; 
             nextQuestion();
         }
@@ -258,13 +257,13 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
             isExpertMode = expert;
             currentRound = 0; 
-            lastQuestionType = -1; // รีเซ็ตค่าการจำรูปแบบคำถามเมื่อเริ่มเกมใหม่
             
+            // ปรับเงื่อนไข: ล้าง usedSongs เฉพาะเมื่อเริ่มเกมใหม่จากปุ่ม "โหมดท้าทาย" หรือเล่นโหมดปกติใหม่
             if (!isExpertMode && !isCheat) {
                 usedSongs = []; 
             }
             
-            totalScore = (isExpertMode && !isCheat) ? totalScore : 0; 
+            totalScore = (isExpertMode && !isCheat) ? totalScore : 0; // รักษาคะแนนไว้ถ้าเล่นต่อระดับเซียน
             comboCount = 0;
             
             if (isExpertMode) {
@@ -307,6 +306,7 @@
             statusMsg.textContent = ""; currentRound++;
             let availableSongs = songData.filter(s => !usedSongs.includes(s.file));
             
+            // กรณีเพลงหมด ให้สุ่มจากทั้งหมดใหม่
             if (availableSongs.length === 0) availableSongs = songData; 
             
             let selectedSong = availableSongs[Math.floor(Math.random() * availableSongs.length)];
@@ -366,14 +366,7 @@
         function generateOptions(song) {
             const container = document.getElementById('options-container');
             container.innerHTML = "";
-            
-            // ส่วนที่แก้ไข: ป้องกันการสุ่มรูปแบบคำถามซ้ำข้อเดิม
-            let questionType;
-            do {
-                questionType = Math.floor(Math.random() * 3);
-            } while (questionType === lastQuestionType);
-            lastQuestionType = questionType;
-
+            const questionType = Math.floor(Math.random() * 3);
             const targetIndex = Math.floor(Math.random() * song.words.length);
             const target = song.words[targetIndex];
 
