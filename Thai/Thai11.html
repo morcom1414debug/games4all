@@ -45,7 +45,7 @@
         #timer-bar-bg { width: 100%; height: 8px; background: #eee; border-radius: 4px; overflow: hidden; margin-top: 10px; }
         #timer-fill { width: 100%; height: 100%; background: var(--combo-color); transition: width 0.1s linear; }
 
-        /* --- ส่วนกลาง --- */
+        /* --- ส่วนกลาง: พื้นที่ตัวละคร --- */
         #pitch { flex-grow: 1; position: relative; display: none; background: #f9f9f9; overflow: hidden; }
         .blackboard { position: absolute; right: 20px; top: 30px; width: 180px; height: 110px; background: var(--board-color); border: 6px solid #8e44ad; border-radius: 5px; }
         
@@ -54,6 +54,7 @@
         #bot { right: 60px; width: 120px; z-index: 5; } 
         .char-svg { width: 100px; height: 140px; }
         
+        /* แอนิเมชันพิเศษ */
         .giant-center {
             position: fixed !important; top: 40% !important; left: 50% !important;
             transform: translate(-50%, -50%) scale(2.2) !important;
@@ -81,38 +82,18 @@
         .option-btn:hover:not(:disabled) { background: var(--player-color); color: #fff; }
         .option-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* --- ปรับแก้ปุ่มหน้าสรุปผลตามสั่ง --- */
+        /* --- ปรับปรุงจุดเดียว: หน้าจอทับ (Overlay) เพื่อให้ปุ่มหน้าสรุปกดได้แน่นอน --- */
         #overlay-screen { 
             position: absolute; inset: 0; background: rgba(255,255,255,0.98); 
             display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 500; padding: 20px;
         }
         #overlay-screen.summary-mode { 
             background: transparent; 
+            justify-content: flex-end; /* ดันเนื้อหาลงด้านล่างเพื่อให้ไม่ทับส่วนบน และไม่ใช้ pointer-events: none */
+            padding-bottom: 80px;
         }
 
-        /* ปุ่มเริ่มบทเรียนเดิม (ซ่อนเมื่ออยู่หน้าสรุป) */
-        #overlay-screen.summary-mode #action-btn { 
-            display: none; 
-        }
-
-        /* ปุ่มเริ่มใหม่ (แสดงเฉพาะหน้าสรุป และอยู่ด้านล่างตรงกลาง) */
-        #restart-btn {
-            display: none; /* ซ่อนไว้ก่อน */
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 15px 60px;
-            background: var(--player-color);
-            color: white;
-            z-index: 700;
-            min-width: 220px;
-        }
-
-        #overlay-screen.summary-mode #restart-btn { 
-            display: block; /* แสดงเมื่ออยู่หน้าสรุป */
-        }
-
+        /* --- มือถือ --- */
         @media (max-width: 600px) {
             .options-grid { grid-template-columns: 1fr; }
             .giant-center { transform: translate(-50%, -50%) scale(1.6) !important; }
@@ -152,10 +133,7 @@
     <div id="overlay-screen">
         <h1 id="main-title" tabindex="-1" style="color: #2c3e50; text-align: center; margin-bottom: 10px;">ภาษาไทย ไม่ยากอย่างที่คิด</h1>
         <p id="summary-text" style="font-size: 1.2rem; margin-bottom: 30px; text-align: center;">สะสมพลังให้ครบ 1,000 เพื่อชนะบทเรียน!</p>
-        
-        <button id="action-btn" class="option-btn" style="padding: 15px 50px; background: var(--correct-color); color: white; min-width: 220px;" onclick="startGame()">เริ่มบทเรียน</button>
-        
-        <button id="restart-btn" class="option-btn" onclick="startGame()">เริ่มใหม่</button>
+        <button id="action-btn" class="option-btn" style="padding: 15px 50px; background: var(--correct-color); color: white; min-width: 220px; z-index: 600; position: relative;" onclick="startGame()">เริ่มบทเรียน</button>
     </div>
 </div>
 
@@ -225,7 +203,7 @@ function startGame() {
     if(audioCtx.state === 'suspended') audioCtx.resume();
     const overlay = document.getElementById('overlay-screen');
     overlay.style.display = 'none';
-    overlay.classList.remove('summary-mode'); // เมื่อเริ่มใหม่ summary-mode จะหายไป ปุ่มเริ่มใหม่ก็จะถูกซ่อนอัตโนมัติ
+    overlay.classList.remove('summary-mode');
     
     const p = document.getElementById('player');
     p.classList.remove('giant-center', 'at-top-position', 'victory-anim', 'sad-anim');
@@ -297,7 +275,7 @@ function checkAnswer(idx, correct) {
         if(combo >= 4) { 
             change = Math.floor(Math.random() * 71) + 180; 
             playSound('atc'); 
-            combo = 0; 
+            combo = 0; // Reset หลังได้รับ Combo
         } else { 
             change = Math.floor(Math.random() * 41) + 80; 
             let s; do{s='at'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
@@ -311,7 +289,7 @@ function checkAnswer(idx, correct) {
         if(wrongCombo >= 4) { 
             change = Math.floor(Math.random() * 71) + 180; 
             playSound('enc'); 
-            wrongCombo = 0;
+            wrongCombo = 0; // Reset หลังได้รับ Combo
         } else { 
             change = Math.floor(Math.random() * 41) + 80; 
             let s; do{s='en'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
