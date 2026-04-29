@@ -32,7 +32,7 @@
             border-radius: 20px; display: flex; flex-direction: column; overflow: hidden;
         }
 
-        /* --- ส่วนบน: แถบพลัง --- */
+        /* --- UI ส่วนบน (Screen Reader เจอเป็นอันแรก) --- */
         #top-ui { 
             background: var(--ui-bg); padding: 15px 25px; z-index: 10; 
             border-bottom: 3px solid #eee; display: none; 
@@ -45,20 +45,20 @@
         #timer-bar-bg { width: 100%; height: 8px; background: #eee; border-radius: 4px; overflow: hidden; margin-top: 10px; }
         #timer-fill { width: 100%; height: 100%; background: var(--combo-color); transition: width 0.1s linear; }
 
-        /* --- ส่วนกลาง: พื้นที่ตัวละคร --- */
+        /* --- Arena & Characters --- */
         #pitch { flex-grow: 1; position: relative; display: none; background: #f9f9f9; overflow: hidden; }
         .blackboard { position: absolute; right: 20px; top: 30px; width: 180px; height: 110px; background: var(--board-color); border: 6px solid #8e44ad; border-radius: 5px; }
         
-        .character { position: absolute; bottom: 20px; transition: all 0.5s ease-in-out; pointer-events: none; }
+        .character { position: absolute; bottom: 20px; transition: all 0.5s ease-in-out; }
         #player { left: 50px; width: 220px; display: flex; gap: 20px; z-index: 5; } 
         #bot { right: 60px; width: 120px; z-index: 5; } 
         .char-svg { width: 100px; height: 140px; }
         
-        /* แอนิเมชันพิเศษ */
+        /* แอนิเมชันพิเศษตอนจบ */
         .giant-center {
             position: fixed !important; top: 40% !important; left: 50% !important;
             transform: translate(-50%, -50%) scale(2.2) !important;
-            bottom: auto !important; right: auto !important; z-index: 100 !important;
+            bottom: auto !important; right: auto !important; z-index: 400 !important;
         }
 
         .at-top-position {
@@ -78,8 +78,8 @@
         .animate-pop { animation: popShow 1s forwards; }
         @keyframes popShow { 0% { transform: translate(-50%, -50%) scale(0); opacity: 0; } 50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
 
-        /* --- ส่วนล่าง: คำถาม --- */
-        #bottom-ui { background: #fff; padding: 20px; display: none; flex-direction: column; border-top: 5px solid #eee; }
+        /* --- UI ส่วนล่าง --- */
+        #bottom-ui { background: #fff; padding: 20px; display: none; flex-direction: column; border-top: 5px solid #eee; overflow-y: auto; }
         #question-text { font-size: 1.8rem; text-align: center; margin: 0 0 15px 0; outline: none; color: #2c3e50; }
         .options-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; }
         .option-btn { padding: 15px 10px; font-size: 1.2rem; background: #f8f9fa; border: 2px solid #ddd; border-radius: 15px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
@@ -91,20 +91,22 @@
             position: absolute; inset: 0; background: rgba(255,255,255,0.98); 
             display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 300; padding: 20px;
         }
-        /* เมื่อเข้าสู่โหมดสรุป ปรับให้โปร่งใสเพื่อให้เห็นตัวละครด้านบน แต่ปุ่มต้องกดได้ */
         #overlay-screen.summary-mode { 
-            top: 220px; height: calc(100% - 220px); background: transparent;
+            top: 220px; height: calc(100% - 220px); background: transparent; pointer-events: none;
         }
+        #overlay-screen.summary-mode > * { pointer-events: auto; } /* ให้ปุ่มในโหมดสรุปกดได้ */
 
-        /* --- มือถือ --- */
+        /* --- Responsive สำหรับมือถือ --- */
         @media (max-width: 600px) {
+            #game-container { width: 100%; height: 100vh; border: none; border-radius: 0; }
             #question-text { font-size: 1.4rem; }
-            .options-grid { grid-template-columns: 1fr; }
+            .options-grid { grid-template-columns: 1fr; gap: 8px; } /* เรียงปุ่มแนวตั้งบนมือถือ */
             .option-btn { padding: 12px; font-size: 1.1rem; }
             #player { left: 15px; width: 160px; }
             #bot { right: 15px; width: 100px; }
             .char-svg { width: 70px; height: 110px; }
             .giant-center { transform: translate(-50%, -50%) scale(1.6) !important; }
+            #main-title { font-size: 1.8rem; }
         }
     </style>
 </head>
@@ -113,12 +115,18 @@
 <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
 <div id="game-container">
-    <div id="top-ui" role="region" aria-label="สถานะพลัง">
+    <div id="top-ui" role="region" aria-label="แถบแสดงพลัง">
         <div class="hp-bar-bg">
             <div id="player-hp-fill"></div>
             <div class="hp-text" id="hp-label">400 / 1000</div>
         </div>
         <div id="timer-bar-bg"><div id="timer-fill"></div></div>
+    </div>
+
+    <div id="overlay-screen">
+        <h1 id="main-title" tabindex="-1" style="color: #2c3e50; text-align: center; margin-bottom: 10px;">ภาษาไทย ไม่ยากอย่างที่คิด</h1>
+        <p id="summary-text" style="font-size: 1.2rem; margin-bottom: 30px; text-align: center;">สะสมพลังให้ครบ 1,000 เพื่อชนะบทเรียน!</p>
+        <button id="action-btn" class="option-btn" style="padding: 15px 50px; background: var(--correct-color); color: white; min-width: 200px; z-index: 500;" onclick="startGame()">เริ่มบทเรียน</button>
     </div>
 
     <div id="pitch">
@@ -136,12 +144,6 @@
     <div id="bottom-ui">
         <h2 id="question-text" tabindex="-1"></h2>
         <div class="options-grid" id="options-grid"></div>
-    </div>
-
-    <div id="overlay-screen" aria-hidden="false">
-        <h1 id="main-title" tabindex="-1" style="color: #2c3e50; text-align: center; margin-bottom: 10px;">ภาษาไทย ไม่ยากอย่างที่คิด</h1>
-        <p id="summary-text" style="font-size: 1.2rem; margin-bottom: 30px; text-align: center;">สะสมพลังให้ครบ 1,000 เพื่อชนะบทเรียน!</p>
-        <button id="action-btn" class="option-btn" style="padding: 15px 50px; background: var(--correct-color); color: white; min-width: 220px;" onclick="startGame()">เริ่มบทเรียน</button>
     </div>
 </div>
 
@@ -209,7 +211,6 @@ function startGame() {
     if(audioCtx.state === 'suspended') audioCtx.resume();
     const overlay = document.getElementById('overlay-screen');
     overlay.style.display = 'none';
-    overlay.setAttribute('aria-hidden', 'true');
     overlay.classList.remove('summary-mode');
     
     const p = document.getElementById('player');
@@ -224,8 +225,7 @@ function startGame() {
     currentQ = [...questions].sort(() => Math.random() - 0.5);
     updateUI();
     playSound('start');
-    
-    announce("เริ่มบทเรียน พลังปัจจุบันคือ 400 คะแนน");
+    announce("เริ่มบทเรียนใหม่");
     
     setTimeout(() => {
         nextQuestion();
@@ -258,7 +258,7 @@ function nextQuestion() {
         grid.appendChild(b);
     });
 
-    let timeLeft = 20000;
+    let timeLeft = 20000; // 20 วินาที
     const bar = document.getElementById('timer-fill');
     clearInterval(timer);
     timer = setInterval(() => {
@@ -277,38 +277,21 @@ function checkAnswer(idx, correct) {
     const p = document.getElementById('player');
     const eff = document.getElementById('effect-layer');
     
-    let change = 0;
+    let change = 100;
     if(isCorrect) {
         combo++; wrongCombo = 0;
-        // 2. ใช้การสุ่มคะแนนแบบเดิม
-        if(combo >= 4) { 
-            change = Math.floor(Math.random() * 71) + 180; // 180-250
-            playSound('atc'); 
-        } else { 
-            change = Math.floor(Math.random() * 41) + 80;  // 80-120
-            let s; do{s='at'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
-            playSound(s); lastSound=s; 
-        }
+        if(combo >= 4) { change = 200; playSound('atc'); }
+        else { let s; do{s='at'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); playSound(s); lastSound=s; }
         playerHP = Math.min(1000, playerHP + change);
         p.className = 'character victory-anim';
         eff.textContent = "🎉"; eff.className = 'effect-pop animate-pop';
-        // 3. ประกาศพลังที่ได้และรวม
-        announce(`ถูกต้อง! ได้พลังเพิ่ม ${change} คะแนน พลังรวมคือ ${playerHP}`);
     } else {
         wrongCombo++; combo = 0;
-        if(wrongCombo >= 4) { 
-            change = Math.floor(Math.random() * 71) + 180; 
-            playSound('enc'); 
-        } else { 
-            change = Math.floor(Math.random() * 41) + 80; 
-            let s; do{s='en'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
-            playSound(s); lastSound=s; 
-        }
+        if(wrongCombo >= 4) { change = 200; playSound('enc'); }
+        else { let s; do{s='en'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); playSound(s); lastSound=s; }
         playerHP = Math.max(0, playerHP - change);
         p.className = 'character sad-anim';
         eff.textContent = "❌"; eff.className = 'effect-pop animate-pop';
-        // 3. ประกาศพลังที่ลดและรวม
-        announce(`เสียดายจัง หักพลัง ${change} คะแนน พลังรวมเหลือ ${playerHP}`);
     }
 
     updateUI();
@@ -338,27 +321,22 @@ function endGame() {
     const title = document.getElementById('main-title');
     const summary = document.getElementById('summary-text');
 
-    // Phase 1: ขยายตัวละคร (ย้าย Z-index ให้ไม่บังปุ่มในภายหลัง)
+    // Phase 1: ตัวละครยักษ์ตรงกลาง
     p.classList.remove('idle');
     p.classList.add('giant-center', win ? 'victory-anim' : 'sad-anim');
     document.getElementById('bottom-ui').style.display = 'none';
 
+    // Phase 2: หลังจากเสียงจบ ย้ายไปด้านบน
     const soundDuration = (endSoundNode && endSoundNode.buffer) ? endSoundNode.buffer.duration * 1000 : 4000;
-    
     setTimeout(() => {
-        // Phase 2: ย้ายตัวละครไปด้านบน
         p.classList.remove('giant-center');
         p.classList.add('at-top-position');
         
-        // แสดงหน้าจอสรุปผล
         overlay.style.display = 'flex';
-        overlay.setAttribute('aria-hidden', 'false');
         overlay.classList.add('summary-mode');
         
         title.textContent = win ? "ชนะแล้ว! เก่งมากจ้ะ" : "เกมจบแล้ว พยายามใหม่นะ";
-        summary.textContent = win ? "คุณสะสมพลังความรู้ได้เต็ม 1,000 คะแนน!" : `พลังความรู้เหลือเพียง ${playerHP} คะแนน`;
-        
-        // 4. แก้ไขปุ่มเริ่มใหม่ให้กดได้ (ย้าย Focus และแน่ใจว่าไม่มีอะไรบัง)
+        summary.textContent = win ? "คุณสะสมพลังความรู้ได้เต็ม 1,000 คะแนน!" : `พลังความรู้เหลือ ${playerHP} คะแนน`;
         title.focus();
     }, soundDuration);
 }
