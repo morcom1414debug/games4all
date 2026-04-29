@@ -82,16 +82,17 @@
         .option-btn:hover:not(:disabled) { background: var(--player-color); color: #fff; }
         .option-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* --- หน้าจอทับ (Overlay) - แก้ไขจุดที่ 1 เพื่อให้กดปุ่มได้ --- */
+        /* --- หน้าจอทับ (Overlay) --- */
         #overlay-screen { 
             position: absolute; inset: 0; background: rgba(255,255,255,0.98); 
             display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 500; padding: 20px;
         }
+        /* ในโหมดสรุป ต้องให้พื้นที่โปร่งใสเพื่อให้เห็นตัวละครด้านบน แต่ปุ่มต้องตอบสนองการคลิก */
         #overlay-screen.summary-mode { 
-            background: transparent; 
-            justify-content: flex-end; /* ดันเนื้อหาลงด้านล่างเพื่อให้ไม่ทับตัวละครที่อยู่ด้านบน */
-            padding-bottom: 80px;
+            top: 220px; height: calc(100% - 220px); background: transparent; pointer-events: none;
         }
+        /* ยอมให้ปุ่มและข้อความในโหมดสรุปรับการคลิก/Focus */
+        #overlay-screen.summary-mode * { pointer-events: auto; }
 
         /* --- มือถือ --- */
         @media (max-width: 600px) {
@@ -193,7 +194,7 @@ function playSound(n) {
 
 function announce(msg) {
     const el = document.getElementById('announcer');
-    el.textContent = ''; 
+    el.textContent = ''; // เคลียร์ของเก่าก่อนทุกครั้ง
     if(msg) {
         setTimeout(() => { el.textContent = msg; }, 50);
     }
@@ -232,7 +233,7 @@ function startGame() {
 }
 
 function nextQuestion() {
-    announce(""); 
+    announce(""); // เคลียร์ประกาศของข้อที่แล้วก่อนขึ้นข้อใหม่
     if(playerHP >= 1000 || playerHP <= 0) return endGame();
     if(currentQ.length === 0) currentQ = [...questions].sort(() => Math.random() - 0.5);
     
@@ -272,11 +273,9 @@ function checkAnswer(idx, correct) {
     let change = 0;
     if(isCorrect) {
         combo++; wrongCombo = 0;
-        // แก้ไขจุดที่ 2: Reset Combo หลังสะสมครบ 4 ข้อ
         if(combo >= 4) { 
             change = Math.floor(Math.random() * 71) + 180; 
             playSound('atc'); 
-            combo = 0; 
         } else { 
             change = Math.floor(Math.random() * 41) + 80; 
             let s; do{s='at'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
@@ -287,11 +286,9 @@ function checkAnswer(idx, correct) {
         announce(`ถูกต้อง! ได้พลังเพิ่ม ${change} คะแนน พลังรวมคือ ${playerHP}`);
     } else {
         wrongCombo++; combo = 0;
-        // แก้ไขจุดที่ 2: Reset Wrong Combo หลังสะสมครบ 4 ข้อ
         if(wrongCombo >= 4) { 
             change = Math.floor(Math.random() * 71) + 180; 
             playSound('enc'); 
-            wrongCombo = 0;
         } else { 
             change = Math.floor(Math.random() * 41) + 80; 
             let s; do{s='en'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
@@ -318,7 +315,7 @@ function updateUI() {
 
 function endGame() {
     clearInterval(timer);
-    announce(""); 
+    announce(""); // แก้ไขจุดที่ 1: เคลียร์ข้อความประกาศทันทีที่เข้าหน้าจบเกม เพื่อไม่ให้ SR อ่านค้าง
     if(bgmSource){ try{bgmSource.stop();}catch(e){} bgmSource = null; }
     
     const win = playerHP >= 1000;
@@ -345,6 +342,7 @@ function endGame() {
         title.textContent = win ? "ชนะแล้ว! เก่งมากจ้ะ" : "เกมจบแล้ว พยายามใหม่นะ";
         summary.textContent = win ? "คุณสะสมพลังความรู้ได้เต็ม 1,000 คะแนน!" : `พลังความรู้เหลือเพียง ${playerHP} คะแนน`;
         
+        // แก้ไขจุดที่ 2: ให้ Focus ไปที่พาดหัวสรุปผล และปุ่มจะกดได้เพราะเราเซ็ต pointer-events: auto ไว้ใน CSS
         title.focus();
     }, soundDuration);
 }
