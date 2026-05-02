@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ปราชญ์น้อยคำไวพจน์ - Enhanced Edition</title>
+    <style>
+        /* [STAGE 6: SILENT OPERATOR - ปรับเฉพาะสีสันเพื่อ High Contrast สำหรับผู้สูงอายุ] */
+        :root {
+            --player-color: #a04000; /* เปลี่ยนเป็นสีน้ำตาลแดง/ชาด */
+            --correct-color: #27ae60;
+            --wrong-color: #c0392b;
+            --combo-color: #d4af37; /* สีทองหม่น */
+            --ui-bg: #fdf5e6; /* สีครีมถนอมสายตา (Old Lace) */
+            --board-color: #5d4037; /* สีน้ำตาลไม้ */
+            --skin-asia: #FFE4B5;
+            --text-main: #2c3e50;
+        }
+
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
+
+        body {
+            margin: 0; padding: 0; background-color: #eaddca; color: var(--text-main);
+            font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif;
+            overflow: hidden; display: flex; justify-content: center; align-items: center;
+            height: 100vh; position: fixed; width: 100%;
+        }
+
+        #game-container {
+            width: 95%; max-width: 1000px; height: 95vh; max-height: 800px;
+            position: relative; background: var(--ui-bg); border: 8px solid var(--player-color);
+            border-radius: 20px; display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* --- Animation Logic (คงเดิม 100%) --- */
+        .shake-screen { animation: screenShake 0.4s; }
+        @keyframes screenShake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-5px, 5px); } 75% { transform: translate(5px, -5px); } }
+        .flash-correct { animation: flashGreen 0.5s; }
+        @keyframes flashGreen { 0% { box-shadow: inset 0 0 0 0px rgba(46, 204, 113, 0.5); } 100% { box-shadow: inset 0 0 100px 50px rgba(46, 204, 113, 0); } }
+
+        .particle {
+            position: absolute; pointer-events: none; z-index: 100; border-radius: 50%;
+            animation: particleOut 0.8s ease-out forwards;
+        }
+        @keyframes particleOut { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--mx), var(--my)) scale(0); opacity: 0; } }
+
+        .floating-text {
+            position: absolute; pointer-events: none; font-size: 2.5rem; font-weight: 900;
+            z-index: 1000; animation: floatUp 1.2s ease-out forwards;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        @keyframes floatUp { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-120px); opacity: 0; } }
+        .text-gain { color: var(--correct-color); }
+        .text-loss { color: var(--wrong-color); }
+
+        /* --- UI Elements --- */
+        #top-ui { background: var(--ui-bg); padding: 15px 25px; z-index: 10; border-bottom: 3px solid #dcd0c0; display: none; }
+        .hp-bar-bg { height: 30px; background: #e0d5c5; border: 2px solid var(--player-color); border-radius: 15px; overflow: hidden; position: relative; }
+        #player-hp-fill { height: 100%; width: 40%; background: linear-gradient(90deg, #d35400, #a04000); transition: width 0.5s; }
+        .hp-text { position: absolute; width: 100%; text-align: center; top: 0; font-weight: bold; line-height: 30px; color: #000; }
+        #timer-bar-bg { width: 100%; height: 10px; background: #eee; border-radius: 5px; overflow: hidden; margin-top: 10px; }
+        #timer-fill { width: 100%; height: 100%; background: var(--combo-color); transition: width 0.1s linear; }
+        
+        #pitch { flex-grow: 1; position: relative; display: none; background: #f4ece2; overflow: hidden; }
+        .blackboard { position: absolute; right: 20px; top: 30px; width: 180px; height: 110px; background: var(--board-color); border: 6px solid var(--player-color); border-radius: 5px; }
+        
+        /* --- Character Styling (ปรับเฉพาะสีเสื้อผ้าและผม) --- */
+        .character { position: absolute; bottom: 20px; transition: all 0.5s ease-in-out; pointer-events: none; }
+        #player { left: 50px; width: 260px; display: flex; gap: 10px; z-index: 5; } 
+        #bot { right: 40px; width: 150px; z-index: 5; } 
+        .char-svg { width: 120px; height: 160px; filter: drop-shadow(3px 5px 8px rgba(0,0,0,0.15)); }
+        
+        .idle { animation: idle 2s infinite ease-in-out; }
+        @keyframes idle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        .victory-anim { animation: celebrate 0.4s infinite; }
+        @keyframes celebrate { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-40px); } }
+        .sad-anim { animation: shake 0.2s infinite; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+
+        #bottom-ui { background: var(--ui-bg); padding: 20px; display: none; flex-direction: column; border-top: 5px solid #dcd0c0; }
+        #question-text { font-size: 2rem; text-align: center; margin: 0 0 15px 0; outline: none; color: var(--player-color); font-weight: bold; }
+        
+        /* ปรับ Grid ให้รองรับคำยาวขึ้นสำหรับผู้สูงอายุ */
+        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; width: 100%; }
+        .option-btn { 
+            padding: 20px 15px; font-size: 1.5rem; background: #fff; border: 3px solid #ccc; 
+            border-radius: 15px; cursor: pointer; font-weight: bold; transition: all 0.2s; 
+            color: var(--text-main); min-height: 80px; display: flex; align-items: center; justify-content: center;
+        }
+        .option-btn:hover:not(:disabled), .option-btn:focus { background: var(--player-color); color: #fff; border-color: var(--combo-color); }
+        
+        #overlay-screen { position: absolute; inset: 0; background: rgba(253, 245, 230, 0.98); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 500; padding: 20px; }
+        
+        .home-btn-hex {
+            width: 70px; height: 70px; background-color: var(--combo-color) !important; 
+            color: #000 !important; font-size: 2rem; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; border: none; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+            transition: all 0.3s ease; filter: drop-shadow(0 0 10px rgba(0,0,0,0.2));
+            -webkit-appearance: none; text-decoration: none; z-index: 600;
+        }
+
+        .home-btn-hex:hover { transform: scale(1.1) rotate(5deg); filter: brightness(1.1); }
+        .top-left-home { position: absolute; top: 20px; left: 20px; }
+        #summary-home-btn { display: none; }
+        #overlay-screen.summary-mode #summary-home-btn { display: flex !important; position: relative; margin-top: 20px; }
+        #overlay-screen.summary-mode #action-btn { display: none !important; }
+
+        @media (max-width: 600px) {
+            .options-grid { grid-template-columns: 1fr; }
+            #question-text { font-size: 1.6rem; }
+            .option-btn { font-size: 1.3rem; padding: 15px; }
+            #player { left: 20px; width: 180px; }
+            .char-svg { width: 90px; height: 120px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<div id="game-container">
+    <div id="top-ui">
+        <div class="hp-bar-bg">
+            <div id="player-hp-fill"></div>
+            <div class="hp-text" id="hp-label">400 / 1000</div>
+        </div>
+        <div id="timer-bar-bg"><div id="timer-fill"></div></div>
+    </div>
+
+    <div id="pitch">
+        <div class="blackboard"></div>
+        <div id="player" class="character idle">
+            <!-- เด็กคนซ้าย: ผมดำ ชุดเขียวใบแค -->
+            <svg class="char-svg" viewBox="0 0 100 120">
+                <path d="M15 45 Q15 5 50 5 Q85 5 85 45 L90 60 L10 60 Z" fill="#000000"/>
+                <circle cx="50" cy="45" r="28" fill="var(--skin-asia)"/> 
+                <path d="M22 40 Q50 5 78 40" fill="#000000" stroke="#000" stroke-width="1"/>
+                <rect x="30" y="72" width="40" height="40" rx="10" fill="#2ecc71"/>
+                <circle cx="40" cy="45" r="3" fill="#333"/>
+                <circle cx="60" cy="45" r="3" fill="#333"/>
+                <path d="M45 58 Q50 63 55 58" stroke="#333" fill="none" stroke-width="2"/>
+            </svg>
+            <!-- เด็กคนขวา: ผมดำ ชุดเหลืองอำพัน -->
+            <svg class="char-svg" viewBox="0 0 100 120">
+                <path d="M10 45 Q10 5 50 5 Q90 5 90 45 L95 90 L5 90 Z" fill="#000000"/>
+                <circle cx="50" cy="45" r="28" fill="var(--skin-asia)"/>
+                <path d="M22 40 Q50 8 78 40" fill="#000000" stroke="#000" stroke-width="1"/>
+                <rect x="30" y="72" width="40" height="40" rx="10" fill="#f1c40f"/>
+                <circle cx="40" cy="45" r="3" fill="#333"/>
+                <circle cx="60" cy="45" r="3" fill="#333"/>
+                <path d="M45 58 Q50 63 55 58" stroke="#333" fill="none" stroke-width="2"/>
+            </svg>
+        </div>
+        
+        <div id="bot" class="character idle">
+            <!-- คุณครู: ผมเทา ชุดน้ำเงินกรมท่า แว่นเดิม หน้าเดิม -->
+            <svg class="char-svg" viewBox="0 0 100 140">
+                <circle cx="75" cy="40" r="12" fill="#4a4a4a"/> 
+                <circle cx="50" cy="45" r="28" fill="#FFDBAC"/> 
+                <path d="M22 35 Q22 15 50 15 Q78 15 78 35 L82 45 L18 45 Z" fill="#4a4a4a"/>
+                <rect x="28" y="44" width="18" height="12" rx="3" fill="none" stroke="#555" stroke-width="1.5"/>
+                <rect x="54" y="44" width="18" height="12" rx="3" fill="none" stroke="#555" stroke-width="1.5"/>
+                <path d="M46 50 L54 50" stroke="#555" stroke-width="1.5"/>
+                <path d="M34 49 Q37 47 40 49" stroke="#333" fill="none" stroke-width="2" stroke-linecap="round"/>
+                <path d="M60 49 Q63 47 66 49" stroke="#333" fill="none" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="37" cy="51" r="2" fill="#333"/>
+                <circle cx="63" cy="51" r="2" fill="#333"/>
+                <path d="M48 55 Q50 57 52 55" stroke="#D2B48C" fill="none" stroke-width="1.5"/>
+                <path d="M42 62 Q50 68 58 62" stroke="#E67E22" fill="none" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="23" cy="55" r="2" fill="#F1C40F"/>
+                <circle cx="77" cy="55" r="2" fill="#F1C40F"/>
+                <path d="M25 75 Q50 70 75 75 L80 130 L20 130 Z" fill="#2c3e50"/> 
+                <path d="M40 73 L50 85 L60 73" fill="#1a252f"/>
+                <circle cx="65" cy="90" r="2" fill="#F1C40F"/>
+            </svg>
+        </div>
+    </div>
+
+    <div id="bottom-ui">
+        <h2 id="question-text" tabindex="-1"></h2>
+        <div class="options-grid" id="options-grid"></div>
+    </div>
+
+    <div id="overlay-screen">
+        <button id="main-home-btn" class="home-btn-hex top-left-home" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index9.html'">🏠</button>
+        <h1 id="main-title" tabindex="-1" style="color: var(--player-color); text-align: center; margin-bottom: 10px;">ปราชญ์น้อยคำไวพจน์</h1>
+        <p id="summary-text" style="font-size: 1.4rem; margin-bottom: 30px; text-align: center; color: #5d4037;">สะสมพลังความรู้ให้ครบ 1,000 เพื่อเป็นสุดยอดปราชญ์!</p>
+        <button id="action-btn" class="option-btn" style="padding: 15px 50px; background: var(--correct-color); color: white; min-width: 250px; border:none;" onclick="startGame()">เริ่มบทเรียน</button>
+        <button id="summary-home-btn" class="home-btn-hex" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index9.html'">🏠</button>
+    </div>
+</div>
+
+<script>
+/* [STAGE 4: LOGIC RIGIDITY - ทุกอย่างคงเดิม 100% ยกเว้นชุดคำถาม] */
+const questions = [
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'พระอาทิตย์'?", a: ["รัชนีกร", "ทินกร", "อัมพร"], c: 1 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'ท้องฟ้า'?", a: ["ทิฆัมพร", "พสุธา", "คงคา"], c: 0 },
+    { q: "คำว่า 'ศศิธร' มีความหมายตรงกับข้อใด?", a: ["พระอาทิตย์", "ดวงดาว", "ดวงจันทร์"], c: 2 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'แผ่นดิน'?", a: ["เมทินี", "กระแสสินธุ์", "นภา"], c: 0 },
+    { q: "คำว่า 'อุทก' มีความหมายเดียวกับคำในข้อใด?", a: ["ลม", "น้ำ", "ไฟ"], c: 1 },
+    { q: "คำว่า 'พนา' มีความหมายตรงกับข้อใด?", a: ["ป่า", "ภูเขา", "ทุ่งนา"], c: 0 },
+    { q: "คำว่า 'สุริยา' มีความหมายตรงกับข้อใด?", a: ["ดวงจันทร์", "ดวงอาทิตย์", "ท้องฟ้า"], c: 1 },
+    { q: "คำในข้อใดหมายถึง 'น้ำ'?", a: ["วารี", "อนิล", "พนา"], c: 0 },
+    { q: "คำว่า 'รัชนีกร' มีความหมายเดียวกับคำในข้อใด?", a: ["กลางคืน", "ดวงจันทร์", "ดวงอาทิตย์"], c: 1 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'ท้องฟ้า'?", a: ["นภา", "ธราดล", "คงคา"], c: 0 },
+    { q: "คำว่า 'ปฐวี' มีความหมายตรงกับข้อใด?", a: ["ท้องฟ้า", "น้ำ", "แผ่นดิน"], c: 2 },
+    { q: "คำว่า 'อรัญ' มีความหมายตรงกับข้อใด?", a: ["เมือง", "ป่า", "แม่น้ำ"], c: 1 },
+    { q: "คำว่า 'รวี' มีความหมายตรงกับข้อใด?", a: ["พระอาทิตย์", "ฝน", "เมฆ"], c: 0 },
+    { q: "คำในข้อใดหมายถึง 'ท้องฟ้า'?", a: ["เวหา", "สาคร", "ไพร"], c: 0 },
+    { q: "คำว่า 'แข' มีความหมายตรงกับข้อใด?", a: ["ดวงอาทิตย์", "ดวงจันทร์", "ดวงดาว"], c: 1 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'แผ่นดิน'?", a: ["พสุธา", "วาริน", "โพยม"], c: 0 },
+    { q: "คำว่า 'คงคา' มีความหมายตรงกับข้อใด?", a: ["ดิน", "ลม", "น้ำ"], c: 2 },
+    { q: "คำว่า 'ไพร' มีความหมายตรงกับข้อใด?", a: ["ป่า", "บ้าน", "ถนน"], c: 0 },
+    { q: "คำว่า 'ภาสกร' มีความหมายตรงกับข้อใด?", a: ["ดวงจันทร์", "ท้องฟ้า", "พระอาทิตย์"], c: 2 },
+    { q: "คำในข้อใดหมายถึง 'ท้องฟ้า'?", a: ["อัมพร", "ธรณี", "พนา"], c: 0 },
+    { q: "คำว่า 'นิศากร' มีความหมายตรงกับข้อใด?", a: ["ดวงอาทิตย์", "ดวงจันทร์", "กลางวัน"], c: 1 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'แผ่นดิน'?", a: ["ธรณี", "วารี", "โพยม"], c: 0 },
+    { q: "คำว่า 'ชล' มีความหมายตรงกับข้อใด?", a: ["ไฟ", "น้ำ", "ลม"], c: 1 },
+    { q: "คำว่า 'วาโย' มีความหมายตรงกับข้อใด?", a: ["น้ำ", "ลม", "ไฟ"], c: 1 },
+    { q: "คำว่า 'อัคคี' มีความหมายตรงกับข้อใด?", a: ["น้ำ", "ดิน", "ไฟ"], c: 2 },
+    { q: "คำว่า 'อังศุมาลี' หมายถึงอะไร?", a: ["พระอาทิตย์", "สร้อยทอง", "นางฟ้า"], c: 0 },
+    { q: "คำว่า 'โพยม' มีความหมายเดียวกับคำในข้อใด?", a: ["น้ำ", "แผ่นดิน", "ท้องฟ้า"], c: 2 },
+    { q: "คำว่า 'สาคร' หมายถึงอะไร?", a: ["ภูเขา", "แม่น้ำ/ทะเล", "ป่าไม้"], c: 1 },
+    { q: "คำว่า 'สิงขร' เป็นคำไวพจน์ของข้อใด?", a: ["ภูเขา", "แม่น้ำ", "ท้องฟ้า"], c: 0 },
+    { q: "คำว่า 'พรรษ' หรือ 'พิรุณ' หมายถึงอะไร?", a: ["ลม", "ฝน", "หิมะ"], c: 1 },
+    { q: "คำว่า 'มารุต' มีความหมายตรงกับข้อใด?", a: ["ลม", "ไฟ", "ยักษ์"], c: 0 },
+    { q: "คำว่า 'เตโช' หมายถึงธาตุใด?", a: ["ธาตุน้ำ", "ธาตุลม", "ธาตุไฟ"], c: 2 },
+    { q: "คำว่า 'ไศล' มีความหมายตรงกับข้อใด?", a: ["น้ำแข็ง", "ภูเขา/หิน", "ต้นไม้"], c: 1 },
+    { q: "คำว่า 'ชลาลัย' หมายถึงข้อใด?", a: ["ที่อยู่ของน้ำ/แม่น้ำ", "ที่อยู่ของสัตว์", "ป่าลึก"], c: 0 },
+    { q: "คำว่า 'รัชนี' หมายถึงช่วงเวลาใด?", a: ["กลางวัน", "เย็น", "กลางคืน"], c: 2 },
+    { q: "คำว่า 'ดาริกา' หมายถึงข้อใด?", a: ["ดวงจันทร์", "ดวงดาว", "ท้องฟ้า"], c: 1 },
+    { q: "คำว่า 'บรรพต' มีความหมายตรงกับข้อใด?", a: ["ภูเขา", "พื้นดิน", "แม่น้ำ"], c: 0 },
+    { q: "คำว่า 'พนัส' หมายถึงอะไร?", a: ["ท้องฟ้า", "ป่า", "เมือง"], c: 1 },
+    { q: "คำว่า 'สินธุ' หมายถึงข้อใด?", a: ["ภูเขา", "น้ำ/แม่น้ำ", "แผ่นดิน"], c: 1 },
+    { q: "คำว่า 'ธราดล' มีความหมายตรงกับข้อใด?", a: ["พื้นแผ่นดิน", "ท้องฟ้า", "น้ำทะเล"], c: 0 },
+    { q: "คำในข้อใดหมายถึง 'ช้าง'?", a: ["กุญชร", "พาชี", "มโนมัย"], c: 0 },
+    { q: "คำว่า 'วิหค' เป็นคำไวพจน์ของสัตว์ชนิดใด?", a: ["ปลา", "ม้า", "นก"], c: 2 },
+    { q: "คำในข้อใดหมายถึง 'ช้าง'?", a: ["อัยรา", "สินธพ", "สกุณา"], c: 0 },
+    { q: "คำว่า 'สกุณา' เป็นคำไวพจน์ของสัตว์ชนิดใด?", a: ["เสือ", "ลิง", "นก"], c: 2 },
+    { q: "คำในข้อใดหมายถึง 'ช้าง'?", a: ["หัตถี", "อาชา", "บุหรง"], c: 0 },
+    { q: "คำว่า 'ปักษี' เป็นคำไวพจน์ของสัตว์ชนิดใด?", a: ["นก", "ปลา", "ม้า"], c: 0 },
+    { q: "คำในข้อใดหมายถึง 'ช้าง'?", a: ["คชสาร", "มโนมัย", "สินธพ"], c: 0 },
+    { q: "คำว่า 'บุหรง' เป็นคำไวพจน์ของสัตว์ชนิดใด?", a: ["ปลา", "แมลง", "นก"], c: 2 },
+    { q: "คำว่า 'อาชา' หมายถึงสัตว์ชนิดใด?", a: ["ช้าง", "เสือ", "ม้า"], c: 2 },
+    { q: "คำว่า 'ภุชงค์' หมายถึงสัตว์ชนิดใด?", a: ["งู", "สิงโต", "เสือ"], c: 0 },
+    { q: "คำว่า 'สินธพ' หมายถึงม้าที่เกิดในแถบใด?", a: ["ลุ่มน้ำสินธุ", "ป่าหิมพานต์", "เมืองบาดาล"], c: 0 },
+    { q: "คำว่า 'มัจฉา' มีความหมายตรงกับสัตว์ในข้อใด?", a: ["นก", "ปลา", "ลิง"], c: 1 },
+    { q: "คำว่า 'พาชี' เป็นคำไวพจน์ของสัตว์ชนิดใด?", a: ["ม้า", "วัว", "ควาย"], c: 0 },
+    { q: "คำว่า 'กบิล' หมายถึงสัตว์ชนิดใด?", a: ["นก", "ลิง", "ปลา"], c: 1 },
+    { q: "คำว่า 'พยัคฆ์' มีความหมายตรงกับข้อใด?", a: ["สิงโต", "แมว", "เสือ"], c: 2 },
+    { q: "คำว่า 'ภุมรา' หมายถึงแมลงชนิดใด?", a: ["ผีเสื้อ", "แมลงภู่/ผึ้ง", "ยุง"], c: 1 },
+    { q: "คำว่า 'มฤค' (มะ-รึก) หมายถึงสัตว์ชนิดใด?", a: ["กวาง", "นก", "ปลา"], c: 0 },
+    { q: "คำว่า 'ดุรงค์' หมายถึงสัตว์ชนิดใด?", a: ["ช้าง", "ม้า", "วัว"], c: 1 },
+    { q: "คำว่า 'วานร' มีความหมายเดียวกับคำในข้อใด?", a: ["ลิง", "เสือ", "งู"], c: 0 },
+    { q: "คำว่า 'สาร' (ในคำว่าคชสาร) หมายถึงอะไร?", a: ["นก", "ช้าง", "สัตว์ป่า"], c: 1 },
+    { q: "คำว่า 'มัสยา' มีความหมายตรงกับข้อใด?", a: ["ม้า", "นก", "ปลา"], c: 2 },
+    { q: "คำว่า 'อัยรา' เป็นคำไวพจน์ของสัตว์ชนิดใด?", a: ["ช้าง", "นก", "แมว"], c: 0 },
+    { q: "คำว่า 'มโนมัย' หมายถึงสัตว์ที่รวดเร็วเหมือนความนึกคิด คือสัตว์ชนิดใด?", a: ["ม้า", "เสือ", "นก"], c: 0 },
+    { q: "คำว่า 'กระบี่' (ในวรรณคดี) หมายถึงสัตว์ชนิดใด?", a: ["ช้าง", "ลิง", "เสือ"], c: 1 },
+    { q: "คำว่า 'ศารทูล' (สาน-ทูน) หมายถึงสัตว์ชนิดใด?", a: ["นกอินทรี", "เสือโคร่ง", "สิงโต"], c: 1 },
+    { q: "คำว่า 'มยุรา' หมายถึงนกชนิดใด?", a: ["นกยูง", "นกขุนทอง", "นกแก้ว"], c: 0 },
+    { q: "คำว่า 'อุรค' (อุ-ระ-กะ) หมายถึงสัตว์ชนิดใด?", a: ["นก", "หนู", "งู"], c: 2 },
+    { q: "คำว่า 'ทิชาชาติ' หมายถึงสัตว์ที่มีการเกิด 2 ครั้ง คือสัตว์ชนิดใด?", a: ["ปลา", "นก", "งู"], c: 1 },
+    { q: "คำว่า 'มีน' หรือ 'มิถุนา' (ในบริบทสัตว์) หมายถึงข้อใด?", a: ["ลิง", "ปลา", "ม้า"], c: 1 },
+    { q: "คำว่า 'พานรินทร์' หมายถึงใคร?", a: ["พญานก", "พญาลิง", "พญาช้าง"], c: 1 },
+    { q: "คำว่า 'คชินทร์' มีความหมายตรงกับข้อใด?", a: ["ช้างตัวประเสริฐ", "นกตัวใหญ่", "ม้าศึก"], c: 0 },
+    { q: "คำว่า 'วาริช' หมายถึงสัตว์ที่เกิดในน้ำ คือสัตว์ชนิดใด?", a: ["นก", "ม้า", "ปลา"], c: 2 },
+    { q: "คำว่า 'มาศ' (ในสัตว์ เช่น แมวมาศ) หมายถึงสีใด?", a: ["สีทอง", "สีเงิน", "สีแดง"], c: 0 },
+    { q: "คำว่า 'ภุชงคราช' หมายถึงใคร?", a: ["พญาช้าง", "พญานาค/งู", "พญาครุฑ"], c: 1 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'ดอกบัว'?", a: ["บุษบา", "บงกช", "มาลี"], c: 1 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'ดอกบัว'?", a: ["อุบล", "ผกา", "กัลยา"], c: 0 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'ดอกบัว'?", a: ["โกมุท", "มาลัย", "ยุพิน"], c: 0 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'ดอกบัว'?", a: ["ปทุม", "อัญชัน", "มะลิ"], c: 0 },
+    { q: "คำว่า 'บุษบา' มีความหมายตรงกับข้อใด?", a: ["ดอกไม้", "ท้องฟ้า", "น้ำ"], c: 0 },
+    { q: "คำว่า 'ผกา' หมายถึงข้อใด?", a: ["ภูเขา", "ดอกไม้", "ป่าไม้"], c: 1 },
+    { q: "คำว่า 'มาลี' มีความหมายเดียวกับข้อใด?", a: ["ต้นไม้", "ภูเขา", "ดอกไม้"], c: 2 },
+    { q: "คำว่า 'ปัทมา' เป็นคำไวพจน์ของดอกไม้ชนิดใด?", a: ["ดอกบัว", "ดอกกุหลาบ", "ดอกมะลิ"], c: 0 },
+    { q: "คำว่า 'สุมลี' หมายถึงข้อใด?", a: ["หญิงสาว", "ดอกไม้", "ท้องฟ้า"], c: 1 },
+    { q: "คำว่า 'บุหงา' มีความหมายตรงกับข้อใด?", a: ["ดอกไม้", "แมลง", "ภูเขา"], c: 0 },
+    { q: "คำว่า 'มาลัย' หรือ 'พวงมาลา' หมายถึงอะไร?", a: ["ดอกไม้ที่ร้อยแล้ว", "ต้นไม้", "ก้อนเมฆ"], c: 0 },
+    { q: "คำว่า 'สัตตบงกช' คือดอกบัวชนิดที่มีกี่ชั้น?", a: ["5 ชั้น", "7 ชั้น", "9 ชั้น"], c: 1 },
+    { q: "คำว่า 'นิลุบล' หมายถึงดอกบัวสีใด?", a: ["สีชมพู", "สีขาว", "สีเขียว/น้ำเงิน"], c: 2 },
+    { q: "คำว่า 'ผกามาศ' หมายถึงอะไร?", a: ["ดอกไม้สีทอง", "ดอกไม้ป่า", "ดอกไม้ที่มีกลิ่นหอม"], c: 0 },
+    { q: "คำว่า 'โกมุท' หมายถึงดอกบัวสีอะไร?", a: ["ดอกบัวขาว", "ดอกบัวแดง", "ดอกบัวน้ำเงิน"], c: 0 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'พระมหากษัตริย์'?", a: ["นฤบดี", "พราหมณ์", "เสนา"], c: 0 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'พระมหากษัตริย์'?", a: ["ภูมินทร์", "มนตรี", "บดี"], c: 0 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'พระมหากษัตริย์'?", a: ["ขัตติยา", "อำมาตย์", "วานร"], c: 0 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'พระมหากษัตริย์'?", a: ["นรินทร์", "มหาดเล็ก", "พราหมณ์"], c: 0 },
+    { q: "คำว่า 'กนก' มีความหมายตรงกับข้อใด?", a: ["เงิน", "ทอง", "แก้ว"], c: 1 },
+    { q: "คำในข้อใดเป็นคำไวพจน์ของ 'ผู้หญิง'?", a: ["นารี", "บุรุษ", "มานพ"], c: 0 },
+    { q: "คำว่า 'ธานี' มีความหมายตรงกับข้อใด?", a: ["ป่า", "บ้าน", "เมือง"], c: 2 },
+    { q: "คำว่า 'กัลยา' มีความหมายตรงกับข้อใด?", a: ["คนดี", "หญิงงาม", "ดอกไม้"], c: 1 },
+    { q: "คำว่า 'เนตร' หมายถึงอวัยวะใด?", a: ["หู", "จมูก", "ตา"], c: 2 },
+    { q: "คำว่า 'หัตถ์' หมายถึงอวัยวะใด?", a: ["เท้า", "มือ", "แขน"], c: 1 },
+    { q: "คำว่า 'จักษุ' มีความหมายตรงกับข้อใด?", a: ["ตา", "หู", "ปาก"], c: 0 },
+    { q: "คำว่า 'เกศา' หมายถึงส่วนใดของร่างกาย?", a: ["ฟัน", "เล็บ", "ผม"], c: 2 },
+    { q: "คำว่า 'นารี' หรือ 'อิตถี' หมายถึงใคร?", a: ["ผู้หญิง", "ผู้ชาย", "เด็ก"], c: 0 },
+    { q: "คำว่า 'ราชา' มีคำไวพจน์คือข้อใด?", a: ["นโรดม", "เสนา", "มหาตมะ"], c: 0 },
+    { q: "คำว่า 'บาท' หรือ 'บาทา' หมายถึงอวัยวะใด?", a: ["มือ", "เท้า", "หัวเข่า"], c: 1 },
+    { q: "คำว่า 'กรรณ' (กัน) หมายถึงอวัยวะใด?", a: ["ตา", "จมูก", "หู"], c: 2 },
+    { q: "คำว่า 'นาสิก' หมายถึงอวัยวะใด?", a: ["ปาก", "จมูก", "แก้ม"], c: 1 },
+    { q: "คำว่า 'หทัย' หรือ 'กมล' หมายถึงอะไร?", a: ["หัวใจ", "สมอง", "ตับ"], c: 0 },
+    { q: "คำว่า 'พนิดา' หมายถึงใคร?", a: ["เด็กชาย", "ผู้ใหญ่", "หญิงสาว"], c: 2 },
+    { q: "คำว่า 'นร' (นะ-ระ) หมายถึงอะไร?", a: ["คน", "เทพ", "ยักษ์"], c: 0 },
+    { q: "คำว่า 'ทนต์' หมายถึงอวัยวะใด?", a: ["ลิ้น", "ฟัน", "ปาก"], c: 1 },
+    { q: "คำว่า 'โอษฐ์' หมายถึงอวัยวะใด?", a: ["จมูก", "ตา", "ปาก"], c: 2 },
+    { q: "คำว่า 'กัญญา' มีความหมายตรงกับข้อใด?", a: ["หญิงสาววัยรุ่น", "หญิงชรา", "เด็กทารก"], c: 0 },
+    { q: "คำว่า 'มโน' หมายถึงอะไร?", a: ["หัวใจ/ความคิด", "การพูด", "การเดิน"], c: 0 },
+    { q: "คำว่า 'วิไล' หรือ 'ประไพ' หมายถึงอะไร?", a: ["รวดเร็ว", "สวยงาม", "ร่ำรวย"], c: 1 },
+    { q: "คำว่า 'ขัตติยะ' หมายถึงชนชั้นใด?", a: ["พราหมณ์", "กษัตริย์", "พ่อค้า"], c: 1 },
+    { q: "คำว่า 'สุพรรณ' มีความหมายเดียวกับคำว่าอะไร?", a: ["ทอง", "เงิน", "นาก"], c: 0 },
+    { q: "คำว่า 'บุรี' หรือ 'พารา' หมายถึงข้อใด?", a: ["เมือง", "ป่า", "แม่น้ำ"], c: 0 },
+    { q: "คำว่า 'อมร' หมายถึงใคร?", a: ["คนตาย", "ผู้ไม่ตาย/เทวดา", "ยักษ์"], c: 1 }
+];
+
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let sounds = {}; let bgmSource = null;
+let playerHP = 400; let combo = 0; let wrongCombo = 0;
+let currentQ = []; let timer = null; let lastSound = '';
+
+/* Visual Effect Logic (คงเดิม) */
+function createVisualEffect(isCorrect, changeValue) {
+    const player = document.getElementById('player');
+    const container = document.getElementById('game-container');
+    const rect = player.getBoundingClientRect();
+    const color = isCorrect ? '#2ecc71' : '#e74c3c';
+    const floatTxt = document.createElement('div');
+    floatTxt.textContent = (isCorrect ? "+" : "-") + changeValue;
+    floatTxt.className = `floating-text ${isCorrect ? 'text-gain' : 'text-loss'}`;
+    floatTxt.style.left = (rect.left + rect.width / 2) + "px";
+    floatTxt.style.top = (rect.top) + "px";
+    document.body.appendChild(floatTxt);
+    setTimeout(() => floatTxt.remove(), 1200);
+    for(let i=0; i<12; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        p.style.backgroundColor = color;
+        p.style.width = p.style.height = (Math.random() * 12 + 6) + 'px';
+        p.style.left = (rect.left + rect.width/2) + 'px';
+        p.style.top = (rect.top + rect.height/2) + 'px';
+        p.style.setProperty('--mx', (Math.random() - 0.5) * 250 + 'px');
+        p.style.setProperty('--my', (Math.random() - 0.5) * 250 + 'px');
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 800);
+    }
+    if(isCorrect) { container.classList.add('flash-correct'); setTimeout(() => container.classList.remove('flash-correct'), 500); }
+    else { container.classList.add('shake-screen'); setTimeout(() => container.classList.remove('shake-screen'), 400); }
+}
+
+/* Audio Logic (คงเดิม 100%) */
+async function initSounds() {
+    const files = [['start','audio/start.mp3'],['back','audio/back.mp3'],['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],['atc','audio/atc.mp3'],['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],['en3','audio/en3.mp3'],['enc','audio/enc.mp3'],['win','audio/win.mp3'],['lost','audio/lost.mp3']];
+    for(let f of files) { try { const r = await fetch(f[1]); const b = await r.arrayBuffer(); sounds[f[0]] = await audioCtx.decodeAudioData(b); } catch(e){} }
+}
+initSounds();
+
+function playSound(n) { if(!sounds[n]) return; const s = audioCtx.createBufferSource(); s.buffer = sounds[n]; s.connect(audioCtx.destination); s.start(); return s; }
+function announce(msg) { const el = document.getElementById('announcer'); el.textContent = ''; if(msg) { setTimeout(() => { el.textContent = msg; }, 50); } }
+
+/* Game Start Logic (คงเดิม) */
+function startGame() {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    const overlay = document.getElementById('overlay-screen');
+    overlay.style.display = 'none';
+    overlay.classList.remove('summary-mode');
+    document.getElementById('main-home-btn').style.display = 'none';
+    const p = document.getElementById('player');
+    p.classList.remove('giant-center', 'at-top-position', 'victory-anim', 'sad-anim');
+    p.classList.add('idle');
+    document.getElementById('top-ui').style.display = 'block';
+    document.getElementById('pitch').style.display = 'flex';
+    document.getElementById('bottom-ui').style.display = 'flex';
+    playerHP = 400; combo = 0; wrongCombo = 0;
+    currentQ = [...questions].sort(() => Math.random() - 0.5);
+    updateUI();
+    playSound('start');
+    announce("เริ่มบทเรียน พลังปัจจุบันคือ 400 คะแนน");
+    setTimeout(() => {
+        nextQuestion();
+        if(!bgmSource && sounds.back) { bgmSource = audioCtx.createBufferSource(); bgmSource.buffer = sounds.back; bgmSource.loop = true; bgmSource.connect(audioCtx.destination); bgmSource.start(); }
+    }, 3000);
+}
+
+/* Question & Answer Logic (คงเดิม) */
+function nextQuestion() {
+    announce(""); 
+    if(playerHP >= 1000 || playerHP <= 0) return endGame();
+    if(currentQ.length === 0) currentQ = [...questions].sort(() => Math.random() - 0.5);
+    const data = currentQ.pop();
+    const h = document.getElementById('question-text');
+    h.textContent = data.q; h.focus();
+    const grid = document.getElementById('options-grid'); grid.innerHTML = '';
+    data.a.forEach((opt, i) => {
+        const b = document.createElement('button'); b.className = 'option-btn'; b.textContent = opt;
+        b.onclick = () => checkAnswer(i, data.c); grid.appendChild(b);
+    });
+    let timeLeft = 20000;
+    const bar = document.getElementById('timer-fill');
+    clearInterval(timer);
+    timer = setInterval(() => { timeLeft -= 100; bar.style.width = (timeLeft/20000)*100 + "%"; if(timeLeft <= 0) { clearInterval(timer); checkAnswer(-1, data.c); } }, 100);
+}
+
+function checkAnswer(idx, correct) {
+    clearInterval(timer);
+    const btns = document.querySelectorAll('.option-btn');
+    btns.forEach(b => b.disabled = true);
+    const isCorrect = idx === correct;
+    const p = document.getElementById('player');
+    let change = 0;
+    if(isCorrect) {
+        combo++; wrongCombo = 0;
+        if(combo >= 4) { change = Math.floor(Math.random() * 71) + 180; playSound('atc'); combo = 0; } 
+        else { change = Math.floor(Math.random() * 41) + 80; let s; do{s='at'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); playSound(s); lastSound=s; }
+        playerHP = Math.min(1000, playerHP + change);
+        p.className = 'character victory-anim';
+        announce(`ถูกต้อง! ได้พลังเพิ่ม ${change} คะแนน พลังรวมคือ ${playerHP}`);
+        createVisualEffect(true, change);
+    } else {
+        wrongCombo++; combo = 0;
+        if(wrongCombo >= 4) { change = Math.floor(Math.random() * 71) + 180; playSound('enc'); wrongCombo = 0; } 
+        else { change = Math.floor(Math.random() * 41) + 80; let s; do{s='en'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); playSound(s); lastSound=s; }
+        playerHP = Math.max(0, playerHP - change);
+        p.className = 'character sad-anim';
+        announce(`เสียดายจัง หักพลัง ${change} คะแนน พลังรวมเหลือ ${playerHP}`);
+        createVisualEffect(false, change);
+    }
+    updateUI();
+    setTimeout(() => { if(playerHP < 1000 && playerHP > 0) { p.className = 'character idle'; nextQuestion(); } else { endGame(); } }, 3500);
+}
+
+function updateUI() { document.getElementById('player-hp-fill').style.width = (playerHP/10) + "%"; document.getElementById('hp-label').textContent = `${playerHP} / 1000`; }
+
+function endGame() {
+    clearInterval(timer); announce(""); 
+    if(bgmSource){ try{bgmSource.stop();}catch(e){} bgmSource = null; }
+    const win = playerHP >= 1000;
+    const endSoundNode = playSound(win ? 'win' : 'lost');
+    const p = document.getElementById('player');
+    const overlay = document.getElementById('overlay-screen');
+    const title = document.getElementById('main-title');
+    const summary = document.getElementById('summary-text');
+    p.classList.remove('idle'); p.classList.add('giant-center', win ? 'victory-anim' : 'sad-anim');
+    document.getElementById('bottom-ui').style.display = 'none';
+    const soundDuration = (endSoundNode && endSoundNode.buffer) ? endSoundNode.buffer.duration * 1000 : 4000;
+    setTimeout(() => {
+        p.classList.remove('giant-center'); p.classList.add('at-top-position');
+        overlay.style.display = 'flex'; 
+        overlay.classList.add('summary-mode');
+        title.textContent = win ? "ชนะแล้ว! ท่านคือมหาปราชญ์" : "พยายามใหม่นะ พลังความรู้ยังไม่พอ";
+        summary.textContent = win ? "สะสมพลังคำไวพจน์ได้ครบ 1,000 คะแนน!" : `สะสมพลังได้เพียง ${playerHP} คะแนน`;
+        title.focus();
+    }, soundDuration);
+}
+</script>
+</body>
+</html>
