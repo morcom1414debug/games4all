@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ภาษาไทย ไม่ยากอย่างที่คิด</title>
+    <style>
+        :root {
+            --player-color: #3498db;
+            --correct-color: #2ecc71;
+            --wrong-color: #e74c3c;
+            --combo-color: #f1c40f;
+            --ui-bg: rgba(255, 255, 255, 0.95);
+            --board-color: #2c3e50;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            background-color: #f0f2f5;
+            color: #333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; position: fixed; width: 100%;
+        }
+
+        #game-container {
+            width: 95%; max-width: 1000px;
+            height: 95vh; max-height: 800px;
+            position: relative;
+            background: #fff;
+            border: 8px solid var(--player-color);
+            border-radius: 20px;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* --- Top UI --- */
+        #top-ui { 
+            background: var(--ui-bg); 
+            padding: 15px 25px; 
+            z-index: 10; 
+            border-bottom: 3px solid #eee;
+            display: none;
+        }
+
+        #hp-container { margin-bottom: 10px; }
+        .hp-bar-bg { height: 25px; background: #eee; border: 2px solid #ccc; border-radius: 15px; overflow: hidden; position: relative; }
+        #player-hp-fill { height: 100%; width: 40%; background: linear-gradient(90deg, #2ecc71, #27ae60); transition: width 0.5s; }
+        .hp-text { position: absolute; width: 100%; text-align: center; top: 0; font-weight: bold; line-height: 25px; }
+
+        #timer-bar-bg { width: 100%; height: 8px; background: #eee; border-radius: 4px; overflow: hidden; }
+        #timer-fill { width: 100%; height: 100%; background: var(--combo-color); transition: width 0.1s linear; }
+
+        /* --- Arena (Classroom) --- */
+        #pitch {
+            flex-grow: 1; position: relative;
+            display: none; background: #f9f9f9;
+            overflow: hidden;
+        }
+
+        .blackboard {
+            position: absolute; right: 20px; top: 30px;
+            width: 180px; height: 110px;
+            background: var(--board-color);
+            border: 6px solid #8e44ad; border-radius: 5px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .character { position: absolute; bottom: 20px; transition: all 0.5s; }
+        #player { left: 50px; width: 220px; display: flex; gap: 20px; } /* นักเรียน */
+        #bot { right: 60px; width: 120px; } /* คุณครู */
+
+        .char-svg { width: 100px; height: 140px; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.1)); }
+        
+        /* Animation States */
+        @keyframes idle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .idle { animation: idle 2s infinite ease-in-out; }
+        
+        @keyframes celebrate { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-30px) scale(1.1); } }
+        .victory-anim { animation: celebrate 0.4s infinite; }
+        
+        @keyframes clap { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .clap-anim { animation: clap 0.3s infinite; }
+
+        @keyframes frustrated { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .sad-anim { animation: frustrated 0.2s infinite; }
+
+        /* Effects */
+        .effect-pop {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 150px; pointer-events: none; z-index: 100; opacity: 0;
+        }
+        .combo-big { font-size: 300px !important; }
+        @keyframes popShow {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+        .animate-pop { animation: popShow 1s forwards; }
+
+        .damage-popup {
+            position: absolute; font-weight: 900; font-size: 3rem;
+            text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff;
+            pointer-events: none; z-index: 150;
+            animation: damageFall 1s ease-out forwards;
+        }
+        @keyframes damageFall {
+            0% { transform: translateY(0); opacity: 0; }
+            20% { transform: translateY(-40px); opacity: 1; }
+            100% { transform: translateY(-80px); opacity: 0; }
+        }
+
+        /* --- Bottom UI (Questions) --- */
+        #bottom-ui { background: #fff; padding: 25px; display: none; flex-direction: column; border-top: 5px solid #eee; }
+        #question-text { font-size: 1.8rem; text-align: center; margin: 0 0 20px 0; outline: none; color: #2c3e50; }
+        .options-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; width: 100%; }
+        .option-btn {
+            padding: 18px 10px; font-size: 1.3rem; background: #f8f9fa; border: 2px solid #ddd;
+            border-radius: 15px; cursor: pointer; font-weight: bold; transition: all 0.2s;
+        }
+        .option-btn:hover:not(:disabled) { background: var(--player-color); color: #fff; border-color: var(--player-color); }
+
+        #start-screen { 
+            position: absolute; inset: 0; background: rgba(255,255,255,0.9); 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200;
+        }
+        .btn-start { padding: 20px 60px; font-size: 2rem; background: var(--correct-color); border: none; cursor: pointer; border-radius: 50px; color: white; font-weight: bold; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="sr-announcer" class="sr-only" aria-live="assertive"></div>
+
+    <div id="start-screen">
+        <h1 style="font-size: 3.5rem; color: #2c3e50; margin-bottom: 10px;">ภาษาไทย ไม่ยากอย่างที่คิด</h1>
+        <p style="font-size: 1.5rem; margin-bottom: 30px;">มาฝึกเรื่อง "ลักษณนาม" กันเถอะเด็กๆ!</p>
+        <button class="btn-start" onclick="startGame()">เข้าสู่บทเรียน</button>
+    </div>
+
+    <div id="top-ui">
+        <div id="hp-container">
+            <div style="font-weight:bold; color:var(--player-color); margin-bottom:5px;">พลังการเรียนรู้</div>
+            <div class="hp-bar-bg">
+                <div id="player-hp-fill"></div>
+                <div class="hp-text" id="hp-label">400 / 1000</div>
+            </div>
+        </div>
+        <div id="timer-bar-bg"><div id="timer-fill"></div></div>
+    </div>
+
+    <div id="pitch">
+        <div class="blackboard"></div>
+        <div id="effect-layer" class="effect-pop"></div>
+        
+        <div id="player" class="character idle">
+            <svg class="char-svg" viewBox="0 0 100 100">
+                <circle cx="50" cy="30" r="15" fill="#fbd38d"/>
+                <rect x="35" y="45" width="30" height="40" fill="#3498db" rx="5"/>
+                <rect x="25" y="80" width="50" height="5" fill="#8e44ad"/> </svg>
+            <svg class="char-svg" viewBox="0 0 100 100">
+                <circle cx="50" cy="30" r="15" fill="#fbd38d"/>
+                <path d="M35 20 Q50 5 65 20" stroke="#e84393" stroke-width="8" fill="none"/> <rect x="35" y="45" width="30" height="40" fill="#e84393" rx="5"/>
+                <rect x="25" y="80" width="50" height="5" fill="#8e44ad"/>
+            </svg>
+        </div>
+
+        <div id="bot" class="character idle">
+            <svg class="char-svg" viewBox="0 0 100 120" style="transform: scaleX(-1);">
+                <circle cx="50" cy="30" r="15" fill="#fbd38d"/>
+                <rect x="30" y="45" width="40" height="60" fill="#a29bfe" rx="5"/>
+                <path d="M45 45 L30 70 M55 45 L70 70" stroke="#fbd38d" stroke-width="8"/> </svg>
+        </div>
+    </div>
+
+    <div id="bottom-ui">
+        <h2 id="question-text" tabindex="-1"></h2>
+        <div class="options-grid" id="options-grid"></div>
+    </div>
+</div>
+
+<script>
+const questions = [
+    { q: "รถยนต์ มีลักษณนามว่าอะไร?", options: ["หลัง", "คัน", "เครื่อง"], answer: 1 },
+    { q: "จดหมาย มีลักษณนามว่าอะไร?", options: ["ฉบับ", "แผ่น", "ใบ"], answer: 0 },
+    { q: "พระพุทธรูป มีลักษณนามว่าอะไร?", options: ["รูป", "องค์", "ตน"], answer: 1 },
+    { q: "พระสงฆ์ มีลักษณนามว่าอะไร?", options: ["องค์", "รูป", "คน"], answer: 1 },
+    { q: "ยักษ์ มีลักษณนามว่าอะไร?", options: ["ตัว", "องค์", "ตน"], answer: 2 },
+    { q: "เลื่อย มีลักษณนามว่าอะไร?", options: ["ปื้น", "อัน", "เล่ม"], answer: 0 },
+    { q: "เกวียน มีลักษณนามว่าอะไร?", options: ["เล่ม", "คัน", "หลัง"], answer: 0 },
+    { q: "ขลุ่ย มีลักษณนามว่าอะไร?", options: ["อัน", "เล่ม", "เลา"], answer: 2 },
+    { q: "ปี่ มีลักษณนามว่าอะไร?", options: ["เลา", "อัน", "ตัว"], answer: 0 },
+    { q: "ถนน มีลักษณนามว่าอะไร?", options: ["เส้น", "สาย", "แถว"], answer: 1 },
+    { q: "พัดลม มีลักษณนามว่าอะไร?", options: ["เครื่อง", "ตัว", "อัน"], answer: 1 },
+    { q: "แหวน มีลักษณนามว่าอะไร?", options: ["วง", "อัน", "ชิ้น"], answer: 0 },
+    { q: "สร้อยคอ มีลักษณนามว่าอะไร?", options: ["เส้น", "สาย", "อัน"], answer: 0 },
+    { q: "มุ้ง มีลักษณนามว่าอะไร?", options: ["ผืน", "หลัง", "ตัว"], answer: 1 },
+    { q: "กรรไกร มีลักษณนามว่าอะไร?", options: ["อัน", "เล่ม", "เลา"], answer: 1 },
+    { q: "ดินสอ มีลักษณนามว่าอะไร?", options: ["แท่ง", "เล่ม", "อัน"], answer: 0 },
+    { q: "ปากกา มีลักษณนามว่าอะไร?", options: ["แท่ง", "ด้าม", "อัน"], answer: 1 },
+    { q: "พลอย มีลักษณนามว่าอะไร?", options: ["เม็ด", "ก้อน", "ดวง"], answer: 0 },
+    { q: "ดาว มีลักษณนามว่าอะไร?", options: ["เม็ด", "ดวง", "วง"], answer: 1 },
+    { q: "หนังสือ มีลักษณนามว่าอะไร?", options: ["เล่ม", "ผูก", "ฉบับ"], answer: 0 },
+    { q: "ร่ม มีลักษณนามว่าอะไร?", options: ["คัน", "อัน", "เล่ม"], answer: 0 },
+    { q: "เรือ มีลักษณนามว่าอะไร?", options: ["ลำ", "คัน", "เครื่อง"], answer: 0 },
+    { q: "เครื่องบิน มีลักษณนามว่าอะไร?", options: ["อัน", "เครื่อง", "ลำ"], answer: 2 },
+    { q: "ปราสาท มีลักษณนามว่าอะไร?", options: ["แห่ง", "หลัง", "องค์"], answer: 1 },
+    { q: "แห มีลักษณนามว่าอะไร?", options: ["เลา", "ตัว", "ปาก"], answer: 2 },
+    { q: "ฤาษี มีลักษณนามว่าอะไร?", options: ["คน", "ตน", "รูป"], answer: 1 },
+    { q: "ช้างป่า มีลักษณนามว่าอะไร?", options: ["เชือก", "ตัว", "ตน"], answer: 1 },
+    { q: "จาน มีลักษณนามว่าอะไร?", options: ["จาน", "อัน", "ใบ"], answer: 2 },
+    { q: "ไข่ มีลักษณนามว่าอะไร?", options: ["ใบ", "ฟอง", "ลูก"], answer: 1 },
+    { q: "เทียนพรรษา มีลักษณนามว่าอะไร?", options: ["เล่ม", "แท่ง", "ต้น"], answer: 2 }
+];
+
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let sounds = {}; let bgmSource = null;
+let playerHP = 400, playerCombo = 0, wrongCombo = 0;
+let currentQ = []; let timer = null;
+let lastSound = '';
+
+// --- AUDIO SYSTEM (100% Original Logic & Files) ---
+async function initSounds() {
+    const files = [
+        ['start','audio/start.mp3'],['back','audio/back.mp3'],
+        ['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],['atc','audio/atc.mp3'],
+        ['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],['en3','audio/en3.mp3'],['enc','audio/enc.mp3'],
+        ['win','audio/win.mp3'],['lost','audio/lost.mp3']
+    ];
+    for(let f of files) { try { const r = await fetch(f[1]); const b = await r.arrayBuffer(); sounds[f[0]] = await audioCtx.decodeAudioData(b); } catch(e){} }
+}
+initSounds();
+
+function playSound(n) { 
+    if(!sounds[n]) return; 
+    const s = audioCtx.createBufferSource(); 
+    s.buffer = sounds[n]; 
+    s.connect(audioCtx.destination); 
+    s.start(); 
+    return s; 
+}
+
+function announce(txt) {
+    const el = document.getElementById('sr-announcer');
+    el.textContent = ""; 
+    setTimeout(() => { el.textContent = txt; }, 50);
+}
+
+function showDamage(amount, isPositive) {
+    const target = document.getElementById('player');
+    const dmgEl = document.createElement('div');
+    dmgEl.className = 'damage-popup';
+    dmgEl.textContent = (isPositive ? "+" : "-") + Math.abs(amount);
+    dmgEl.style.color = isPositive ? varCorrect : varWrong;
+    dmgEl.style.left = "200px";
+    dmgEl.style.top = "100px";
+    document.getElementById('pitch').appendChild(dmgEl);
+    setTimeout(() => dmgEl.remove(), 1000);
+}
+
+const varCorrect = "#2ecc71", varWrong = "#e74c3c";
+
+function startGame() {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('top-ui').style.display = 'block';
+    document.getElementById('pitch').style.display = 'flex';
+    document.getElementById('bottom-ui').style.display = 'flex';
+    
+    playerHP = 400; playerCombo = 0; wrongCombo = 0;
+    currentQ = [...questions].sort(() => Math.random() - 0.5);
+    updateUI();
+    playSound('start');
+    
+    setTimeout(() => {
+        nextQuestion();
+        if (!bgmSource && sounds.back) {
+            bgmSource = audioCtx.createBufferSource(); 
+            bgmSource.buffer = sounds.back; 
+            bgmSource.loop = true; 
+            bgmSource.connect(audioCtx.destination); 
+            bgmSource.start(); 
+        }
+    }, 1000); 
+}
+
+function nextQuestion() {
+    if(playerHP >= 1000 || playerHP <= 0) return endGame();
+    if(currentQ.length === 0) currentQ = [...questions].sort(() => Math.random() - 0.5);
+    
+    const data = currentQ.pop();
+    const h = document.getElementById('question-text');
+    h.textContent = data.q;
+    
+    // --- FOCUS LOGIC (100% Original) ---
+    h.blur(); 
+    setTimeout(() => { h.focus(); }, 50);
+
+    const grid = document.getElementById('options-grid'); 
+    grid.innerHTML = '';
+    
+    data.options.forEach((opt, i) => {
+        const b = document.createElement('button'); 
+        b.className = 'option-btn'; 
+        b.textContent = opt;
+        b.onclick = () => checkAnswer(i, data.answer); 
+        grid.appendChild(b);
+    });
+
+    let timeLeft = 10000;
+    const bar = document.getElementById('timer-fill');
+    clearInterval(timer);
+    timer = setInterval(() => {
+        timeLeft -= 100; bar.style.width = (timeLeft/10000)*100 + "%";
+        if(timeLeft <= 0) { clearInterval(timer); checkAnswer(-1, data.answer); }
+    }, 100);
+}
+
+function checkAnswer(idx, correct) {
+    clearInterval(timer);
+    const isCorrect = idx === correct;
+    const p = document.getElementById('player'), b = document.getElementById('bot');
+    const eff = document.getElementById('effect-layer');
+    
+    let dmg = 0;
+    let comboActive = false;
+
+    if (isCorrect) {
+        playerCombo++; wrongCombo = 0;
+        if(playerCombo >= 4) {
+            dmg = Math.floor(Math.random() * (250 - 180 + 1)) + 180;
+            comboActive = true; playerCombo = 0;
+            playSound('atc');
+        } else {
+            dmg = Math.floor(Math.random() * (120 - 80 + 1)) + 80;
+            let randAtk;
+            do { randAtk = 'at' + (Math.floor(Math.random() * 3) + 1); } while (randAtk === lastSound);
+            playSound(randAtk); lastSound = randAtk;
+        }
+        playerHP = Math.min(1000, playerHP + dmg);
+        
+        // Animations
+        p.className = 'character victory-anim';
+        b.className = 'character clap-anim';
+        eff.textContent = "🎉";
+        eff.className = 'effect-pop animate-pop' + (comboActive ? ' combo-big' : '');
+        announce(`เก่งมาก! ตอบถูก ได้พลัง ${dmg} คะแนน พลังรวมคือ ${playerHP}`);
+    } else {
+        wrongCombo++; playerCombo = 0;
+        if(wrongCombo >= 4) {
+            dmg = Math.floor(Math.random() * (250 - 180 + 1)) + 180;
+            comboActive = true; wrongCombo = 0;
+            playSound('enc');
+        } else {
+            dmg = Math.floor(Math.random() * (120 - 80 + 1)) + 80;
+            let randEn;
+            do { randEn = 'en' + (Math.floor(Math.random() * 3) + 1); } while (randEn === lastSound);
+            playSound(randEn); lastSound = randEn;
+        }
+        playerHP = Math.max(0, playerHP - dmg);
+        
+        // Animations
+        p.className = 'character sad-anim';
+        b.className = 'character clap-anim';
+        eff.textContent = "❌";
+        eff.className = 'effect-pop animate-pop' + (comboActive ? ' combo-big' : '');
+        announce(`ผิดจ้ะ ไม่เป็นไรนะ โดนหักพลัง ${dmg} คะแนน พลังเหลือ ${playerHP}`);
+    }
+
+    showDamage(dmg, isCorrect);
+    updateUI();
+    
+    setTimeout(() => {
+        p.className = 'character idle'; 
+        b.className = 'character idle'; 
+        eff.className = 'effect-pop';
+        nextQuestion();
+    }, 2500);
+}
+
+function updateUI() {
+    document.getElementById('player-hp-fill').style.width = (playerHP/10) + "%";
+    document.getElementById('hp-label').textContent = `${playerHP} / 1000`;
+}
+
+function endGame() {
+    if (bgmSource) { try { bgmSource.stop(); } catch(e){} bgmSource = null; }
+    const isWin = playerHP >= 1000;
+    playSound(isWin ? 'win' : 'lost');
+    
+    document.getElementById('bottom-ui').style.display = 'none';
+    document.getElementById('start-screen').style.display = 'flex';
+    const h = document.getElementById('start-screen').querySelector('h1');
+    h.textContent = isWin ? "ยินดีด้วย เรียนจบแล้ว!" : "พยายามอีกนิดนะจ๊ะ!";
+    document.getElementById('start-screen').querySelector('p').textContent = isWin ? "คุณเก่งภาษาไทยที่สุดเลย" : "กลับมาทบทวนบทเรียนอีกครั้งนะ";
+    document.querySelector('.btn-start').textContent = "เริ่มเรียนใหม่";
+}
+</script>
+</body>
+</html>

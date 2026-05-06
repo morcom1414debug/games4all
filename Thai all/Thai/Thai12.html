@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ภาษาไทย ไม่ยากอย่างที่คิด</title>
+    <style>
+        :root {
+            --player-color: #3498db;
+            --correct-color: #2ecc71;
+            --wrong-color: #e74c3c;
+            --combo-color: #f1c40f;
+            --ui-bg: rgba(255, 255, 255, 0.95);
+            --board-color: #2c3e50;
+        }
+
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
+
+        body {
+            margin: 0; padding: 0; background-color: #f0f2f5; color: #333;
+            font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif;
+            overflow: hidden; display: flex; justify-content: center; align-items: center;
+            height: 100vh; position: fixed; width: 100%;
+        }
+
+        #game-container {
+            width: 95%; max-width: 1000px; height: 95vh; max-height: 800px;
+            position: relative; background: #fff; border: 8px solid var(--player-color);
+            border-radius: 20px; display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* --- UI ส่วนบน --- */
+        #top-ui { 
+            background: var(--ui-bg); padding: 15px 25px; z-index: 10; 
+            border-bottom: 3px solid #eee; display: none; 
+        }
+
+        .hp-bar-bg { height: 25px; background: #eee; border: 2px solid #ccc; border-radius: 15px; overflow: hidden; position: relative; }
+        #player-hp-fill { height: 100%; width: 40%; background: linear-gradient(90deg, #2ecc71, #27ae60); transition: width 0.5s; }
+        .hp-text { position: absolute; width: 100%; text-align: center; top: 0; font-weight: bold; line-height: 25px; }
+
+        #timer-bar-bg { width: 100%; height: 8px; background: #eee; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+        #timer-fill { width: 100%; height: 100%; background: var(--combo-color); transition: width 0.1s linear; }
+
+        /* --- ส่วนกลาง --- */
+        #pitch { flex-grow: 1; position: relative; display: none; background: #f9f9f9; overflow: hidden; }
+        .blackboard { position: absolute; right: 20px; top: 30px; width: 180px; height: 110px; background: var(--board-color); border: 6px solid #8e44ad; border-radius: 5px; }
+        
+        .character { position: absolute; bottom: 20px; transition: all 0.5s ease-in-out; pointer-events: none; }
+        #player { left: 50px; width: 220px; display: flex; gap: 20px; z-index: 5; } 
+        #bot { right: 60px; width: 120px; z-index: 5; } 
+        .char-svg { width: 100px; height: 140px; }
+        
+        .giant-center {
+            position: fixed !important; top: 40% !important; left: 50% !important;
+            transform: translate(-50%, -50%) scale(2.2) !important;
+            bottom: auto !important; right: auto !important; z-index: 100 !important;
+        }
+
+        .at-top-position {
+            position: absolute !important; top: 15px !important; left: 50% !important;
+            transform: translateX(-50%) scale(0.9) !important;
+            bottom: auto !important; z-index: 5 !important;
+        }
+
+        .idle { animation: idle 2s infinite ease-in-out; }
+        @keyframes idle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .victory-anim { animation: celebrate 0.4s infinite; }
+        @keyframes celebrate { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-30px); } }
+        .sad-anim { animation: shake 0.2s infinite; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+        /* --- ส่วนล่าง: คำถาม --- */
+        #bottom-ui { background: #fff; padding: 20px; display: none; flex-direction: column; border-top: 5px solid #eee; }
+        #question-text { font-size: 1.8rem; text-align: center; margin: 0 0 15px 0; outline: none; color: #2c3e50; }
+        .options-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 100%; }
+        .option-btn { padding: 15px 10px; font-size: 1.2rem; background: #f8f9fa; border: 2px solid #ddd; border-radius: 15px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
+        .option-btn:hover:not(:disabled) { background: var(--player-color); color: #fff; }
+        .option-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* --- ปรับแก้ปุ่มหน้าสรุปผลตามสั่ง --- */
+        #overlay-screen { 
+            position: absolute; inset: 0; background: rgba(255,255,255,0.98); 
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 500; padding: 20px;
+        }
+        #overlay-screen.summary-mode { 
+            background: transparent; 
+        }
+
+        /* ปุ่มเริ่มบทเรียนเดิม (ซ่อนเมื่ออยู่หน้าสรุป) */
+        #overlay-screen.summary-mode #action-btn { 
+            display: none; 
+        }
+
+        /* ปุ่มเริ่มใหม่ (แสดงเฉพาะหน้าสรุป และอยู่ด้านล่างตรงกลาง) */
+        #restart-btn {
+            display: none; /* ซ่อนไว้ก่อน */
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 60px;
+            background: var(--player-color);
+            color: white;
+            z-index: 700;
+            min-width: 220px;
+        }
+
+        #overlay-screen.summary-mode #restart-btn { 
+            display: block; /* แสดงเมื่ออยู่หน้าสรุป */
+        }
+
+        @media (max-width: 600px) {
+            .options-grid { grid-template-columns: 1fr; }
+            .giant-center { transform: translate(-50%, -50%) scale(1.6) !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<div id="game-container">
+    <div id="top-ui">
+        <div class="hp-bar-bg">
+            <div id="player-hp-fill"></div>
+            <div class="hp-text" id="hp-label">400 / 1000</div>
+        </div>
+        <div id="timer-bar-bg"><div id="timer-fill"></div></div>
+    </div>
+
+    <div id="pitch">
+        <div class="blackboard"></div>
+        <div id="effect-layer" class="sr-only"></div>
+        <div id="player" class="character idle">
+            <svg class="char-svg" viewBox="0 0 100 100"><circle cx="50" cy="30" r="20" fill="#fbd38d"/><rect x="30" y="50" width="40" height="40" fill="#3498db" rx="5"/></svg>
+            <svg class="char-svg" viewBox="0 0 100 100"><circle cx="50" cy="30" r="20" fill="#fbd38d"/><rect x="30" y="50" width="40" height="40" fill="#e84393" rx="5"/></svg>
+        </div>
+        <div id="bot" class="character idle">
+            <svg class="char-svg" viewBox="0 0 100 120" style="transform: scaleX(-1);"><circle cx="50" cy="30" r="20" fill="#fbd38d"/><rect x="25" y="50" width="50" height="60" fill="#a29bfe" rx="5"/></svg>
+        </div>
+    </div>
+
+    <div id="bottom-ui">
+        <h2 id="question-text" tabindex="-1"></h2>
+        <div class="options-grid" id="options-grid"></div>
+    </div>
+
+    <div id="overlay-screen">
+        <h1 id="main-title" tabindex="-1" style="color: #2c3e50; text-align: center; margin-bottom: 10px;">ภาษาไทย ไม่ยากอย่างที่คิด</h1>
+        <p id="summary-text" style="font-size: 1.2rem; margin-bottom: 30px; text-align: center;">สะสมพลังให้ครบ 1,000 เพื่อชนะบทเรียน!</p>
+        
+        <button id="action-btn" class="option-btn" style="padding: 15px 50px; background: var(--correct-color); color: white; min-width: 220px;" onclick="startGame()">เริ่มบทเรียน</button>
+        
+        <button id="restart-btn" class="option-btn" onclick="startGame()">เริ่มใหม่</button>
+    </div>
+</div>
+
+<script>
+const questions = [
+    { q: "รถยนต์ มีลักษณนามว่าอะไร?", a: ["หลัง", "คัน", "เครื่อง"], c: 1 },
+    { q: "จดหมาย มีลักษณนามว่าอะไร?", a: ["ฉบับ", "แผ่น", "ใบ"], c: 0 },
+    { q: "พระพุทธรูป มีลักษณนามว่าอะไร?", a: ["รูป", "องค์", "ตน"], c: 1 },
+    { q: "พระสงฆ์ มีลักษณนามว่าอะไร?", a: ["องค์", "รูป", "คน"], c: 1 },
+    { q: "ยักษ์ มีลักษณนามว่าอะไร?", a: ["ตัว", "องค์", "ตน"], c: 2 },
+    { q: "เลื่อย มีลักษณนามว่าอะไร?", a: ["ปื้น", "อัน", "เล่ม"], c: 0 },
+    { q: "เกวียน มีลักษณนามว่าอะไร?", a: ["เล่ม", "คัน", "หลัง"], c: 0 },
+    { q: "ขลุ่ย มีลักษณนามว่าอะไร?", a: ["อัน", "เล่ม", "เลา"], c: 2 },
+    { q: "ปี่ มีลักษณนามว่าอะไร?", a: ["เลา", "อัน", "ตัว"], c: 0 },
+    { q: "ถนน มีลักษณนามว่าอะไร?", a: ["เส้น", "สาย", "แถว"], c: 1 },
+    { q: "พัดลม มีลักษณนามว่าอะไร?", a: ["เครื่อง", "ตัว", "อัน"], c: 1 },
+    { q: "แหวน มีลักษณนามว่าอะไร?", a: ["วง", "อัน", "ชิ้น"], c: 0 },
+    { q: "สร้อยคอ มีลักษณนามว่าอะไร?", a: ["เส้น", "สาย", "อัน"], c: 0 },
+    { q: "มุ้ง มีลักษณนามว่าอะไร?", a: ["ผืน", "หลัง", "ตัว"], c: 1 },
+    { q: "กรรไกร มีลักษณนามว่าอะไร?", a: ["อัน", "เล่ม", "เลา"], c: 1 },
+    { q: "ดินสอ มีลักษณนามว่าอะไร?", a: ["แท่ง", "เล่ม", "อัน"], c: 0 },
+    { q: "ปากกา มีลักษณนามว่าอะไร?", a: ["แท่ง", "ด้าม", "อัน"], c: 1 },
+    { q: "พลอย มีลักษณนามว่าอะไร?", a: ["เม็ด", "ก้อน", "ดวง"], c: 0 },
+    { q: "ดาว มีลักษณนามว่าอะไร?", a: ["เม็ด", "ดวง", "วง"], c: 1 },
+    { q: "หนังสือ มีลักษณนามว่าอะไร?", a: ["เล่ม", "ผูก", "ฉบับ"], c: 0 },
+    { q: "ร่ม มีลักษณนามว่าอะไร?", a: ["คัน", "อัน", "เล่ม"], c: 0 },
+    { q: "เรือ มีลักษณนามว่าอะไร?", a: ["ลำ", "คัน", "เครื่อง"], c: 0 },
+    { q: "เครื่องบิน มีลักษณนามว่าอะไร?", a: ["อัน", "เครื่อง", "ลำ"], c: 2 },
+    { q: "ปราสาท มีลักษณนามว่าอะไร?", a: ["แห่ง", "หลัง", "องค์"], c: 1 },
+    { q: "แห มีลักษณนามว่าอะไร?", a: ["เลา", "ตัว", "ปาก"], c: 2 },
+    { q: "ฤาษี มีลักษณนามว่าอะไร?", a: ["คน", "ตน", "รูป"], c: 1 },
+    { q: "ช้างป่า มีลักษณนามว่าอะไร?", a: ["เชือก", "ตัว", "ตน"], c: 1 },
+    { q: "จาน มีลักษณนามว่าอะไร?", a: ["จาน", "อัน", "ใบ"], c: 2 },
+    { q: "ไข่ มีลักษณนามว่าอะไร?", a: ["ใบ", "ฟอง", "ลูก"], c: 1 },
+    { q: "เทียนพรรษา มีลักษณนามว่าอะไร?", a: ["เล่ม", "แท่ง", "ต้น"], c: 2 }
+];
+
+let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let sounds = {}; let bgmSource = null;
+let playerHP = 400; let combo = 0; let wrongCombo = 0;
+let currentQ = []; let timer = null; let lastSound = '';
+
+async function initSounds() {
+    const files = [['start','audio/start.mp3'],['back','audio/back.mp3'],['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],['atc','audio/atc.mp3'],['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],['en3','audio/en3.mp3'],['enc','audio/enc.mp3'],['win','audio/win.mp3'],['lost','audio/lost.mp3']];
+    for(let f of files) { try { const r = await fetch(f[1]); const b = await r.arrayBuffer(); sounds[f[0]] = await audioCtx.decodeAudioData(b); } catch(e){} }
+}
+initSounds();
+
+function playSound(n) { 
+    if(!sounds[n]) return; 
+    const s = audioCtx.createBufferSource(); 
+    s.buffer = sounds[n]; 
+    s.connect(audioCtx.destination); 
+    s.start(); 
+    return s; 
+}
+
+function announce(msg) {
+    const el = document.getElementById('announcer');
+    el.textContent = ''; 
+    if(msg) {
+        setTimeout(() => { el.textContent = msg; }, 50);
+    }
+}
+
+function startGame() {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    const overlay = document.getElementById('overlay-screen');
+    overlay.style.display = 'none';
+    overlay.classList.remove('summary-mode'); // เมื่อเริ่มใหม่ summary-mode จะหายไป ปุ่มเริ่มใหม่ก็จะถูกซ่อนอัตโนมัติ
+    
+    const p = document.getElementById('player');
+    p.classList.remove('giant-center', 'at-top-position', 'victory-anim', 'sad-anim');
+    p.classList.add('idle');
+
+    document.getElementById('top-ui').style.display = 'block';
+    document.getElementById('pitch').style.display = 'flex';
+    document.getElementById('bottom-ui').style.display = 'flex';
+    
+    playerHP = 400; combo = 0; wrongCombo = 0;
+    currentQ = [...questions].sort(() => Math.random() - 0.5);
+    updateUI();
+    playSound('start');
+    announce("เริ่มบทเรียน พลังปัจจุบันคือ 400 คะแนน");
+    
+    setTimeout(() => {
+        nextQuestion();
+        if(!bgmSource && sounds.back) { 
+            bgmSource = audioCtx.createBufferSource(); 
+            bgmSource.buffer = sounds.back; 
+            bgmSource.loop = true; 
+            bgmSource.connect(audioCtx.destination); 
+            bgmSource.start(); 
+        }
+    }, 3000);
+}
+
+function nextQuestion() {
+    announce(""); 
+    if(playerHP >= 1000 || playerHP <= 0) return endGame();
+    if(currentQ.length === 0) currentQ = [...questions].sort(() => Math.random() - 0.5);
+    
+    const data = currentQ.pop();
+    const h = document.getElementById('question-text');
+    h.textContent = data.q;
+    h.focus();
+
+    const grid = document.getElementById('options-grid'); 
+    grid.innerHTML = '';
+    data.a.forEach((opt, i) => {
+        const b = document.createElement('button'); 
+        b.className = 'option-btn'; 
+        b.textContent = opt;
+        b.onclick = () => checkAnswer(i, data.c); 
+        grid.appendChild(b);
+    });
+
+    let timeLeft = 20000;
+    const bar = document.getElementById('timer-fill');
+    clearInterval(timer);
+    timer = setInterval(() => {
+        timeLeft -= 100; 
+        bar.style.width = (timeLeft/20000)*100 + "%";
+        if(timeLeft <= 0) { clearInterval(timer); checkAnswer(-1, data.c); }
+    }, 100);
+}
+
+function checkAnswer(idx, correct) {
+    clearInterval(timer);
+    const btns = document.querySelectorAll('.option-btn');
+    btns.forEach(b => b.disabled = true);
+
+    const isCorrect = idx === correct;
+    const p = document.getElementById('player');
+    
+    let change = 0;
+    if(isCorrect) {
+        combo++; wrongCombo = 0;
+        if(combo >= 4) { 
+            change = Math.floor(Math.random() * 71) + 180; 
+            playSound('atc'); 
+            combo = 0; 
+        } else { 
+            change = Math.floor(Math.random() * 41) + 80; 
+            let s; do{s='at'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
+            playSound(s); lastSound=s; 
+        }
+        playerHP = Math.min(1000, playerHP + change);
+        p.className = 'character victory-anim';
+        announce(`ถูกต้อง! ได้พลังเพิ่ม ${change} คะแนน พลังรวมคือ ${playerHP}`);
+    } else {
+        wrongCombo++; combo = 0;
+        if(wrongCombo >= 4) { 
+            change = Math.floor(Math.random() * 71) + 180; 
+            playSound('enc'); 
+            wrongCombo = 0;
+        } else { 
+            change = Math.floor(Math.random() * 41) + 80; 
+            let s; do{s='en'+(Math.floor(Math.random()*3)+1);}while(s===lastSound); 
+            playSound(s); lastSound=s; 
+        }
+        playerHP = Math.max(0, playerHP - change);
+        p.className = 'character sad-anim';
+        announce(`เสียดายจัง หักพลัง ${change} คะแนน พลังรวมเหลือ ${playerHP}`);
+    }
+
+    updateUI();
+    setTimeout(() => { 
+        if(playerHP < 1000 && playerHP > 0) {
+            p.className = 'character idle'; 
+            nextQuestion(); 
+        } else { endGame(); }
+    }, 3500);
+}
+
+function updateUI() {
+    document.getElementById('player-hp-fill').style.width = (playerHP/10) + "%";
+    document.getElementById('hp-label').textContent = `${playerHP} / 1000`;
+}
+
+function endGame() {
+    clearInterval(timer);
+    announce(""); 
+    if(bgmSource){ try{bgmSource.stop();}catch(e){} bgmSource = null; }
+    
+    const win = playerHP >= 1000;
+    const endSoundNode = playSound(win ? 'win' : 'lost');
+    
+    const p = document.getElementById('player');
+    const overlay = document.getElementById('overlay-screen');
+    const title = document.getElementById('main-title');
+    const summary = document.getElementById('summary-text');
+
+    p.classList.remove('idle');
+    p.classList.add('giant-center', win ? 'victory-anim' : 'sad-anim');
+    document.getElementById('bottom-ui').style.display = 'none';
+
+    const soundDuration = (endSoundNode && endSoundNode.buffer) ? endSoundNode.buffer.duration * 1000 : 4000;
+    
+    setTimeout(() => {
+        p.classList.remove('giant-center');
+        p.classList.add('at-top-position');
+        
+        overlay.style.display = 'flex';
+        overlay.classList.add('summary-mode');
+        
+        title.textContent = win ? "ชนะแล้ว! เก่งมากจ้ะ" : "เกมจบแล้ว พยายามใหม่นะ";
+        summary.textContent = win ? "คุณสะสมพลังความรู้ได้เต็ม 1,000 คะแนน!" : `พลังความรู้เหลือเพียง ${playerHP} คะแนน`;
+        
+        title.focus();
+    }, soundDuration);
+}
+</script>
+</body>
+</html>
