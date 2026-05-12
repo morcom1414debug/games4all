@@ -34,6 +34,7 @@
             display: flex; flex-direction: column;
         }
 
+        /* --- 1. Top Section (35%) --- */
         #top-ui { 
             height: 35%;
             padding: 15px; 
@@ -43,6 +44,7 @@
             display: flex; flex-direction: column; align-items: center;
         }
 
+        /* --- 2. Middle Section (15%) --- */
         #info-box {
             height: 15%;
             width: 100%;
@@ -56,6 +58,7 @@
             padding: 0 15px;
         }
 
+        /* --- 3. Bottom Section (50%) --- */
         #battle-field {
             height: 50%;
             position: relative;
@@ -73,6 +76,7 @@
         .hp-bar-bg { height: 10px; background: #333; border: 1px solid #fff; width: 100px; margin-bottom: 5px; overflow: hidden; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.3s ease-out; }
 
+        /* --- Animations --- */
         .idle { animation: idleMove 2.5s ease-in-out infinite; }
         @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
@@ -155,7 +159,7 @@
 <script>
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const sounds = {};
-const questionsData = [
+const questions = [
     { q: "ปลามีโอกาสจมน้ำตายได้ ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ! หากออกซิเจนในน้ำไม่พอ ปลาก็ขาดใจตายได้" },
     { q: "มะเขือเทศ จัดว่าเป็น 'ผัก' ในทางพฤกษศาสตร์ ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 1, info: "มั่วนิ่มครับ จริงๆ เป็นผลไม้ เพราะมีเมล็ด" },
     { q: "แสงเดินทางได้เร็วกว่าเสียง ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ เราจึงเห็นฟ้าแลบก่อนได้ยินเสียงฟ้าร้อง" },
@@ -163,19 +167,8 @@ const questionsData = [
     { q: "มดง่ามสามารถยกของที่หนักกว่าตัวมันได้ถึง 50 เท่า ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ มดเป็นสัตว์ที่แข็งแรงมากเมื่อเทียบกับขนาดตัว" }
 ];
 
-let playerHP = 1000, botHP = 1000, timerInterval = null, bgmSource = null;
+let playerHP = 1000, botHP = 1000, currentQIndex = 0, timerInterval = null, bgmSource = null;
 let comboCount = 0, lastAtSound = "", lastEnSound = "";
-let shuffledQuestions = [], currentQIndex = 0;
-
-// 1. Logic การสุ่มคำถามแบบ Fisher-Yates Shuffle
-function shuffleQuestions() {
-    shuffledQuestions = [...questionsData];
-    for (let i = shuffledQuestions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
-    }
-    currentQIndex = 0;
-}
 
 async function loadSound(name, url) {
     try {
@@ -214,9 +207,6 @@ function startGameSequence() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     
-    // สุ่มคำถามก่อนเริ่มรอบใหม่
-    shuffleQuestions();
-
     const startSnd = playSound('start');
     const qEl = document.getElementById('question-text');
     qEl.style.fontSize = "4rem"; qEl.style.color = "var(--combo-color)";
@@ -226,6 +216,7 @@ function startGameSequence() {
     setTimeout(() => { qEl.textContent = "1"; }, 1000);
     setTimeout(() => { qEl.textContent = "GO!"; qEl.style.color = "#ff3300"; }, 1500);
 
+    // 3. ปรับปรุงให้เริ่มคำถามแรกเมื่อเพลงเริ่มเกมเล่นจบเท่านั้น
     if (startSnd) {
         startSnd.onended = () => {
             qEl.style.fontSize = ""; qEl.style.color = "";
@@ -244,14 +235,11 @@ function startGameSequence() {
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
     
-    // ถ้าใช้คำถามจนหมดเซ็ตที่สุ่มไว้ ให้สุ่มใหม่
-    if (currentQIndex >= shuffledQuestions.length) {
-        shuffleQuestions();
-    }
-
+    // 2. ล้างประกาศ aria-live ก่อนขึ้นข้อความใหม่
     announce(""); 
+    
     document.getElementById('info-box').style.visibility = 'hidden';
-    const qData = shuffledQuestions[currentQIndex];
+    const qData = questions[currentQIndex % questions.length];
     const qEl = document.getElementById('question-text');
     qEl.textContent = qData.q;
     
@@ -282,32 +270,30 @@ function startTimer() {
 function checkAnswer(isCorrect, btn) {
     clearInterval(timerInterval);
     
+    // 1. ปิดปุ่มทั้งหมดทันทีเพื่อป้องกันการกดซ้ำในข้อนั้นๆ
     const btns = document.querySelectorAll('.option-btn');
     btns.forEach(b => b.disabled = true);
 
-    const qData = shuffledQuestions[currentQIndex];
+    const qData = questions[currentQIndex % questions.length];
+    const pG = document.getElementById('player-group'), bG = document.getElementById('bot-group');
     let fb = "";
 
     if (isCorrect) {
         if(btn) btn.classList.add('correct');
         comboCount = comboCount < 0 ? 1 : comboCount + 1;
         if (comboCount >= 4) {
-            playSound('atc'); playSound('combo'); botHP -= 300; comboCount = 0; 
-            fb = "ถูกต้อง! คอมโบสำเร็จ! บอทเหลือพลัง " + Math.max(0, botHP);
+            playSound('atc'); playSound('combo'); botHP -= 300; comboCount = 0; fb = "คอมโบสำเร็จ! ";
         } else {
-            lastAtSound = playRandomSound('at', lastAtSound); botHP -= 150; 
-            fb = "ถูกต้อง! บอทเหลือพลัง " + Math.max(0, botHP);
+            lastAtSound = playRandomSound('at', lastAtSound); botHP -= 150; fb = "ถูกต้อง! ";
         }
         triggerJump('player');
     } else {
         if(btn) btn.classList.add('wrong');
         comboCount = comboCount > 0 ? -1 : comboCount - 1;
         if (comboCount <= -4) {
-            playSound('enc'); playSound('combo'); playerHP -= 300; comboCount = 0; 
-            fb = "พลาดแล้ว! บอทใช้คอมโบ! คุณเหลือพลัง " + Math.max(0, playerHP);
+            playSound('enc'); playSound('combo'); playerHP -= 300; comboCount = 0; fb = "บอทใช้คอมโบ! ";
         } else {
-            lastEnSound = playRandomSound('en', lastEnSound); playerHP -= 150; 
-            fb = "พลาดแล้ว! คุณเหลือพลัง " + Math.max(0, playerHP);
+            lastEnSound = playRandomSound('en', lastEnSound); playerHP -= 150; fb = "พลาดแล้ว! ";
         }
         triggerJump('bot');
     }
@@ -317,7 +303,6 @@ function checkAnswer(isCorrect, btn) {
     document.getElementById('info-box').textContent = infoText;
     document.getElementById('info-box').style.visibility = 'visible';
     
-    // 2. ดึงค่าพลัง HP กลับมาประกาศใน aria-live
     announce(`${fb} ข้อมูล: ${infoText}`);
     
     currentQIndex++;
@@ -344,6 +329,7 @@ function updateHP() {
 
 function endGame() {
     if(bgmSource) bgmSource.stop();
+    // 4. ตัดการประกาศ aria live และโฟกัสไปที่ Heading หลังจากเสียงจบ
     announce(""); 
     const win = botHP <= 0;
     const endSnd = playSound(win ? 'win' : 'lost');
