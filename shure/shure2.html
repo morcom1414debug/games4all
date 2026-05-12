@@ -86,14 +86,13 @@
         @keyframes attack-left { 0% { transform: translateX(0); } 30% { transform: translateX(-50px) scale(1.1); } 100% { transform: translateX(0); } }
         .c-attack { animation: attack-left 0.4s ease-out !important; }
 
-        /* ซ่อนจากหน้าจอ และใช้ aria-hidden เมื่อไม่ใช้งานเพื่อไม่ให้ SC เจอขยะ */
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <div id="sr-announcer" class="sr-only" aria-live="assertive" aria-hidden="true"></div>
+    <div id="sr-announcer" class="sr-only" aria-live="assertive"></div>
 
     <div id="start-screen">
         <button class="home-btn-hex top-left-home" aria-label="กลับสู่หน้าหลัก" onclick="window.location.href='../index9.html'">🏠</button>
@@ -131,7 +130,7 @@ const questions = [
     { q: "ปลามีโอกาสจมน้ำตายได้ ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ! หากออกซิเจนในน้ำไม่พอ หรือน้ำไม่ไหลผ่านเหงือก ปลาก็ขาดใจตายได้" },
     { q: "มะเขือเทศ จัดว่าเป็น 'ผัก' ในทางพฤกษศาสตร์ ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 1, info: "มั่วนิ่มครับ จริงๆ เป็นผลไม้ เพราะมีเมล็ดและโตจากดอก" },
     { q: "นกกระจอกเทศมีดวงตาขนาดใหญ่กว่าสมองของมันเอง ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ ดวงตาของมันใหญ่กว่าสมองจริงๆ" },
-    { q: "แสงเดินทางได้เร็กว่าเสียง ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ เราจึงเห็นฟ้าแลบก่อนได้ยินเสียงฟ้าร้องเสมอ" },
+    { q: "แสงเดินทางได้เร็วกว่าเสียง ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ เราจึงเห็นฟ้าแลบก่อนได้ยินเสียงฟ้าร้องเสมอ" },
     { q: "มนุษย์เราสามารถหายใจและกลืนอาหารไปพร้อมๆ กันได้ ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 1, info: "มั่วนิ่มครับ ขณะกลืน ฝาปิดกล่องเสียงจะปิดทางเดินหายใจไว้เพื่อความปลอดภัย" },
     { q: "กล้วยหอมจัดว่าเป็นพืชล้มลุก ไม่ใช่ไม้ยืนต้น ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ เพราะต้นกล้วยไม่มีเนื้อไม้ที่แข็งแรงแบบไม้ยืนต้น" },
     { q: "กำแพงเมืองจีนมองเห็นได้จากดวงจันทร์ด้วยตาเปล่า ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 1, info: "มั่วนิ่มครับ เป็นความเชื่อที่ผิด ตาเปล่ามนุษย์มองไม่เห็นจากระยะไกลขนาดนั้น" },
@@ -156,18 +155,10 @@ soundFiles.forEach(f => loadSound(f[0], f[1]));
 
 function playSound(name) { if(sounds[name]) { const s = audioCtx.createBufferSource(); s.buffer = sounds[name]; s.connect(audioCtx.destination); s.start(); return s; } }
 
-// ฟังก์ชันประกาศเสียงแบบ Clean: เปิด aria-hidden เฉพาะตอนประกาศ แล้วปิดเมื่อประกาศจบ
 function announce(msg) {
     const el = document.getElementById('sr-announcer');
     el.textContent = "";
-    el.setAttribute('aria-hidden', 'false'); 
-    setTimeout(() => { 
-        el.textContent = msg; 
-        // หลังจากประกาศไปสักพัก ให้ซ่อนจาก SC เพื่อไม่ให้กวาดมาเจอ
-        setTimeout(() => { 
-            el.setAttribute('aria-hidden', 'true');
-        }, 4000);
-    }, 100);
+    setTimeout(() => { el.textContent = msg; }, 100);
 }
 
 function startGame() {
@@ -184,17 +175,10 @@ function startGame() {
 }
 
 function nextQuestion() {
-    // ล้างค่า announcer เมื่อขึ้นข้อใหม่
-    const el = document.getElementById('sr-announcer');
-    el.textContent = "";
-    el.setAttribute('aria-hidden', 'true');
-
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
-    
     document.getElementById('info-box').style.visibility = 'hidden';
     const qData = questions[currentQIndex % questions.length];
     const qEl = document.getElementById('question-text');
-    
     qEl.textContent = `ข้อที่ ${currentQIndex + 1}: ${qData.q}`;
     
     const grid = document.getElementById('options-grid');
@@ -239,13 +223,13 @@ function checkAnswer(isCorrect, btn) {
         botHP -= dmg;
         playSound('at1');
         triggerAnim('player');
-        feedback = `ถูกต้อง! พลังบอทเหลือ ${Math.max(0, botHP)}. `;
+        feedback = `ถูกต้อง! โจมตีสำเร็จ พลังบอทเหลือ ${Math.max(0, botHP)}. `;
     } else {
         if(btn) btn.classList.add('wrong');
         playerHP -= dmg;
         playSound('en1');
         triggerAnim('bot');
-        feedback = `พลาดแล้ว! พลังของคุณเหลือ ${Math.max(0, playerHP)}. `;
+        feedback = `พลาดแล้ว! โดนโจมตี พลังของคุณเหลือ ${Math.max(0, playerHP)}. `;
     }
 
     const infoBox = document.getElementById('info-box');
@@ -255,9 +239,7 @@ function checkAnswer(isCorrect, btn) {
     announce(`${feedback} ข้อมูลคือ: ${qData.info}`);
     updateHP();
     currentQIndex++;
-    
-    // ปรับเวลาประกาศจาก 5.0 เป็น 5.5 วินาที
-    setTimeout(nextQuestion, 5500);
+    setTimeout(nextQuestion, 5000);
 }
 
 function updateHP() {
@@ -275,28 +257,10 @@ function endGame() {
     if(bgmSource) bgmSource.stop();
     const isWin = botHP <= 0;
     const msg = isWin ? "ยินดีด้วย! คุณชนะแล้ว" : "จบเกมแล้ว บอทชนะในครั้งนี้";
-    const qEl = document.getElementById('question-text');
-    
-    // ล้างหน้าจอรอไว้ก่อน
-    document.getElementById('options-grid').innerHTML = "";
-
-    // หน่วงเวลา 2 วินาทีเพื่อให้ Aria Live (Info) ประกาศจนเกือบจบก่อนเล่นเสียง Win/Loss
-    setTimeout(() => {
-        const finalSound = playSound(isWin ? 'win' : 'lost');
-        
-        // เมื่อเสียง Win/Loss จบ ถึงค่อยส่ง Focus ไปที่ Heading
-        finalSound.onended = () => {
-            qEl.textContent = msg;
-            // ล้าง announcer ทิ้งเพื่อความสะอาด
-            const el = document.getElementById('sr-announcer');
-            el.textContent = "";
-            el.setAttribute('aria-hidden', 'true');
-            
-            document.getElementById('options-grid').innerHTML = `<button class="home-btn-hex" onclick="location.reload()" style="width:150px; border-radius:10px; clip-path:none;">เล่นใหม่</button>`;
-            
-            setTimeout(() => { qEl.focus(); }, 200);
-        };
-    }, 2000);
+    document.getElementById('question-text').textContent = msg;
+    document.getElementById('options-grid').innerHTML = `<button class="home-btn-hex" onclick="location.reload()" style="width:150px; border-radius:10px; clip-path:none;">เล่นใหม่</button>`;
+    playSound(isWin ? 'win' : 'lost');
+    announce(msg);
 }
 </script>
 </body>
