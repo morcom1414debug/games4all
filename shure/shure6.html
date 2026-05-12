@@ -146,7 +146,6 @@ const questions = [
 
 let playerHP = 1000, botHP = 1000, currentQIndex = 0, timerInterval = null, bgmSource = null;
 let comboCount = 0;
-let lastAtSound = "", lastEnSound = ""; // เก็บประวัติเสียงที่เล่นล่าสุด
 
 async function loadSound(name, url) {
     try {
@@ -158,10 +157,8 @@ async function loadSound(name, url) {
 
 const soundFiles = [
     ['start','audio/start.mp3'],['back','audio/back.mp3'],
-    ['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],
-    ['atc','audio/atc.mp3'], 
-    ['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],['en3','audio/en3.mp3'],
-    ['enc','audio/enc.mp3'], 
+    ['at1','audio/at1.mp3'],['atc','audio/atc.mp3'], // ถูกปกติ กับ ถูกคอมโบ
+    ['en1','audio/en1.mp3'],['enc','audio/enc.mp3'], // ผิดปกติ กับ ผิดคอมโบ
     ['win','audio/win.mp3'],['lost','audio/lost.mp3'],
     ['combo','audio/combo.mp3']
 ];
@@ -175,15 +172,6 @@ function playSound(name) {
         s.start(); 
         return s; 
     } 
-}
-
-// ฟังก์ชันสุ่มเสียงแบบไม่ซ้ำล่าสุด
-function playRandomSound(prefix, lastSound) {
-    const pool = [1, 2, 3].filter(num => `${prefix}${num}` !== lastSound);
-    const chosenNum = pool[Math.floor(Math.random() * pool.length)];
-    const chosenName = `${prefix}${chosenNum}`;
-    playSound(chosenName);
-    return chosenName;
 }
 
 function announce(msg) {
@@ -257,6 +245,7 @@ function checkAnswer(isCorrect, btn) {
 
     let dmg = Math.floor(Math.random() * 50) + 100;
     let feedback = "";
+    let isCombo = false;
 
     if (isCorrect) {
         if(btn) btn.classList.add('correct');
@@ -265,13 +254,13 @@ function checkAnswer(isCorrect, btn) {
         
         if (comboCount >= 4) {
             dmg = dmg * 2;
+            isCombo = true;
             comboCount = 0;
             playSound('combo');
-            playSound('atc'); 
+            playSound('atc'); // เปลี่ยนเสียงคอมโบถูกเป็น atc.mp3 ตามที่ระบุ
             feedback = "สุดยอดคอมโบ! ";
         } else {
-            // สุ่มเสียง at1-at3 แบบไม่ซ้ำล่าสุด
-            lastAtSound = playRandomSound('at', lastAtSound);
+            playSound('at1');
         }
         
         botHP -= dmg;
@@ -284,13 +273,13 @@ function checkAnswer(isCorrect, btn) {
 
         if (comboCount <= -4) {
             dmg = dmg * 2;
+            isCombo = true;
             comboCount = 0;
             playSound('combo');
-            playSound('enc'); 
+            playSound('enc'); // เปลี่ยนเสียงคอมโบผิดเป็น enc.mp3 ตามที่ระบุ
             feedback = "โดนคอมโบหนัก! ";
         } else {
-            // สุ่มเสียง en1-en3 แบบไม่ซ้ำล่าสุด
-            lastEnSound = playRandomSound('en', lastEnSound);
+            playSound('en1');
         }
 
         playerHP -= dmg;
@@ -329,7 +318,7 @@ function endGame() {
     const qEl = document.getElementById('question-text');
     document.getElementById('options-grid').innerHTML = "";
 
-    // ปรับลดระยะห่างเหลือ 0.5 วินาที
+    // ปรับลดระยะห่างเหลือ 0.5 วินาที (เพื่อให้แทบจะเล่นทันทีหลังจบข้อมูล) ตามที่คุณระบุ
     setTimeout(() => {
         const finalSound = playSound(isWin ? 'win' : 'lost');
         
