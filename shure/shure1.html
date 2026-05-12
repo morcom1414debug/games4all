@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ชัวร์หรือมั่วนิ่ม - ศึกจ้าวนักตัดสิน</title>
+    <title>ชัวร์หรือมั่วนิ่ม - ศึกจ้าวนักคำนวณ</title>
     <style>
         :root {
             --player-color: #00ffcc;
@@ -35,6 +35,7 @@
             transition: filter 2s ease-in-out;
         }
 
+        /* --- Home Button --- */
         .home-btn-hex {
             width: 60px; height: 60px;
             background-color: var(--combo-color) !important; 
@@ -47,17 +48,38 @@
         }
         .top-left-home { position: absolute; top: 20px; left: 20px; }
 
+        /* --- Combat Animations --- */
+        .particle { position: absolute; pointer-events: none; z-index: 100; font-size: 2.5rem; animation: particleAnim 2.5s ease-out forwards; }
+        @keyframes particleAnim {
+            0% { transform: translateY(0) scale(0); opacity: 0; }
+            20% { opacity: 1; transform: translateY(-20px) scale(1.2); }
+            100% { transform: translateY(var(--move-y)) rotate(var(--rot)) scale(1); opacity: 0; }
+        }
+
+        .damage-popup { position: absolute; font-size: 2.5rem; font-weight: bold; pointer-events: none; z-index: 50; text-shadow: 2px 2px 0px #000; opacity: 0; }
+        @keyframes floatUp { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-150px); opacity: 0; } }
+        .animate-damage { animation: floatUp 1s ease-out forwards; }
+
+        @keyframes attack-right { 0% { transform: translateX(0); } 30% { transform: translateX(50px) scale(1.1); } 100% { transform: translateX(0); } }
+        .p-attack { animation: attack-right 0.4s ease-out !important; }
+        @keyframes attack-left { 0% { transform: translateX(0); } 30% { transform: translateX(-50px) scale(1.1); } 100% { transform: translateX(0); } }
+        .c-attack { animation: attack-left 0.4s ease-out !important; }
+        .idle { animation: idleMove 2.5s ease-in-out infinite; }
+        @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+        /* --- UI Elements --- */
         #start-screen { position: absolute; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; }
         .title { font-size: 4rem; background: linear-gradient(to bottom, #fff, #ffcc00); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 30px; }
         
         .battle-layout { display: flex; justify-content: space-between; padding: 20px; flex-grow: 1; }
-        .side-group { width: 40%; display: flex; flex-direction: column; align-items: center; transition: all 0.3s; }
+        .side-group { width: 40%; display: flex; flex-direction: column; align-items: center; }
         .hp-bar-bg { height: 20px; background: #333; border: 2px solid #fff; width: 100%; position: relative; overflow: hidden; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.3s ease-out; }
 
         #quiz-container { background: rgba(0,0,0,0.5); padding: 20px; margin-top: auto; }
-        #question-text { font-size: 1.8rem; text-align: center; margin-bottom: 20px; min-height: 3em; outline: none; }
+        #question-text { font-size: 1.8rem; text-align: center; margin-bottom: 20px; min-height: 3em; }
         
+        /* ปุ่มตัวเลือกแนวนอน */
         .options-grid { display: flex; justify-content: center; gap: 40px; margin-bottom: 20px; }
         .option-btn {
             width: 120px; height: 120px; font-size: 3.5rem; border: none; cursor: pointer;
@@ -68,6 +90,7 @@
         .option-btn.correct { background: var(--correct-color) !important; }
         .option-btn.wrong { background: var(--wrong-color) !important; }
 
+        /* ส่วนแสดง Info */
         #info-box {
             background: rgba(255, 204, 0, 0.1);
             border-top: 2px solid var(--combo-color);
@@ -78,13 +101,6 @@
 
         #timer-bar-bg { width: 100%; background: #222; height: 10px; margin-bottom: 10px; }
         #timer-fill { height: 100%; width: 100%; background: var(--combo-color); }
-
-        .idle { animation: idleMove 2.5s ease-in-out infinite; }
-        @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-        @keyframes attack-right { 0% { transform: translateX(0); } 30% { transform: translateX(50px) scale(1.1); } 100% { transform: translateX(0); } }
-        .p-attack { animation: attack-right 0.4s ease-out !important; }
-        @keyframes attack-left { 0% { transform: translateX(0); } 30% { transform: translateX(-50px) scale(1.1); } 100% { transform: translateX(0); } }
-        .c-attack { animation: attack-left 0.4s ease-out !important; }
 
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
     </style>
@@ -117,7 +133,9 @@
             <div id="timer-bar-bg"><div id="timer-fill"></div></div>
             <h2 id="question-text" tabindex="-1"></h2>
             
-            <div class="options-grid" id="options-grid"></div>
+            <div class="options-grid" id="options-grid">
+                </div>
+
             <div id="info-box" aria-hidden="true"></div>
         </div>
     </div>
@@ -137,11 +155,12 @@ const questions = [
     { q: "สุนัขมองเห็นได้เฉพาะภาพขาวดำเท่านั้น ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 1, info: "มั่วนิ่มครับ สุนัขยังสามารถมองเห็นสีน้ำเงินและเหลืองได้" },
     { q: "ลายนิ้วมือของ 'โคอาล่า' คล้ายกับมนุษย์มากจนแยกยาก ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ ลายนิ้วมือของมันมีความใกล้เคียงกับมนุษย์เรามาก" },
     { q: "ดาวศุกร์เป็นดาวเคราะห์ที่ร้อนที่สุดในระบบสุริยะ ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 0, info: "ชัวร์ครับ เพราะมีสภาวะเรือนกระจกที่รุนแรงกักเก็บความร้อนไว้สูงมาก" },
-    { q: "ท้องฟ้าเป็นสีฟ้าเพราะแสงอาทิตย์สะท้อนน้ำทะเล ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 1, info: "มั่วนิ่มครับ เกิดจากการกระเจิงแสงของโมเลกุลในชั้นบรรยากาศ" }
+    { q: "ท้องฟ้าเป็นสีฟ้าเพราะแสงอาทิตย์สะท้อนน้ำทะเล ชัวร์หรือมั่วนิ่ม?", a: ["ชัวร์", "มั่วนิ่ม"], c: 1, info: "มั่วนิ่มครับ เกิดจากการกระเจิงแสงของโมเลกุลในชั้นบรรยบรรยากาศ" }
 ];
 
 let playerHP = 1000, botHP = 1000, currentQIndex = 0, timerInterval = null, bgmSource = null;
 
+// --- Sound Engine ---
 async function loadSound(name, url) {
     try {
         const response = await fetch(url);
@@ -161,11 +180,13 @@ function announce(msg) {
     setTimeout(() => { el.textContent = msg; }, 100);
 }
 
+// --- Game Logic ---
 function startGame() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('battle-arena').style.display = 'flex';
     playerHP = 1000; botHP = 1000; currentQIndex = 0;
+    
     const s = playSound('start');
     s.onended = () => {
         bgmSource = playSound('back');
@@ -176,17 +197,23 @@ function startGame() {
 
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
+    
     document.getElementById('info-box').style.visibility = 'hidden';
     const qData = questions[currentQIndex % questions.length];
     const qEl = document.getElementById('question-text');
-    qEl.textContent = `ข้อที่ ${currentQIndex + 1}: ${qData.q}`;
+    qEl.textContent = qData.q;
     
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
-    grid.appendChild(createBtn('👍', 'ชัวร์', 0, qData.c));
-    grid.appendChild(createBtn('👎', 'มั่วนิ่ม', 1, qData.c));
 
-    setTimeout(() => { qEl.focus(); }, 250);
+    // สร้างปุ่ม ชัวร์ (ซ้าย) มั่วนิ่ม (ขวา)
+    const btnSure = createBtn('👍', 'ชัวร์', 0, qData.c);
+    const btnFake = createBtn('👎', 'มั่วนิ่ม', 1, qData.c);
+    grid.appendChild(btnSure);
+    grid.appendChild(btnFake);
+
+    announce(`ข้อที่ ${currentQIndex + 1}: ${qData.q}`);
+    setTimeout(() => qEl.focus(), 200);
     startTimer();
 }
 
@@ -200,7 +227,7 @@ function createBtn(emoji, label, index, correctIdx) {
 }
 
 function startTimer() {
-    let timeLeft = 20000;
+    let timeLeft = 20000; // 20 วินาที
     clearInterval(timerInterval);
     timerInterval = setInterval(() => {
         timeLeft -= 100;
@@ -232,14 +259,19 @@ function checkAnswer(isCorrect, btn) {
         feedback = `พลาดแล้ว! โดนโจมตี พลังของคุณเหลือ ${Math.max(0, playerHP)}. `;
     }
 
+    // แสดง Info
     const infoBox = document.getElementById('info-box');
     infoBox.textContent = qData.info;
     infoBox.style.visibility = 'visible';
 
-    announce(`${feedback} ข้อมูลคือ: ${qData.info}`);
+    // ประกาศ SC: พลัง + ข้อมูล (เพิ่มหน่วงเวลาให้ฟังจบ)
+    announce(`${feedback} ข้อมูลเพิ่มเติมคือ: ${qData.info}`);
+
     updateHP();
     currentQIndex++;
-    setTimeout(nextQuestion, 5000);
+    
+    // หน่วงเวลา 4 วินาทีเพื่อให้ SC อ่านจบและคนดูเห็น Info
+    setTimeout(nextQuestion, 4500);
 }
 
 function updateHP() {
@@ -248,15 +280,19 @@ function updateHP() {
 }
 
 function triggerAnim(attacker) {
-    const p = document.getElementById('player-group'), b = document.getElementById('bot-group');
-    if(attacker === 'player') { p.classList.add('p-attack'); setTimeout(()=>p.classList.remove('p-attack'), 400); }
-    else { b.classList.add('c-attack'); setTimeout(()=>b.classList.remove('c-attack'), 400); }
+    const p = document.getElementById('player-group');
+    const b = document.getElementById('bot-group');
+    if(attacker === 'player') {
+        p.classList.add('p-attack'); setTimeout(()=>p.classList.remove('p-attack'), 400);
+    } else {
+        b.classList.add('c-attack'); setTimeout(()=>b.classList.remove('c-attack'), 400);
+    }
 }
 
 function endGame() {
     if(bgmSource) bgmSource.stop();
     const isWin = botHP <= 0;
-    const msg = isWin ? "ยินดีด้วย! คุณชนะแล้ว" : "จบเกมแล้ว บอทชนะในครั้งนี้";
+    const msg = isWin ? "ยินดีด้วย! คุณคือจ้าวนักตัดสิน" : "เสียใจด้วย บอทชนะในครั้งนี้";
     document.getElementById('question-text').textContent = msg;
     document.getElementById('options-grid').innerHTML = `<button class="home-btn-hex" onclick="location.reload()" style="width:150px; border-radius:10px; clip-path:none;">เล่นใหม่</button>`;
     playSound(isWin ? 'win' : 'lost');
