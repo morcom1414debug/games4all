@@ -34,31 +34,49 @@
             display: flex; flex-direction: column;
         }
 
+        /* --- 1. Top Section (35%) --- */
         #top-ui { 
-            height: 35%; padding: 15px; background: rgba(0,0,0,0.6);
-            border-bottom: 1px solid #444; z-index: 20;
+            height: 35%;
+            padding: 15px; 
+            background: rgba(0,0,0,0.6);
+            border-bottom: 1px solid #444;
+            z-index: 20;
             display: flex; flex-direction: column; align-items: center;
         }
 
+        /* --- 2. Middle Section (15%) --- */
         #info-box {
-            height: 15%; width: 100%; display: flex; align-items: center; justify-content: center;
-            text-align: center; color: var(--combo-color); background: rgba(255, 204, 0, 0.05);
-            border-bottom: 1px solid rgba(255, 204, 0, 0.2); font-size: 1.2rem;
-            visibility: hidden; z-index: 10; padding: 0 15px;
+            height: 15%;
+            width: 100%;
+            display: flex; align-items: center; justify-content: center;
+            text-align: center; color: var(--combo-color);
+            background: rgba(255, 204, 0, 0.05);
+            border-bottom: 1px solid rgba(255, 204, 0, 0.2);
+            font-size: 1.2rem;
+            visibility: hidden;
+            z-index: 10;
+            padding: 0 15px;
         }
 
+        /* --- 3. Bottom Section (50%) --- */
         #battle-field {
-            height: 50%; position: relative; display: flex;
-            align-items: flex-end; justify-content: space-between; padding: 0 10% 40px 10%;
+            height: 50%;
+            position: relative;
+            display: flex; align-items: flex-end; justify-content: space-between;
+            padding: 0 10% 40px 10%;
         }
 
         #question-text { font-size: 1.6rem; text-align: center; margin: 5px 0; min-height: 2.2em; outline: none; }
         .options-grid { display: flex; justify-content: center; gap: 40px; }
         
-        .side-group { width: 140px; display: flex; flex-direction: column; align-items: center; outline: none; }
+        .side-group { 
+            width: 140px; display: flex; flex-direction: column; align-items: center; outline: none;
+        }
+
         .hp-bar-bg { height: 10px; background: #333; border: 1px solid #fff; width: 100px; margin-bottom: 5px; overflow: hidden; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.3s ease-out; }
 
+        /* --- Animations --- */
         .idle { animation: idleMove 2.5s ease-in-out infinite; }
         @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
@@ -177,12 +195,11 @@ function playRandomSound(prefix, lastSound) {
     playSound(chosen); return chosen;
 }
 
-// แก้ไขฟังก์ชัน announce ให้ Clean ข้อความเก่าก่อนเสมอ
 function announce(msg) {
     const el = document.getElementById('sr-announcer');
-    el.textContent = ""; // Clean ข้อความเก่า
-    if (msg) {
-        setTimeout(() => { el.textContent = msg; }, 100); // ใส่ข้อความใหม่หลังเคลียร์แล้ว
+    el.textContent = ""; 
+    if(msg !== "") {
+        setTimeout(() => { el.textContent = msg; }, 50);
     }
 }
 
@@ -199,20 +216,29 @@ function startGameSequence() {
     setTimeout(() => { qEl.textContent = "1"; }, 1000);
     setTimeout(() => { qEl.textContent = "GO!"; qEl.style.color = "#ff3300"; }, 1500);
 
-    startSnd.onended = () => {
-        qEl.style.fontSize = ""; qEl.style.color = "";
-        bgmSource = playSound('back'); if(bgmSource) bgmSource.loop = true;
-        nextQuestion();
-    };
+    // 3. ปรับปรุงให้เริ่มคำถามแรกเมื่อเพลงเริ่มเกมเล่นจบเท่านั้น
+    if (startSnd) {
+        startSnd.onended = () => {
+            qEl.style.fontSize = ""; qEl.style.color = "";
+            bgmSource = playSound('back'); if(bgmSource) bgmSource.loop = true;
+            nextQuestion();
+        };
+    } else {
+        setTimeout(() => {
+            qEl.style.fontSize = ""; qEl.style.color = "";
+            bgmSource = playSound('back'); if(bgmSource) bgmSource.loop = true;
+            nextQuestion();
+        }, 2000);
+    }
 }
 
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
     
-    // เคลียร์ค่า Announcer และ Info ก่อนเริ่มข้อใหม่
+    // 2. ล้างประกาศ aria-live ก่อนขึ้นข้อความใหม่
     announce(""); 
+    
     document.getElementById('info-box').style.visibility = 'hidden';
-
     const qData = questions[currentQIndex % questions.length];
     const qEl = document.getElementById('question-text');
     qEl.textContent = qData.q;
@@ -227,7 +253,7 @@ function nextQuestion() {
     b2.setAttribute('aria-label', 'มั่วนิ่ม'); b2.onclick=()=>checkAnswer(1===qData.c, b2);
     
     grid.appendChild(b1); grid.appendChild(b2);
-    setTimeout(() => { qEl.focus(); }, 150);
+    setTimeout(() => { qEl.focus(); }, 100);
     startTimer();
 }
 
@@ -243,6 +269,8 @@ function startTimer() {
 
 function checkAnswer(isCorrect, btn) {
     clearInterval(timerInterval);
+    
+    // 1. ปิดปุ่มทั้งหมดทันทีเพื่อป้องกันการกดซ้ำในข้อนั้นๆ
     const btns = document.querySelectorAll('.option-btn');
     btns.forEach(b => b.disabled = true);
 
@@ -275,11 +303,10 @@ function checkAnswer(isCorrect, btn) {
     document.getElementById('info-box').textContent = infoText;
     document.getElementById('info-box').style.visibility = 'visible';
     
-    // ประกาศผลพร้อมเฉลย (จะถูก Clean เมื่อขึ้นข้อใหม่)
-    announce(`${fb} ${infoText}`);
+    announce(`${fb} ข้อมูล: ${infoText}`);
     
     currentQIndex++;
-    setTimeout(nextQuestion, 5000);
+    setTimeout(nextQuestion, 4000);
 }
 
 function triggerJump(attacker) {
@@ -302,21 +329,22 @@ function updateHP() {
 
 function endGame() {
     if(bgmSource) bgmSource.stop();
-    const win = botHP <= 0;
-    
-    // Clean ข้อมูลเก่าออกให้หมดก่อนประกาศจบเกม
+    // 4. ตัดการประกาศ aria live และโฟกัสไปที่ Heading หลังจากเสียงจบ
     announce(""); 
-    document.getElementById('info-box').style.visibility = 'hidden';
-
+    const win = botHP <= 0;
+    const endSnd = playSound(win ? 'win' : 'lost');
+    
     setTimeout(() => {
-        playSound(win ? 'win' : 'lost');
-        const finalMsg = win ? "ชัยชนะเป็นของคุณ! คุณคือจ้าวนักตัดสิน" : "พ่ายแพ้ให้กับบอท... ลองใหม่อีกครั้งนะ";
-        
-        document.getElementById('question-text').textContent = win ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ให้กับบอท...";
+        document.getElementById('info-box').style.visibility = 'hidden';
+        const qEl = document.getElementById('question-text');
+        qEl.textContent = win ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ให้กับบอท...";
         document.getElementById('options-grid').innerHTML = `<button class="option-btn" onclick="location.reload()" style="width:140px; height:50px; font-size:1.1rem; border-radius:8px;">เล่นใหม่</button>`;
         
-        // ประกาศจบเกมครั้งสุดท้าย
-        announce(finalMsg);
+        if (endSnd) {
+            endSnd.onended = () => { qEl.focus(); };
+        } else {
+            qEl.focus();
+        }
     }, 500);
 }
 </script>
