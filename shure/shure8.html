@@ -55,7 +55,6 @@
             font-size: 1.2rem;
             visibility: hidden;
             z-index: 10;
-            padding: 0 15px;
         }
 
         /* --- 3. Bottom Section (50%) --- */
@@ -76,7 +75,7 @@
         .hp-bar-bg { height: 10px; background: #333; border: 1px solid #fff; width: 100px; margin-bottom: 5px; overflow: hidden; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.3s ease-out; }
 
-        /* --- Animations --- */
+        /* --- Animations (Jump Attack Style) --- */
         .idle { animation: idleMove 2.5s ease-in-out infinite; }
         @keyframes idleMove { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
@@ -96,16 +95,25 @@
         }
         .b-jump { animation: botJump 0.8s ease-in-out !important; z-index: 50; }
 
-        @keyframes dizzy { 0% { transform: translateX(0); } 25% { transform: translateX(-5px) rotate(-3deg); } 75% { transform: translateX(5px) rotate(3deg); } 100% { transform: translateX(0); } }
+        @keyframes dizzy {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px) rotate(-3deg); }
+            75% { transform: translateX(5px) rotate(3deg); }
+            100% { transform: translateX(0); }
+        }
         .is-dizzy { animation: dizzy 0.2s infinite; filter: sepia(1) saturate(3) hue-rotate(-50deg); }
+
+        @keyframes pulse {
+            0% { scale: 1; } 50% { scale: 1.3; filter: brightness(1.5); } 100% { scale: 1; }
+        }
+        .combo-pulse { animation: pulse 0.5s ease-in-out; }
 
         .option-btn {
             width: 90px; height: 90px; font-size: 2.8rem; border: none; cursor: pointer;
             border-radius: 50%; background: #444; color: white; transition: 0.3s;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
         }
-        .option-btn:disabled { cursor: default; opacity: 0.8; }
-        .option-btn:hover:not(:disabled) { transform: scale(1.1); background: #555; }
+        .option-btn:hover { transform: scale(1.1); background: #555; }
         .option-btn.correct { background: var(--correct-color) !important; }
         .option-btn.wrong { background: var(--wrong-color) !important; }
 
@@ -122,7 +130,7 @@
 
     <div id="start-screen" style="position:absolute; inset:0; background:rgba(0,0,0,0.95); z-index:200; display:flex; flex-direction:column; justify-content:center; align-items:center;">
         <h1 style="font-size:3rem; color:var(--combo-color); margin-bottom:30px;">ชัวร์หรือมั่วนิ่ม</h1>
-        <button class="option-btn" onclick="startGameSequence()" style="width:180px; height:60px; border-radius:10px; font-size:1.4rem;">เริ่มเกม</button>
+        <button class="option-btn" onclick="startGame()" style="width:180px; height:60px; border-radius:10px; font-size:1.4rem;">เริ่มเกม</button>
     </div>
 
     <div id="top-ui">
@@ -178,7 +186,13 @@ async function loadSound(name, url) {
     } catch (e) { console.error(name, "failed"); }
 }
 
-const soundFiles = [['start','audio/start.mp3'],['back','audio/back.mp3'],['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],['atc','audio/atc.mp3'],['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],['en3','audio/en3.mp3'],['enc','audio/enc.mp3'],['win','audio/win.mp3'],['lost','audio/lost.mp3'],['combo','audio/combo.mp3']];
+const soundFiles = [
+    ['start','audio/start.mp3'],['back','audio/back.mp3'],
+    ['at1','audio/at1.mp3'],['at2','audio/at2.mp3'],['at3','audio/at3.mp3'],
+    ['atc','audio/atc.mp3'],['en1','audio/en1.mp3'],['en2','audio/en2.mp3'],
+    ['en3','audio/en3.mp3'],['enc','audio/enc.mp3'],['win','audio/win.mp3'],
+    ['lost','audio/lost.mp3'],['combo','audio/combo.mp3']
+];
 soundFiles.forEach(f => loadSound(f[0], f[1]));
 
 function playSound(name) { 
@@ -200,25 +214,11 @@ function announce(msg) {
     el.textContent = ""; setTimeout(() => { el.textContent = msg; }, 50);
 }
 
-// 1. เริ่มเกมโดยเล่นเสียง Start ให้จบก่อน
-function startGameSequence() {
+function startGame() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('start-screen').style.display = 'none';
-    
-    const startSnd = playSound('start');
-    const qEl = document.getElementById('question-text');
-    qEl.style.fontSize = "4rem"; qEl.style.color = "var(--combo-color)";
-    
-    qEl.textContent = "3";
-    setTimeout(() => { qEl.textContent = "2"; }, 500);
-    setTimeout(() => { qEl.textContent = "1"; }, 1000);
-    setTimeout(() => { qEl.textContent = "GO!"; qEl.style.color = "#ff3300"; }, 1500);
-
-    startSnd.onended = () => {
-        qEl.style.fontSize = ""; qEl.style.color = "";
-        bgmSource = playSound('back'); if(bgmSource) bgmSource.loop = true;
-        nextQuestion();
-    };
+    bgmSource = playSound('back'); if(bgmSource) bgmSource.loop = true;
+    nextQuestion();
 }
 
 function nextQuestion() {
@@ -252,14 +252,8 @@ function startTimer() {
     }, 100);
 }
 
-// 2. ป้องกันการกดซ้ำโดยการปิดปุ่มทันที
 function checkAnswer(isCorrect, btn) {
     clearInterval(timerInterval);
-    
-    // ปิดปุ่มทั้งหมดทันทีเพื่อกันกดซ้ำ
-    const btns = document.querySelectorAll('.option-btn');
-    btns.forEach(b => b.disabled = true);
-
     const qData = questions[currentQIndex % questions.length];
     const pG = document.getElementById('player-group'), bG = document.getElementById('bot-group');
     let fb = "";
@@ -268,7 +262,8 @@ function checkAnswer(isCorrect, btn) {
         if(btn) btn.classList.add('correct');
         comboCount = comboCount < 0 ? 1 : comboCount + 1;
         if (comboCount >= 4) {
-            playSound('atc'); playSound('combo'); botHP -= 300; comboCount = 0; fb = "คอมโบสำเร็จ! ";
+            playSound('atc'); playSound('combo'); pG.classList.add('combo-pulse');
+            botHP -= 300; comboCount = 0; fb = "คอมโบสำเร็จ! ";
         } else {
             lastAtSound = playRandomSound('at', lastAtSound); botHP -= 150; fb = "ถูกต้อง! ";
         }
@@ -277,7 +272,8 @@ function checkAnswer(isCorrect, btn) {
         if(btn) btn.classList.add('wrong');
         comboCount = comboCount > 0 ? -1 : comboCount - 1;
         if (comboCount <= -4) {
-            playSound('enc'); playSound('combo'); playerHP -= 300; comboCount = 0; fb = "บอทใช้คอมโบ! ";
+            playSound('enc'); playSound('combo'); bG.classList.add('combo-pulse');
+            playerHP -= 300; comboCount = 0; fb = "บอทใช้คอมโบ! ";
         } else {
             lastEnSound = playRandomSound('en', lastEnSound); playerHP -= 150; fb = "พลาดแล้ว! ";
         }
@@ -289,20 +285,20 @@ function checkAnswer(isCorrect, btn) {
     document.getElementById('info-box').textContent = infoText;
     document.getElementById('info-box').style.visibility = 'visible';
     
-    announce(`${fb} ข้อมูล: ${infoText}`);
+    announce(`${fb} พลังคุณ ${Math.max(0, playerHP)} บอท ${Math.max(0, botHP)}. ข้อมูล: ${infoText}`);
     
     currentQIndex++;
-    setTimeout(nextQuestion, 4000);
+    setTimeout(nextQuestion, 5000);
 }
 
 function triggerJump(attacker) {
     const p = document.getElementById('player-group'), b = document.getElementById('bot-group');
     if(attacker === 'player') {
         p.classList.remove('idle'); p.classList.add('p-jump'); b.classList.add('is-dizzy');
-        setTimeout(() => { p.classList.remove('p-jump'); p.classList.add('idle'); b.classList.remove('is-dizzy'); }, 800);
+        setTimeout(() => { p.classList.remove('p-jump', 'combo-pulse'); p.classList.add('idle'); b.classList.remove('is-dizzy'); }, 800);
     } else {
         b.classList.remove('idle'); b.classList.add('b-jump'); p.classList.add('is-dizzy');
-        setTimeout(() => { b.classList.remove('b-jump'); b.classList.add('idle'); p.classList.remove('is-dizzy'); }, 800);
+        setTimeout(() => { b.classList.remove('b-jump', 'combo-pulse'); b.classList.add('idle'); p.classList.remove('is-dizzy'); }, 800);
     }
 }
 
@@ -318,7 +314,6 @@ function endGame() {
     const win = botHP <= 0;
     setTimeout(() => {
         playSound(win ? 'win' : 'lost');
-        document.getElementById('info-box').style.visibility = 'hidden';
         document.getElementById('question-text').textContent = win ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ให้กับบอท...";
         document.getElementById('options-grid').innerHTML = `<button class="option-btn" onclick="location.reload()" style="width:140px; height:50px; font-size:1.1rem; border-radius:8px;">เล่นใหม่</button>`;
     }, 500);
