@@ -39,7 +39,6 @@
             transition: filter 2s ease-in;
         }
 
-        /* --- ส่วนบน: แถบพลังและตัวละคร --- */
         #battle-field {
             flex: 0 0 35%;
             display: flex; align-items: flex-end; justify-content: space-between;
@@ -54,12 +53,10 @@
             position: relative; outline: none;
         }
 
-        /* ปิด HP Bar จาก Screen Reader */
         .hp-bar-bg { height: 12px; background: #1e293b; border: 2px solid #fff; width: 100%; margin-bottom: 8px; overflow: hidden; border-radius: 6px; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.4s cubic-bezier(0.22, 0.61, 0.36, 1); }
         .character-svg { width: 100%; height: auto; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.5)); }
 
-        /* --- ส่วนกลาง: คำถามและปุ่มกด --- */
         #center-ui {
             flex: 0 0 auto;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -67,7 +64,6 @@
             z-index: 20;
         }
 
-        /* ปิด Timer จาก Screen Reader */
         #timer-bar-bg { width: 90%; background: #1e293b; height: 8px; margin-bottom: 20px; border-radius: 4px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
         #timer-fill { height: 100%; width: 100%; background: var(--combo-color); transition: width 0.1s linear; border-radius: 4px; }
 
@@ -103,7 +99,6 @@
         .option-btn.correct { background-color: var(--correct-color) !important; transform: scale(1.15); box-shadow: 0 0 40px var(--correct-color); z-index: 5; }
         .option-btn.wrong { background-color: var(--wrong-color) !important; opacity: 0.8; transform: scale(0.9); }
 
-        /* --- ส่วนล่าง: ขยายพื้นที่ Info --- */
         #bottom-ui {
             flex: 1;
             display: flex; align-items: flex-start; justify-content: center;
@@ -122,7 +117,6 @@
             margin-top: 20px;
         }
 
-        /* --- เอฟเฟกต์และอนิเมชั่น --- */
         .damage-popup { position: absolute; top: -60px; font-weight: 900; font-size: 2.2rem; animation: damageFloat 1s forwards; z-index: 100; text-shadow: 2px 2px 0 #000; pointer-events: none; }
         @keyframes damageFloat { 0% { transform: translateY(0) scale(0.5); opacity: 1; } 100% { transform: translateY(-80px) scale(1.2); opacity: 0; } }
         
@@ -213,7 +207,7 @@
 
     <div id="center-ui">
         <div id="timer-bar-bg" aria-hidden="true"><div id="timer-fill"></div></div>
-        <div id="question-plate" role="region" aria-label="ส่วนแสดงคำถาม">
+        <div id="question-plate">
             <h2 id="question-text" tabindex="-1"></h2>
         </div>
         <div class="options-grid" id="options-grid"></div>
@@ -319,15 +313,11 @@ function startGameSequence() {
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
     if (currentQIndex >= shuffledQuestions.length) { shuffleQuestions(); }
-    
-    // ล้างค่า announcer ก่อน
     announce(""); 
     document.getElementById('info-box').style.visibility = 'hidden';
-    
     const qData = shuffledQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
     qEl.textContent = qData.q;
-    
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
     const b1 = document.createElement('button'); b1.className='option-btn'; b1.innerHTML='👍';
@@ -335,9 +325,7 @@ function nextQuestion() {
     const b2 = document.createElement('button'); b2.className='option-btn'; b2.innerHTML='👎';
     b2.setAttribute('aria-label', 'มั่วนิ่ม'); b2.onclick=()=>checkAnswer(1===qData.c, b2);
     grid.appendChild(b1); grid.appendChild(b2);
-
-    // ให้เวลา DOM Render เล็กน้อยก่อน Focus
-    setTimeout(() => { qEl.focus(); }, 400);
+    setTimeout(() => { qEl.focus(); }, 100);
     startTimer();
 }
 
@@ -382,14 +370,14 @@ function checkAnswer(isCorrect, btn) {
     document.getElementById('info-box').textContent = infoText;
     document.getElementById('info-box').style.visibility = 'visible';
     
-    // หน่วงเวลาประกาศผล 1.5 วินาที เพื่อรอ Sound Effect จบ
+    // หน่วงเวลาประกาศผล 1.5 วินาที เพื่อให้เสียง Sound Effect เล่นนำไปก่อน
     setTimeout(() => {
         announce(`${fb} ข้อมูล: ${infoText}`);
     }, 1500);
 
     currentQIndex++;
-    // เพิ่มเวลาพักระหว่างข้อเพื่อให้ VO อ่านจบสมบูรณ์
-    setTimeout(nextQuestion, 7500);
+    // ปรับเวลารอก่อนขึ้นข้อใหม่ให้ยาวขึ้นเพื่อให้ VO อ่านจบ
+    setTimeout(nextQuestion, 7000);
 }
 
 function showDamage(target, amount) {
@@ -416,7 +404,7 @@ function triggerJump(attacker) {
 function updateHP() {
     document.getElementById('player-hp-fill').style.width = Math.max(0, playerHP/10) + "%";
     document.getElementById('bot-hp-fill').style.width = Math.max(0, botHP/10) + "%";
-    // อัปเดต aria-label ให้ระบุตัวเลขที่ชัดเจน เพื่อให้ Screen Reader ตรวจสอบได้
+    // อัปเดต aria-label ให้เป็นตัวเลขเพื่อให้ VoiceOver อ่านค่าพลังได้โดยตรงเมื่อปัดมาหาตัวละคร
     document.getElementById('player-group').setAttribute('aria-label', `ผู้เล่น พลังเหลือ ${Math.max(0, playerHP)}`);
     document.getElementById('bot-group').setAttribute('aria-label', `บอท พลังเหลือ ${Math.max(0, botHP)}`);
 }
