@@ -54,12 +54,11 @@
             position: relative; outline: none;
         }
 
-        /* ปิด HP Bar จาก Screen Reader */
         .hp-bar-bg { height: 12px; background: #1e293b; border: 2px solid #fff; width: 100%; margin-bottom: 8px; overflow: hidden; border-radius: 6px; }
         .hp-fill { height: 100%; width: 100%; transition: width 0.4s cubic-bezier(0.22, 0.61, 0.36, 1); }
         .character-svg { width: 100%; height: auto; filter: drop-shadow(0 5px 15px rgba(0,0,0,0.5)); }
 
-        /* --- ส่วนกลาง: คำถามและปุ่มกด --- */
+        /* --- ส่วนกลาง: คำถามและปุ่มกด (ปรับให้ไม่ขยายกินพื้นที่ล่าง) --- */
         #center-ui {
             flex: 0 0 auto;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -67,7 +66,6 @@
             z-index: 20;
         }
 
-        /* ปิด Timer จาก Screen Reader */
         #timer-bar-bg { width: 90%; background: #1e293b; height: 8px; margin-bottom: 20px; border-radius: 4px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
         #timer-fill { height: 100%; width: 100%; background: var(--combo-color); transition: width 0.1s linear; border-radius: 4px; }
 
@@ -103,7 +101,7 @@
         .option-btn.correct { background-color: var(--correct-color) !important; transform: scale(1.15); box-shadow: 0 0 40px var(--correct-color); z-index: 5; }
         .option-btn.wrong { background-color: var(--wrong-color) !important; opacity: 0.8; transform: scale(0.9); }
 
-        /* --- ส่วนล่าง: ขยายพื้นที่ Info --- */
+        /* --- ส่วนล่าง: ขยายพื้นที่ Info ให้เต็มบริเวณว่างที่เหลือ --- */
         #bottom-ui {
             flex: 1;
             display: flex; align-items: flex-start; justify-content: center;
@@ -168,7 +166,7 @@
             <div class="hp-bar-bg" aria-hidden="true">
                 <div id="player-hp-fill" class="hp-fill" style="background:var(--player-color); box-shadow: 0 0 15px var(--player-color);"></div>
             </div>
-            <svg class="character-svg" viewBox="0 0 100 100" aria-hidden="true">
+            <svg class="character-svg" viewBox="0 0 100 100">
                 <rect x="38" y="75" width="8" height="15" fill="#e2e8f0" stroke="#fff" stroke-width="1"/>
                 <rect x="54" y="75" width="8" height="15" fill="#e2e8f0" stroke="#fff" stroke-width="1"/>
                 <path d="M30 50 Q30 40 50 40 Q70 40 70 50 L65 75 L35 75 Z" fill="var(--player-color)" stroke="#fff" stroke-width="2"/>
@@ -183,7 +181,7 @@
                 <path d="M50 30 L50 34" fill="none" stroke="#1a1a1a" stroke-width="1"/>
                 <path d="M45 38 Q50 42 55 38" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
             </svg>
-            <span style="font-size:0.8rem; color:var(--player-color); font-weight:900; margin-top:5px; letter-spacing:1px;" aria-hidden="true">YOU</span>
+            <span style="font-size:0.8rem; color:var(--player-color); font-weight:900; margin-top:5px; letter-spacing:1px;">YOU</span>
         </section>
 
         <section id="bot-group" class="side-group idle slide-in-right" role="group" aria-label="บอท พลัง 1000" tabindex="0">
@@ -191,7 +189,7 @@
             <div class="hp-bar-bg" aria-hidden="true">
                 <div id="bot-hp-fill" class="hp-fill" style="background:var(--bot-color); box-shadow: 0 0 15px var(--bot-color);"></div>
             </div>
-            <svg class="character-svg" viewBox="0 0 100 100" aria-hidden="true">
+            <svg class="character-svg" viewBox="0 0 100 100">
                 <rect x="38" y="75" width="8" height="15" fill="#334155" stroke="var(--bot-color)" stroke-width="1"/>
                 <rect x="54" y="75" width="8" height="15" fill="#334155" stroke="var(--bot-color)" stroke-width="1"/>
                 <path d="M30 50 Q30 40 50 40 Q70 40 70 50 L65 75 L35 75 Z" fill="#1e293b" stroke="var(--bot-color)" stroke-width="2"/>
@@ -207,14 +205,14 @@
                 </circle>
                 <path d="M45 38 L55 38" fill="none" stroke="var(--bot-color)" stroke-width="2"/>
             </svg>
-            <span style="font-size:0.8rem; color:var(--bot-color); font-weight:900; margin-top:5px; letter-spacing:1px;" aria-hidden="true">ENEMY</span>
+            <span style="font-size:0.8rem; color:var(--bot-color); font-weight:900; margin-top:5px; letter-spacing:1px;">ENEMY</span>
         </section>
     </div>
 
     <div id="center-ui">
-        <div id="timer-bar-bg" aria-hidden="true"><div id="timer-fill"></div></div>
-        <div id="question-plate" role="region" aria-label="ส่วนแสดงคำถาม">
-            <h2 id="question-text" tabindex="-1"></h2>
+        <div id="timer-bar-bg"><div id="timer-fill"></div></div>
+        <div id="question-plate">
+            <h2 id="question-text" tabindex="-1" aria-hidden="true"></h2>
         </div>
         <div class="options-grid" id="options-grid"></div>
     </div>
@@ -319,15 +317,11 @@ function startGameSequence() {
 function nextQuestion() {
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
     if (currentQIndex >= shuffledQuestions.length) { shuffleQuestions(); }
-    
-    // ล้างค่า announcer ก่อน
     announce(""); 
     document.getElementById('info-box').style.visibility = 'hidden';
-    
     const qData = shuffledQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
     qEl.textContent = qData.q;
-    
     const grid = document.getElementById('options-grid');
     grid.innerHTML = '';
     const b1 = document.createElement('button'); b1.className='option-btn'; b1.innerHTML='👍';
@@ -335,9 +329,7 @@ function nextQuestion() {
     const b2 = document.createElement('button'); b2.className='option-btn'; b2.innerHTML='👎';
     b2.setAttribute('aria-label', 'มั่วนิ่ม'); b2.onclick=()=>checkAnswer(1===qData.c, b2);
     grid.appendChild(b1); grid.appendChild(b2);
-
-    // ให้เวลา DOM Render เล็กน้อยก่อน Focus
-    setTimeout(() => { qEl.focus(); }, 400);
+    setTimeout(() => { qEl.focus(); }, 100);
     startTimer();
 }
 
@@ -381,15 +373,9 @@ function checkAnswer(isCorrect, btn) {
     const infoText = qData.info;
     document.getElementById('info-box').textContent = infoText;
     document.getElementById('info-box').style.visibility = 'visible';
-    
-    // หน่วงเวลาประกาศผล 1.5 วินาที เพื่อรอ Sound Effect จบ
-    setTimeout(() => {
-        announce(`${fb} ข้อมูล: ${infoText}`);
-    }, 1500);
-
+    announce(`${fb} ข้อมูล: ${infoText}`);
     currentQIndex++;
-    // เพิ่มเวลาพักระหว่างข้อเพื่อให้ VO อ่านจบสมบูรณ์
-    setTimeout(nextQuestion, 7500);
+    setTimeout(nextQuestion, 6000);
 }
 
 function showDamage(target, amount) {
@@ -416,7 +402,6 @@ function triggerJump(attacker) {
 function updateHP() {
     document.getElementById('player-hp-fill').style.width = Math.max(0, playerHP/10) + "%";
     document.getElementById('bot-hp-fill').style.width = Math.max(0, botHP/10) + "%";
-    // อัปเดต aria-label ให้ระบุตัวเลขที่ชัดเจน เพื่อให้ Screen Reader ตรวจสอบได้
     document.getElementById('player-group').setAttribute('aria-label', `ผู้เล่น พลังเหลือ ${Math.max(0, playerHP)}`);
     document.getElementById('bot-group').setAttribute('aria-label', `บอท พลังเหลือ ${Math.max(0, botHP)}`);
 }
