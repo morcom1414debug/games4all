@@ -216,7 +216,7 @@
                 <li><span class="highlight">หากเลือกอาวุธผิด: คุณจะถูกสังหารทันที และภารกิจล้มเหลว ต้องเริ่มใหม่ตั้งแต่ต้น!</span></li>
             </ul>
         </div>
-        <button id="start-mission-btn" onclick="startGame()">เริ่มภารกิจ</button>
+        <button onclick="startGame()">เริ่มภารกิจ</button>
     </div>
 
     <div id="game-screen" class="screen">
@@ -726,26 +726,15 @@
         currentStage = 0;
         currentMission = 0;
         
-        // [iOS VoiceOver Fix Step 1]: สั่งล้างโฟกัส (Blur) ออกจากปุ่มที่กดทันที เพื่อไม่ให้เกิด Focus Trap ค้างที่หน้าจอ
-        if (document.activeElement) {
-            document.activeElement.blur();
-        }
-        
-        // [iOS VoiceOver Fix Step 2]: สลับหน้าจอและเรนเดอร์เนื้อหาของข้อแรกเตรียมขึ้นมารอใน DOM ทันที
-        // วิธีนี้จะช่วยให้เมื่อ start.mp3 เล่นจบ โครงสร้าง HTML ทุกอย่างจะนิ่งสนิท 100% ป้องกัน VoiceOver เอ๋อ
         switchScreen(gameScreen);
         backBtn.style.display = 'none'; 
         playBgm(); 
-        renderMission(true); 
         
-        // เล่นไฟล์ start.mp3 และรอจนกว่ากระบวนการเล่นจะจบลงอย่างสมบูรณ์
+        // เล่นไฟล์ start.mp3 และรอจนกว่ากระบวนการเล่นจะจบลงอย่างสมบูรณ์ก่อน
         await playSfx('start');
         
-        // [iOS VoiceOver Fix Step 3]: เมื่อเสียง start.mp3 จบลง สั่งชี้โฟกัสซ้ำอีกครั้งผ่านระบบสลับคิวเวลา (Asynchronous)
-        // หน่วงเวลาเซฟตี้ 300ms เพื่อปล่อยให้ VoiceOver บน iOS คืนค่าสถานะหน้าจอได้อย่างสมบูรณ์แบบ
-        setTimeout(() => {
-            currentStageTitle.focus();
-        }, 300);
+        // เมื่อเสียงเล่นจบ ค่อยไปทำตามกำหนดเดิมทั้งหมด (วาดเนื้อหาข้อแรกและชี้ Focus)
+        renderMission(true); 
     }
 
     function renderMission(isFirstStart = false) {
@@ -770,13 +759,10 @@
         void gameScreen.offsetWidth; 
         gameScreen.classList.add('fadeIn');
 
-        // การขยับโฟกัสของข้อแรกจะไปทำงานที่ตอนปลายของฟังก์ชัน startGame() หลังจากเสียงจบลง
-        // ส่วนข้อปกติ (2, 3, 4, 5) จะใช้เงื่อนไขหน่วงเวลา 100ms ตามเดิม
-        if (!isFirstStart) {
-            setTimeout(() => {
-                currentStageTitle.focus();
-            }, 100);
-        }
+        const focusDelay = isFirstStart ? 250 : 100;
+        setTimeout(() => {
+            currentStageTitle.focus();
+        }, focusDelay);
     }
 
     async function checkAnswer(selectedIndex) {
