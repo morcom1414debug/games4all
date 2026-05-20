@@ -66,7 +66,7 @@
         /* Style for h3 to make them look distinct based on class */
         h3.main-title {
             font-size: 2.5rem;
-            color: #ffaa00;
+            color: #ffaa00; /* ธีมสีส้มทองแดงให้ดูเป็นปฏิบัติการทหาร */
             text-shadow: 0 0 10px #aa5500;
             margin-bottom: 5px;
             line-height: 1.2;
@@ -413,7 +413,7 @@
                     choices: choicesList,
                     correct: 2, // ระเบิด
                     deaths: [
-                        "คุณวิ่งเข้าไปใช้มีด แต่โล่เหล็กกระแทกคุณจนล้มลง แล้วถูกรุมกระทืบจนตาย",
+                        "คุณวิ่งเข้าไปใช้มีด But โล่เหล็กกระแทกคุณจนล้มลง แล้วถูกรุมกระทืบจนตาย",
                         "คุณยิงปืนอัดใส่โล่จนหมดแม็กกาซีน พวกมันไม่สะทกสะท้านและเดินหน้ามาทับคุณ",
                         null
                     ]
@@ -573,10 +573,9 @@
 
     // WEB AUDIO API MANAGEMENT
     let audioCtx = null;
-    let bgmNode = null;       
-    let currentSfxNode = null; 
+    let bgmNode = null;       // สำหรับเสียง back.mp3 (BGM Loop)
+    let currentSfxNode = null; // สำหรับเสียงเอฟเฟกต์เดี่ยวๆ (01, 02, 03, t, lost, win)
     const audioBuffers = {};
-    let isBgmPlayingRequested = false; // ตัวแปรเก็บสถานะว่าผู้เล่นต้องการเปิดเพลง BGM หรือไม่
 
     const audioFiles = {
         bgm: 'audio/back.mp3',
@@ -588,27 +587,22 @@
         win: 'audio/win.mp3'
     };
 
-    // ฟังก์ชันสร้าง AudioContext และดึงไฟล์เสียงทั้งหมดมาโหลดล่วงหน้าทันที
-    function preloadAudio() {
+    function initAudio() {
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            // เริ่มต้นโหลดไฟล์ทั้งหมดเก็บลงบัฟเฟอร์
+            for (const [key, url] of Object.entries(audioFiles)) {
+                fetch(url)
+                    .then(response => response.arrayBuffer())
+                    .then(data => audioCtx.decodeAudioData(data))
+                    .then(buffer => {
+                        audioBuffers[key] = buffer;
+                    })
+                    .catch(err => console.error("Error loading audio file:", url, err));
+            }
         }
-        
-        // วนลูปดาวน์โหลดไฟล์มารอไว้ในบัฟเฟอร์
-        for (const [key, url] of Object.entries(audioFiles)) {
-            if (audioBuffers[key]) continue; // ถ้าเคยโหลดแล้วข้ามไป
-            
-            fetch(url)
-                .then(response => response.arrayBuffer())
-                .then(data => audioCtx.decodeAudioData(data))
-                .then(buffer => {
-                    audioBuffers[key] = buffer;
-                    // ป้องกันเคส Race Condition: ถ้าไฟล์ BGM โหลดเสร็จทีหลังปุ่มกดเริ่มภารกิจ ให้สั่งเล่นทันที
-                    if (key === 'bgm' && isBgmPlayingRequested && !bgmNode) {
-                        playBgm();
-                    }
-                })
-                .catch(err => console.error("Error loading audio file:", url, err));
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
         }
     }
 
@@ -622,7 +616,6 @@
     }
 
     function stopBgm() {
-        isBgmPlayingRequested = false;
         if (bgmNode) {
             try {
                 bgmNode.stop();
@@ -632,16 +625,8 @@
     }
 
     function playBgm() {
-        if (audioCtx && audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
-        
         stopBgm();
-        isBgmPlayingRequested = true; // ยืนยันสิทธิ์ความต้องการเล่น BGM
-        
-        // หากไฟล์ bgm ยังโหลดจากเซิร์ฟเวอร์ไม่เสร็จ ให้ข้ามไปก่อน (รอให้ preloadAudio จัดการเล่นเมื่อโหลดเสร็จ)
-        if (!audioBuffers['bgm']) return; 
-        
+        if (!audioBuffers['bgm']) return;
         bgmNode = audioCtx.createBufferSource();
         bgmNode.buffer = audioBuffers['bgm'];
         bgmNode.loop = true;
@@ -649,12 +634,10 @@
         bgmNode.start(0);
     }
 
+    // ฟังก์ชันช่วยเล่นเสียงเอฟเฟกต์แบบลำดับขั้นตอน (Sequence Async)
     function playSfx(key) {
         return new Promise((resolve) => {
             stopCurrentSfx();
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
             if (!audioBuffers[key]) {
                 resolve();
                 return;
@@ -671,22 +654,20 @@
         });
     }
 
-    // เมื่อเปิดหน้าเว็บ: แสดงปุ่มย้อนกลับ, ตั้ง Focus และแอบโหลดไฟล์เสียงทันทีล่วงหน้า
+    // หน้าแรกทำการแสดงปุ่มย้อนกลับและ Focus ไปที่ Heading แรกสุด
     window.addEventListener('DOMContentLoaded', () => {
         backBtn.style.display = 'block';
         document.getElementById('main-title-heading').focus();
         
-        // แอบดึงไฟล์เสียงมาเก็บไว้ล่วงหน้าทันทีโดยผู้เล่นไม่ต้องกดอะไร
-        preloadAudio();
-        
+        // ผูก Event เผื่อผู้เล่นทำการปิดหน้าจอหรือเปลี่ยนหน้าระบบเสียงจะหยุดทันที
         window.addEventListener('beforeunload', () => {
             stopBgm();
             stopCurrentSfx();
         });
         
-        // ปลดล็อกระบบเสียงเพิ่มเติมเมื่อมีการปฏิสัมพันธ์ร่วมกับหน้าจอ
-        document.body.addEventListener('click', preloadAudio, { once: true });
-        document.body.addEventListener('keydown', preloadAudio, { once: true });
+        // เปิดใช้งาน Audio API ผ่านการ Interact ครั้งแรก
+        document.body.addEventListener('click', initAudio, { once: true });
+        document.body.addEventListener('keydown', initAudio, { once: true });
     });
 
     // CHEAT CODE SYSTEM "endgame" WITHIN 2 SECONDS
@@ -694,14 +675,19 @@
     let cheatTimeout = null;
 
     window.addEventListener('keydown', (e) => {
+        // สนใจเฉพาะตัวอักษรเดี่ยว (A-Z)
         if (e.key.length === 1) {
+            // เคลียร์ Timeout เก่าถ้ามีการพิมพ์ตัวถัดไปต่อเนื่อง
             if (cheatTimeout) clearTimeout(cheatTimeout);
+            
             cheatString += e.key.toLowerCase();
 
+            // ตรวจสอบว่าคำลงท้ายหรือตรงกับ "endgame" หรือไม่
             if (cheatString.includes("endgame")) {
                 cheatString = "";
                 triggerEndgameCheat();
             } else {
+                // หากไม่มีการพิมพ์ต่อภายใน 2 วินาที (2000ms) ให้ล้างข้อมูลทิ้ง
                 cheatTimeout = setTimeout(() => {
                     cheatString = "";
                 }, 2000);
@@ -710,39 +696,47 @@
     });
 
     function triggerEndgameCheat() {
-        preloadAudio();
+        // ข้ามไปยัง Stage สุดท้าย และภารกิจสุดท้ายทันที (ด่าน 5 ภารกิจ 5 คือ Index 4, 4)
+        initAudio();
         currentStage = 4;
         currentMission = 4;
         
+        // หากอยู่นอกหน้าเล่นเกม ให้สลับหน้าและเปิดเพลงพื้นหลังตามขั้นตอนปกติ
         if (!gameScreen.classList.contains('active')) {
             switchScreen(gameScreen);
             playBgm();
         }
-        backBtn.style.display = 'none';
-        renderMission(true);
+        backBtn.style.display = 'none'; // ซ่อนปุ่มกลับสู่ชุมชนตามปกติของหน้าในเกม
+
+        renderMission(true); // render พร้อมตั้ง Focus ไปที่หัวข้อภารกิจทันที
     }
 
     // FUNCTIONS GAMEPLAY
     function startGame() {
-        preloadAudio();
+        initAudio();
         currentStage = 0;
         currentMission = 0;
         switchScreen(gameScreen);
-        backBtn.style.display = 'none'; 
-        playBgm(); // เรียกเปิดเพลงพื้นหลังทันที
-        renderMission(true); 
+        backBtn.style.display = 'none'; // ซ่อนปุ่มย้อนกลับระหว่างเล่นเกม
+        playBgm();
+        renderMission(true); // true หมายถึงเข้ามาที่ภารกิจแรกเพื่อจัดการ Focus แบบไม่ต้องรอเสียงก่อนหน้า
     }
 
     function renderMission(isFirstStart = false) {
         const stageData = gameData[currentStage];
         const missionData = stageData.missions[currentMission];
 
+        // Update Headings
         currentStageTitle.innerText = stageData.title;
         currentMissionTitle.innerText = missionData.title;
+
+        // Update Story
         storyText.innerText = missionData.text;
         
+        // Clear old buttons
         choicesContainer.innerHTML = '';
 
+        // Create new buttons based on choices
         missionData.choices.forEach((choice, index) => {
             const btn = document.createElement('button');
             btn.className = 'choice-btn';
@@ -751,10 +745,12 @@
             choicesContainer.appendChild(btn);
         });
 
+        // Animation reset
         gameScreen.classList.remove('fadeIn');
-        void gameScreen.offsetWidth; 
+        void gameScreen.offsetWidth; // trigger reflow
         gameScreen.classList.add('fadeIn');
 
+        // หากเป็นการเปลี่ยนหน้าด่าน/ใช้สูตรลัด ให้สลับ Focus ตามเงื่อนไขทันที
         if (isFirstStart) {
             if (currentMission === 0) {
                 currentStageTitle.focus();
@@ -765,36 +761,43 @@
     }
 
     async function checkAnswer(selectedIndex) {
-        preloadAudio();
+        initAudio();
         const missionData = gameData[currentStage].missions[currentMission];
         const correctIndex = missionData.correct;
 
+        // จับคู่อาวุธกับไฟล์เสียง
         let weaponKey = '';
         if (selectedIndex === 0) weaponKey = 'knife';
         else if (selectedIndex === 1) weaponKey = 'gun';
         else if (selectedIndex === 2) weaponKey = 'grenade';
 
+        // 1. เล่นไฟล์เสียงประจำตัวเลือกที่กดให้จบก่อน
         await playSfx(weaponKey);
 
         if (selectedIndex === correctIndex) {
+            // ตรวจสอบว่าเป็นภารกิจสุดท้ายของเกมจริงหรือไม่ (Stage 5 Mission 5)
             const isLastMissionOfGame = (currentStage === gameData.length - 1 && currentMission === gameData[currentStage].missions.length - 1);
 
             if (isLastMissionOfGame) {
+                // ถ้าเป็นข้อสุดท้ายของเกมถูก ให้เล่น t.mp3 แล้วหยุด bgm จากนั้นเล่น win.mp3 ทันที
                 await playSfx('correct');
                 stopBgm();
                 switchScreen(winScreen);
-                backBtn.style.display = 'block'; 
+                backBtn.style.display = 'block'; // แสดงปุ่มย้อนกลับหน้าจบเกม
                 
+                // เล่นเสียงชัยชนะ และเมื่อเล่นจบจึงจัดการ Focus
                 await playSfx('win');
                 document.getElementById('win-heading').focus();
             } else {
+                // กรณีตอบถูกทั่วไป: เล่นไฟล์เสียง t.mp3 ต่อเนื่อง
                 await playSfx('correct');
                 nextMission();
             }
         } else {
+            // ตอบผิด: หยุดเสียง bgm ก่อน และเล่นไฟล์เสียง lost.mp3 ต่อเนื่อง
             stopBgm();
             switchScreen(gameOverScreen);
-            backBtn.style.display = 'block'; 
+            backBtn.style.display = 'block'; // แสดงปุ่มย้อนกลับหน้าจบเกม
             
             const reason = missionData.deaths[selectedIndex];
             deathReason.innerText = `สาเหตุที่ตาย: "${reason}"`;
@@ -802,6 +805,7 @@
             document.body.classList.add('shake-screen');
             setTimeout(() => document.body.classList.remove('shake-screen'), 500);
             
+            // เล่นเสียงพ่ายแพ้ และเมื่อเล่นจบจึงจัดการ Focus
             await playSfx('lost');
             document.getElementById('game-over-heading').focus();
         }
@@ -816,6 +820,7 @@
 
         if (currentStage < gameData.length) {
             renderMission(false);
+            // เมื่อสร้างหน้าภารกิจถัดไปเสร็จสิ้น ให้ Focus ตามกฎหลังจากเสียงตอบถูก (t.mp3) เล่นจบแล้ว
             if (currentMission === 0) {
                 currentStageTitle.focus();
             } else {
@@ -828,7 +833,7 @@
         stopBgm();
         stopCurrentSfx();
         switchScreen(startScreen);
-        backBtn.style.display = 'block'; 
+        backBtn.style.display = 'block'; // แสดงปุ่มย้อนกลับที่หน้าแรก
         setTimeout(() => {
             document.getElementById('main-title-heading').focus();
         }, 100);
@@ -838,6 +843,7 @@
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         screen.classList.add('active');
     }
+
 </script>
 
 </body>
