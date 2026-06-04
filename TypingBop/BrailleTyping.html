@@ -882,6 +882,7 @@ window.addEventListener('beforeunload', () => stopBackgroundBGM());
 document.addEventListener('keydown', (e) => {
     if (!running || isProcessingTimeout) return;
     const key = e.key.toLowerCase();
+    
     if (key in keyToDot) {
         const dot = keyToDot[key];
         if (!pressedDots.has(dot)) {
@@ -892,13 +893,17 @@ document.addEventListener('keydown', (e) => {
             const btn = lettersDiv.querySelector(`[data-letter="${dot}"]`);
             if (btn) btn.classList.add('used');
 
-            if (pressedDots.size > correctDotsSet.size) {
+            // แก้ไขจุดนี้: ถ้ากดปุ่มเกินจำนวนที่ถูกต้องของคอร์ดนั้น หรือกดคีย์อื่นที่ผิด pattern ไปเลย
+            if (pressedDots.size > correctDotsSet.size || !correctDotsSet.has(dot)) {
                 handleWrong();
                 return;
             }
 
             if (pressedDots.size === correctDotsSet.size) {
                 setTimeout(() => {
+                    // ตรวจเช็กอีกครั้งว่าถ้าเกิดถูกเรียกไปในคิวอื่นที่ประมวลผลเสร็จไปก่อนหน้าแล้ว ให้ข้ามไปเลย
+                    if (isProcessingTimeout) return;
+                    
                     const tsValues = Object.values(timestamps);
                     const minTs = Math.min(...tsValues);
                     const maxTs = Math.max(...tsValues);
