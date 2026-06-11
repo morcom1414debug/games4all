@@ -1333,6 +1333,7 @@ function startGameSequence() {
 }
 
 function nextQuestion() {
+    // นำคลาสออกและสั่งให้สลับกลับมาแสดงแผงคำถาม-ตัวเลือกทาง JS ทันที (แก้บั๊กภาพค้างบน iPhone)
     document.getElementById('game-container').classList.remove('showing-info');
     document.getElementById('center-ui').style.display = 'flex';
 
@@ -1340,7 +1341,7 @@ function nextQuestion() {
     if (currentQIndex >= shuffledQuestions.length) { shuffleQuestions(); }
     announce(""); 
     document.getElementById('info-box').style.visibility = 'hidden';
-    document.getElementById('info-box').setAttribute('aria-hidden', 'true'); 
+    document.getElementById('info-box').setAttribute('aria-hidden', 'true'); // คืนค่าปิดกั้นสำหรับคำถามถัดไป
     const qData = shuffledQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
     qEl.textContent = qData.q;
@@ -1394,19 +1395,20 @@ function checkAnswer(isCorrect, btn) {
     updateHP();
     const infoText = qData.info;
     
+    // ตั้งเวลา 1.5 วินาที เพื่อแสดงอนิเมชันและเสียงต่อสู้ให้จบก่อน แล้วค่อยสลับหน้าจอมาแสดง Info
     setTimeout(() => {
         const container = document.getElementById('game-container');
         const infoBox = document.getElementById('info-box');
         
+        // สั่งซ่อนแผงคำถาม-ตัวเลือกผ่าน JS โดยตรง เพื่อแก้ปัญหาตัวเรนเดอร์ของ WebKit บน iPhone ไม่ยอมรีเฟรชค่าตาม CSS class
         document.getElementById('center-ui').style.display = 'none';
+        
         container.classList.add('showing-info');
         
+        // ถอดการปิดกั้นชั่วคราวเพื่อให้เปิดรับการอ่านจากโฟกัสได้อย่างสมบูรณ์ทั้ง Windows และ iOS
         infoBox.removeAttribute('aria-hidden');
-        
-        /* แก้ไขจุดนี้จุดเดียว: ห่อคำอธิบายด้วยแท็ก <span> เพื่อแก้ปัญหา WebKit บน iOS (VoiceOver) 
-          ที่จะข้ามการอ่าน Text Node ดิบๆ ที่อยู่ข้างหลังคลาสสไตล์แบบ absolute (sr-only)
-        */
-        infoBox.innerHTML = `<span class="sr-only">${fb} ข้อมูล: </span><span>${infoText}</span>`;
+        // ใช้คลาส sr-only ฝังคำประกาศ fb ไว้ข้างหน้าตัวอธิบาย เพื่อให้ Screen Reader อ่านเรียงรอบเดียวอย่างแม่นยำ
+        infoBox.innerHTML = `<span class="sr-only">${fb} ข้อมูล: </span>${infoText}`;
         
         infoBox.setAttribute('tabindex', '-1');
         infoBox.focus();
@@ -1484,6 +1486,7 @@ function endGame() {
         const qEl = document.getElementById('question-text');
         qEl.textContent = win ? "ชัยชนะเป็นของคุณ!" : "พ่ายแพ้ให้กับบอท...";
         
+        /* เปลี่ยนปุ่ม เล่นใหม่ เป็นปุ่ม กลับสู่ชุมชน ในหน้าสรุปเกม */
         document.getElementById('options-grid').innerHTML = `
             <div class="end-game-btn-container">
                 <button class="home-btn-hex" style="position:static;" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
