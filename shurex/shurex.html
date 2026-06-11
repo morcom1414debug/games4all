@@ -1341,6 +1341,7 @@ function nextQuestion() {
     announce(""); 
     document.getElementById('info-box').style.visibility = 'hidden';
     document.getElementById('info-box').setAttribute('aria-hidden', 'true'); 
+    document.getElementById('info-box').removeAttribute('aria-label'); // ล้างค่าสเตตัสเก่าออกเพื่อเตรียมรับคำถามถัดไป
     const qData = shuffledQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
     qEl.textContent = qData.q;
@@ -1403,17 +1404,19 @@ function checkAnswer(isCorrect, btn) {
         
         infoBox.removeAttribute('aria-hidden');
         
-        /* แก้ไขจุดนี้จุดเดียว: ห่อคำอธิบายด้วยแท็ก <span> เพื่อแก้ปัญหา WebKit บน iOS (VoiceOver) 
-          ที่จะข้ามการอ่าน Text Node ดิบๆ ที่อยู่ข้างหลังคลาสสไตล์แบบ absolute (sr-only)
+        /* แก้ไขปัญหาระบบอ่านออกเสียงของ WebKit บน iOS (VoiceOver) 
+          โดยเปลี่ยนมาใช้ aria-label ครอบชุดคำสั่งเสียงรวมเป็น "ข้อความก้อนเดียวราบเรียบ" ที่ตัว parent โดยตรง
+          ทำให้หมดปัญหาระบบ iOS หยุดอ่านกลางคัน และทางฝั่ง Windows ก็จะอ่านรวดเดียวจบไม่เบิ้ลซ้ำเช่นกันครับ
         */
-        infoBox.innerHTML = `<span class="sr-only">${fb} ข้อมูล: </span><span>${infoText}</span>`;
+        infoBox.setAttribute('aria-label', `${fb} ข้อมูล: ${infoText}`);
+        infoBox.innerHTML = infoText; 
         
         infoBox.setAttribute('tabindex', '-1');
         infoBox.focus();
     }, 1500);
 
     currentQIndex++;
-    setTimeout(nextQuestion, 11500);
+    setTimeout(nextQuestion, 14000);
 }
 
 function showDamage(target, amount) {
