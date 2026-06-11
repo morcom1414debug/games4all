@@ -177,22 +177,6 @@
 
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
         #start-screen { position:absolute; inset:0; background:rgba(15, 23, 42, 0.98); z-index:200; display:flex; flex-direction:column; justify-content:center; align-items:center; }
-
-        /* --- CSS สำหรับการจัดการกล่องแสดง Info เท่านั้น --- */
-        .showing-info #info-box {
-            visibility: visible !important;
-            animation: slideUpFade 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-        }
-        @keyframes slideUpFade {
-            from {
-                transform: translateY(60px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
     </style>
 </head>
 <body>
@@ -1333,14 +1317,11 @@ function startGameSequence() {
 }
 
 function nextQuestion() {
-    // นำคลาสออกและสั่งให้สลับกลับมาแสดงแผงคำถาม-ตัวเลือกทาง JS ทันที (แก้บั๊กภาพค้างบน iPhone)
-    document.getElementById('game-container').classList.remove('showing-info');
-    document.getElementById('center-ui').style.display = 'flex';
-
     if (playerHP <= 0 || botHP <= 0) { endGame(); return; }
     if (currentQIndex >= shuffledQuestions.length) { shuffleQuestions(); }
     announce(""); 
     document.getElementById('info-box').style.visibility = 'hidden';
+    document.getElementById('options-grid').style.display = 'flex';
     const qData = shuffledQuestions[currentQIndex];
     const qEl = document.getElementById('question-text');
     qEl.textContent = qData.q;
@@ -1394,21 +1375,9 @@ function checkAnswer(isCorrect, btn) {
     updateHP();
     const infoText = qData.info;
     document.getElementById('info-box').textContent = infoText;
+    document.getElementById('info-box').style.visibility = 'visible';
     
-    // ตั้งเวลา 1.5 วินาที เพื่อแสดงอนิเมชันและเสียงต่อสู้ให้จบก่อน แล้วค่อยสลับหน้าจอมาแสดง Info
-    setTimeout(() => {
-        const container = document.getElementById('game-container');
-        const infoBox = document.getElementById('info-box');
-        
-        // สั่งซ่อนแผงคำถาม-ตัวเลือกผ่าน JS โดยตรง เพื่อแก้ปัญหาตัวเรนเดอร์ของ WebKit บน iPhone ไม่ยอมรีเฟรชค่าตาม CSS class
-        document.getElementById('center-ui').style.display = 'none';
-        
-        container.classList.add('showing-info');
-        infoBox.setAttribute('tabindex', '-1');
-        infoBox.focus();
-        
-        announce(`${fb} ข้อมูล: ${infoText}`);
-    }, 1500);
+    setTimeout(() => { announce(`${fb} ข้อมูล: ${infoText}`); }, 1500);
 
     currentQIndex++;
     setTimeout(nextQuestion, 14000);
