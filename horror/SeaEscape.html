@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>พลิกวิกฤตเกาะมรณะ</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght=300;400;700&display=swap');
+
+        body {
+            background-color: #0b1410; /* โทนสีป่าดงดิบมืด */
+            color: #dcdcdc;
+            font-family: 'Sarabun', sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            /* 1. Ambient Pulse: เติมบรรยากาศความเร้าใจชวนค้นหาจางๆ */
+            animation: ambientPulse 10s infinite ease-in-out;
+        }
+
+        /* Vignette Effect: ขอบจอดำสลัวเพิ่มมิติความลึกลับของเกาะร้าง */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.65);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #game-container {
+            width: 100%;
+            max-width: 750px;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 5;
+        }
+
+        /* สไตล์ปุ่มกลับสู่ชุมชน */
+        #community-btn {
+            width: auto;
+            align-self: flex-start;
+            background: #142e1b;
+            color: #81c784;
+            border: 1px solid #2e4d34;
+            padding: 10px 18px;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        #community-btn:hover, #community-btn:active {
+            background: #1b3a24;
+            border-color: #4caf50;
+            color: #ffffff;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+        }
+
+        .screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            animation: fadeIn 0.4s ease-in-out forwards;
+            width: 100%;
+        }
+
+        .active {
+            display: flex;
+        }
+
+        h3.main-title {
+            font-size: 2.3rem;
+            color: #4caf50;
+            text-shadow: 0 0 10px #1b5e20;
+            margin-bottom: 5px;
+            line-height: 1.2;
+            outline: none;
+        }
+
+        h3.game-over-title {
+            font-size: 2.3rem;
+            color: #ff3333;
+            margin-bottom: 10px;
+            outline: none;
+            text-shadow: 0 0 10px rgba(255, 51, 51, 0.3);
+        }
+
+        /* 4. Victory Glimmer: แสงสะท้อนประกายบนหัวข้อฉากชนะ */
+        h3.win-title {
+            font-size: 2.3rem;
+            background: linear-gradient(90deg, #81c784 0%, #ffffff 50%, #81c784 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: victoryShine 3s infinite linear;
+            margin-bottom: 10px;
+            outline: none;
+        }
+
+        .stage-title {
+            font-size: 1.3rem;
+            color: #4caf50;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #2e4d34;
+            width: 100%;
+            text-align: left;
+            padding-bottom: 5px;
+            outline: none;
+        }
+
+        .mission-title {
+            font-size: 1.2rem;
+            color: #a5d6a7;
+            margin-bottom: 20px;
+            width: 100%;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            color: #cccccc;
+        }
+
+        /* 2. ตัวเลือกคำตอบใหม่ค่อยๆ เลื่อนลอยนุ่มนวลนำสายตา */
+        .choice-wrapper {
+            width: 100%;
+            margin: 14px 0;
+            display: block;
+            animation: contentSlideUp 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+        }
+
+        button.game-btn {
+            background: #112217;
+            color: #ffffff;
+            border: 1px solid #4caf50;
+            padding: 16px 20px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            /* ปรับ Transition ให้นุ่มนวลน่าสัมผัสขึ้น */
+            transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s, transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+            font-family: 'Sarabun', sans-serif;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Hover Glow & Scale: ขยายตัวและเรืองแสงนุ่มนวลเมื่อเมาส์ชี้หรือคีย์บอร์ดโฟกัส */
+        button.game-btn:hover, button.game-btn:focus {
+            background: #1b3a24;
+            border-color: #81c784;
+            box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+            transform: scale(1.02);
+            outline: none;
+        }
+
+        /* Active Pressed: กดแล้วยุบตัวสั้นๆ เพิ่มสัมผัสตอบรับเชิงกายภาพ */
+        button.game-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* สไตล์สำหรับปุ่มที่ถูกปิดการใช้งานเพื่อป้องกันการกดซ้ำ (ปรับ Transition จางลงนุ่มๆ) */
+        button.game-btn:disabled {
+            background: #1a1a1a;
+            color: #666666;
+            border: 1px solid #444444;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+            transition: all 0.3s ease;
+        }
+
+        /* แอนิเมชันสำหรับปุ่มที่ตอบถูกในข้อย่อย */
+        button.game-btn.correct-choice {
+            background: #2e7d32 !important;
+            border-color: #4caf50 !important;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.8) !important;
+            color: #ffffff !important;
+        }
+
+        /* แอนิเมชันสำหรับปุ่มที่ตอบผิด */
+        button.game-btn.wrong-choice {
+            background: #c62828 !important;
+            border-color: #ff3333 !important;
+            box-shadow: 0 0 20px rgba(255, 51, 51, 0.8) !important;
+            color: #ffffff !important;
+        }
+
+        #story-text {
+            text-align: left;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #050a07;
+            border-left: 4px solid #4caf50;
+            border-radius: 0 8px 8px 0;
+            font-size: 1.15rem;
+            line-height: 1.7;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* คลาสสลับแอนิเมชันเพื่อเอฟเฟกต์ Fade-In ทุกครั้งที่เนื้อเรื่องเปลี่ยนข้อ */
+        .story-fade {
+            animation: contentSlideUp 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+        }
+
+        .death-box {
+            font-style: italic;
+            color: #ffcdd2;
+            padding: 15px;
+            background: #2d1212;
+            border-left: 4px solid #ff3333;
+            text-align: left;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 20px;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+        }
+
+        /* --- KEYFRAMES ANIMATIONS --- */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes contentSlideUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes ambientPulse {
+            0% { background-color: #0b1410; }
+            50% { background-color: #071711; }
+            100% { background-color: #0b1410; }
+        }
+
+        @keyframes victoryShine {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+
+        /* 5. Blood Red Flash: แอนิเมชันกะพริบแดงเตือนภัยร้ายแรงตอนฉากตาย */
+        .blood-flash {
+            animation: flashRedEffect 0.25s ease-in-out;
+        }
+
+        @keyframes flashRedEffect {
+            0% { background-color: #0b1410; }
+            50% { background-color: #5c1111; }
+            100% { background-color: #0b1410; }
+        }
+
+        @media (max-width: 480px) {
+            h3.main-title, h3.game-over-title, h3.win-title { font-size: 1.8rem; }
+            .stage-title { font-size: 1.1rem; }
+            .mission-title { font-size: 1rem; }
+            #story-text, p, button.game-btn { font-size: 1rem; padding: 12px 15px; }
+            #game-container { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- กล่องสำหรับประกาศเสียงตอบถูกแบบเฉพาะกิจ (ซ่อนจากการแสดงผลทางสายตา แต่ส่งเสียงผ่าน Screen Reader) -->
+    <div id="game-announcer" aria-live="assertive" aria-atomic="true" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;"></div>
+
+    <button id="community-btn" onclick="location.href='../index.html'">กลับสู่ชุมชน</button>
+
+    <div id="start-screen" class="screen active">
+        <h3 class="main-title" tabindex="-1">พลิกวิกฤตเกาะมรณะ</h3>
+        <p>
+            เรือสำราญของคุณอับปางลงท่ามกลางพายุคลั่งในมหาสมุทรอันห่างไกล...<br>
+            คุณตื่นขึ้นมาบนชายหาดของเกาะร้างที่ไร้ผู้คนและไม่มีบนแผนที่<br>
+            ธรรมชาติที่นี่เต็มไปด้วยภัยอันตรายที่พร้อมจะคร่าชีวิตคุณได้ทุกวินาที...
+        </p>
+        <div style="background: #050a07; padding: 20px; border: 1px solid #1b3a24; margin-bottom: 20px; text-align: left; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+            <h4 style="color:#4caf50; margin-top:0;">⚠️ กฎแห่งการเอาชีวิตรอด</h4>
+            <ul style="padding-left: 20px; color: #b0bec5; line-height: 1.6; margin-bottom: 0;">
+                <li>เกมมีทั้งหมด <strong>5 ด่าน (Stage)</strong> ด่านละ <strong>5 วิกฤตการณ์</strong> (รวม 25 ข้อ)</li>
+                <li>ตัวเลือกจะเปลี่ยนไปตามสถานการณ์อย่างเป็นเหตุเป็นผลทางวิทยาศาสตร์</li>
+                <li>จงคิดและวิเคราะห์ให้ดี หากเลือกพลาดเพียงครั้งเดียว คุณจะจบชีวิตทันที!</li>
+            </ul>
+        </div>
+        <button class="game-btn" onclick="startGame()">เริ่มการเอาชีวิตรอด</button>
+    </div>
+
+    <div id="game-screen" class="screen" role="main">
+        <h3 id="current-stage-title" class="stage-title" tabindex="-1">Stage Name</h3>
+        <h3 id="current-mission-title" class="mission-title">Mission Name</h3>
+        <div id="story-text">Loading...</div>
+        <div id="choices-container" style="width: 100%;"></div>
+    </div>
+
+    <div id="game-over-screen" class="screen">
+        <h3 class="game-over-title" tabindex="-1">ภารกิจล้มเหลว (คุณไม่รอด)</h3>
+        <p style="color: #ff8a80; font-weight: bold;">ร่างของคุณกลายเป็นส่วนหนึ่งของเกาะนี้ไปแล้ว...</p>
+        <div id="death-reason" class="death-box" aria-live="assertive"></div>
+        <button class="game-btn" onclick="resetGame()">เริ่มใหม่อีกครั้ง</button>
+    </div>
+
+    <div id="win-screen" class="screen">
+        <h3 class="win-title" tabindex="-1">รอดชีวิตและกลับบ้านสำเร็จ!</h3>
+        <p>
+            ด้วยสติปัญญาและการตัดสินใจที่เปี่ยมด้วยเหตุผลผ่านวิกฤตทั้ง 25 ครั้ง<br>
+            คุณสามารถประดิษฐ์แพและใช้กระแสน้ำพัดพาออกจากเกาะร้างจนพบเรือสินค้าขนาดใหญ่<br>
+            <strong>คุณคือสุดยอดผู้รอดชีวิตที่แท้จริง!</strong>
+        </p>
+        <button class="game-btn" onclick="resetGame()">เล่นใหม่อีกครั้ง</button>
+    </div>
+</div>
+
+<script>
+    // GAME DATA
+// ข้อมูลระบบเกม: โรคระบาดปิดตาย: แดนกักกันปรสิตจิตหลอน
+const gameData = [
+    {
+        title: "ด่านที่ 1: เขตกักกันและห้องคัดกรอง (จุดเริ่มต้นความระแวง)",
+        missions: [
+
+            {
+                title: "สถานการณ์ที่ 5: ประตูรั้วไฟฟ้าแรงสูงขังน้ำ (ทางออกสุดท้าย)",
+                text: "คุณมาถึงประตูรั้วเหล็กดัดยักษ์ซึ่งเป็นทางออกสุดท้ายสู่ถนนใหญ่ภายนอกศูนย์วิจัยสำเร็จ! แต่ทว่า มีสายไฟแรงสูงจากเสาไฟฟ้าภายในหักพาดลงมาแตะกรอบประตูเหล็กพอดี กระแสไฟแลบแปลบปลาบ มีน้ำขังนองรอบโคนรั้วเหล็กหนาแน่น ทีมงานตื่นเต้นดีใจกำลังจะวิ่งไปผลักประตูเปิดหนี คุณจะสั่งการอย่างไร",
+                choices: [
+                    "1. วิ่งเข้าไปจับที่จับประตูเหล็กดัดแล้วออกแรงผลักเปิดเต็มกำลัง",
+                    "2. ห้ามแตะน้ำและประตู ใช้ไม้แห้งสนิทเขี่ยสายไฟพ้นกรอบ หรือหาจุดกำแพงแห้งปีนข้ามหนี",
+                    "3. ใช้กระเป๋าเป้ผ้าใบหนา ๆ มารองมือแล้วจับประตูเหล็กเปิดออก"
+                ],
+                correct: 1,
+                deaths: [
+                    "กระแสไฟฟ้าแรงดันสูงมหาศาลวิ่งผ่านน้ำและเหล็กเข้าสู่ร่างกายของคุณทันทีที่สัมผัส ทำลายระบบไฟฟ้าของหัวใจ เกิดภาวะหัวใจหยุดเต้นเฉียบพลัน เสียชีวิตคาประตูทางออกในวินาทีสุดท้าย",
+                    null,
+                    "ผ้าใบกระเป๋าเป้มีความชื้นและเหงื่อสะสมจากในป่า ซึ่งแปรสภาพเป็นตัวนำไฟฟ้าอย่างดี กระแสไฟแรงสูงวิ่งทะลุกระเป๋าเข้าสู่ร่างกาย แขนและขาเกร็งไหม้เกรียม หมดสติบาดเจ็บสาหัสและเสียชีวิตคาที่"
+                ]
+            }
+        ]
+    }
+];
+
+    let currentStage = 0;
+    let currentMission = 0;
+
+    // WEB AUDIO API SYSTEM
+    let audioCtx = null;
+    let audioBuffers = {};
+    let bgmNode = null;
+    let sfxNode = null;
+
+    const audioFiles = {
+        back: 'audio/back.mp3',
+        t: 'audio/t.mp3',
+        lost: 'audio/lost.mp3',
+        win: 'audio/win.mp3'
+    };
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            loadAllAudio();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    async function loadAllAudio() {
+        for (const [key, url] of Object.entries(audioFiles)) {
+            try {
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                audioBuffers[key] = await audioCtx.decodeAudioData(arrayBuffer);
+            } catch (e) {
+                console.error(`ไม่สามารถโหลดไฟล์เสียงได้: ${url}`, e);
+            }
+        }
+    }
+
+    function playBGM() {
+        stopBGM();
+        if (!audioBuffers['back']) return;
+        bgmNode = audioCtx.createBufferSource();
+        bgmNode.buffer = audioBuffers['back'];
+        bgmNode.loop = true;
+        bgmNode.connect(audioCtx.destination);
+        bgmNode.start(0);
+    }
+
+    function stopBGM() {
+        if (bgmNode) {
+            try { bgmNode.stop(); } catch(e){}
+            bgmNode = null;
+        }
+    }
+
+    function playSFX(name, onEndedCallback) {
+        stopSFX();
+        if (!audioBuffers[name]) {
+            if (onEndedCallback) onEndedCallback();
+            return;
+        }
+        sfxNode = audioCtx.createBufferSource();
+        sfxNode.buffer = audioBuffers[name];
+        sfxNode.connect(audioCtx.destination);
+        
+        if (onEndedCallback) {
+            sfxNode.onended = onEndedCallback;
+        }
+        sfxNode.start(0);
+    }
+
+    function stopSFX() {
+        if (sfxNode) {
+            try { sfxNode.stop(); } catch(e){}
+            sfxNode = null;
+        }
+    }
+
+    // DOM ELEMENTS
+    const communityBtn = document.getElementById('community-btn');
+    const startScreen = document.getElementById('start-screen');
+    const gameScreen = document.getElementById('game-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const winScreen = document.getElementById('win-screen');
+    const storyText = document.getElementById('story-text');
+    const choicesContainer = document.getElementById('choices-container');
+    const deathReason = document.getElementById('death-reason');
+    const currentStageTitle = document.getElementById('current-stage-title');
+    const currentMissionTitle = document.getElementById('current-mission-title');
+    const announcer = document.getElementById('game-announcer');
+
+    function startGame() {
+        initAudio();
+        playBGM();
+        currentStage = 0;
+        currentMission = 0;
+        switchScreen(gameScreen);
+        renderMission();
+    }
+
+    function renderMission() {
+        // [Clean ปลอดภัยขั้นสูงสุด] เคลียร์ข้อความประกาศชมเชยของด่านเก่าออกทันทีก่อนขึ้นด่านใหม่ ไม่ให้ค้างคาจอ
+        announcer.innerText = '';
+
+        const stageData = gameData[currentStage];
+        if (!stageData || !stageData.missions || stageData.missions.length === 0) {
+            handleWinGame();
+            return;
+        }
+
+        const missionData = stageData.missions[currentMission];
+
+        currentStageTitle.innerText = stageData.title;
+        currentMissionTitle.innerText = missionData.title;
+        storyText.innerText = missionData.text;
+        
+        // สั่งให้กล่องข้อเนื้อเรื่องเล่นแอนิเมชันสไลด์ขึ้นและค่อยๆ จางออกแบบนุ่มนวลนำสายตา
+        storyText.classList.remove('story-fade');
+        void storyText.offsetWidth; // Trigger reflow เพื่อบังคับรีสตาร์ตแอนิเมชันใน CSS
+        storyText.classList.add('story-fade');
+
+        choicesContainer.innerHTML = '';
+
+        missionData.choices.forEach((choice, index) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'choice-wrapper';
+
+            const btn = document.createElement('button');
+            btn.className = 'game-btn';
+            btn.innerText = choice;
+            btn.onclick = () => {
+                stopSFX();
+                checkAnswer(index);
+            };
+
+            wrapper.appendChild(btn);
+            choicesContainer.appendChild(wrapper);
+        });
+        
+        window.scrollTo(0,0);
+        
+        setTimeout(() => {
+            currentStageTitle.focus();
+        }, 50);
+    }
+
+    function checkAnswer(selectedIndex) {
+        const missionData = gameData[currentStage].missions[currentMission];
+        const correctIndex = missionData.correct;
+        const buttons = choicesContainer.querySelectorAll('button.game-btn');
+
+        // ล็อกปุ่มและเพิ่มคลาสแสดงผลตอบถูกหรือผิดเชิงสายตาทันทีที่คลิก (Visual Feedback ในข้อย่อย)
+        buttons.forEach((btn, index) => {
+            btn.disabled = true;
+            if (index === correctIndex) {
+                btn.classList.add('correct-choice'); // ปุ่มข้อถูกเปลี่ยนเป็นสีเขียวเรืองแสงแจ่มชัด
+            } else if (index === selectedIndex) {
+                btn.classList.add('wrong-choice'); // ปุ่มข้อที่เลือกผิดเปลี่ยนเป็นสีแดงเน้นสายตา
+            }
+        });
+
+        if (selectedIndex === correctIndex) {
+            const validStages = gameData.filter(s => s.missions && s.missions.length > 0);
+            const isLastStage = currentStage === gameData.indexOf(validStages[validStages.length - 1]);
+            const isLastMission = currentMission === gameData[currentStage].missions.length - 1;
+
+            if (isLastStage && isLastMission) {
+                // ส่งข้อความไปประกาศทาง aria-live เมื่อตอบถูกในด่านสุดท้าย
+                announcer.innerText = "ยอดเยี่ยมที่สุด";
+
+                stopBGM();
+                playSFX('t', () => {
+                    playSFX('win', () => {
+                        switchScreen(winScreen);
+                        document.querySelector('#win-screen h3').focus();
+                    });
+                });
+            } else {
+                // ส่งข้อความไปประกาศทาง aria-live เมื่อตอบถูกในข้อทั่วไป
+                announcer.innerText = "เยี่ยม ไปด่านต่อไป";
+
+                playSFX('t', () => {
+                    nextMission();
+                });
+            }
+        } else {
+            stopBGM();
+            const reason = missionData.deaths[selectedIndex];
+            deathReason.innerText = `ผลจากการตัดสินใจของคุณ: ${reason}`;
+            
+            // เล่นเอฟเฟกต์กะพริบแสงสีแดงวาบ (Blood Red Flash) บนพื้นหลังจาววินาทีที่แพ้
+            document.body.classList.add('blood-flash');
+            setTimeout(() => {
+                document.body.classList.remove('blood-flash');
+            }, 250);
+
+            playSFX('lost', () => {
+                switchScreen(gameOverScreen);
+                document.querySelector('#game-over-screen h3').focus();
+            });
+        }
+    }
+
+    function nextMission() {
+        currentMission++;
+        if (currentMission >= gameData[currentStage].missions.length) {
+            currentMission = 0;
+            currentStage++;
+            while (currentStage < gameData.length && gameData[currentStage].missions.length === 0) {
+                currentStage++;
+            }
+        }
+        
+        if (currentStage >= gameData.length) {
+            handleWinGame();
+        } else {
+            renderMission();
+        }
+    }
+
+    function handleWinGame() {
+        stopBGM();
+        playSFX('win', () => {
+            switchScreen(winScreen);
+            document.querySelector('#win-screen h3').focus();
+        });
+    }
+
+    function resetGame() {
+        initAudio();
+        stopBGM();
+        stopSFX();
+        switchScreen(startScreen);
+        document.querySelector('#start-screen h3').focus();
+    }
+
+    function switchScreen(screen) {
+        // [Clean เพื่อความชัวร์] ก่อนเปลี่ยนหน้าจอ ให้เคลียร์กล่องคำชมเชยทิ้งทั้งหมด ป้องกันคำตกค้างในระบบ
+        if(announcer) announcer.innerText = '';
+
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        screen.classList.add('active');
+
+        if (screen === gameScreen) {
+            communityBtn.style.display = 'none';
+        } else {
+            communityBtn.style.display = 'block';
+        }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            loadAllAudio();
+        } catch(e){}
+    });
+
+    window.addEventListener('beforeunload', () => {
+        stopBGM();
+        stopSFX();
+    });
+</script>
+
+</body>
+</html>
