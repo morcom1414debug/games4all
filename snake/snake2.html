@@ -232,6 +232,7 @@
             }
         }
         
+        // โหลดเสียงเมื่อเอกสารพร้อม
         document.addEventListener('DOMContentLoaded', loadSounds);
         // --- End Web Audio API Setup ---
 
@@ -266,6 +267,7 @@
         const diceCube = document.getElementById('dice-cube');
         let speakTimeout;
 
+        // ฟังก์ชันล้างข้อความ Aria-live เพื่อไม่ให้ค้างข้ามหน้าจอ
         function switchScreen(screenId) {
             speaker.innerText = ''; 
             clearTimeout(speakTimeout);
@@ -278,10 +280,12 @@
             clearTimeout(speakTimeout);
             setTimeout(() => { 
                 speaker.innerText = text; 
+                // ตั้งเวลาลบข้อความออกอัตโนมัติ เพื่อไม่ให้ SC อ่านค้างเมื่อปัดหน้าจอ
                 speakTimeout = setTimeout(() => { speaker.innerText = ''; }, 4500);
             }, 50);
         }
 
+        // อัปเดตป้ายสถานะตำแหน่ง
         function updateStatusBar() {
             const txt = `ผู้เล่นช่อง ${playerPos} บอทช่อง ${botPos}`;
             document.getElementById('game-status-bar').innerText = txt;
@@ -298,19 +302,15 @@
                 let sq; let infiniteLoopGuard = 0;
                 do { 
                     sq = Math.floor(Math.random() * 98) + 2; 
-                    infiniteLoopGuard++; if(infiniteLoopGuard > 1000) break; 
+                    infiniteLoopGuard++; if(infiniteLoopGuard > 500) break; 
                 } while (used.has(sq));
                 used.add(sq); return sq;
             }
 
-            // จำนวนบันไดขึ้น: 8 จุด
-            for(let i=0; i<8; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.min(s1, s2)] = Math.max(s1, s2); }
-            // จำนวนบันไดลง: 8 จุด
-            for(let i=0; i<8; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.max(s1, s2)] = Math.min(s1, s2); }
-            // จำนวนช่องสุ่มการ์ดพิเศษ: 8 ช่อง
-            for(let i=0; i<8; i++) { specialSquares.push(getFreeSquare()); }
-            // จำนวนช่องโคลนดูด: 7 ช่อง
-            for(let i=0; i<7; i++) { quicksandSquares.push(getFreeSquare()); }
+            for(let i=0; i<4; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.min(s1, s2)] = Math.max(s1, s2); }
+            for(let i=0; i<4; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.max(s1, s2)] = Math.min(s1, s2); }
+            for(let i=0; i<4; i++) { specialSquares.push(getFreeSquare()); }
+            for(let i=0; i<3; i++) { quicksandSquares.push(getFreeSquare()); }
         }
 
         function initBoardVisual() {
@@ -353,6 +353,7 @@
         }
 
         function startGame() {
+            // Audio: BGM
             if (audioCtx.state === 'suspended') audioCtx.resume();
             startBGM();
 
@@ -430,7 +431,9 @@
 
             let txt = `คุณ ใช้ การ์ด${card.name}! `;
             
+            // Audio: selectcard
             playSound('selectcard', false, () => {
+                // Audio: effect
                 playSound('effect');
             });
 
@@ -468,6 +471,7 @@
         }
 
         btnRoll.onclick = function() {
+            // Audio: dice
             playSound('dice');
 
             btnRoll.disabled = true;
@@ -551,9 +555,11 @@
                 let dest = shortcuts[pos];
                 if (dest > pos) {
                     msg += `${pName}เจอทางขึ้น พุ่งไปช่องที่ ${dest}! `;
+                    // Audio: up
                     playSound('up');
                 } else {
                     msg += `${pName}โดนงูฉก ร่วงมาช่องที่ ${dest}! `;
+                    // Audio: down
                     playSound('down');
                 }
                 
@@ -573,11 +579,13 @@
                 if (target === 'player') activeBuffs.playerSkip = true; else activeBuffs.botSkip = true;
                 msg += `${pName}เหยียบเปลือกกล้วย หยุดพัก 1 ตา! `;
                 landedOnQuicksand = true;
+                // Audio: stop (using same sound as quicksand for trap)
                 playSound('stop');
             } else if (quicksandSquares.includes(finalPos)) {
                 if (target === 'player') activeBuffs.playerSkip = true; else activeBuffs.botSkip = true;
                 msg += `${pName}ตกโคลนดูด หยุดพัก 1 ตา! `;
                 landedOnQuicksand = true;
+                // Audio: stop
                 playSound('stop');
             } else if (specialSquares.includes(finalPos)) {
                 landedOnSpecial = true;
@@ -596,10 +604,12 @@
                 let newRand; do { newRand = Math.floor(Math.random() * 98) + 2; } while(usedPositions.has(newRand));
                 specialSquares.push(newRand);
                 initBoardVisual();
+                // Audio: special
                 playSound('special');
             }
 
             if (!isShortcut && !landedOnSpecial && !landedOnQuicksand && finalPos !== 100) {
+                // Audio: blank
                 playSound('blank');
             }
 
@@ -609,7 +619,9 @@
             if (botPos === 100) { setTimeout(() => showGameOver(false), 2000); return; }
 
             if (playerPos === botPos) {
+                // Audio: double
                 playSound('double');
+
                 setTimeout(() => {
                     speak(`โอ๊ะ! เดินมาทับช่องเดียวกันเป๊ะ! ${target === 'player' ? "คุณ ได้สิทธิ์เลือกเปิดกล่อง" : "บอท กำลังเลือกกล่อง"}`);
                     
@@ -640,77 +652,6 @@
             }, 2500);
         }
 
-        // --- ฟังก์ชันประมวลผล Chain Reaction จากมินิเกม ---
-        function evaluateChainReaction(target, onComplete) {
-            let pos = (target === 'player') ? playerPos : botPos;
-            let msg = "";
-            let pName = (target === 'player') ? "คุณ " : "บอท ";
-            let finalPos = pos;
-            
-            let isShortcut = false;
-            let landedOnSpecial = false;
-            let landedOnQuicksand = false;
-
-            if (shortcuts[pos]) {
-                isShortcut = true;
-                let dest = shortcuts[pos];
-                if (dest > pos) {
-                    msg += `${pName}เจอทางขึ้น พุ่งไปช่องที่ ${dest}! `;
-                    playSound('up');
-                } else {
-                    msg += `${pName}โดนงูฉก ร่วงมาช่องที่ ${dest}! `;
-                    playSound('down');
-                }
-                if (target === 'player') playerPos = dest; else botPos = dest;
-                finalPos = dest;
-                updatePawnVisuals();
-                updateStatusBar();
-            }
-
-            if (activeBuffs.traps[finalPos]) {
-                delete activeBuffs.traps[finalPos];
-                if (target === 'player') activeBuffs.playerSkip = true; else activeBuffs.botSkip = true;
-                msg += `${pName}เหยียบเปลือกกล้วย หยุดพัก 1 ตา! `;
-                landedOnQuicksand = true;
-                playSound('stop');
-            } else if (quicksandSquares.includes(finalPos)) {
-                if (target === 'player') activeBuffs.playerSkip = true; else activeBuffs.botSkip = true;
-                msg += `${pName}ตกโคลนดูด หยุดพัก 1 ตา! `;
-                landedOnQuicksand = true;
-                playSound('stop');
-            } else if (specialSquares.includes(finalPos)) {
-                landedOnSpecial = true;
-                let newCard = CARD_TYPES[Math.floor(Math.random() * CARD_TYPES.length)];
-                if (target === 'player') {
-                    if (playerHand.length < 2) {
-                        playerHand.push(newCard); msg += `คุณ ได้รับการ์ด ${newCard.name}! `;
-                    } else { msg += `เจอการ์ด แต่กระเป๋าเต็ม! `; }
-                    renderPlayerCards();
-                } else {
-                    if (botHand.length < 2) { botHand.push(newCard); msg += `บอท เก็บการ์ดได้ 1 ใบ! `; }
-                }
-                
-                specialSquares = specialSquares.filter(s => s !== finalPos);
-                let usedPositions = new Set([1, 100, ...Object.keys(shortcuts), ...Object.values(shortcuts), ...quicksandSquares, ...specialSquares]);
-                let newRand; do { newRand = Math.floor(Math.random() * 98) + 2; } while(usedPositions.has(newRand));
-                specialSquares.push(newRand);
-                initBoardVisual();
-                playSound('special');
-            }
-
-            if (!isShortcut && !landedOnSpecial && !landedOnQuicksand && finalPos !== 100) {
-                playSound('blank');
-            }
-
-            if (msg !== "") {
-                speak(msg);
-                setTimeout(onComplete, 2500); 
-            } else {
-                onComplete();
-            }
-        }
-        // ------------------------------------------------
-
         function openTreasure(boxIdx) {
             const outcomes = [
                 { type: 'good', text: 'มิติโชค! ผู้เปิดเดินหน้า 3 ช่อง อีกฝ่ายถอย 3 ช่อง!' },
@@ -720,6 +661,7 @@
             
             let finalOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
             
+            // Audio based on treasure outcome
             if (finalOutcome.type === 'good') playSound('best');
             else if (finalOutcome.type === 'bad') playSound('bomb');
             else if (finalOutcome.type === 'steal') playSound('stolen');
@@ -774,16 +716,11 @@
                     speak(`คุณ ขยับ:`);
                     setTimeout(() => {
                         executePathMovement('player', playerPath, () => {
-                            evaluateChainReaction('player', () => {
-                                setTimeout(() => animateBotMiniMove(startBot, endBot, botPath), 500);
-                            });
+                            speak(`คุณ หยุดที่ช่อง ${endPlayer}`);
+                            setTimeout(() => animateBotMiniMove(startBot, endBot, botPath), 1500);
                         });
                     }, 1200);
-                } else { 
-                    evaluateChainReaction('player', () => {
-                        animateBotMiniMove(startBot, endBot, botPath); 
-                    });
-                }
+                } else { animateBotMiniMove(startBot, endBot, botPath); }
             }, 3000);
         }
 
@@ -792,39 +729,16 @@
                 speak(`บอท ขยับ:`);
                 setTimeout(() => {
                     executePathMovement('bot', botPath, () => {
-                        evaluateChainReaction('bot', () => {
-                            setTimeout(checkPostMiniGamePositions, 500);
-                        });
+                        speak(`บอท หยุดที่ช่อง ${endBot}`);
+                        setTimeout(checkPostMiniGamePositions, 1500);
                     });
                 }, 1200);
-            } else { 
-                evaluateChainReaction('bot', () => {
-                    checkPostMiniGamePositions();
-                }); 
-            }
+            } else { checkPostMiniGamePositions(); }
         }
 
         function checkPostMiniGamePositions() {
             if (playerPos === 100) { showGameOver(true); return; }
             if (botPos === 100) { showGameOver(false); return; }
-            
-            if (playerPos === botPos) {
-                playSound('double');
-                speak(`โอ๊ะ! กระเด็นมาตกช่องเดียวกันอีกแล้ว! ต้องดวลกล่องสมบัติอีกรอบ!`);
-                setTimeout(() => {
-                    document.getElementById('steal-alert').style.display = 'none'; 
-                    if (isPlayerTurn) {
-                        document.getElementById('mini-title').innerText = "💥 ตกทับกันอีกรอบ! คุมชะตากล่อง 💥";
-                        const firstBox = document.getElementById('mini-box-1');
-                        if(firstBox) firstBox.focus();
-                    } else {
-                        document.getElementById('mini-title').innerText = "💥 บอทกำลังเลือกกล่อง... 💥";
-                        setTimeout(() => { openTreasure(Math.floor(Math.random() * 3)); }, 2500); 
-                    }
-                }, 2500);
-                return;
-            }
-            
             exitMiniGameNormal();
         }
 
@@ -846,7 +760,9 @@
                 let card = botHand.pop();
                 let txt = `บอท ใช้ การ์ด${card.name}! `;
                 
+                // Audio: selectcard for bot
                 playSound('selectcard', false, () => {
+                    // Audio: effect for bot
                     playSound('effect');
                 });
 
@@ -873,6 +789,7 @@
         }
 
         function botRollDice() {
+            // Audio: dice for bot
             playSound('dice');
 
             let rolled = Math.floor(Math.random() * 6) + 1;
@@ -891,6 +808,7 @@
         }
 
         function showGameOver(isPlayerWin) {
+            // Audio: Stop BGM
             stopBGM();
 
             switchScreen('screen-gameover');
@@ -899,12 +817,14 @@
             const screen = document.getElementById('screen-gameover');
 
             if (isPlayerWin) {
+                // Audio: Win
                 playSound('win');
                 screen.className = "screen win-screen active-screen";
                 art.innerText = "🏆🎉✨";
                 title.innerText = "คุณคือผู้ชนะ!";
                 speak("วิกตอรี่! คุณ แตะขอบเส้นชัยช่อง 100 สำเร็จ คว้าแชมป์มิติไปครอง!");
             } else {
+                // Audio: Lost
                 playSound('lost');
                 screen.className = "screen lose-screen active-screen";
                 art.innerText = "🌧️💔👾";
