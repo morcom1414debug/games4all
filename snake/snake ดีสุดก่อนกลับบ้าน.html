@@ -30,12 +30,6 @@
         .btn-main:focus { outline: 4px solid var(--secondary); outline-offset: 4px; }
         .btn-main[disabled] { opacity: 0.5; cursor: not-allowed; }
 
-        /* สไตล์ปุ่ม Home รูปหกเหลี่ยม */
-        .home-btn-hex { background-color: var(--primary); color: #fff; border: none; width: 60px; height: 60px; font-size: 1.8rem; cursor: pointer; transition: transform 0.2s, background-color 0.2s; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 0 auto; }
-        .home-btn-hex:hover { background-color: #5b4cc4; transform: scale(1.1); }
-        .home-btn-hex:focus { outline: 4px solid var(--secondary); outline-offset: 4px; }
-        .pos-top-left { position: absolute; top: 20px; left: 20px; z-index: 100; }
-
         .welcome-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; max-width: 500px; width: 100%; }
 
         .cards-container { display: flex; gap: 15px; margin: 20px 0; justify-content: center; width: 100%; max-width: 400px; min-height: 165px; }
@@ -124,7 +118,6 @@
     <div id="game-speaker" class="sr-only" aria-live="assertive"></div>
 
     <div id="screen-welcome" class="screen active-screen">
-        <button class="home-btn-hex pos-top-left" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
         <div class="welcome-card">
             <h1 style="color: var(--primary); margin-bottom: 10px;">บันไดงูป่วนมิติ 🎲</h1>
             <hr style="border: 0; border-top: 1px solid #dfe6e9; margin: 20px 0;">
@@ -134,7 +127,7 @@
                 <li><strong>อุปสรรค:</strong> ระวังตกหัวงู, เหยียบเปลือกกล้วย, และ <strong>โคลนดูด</strong> (เสียสิทธิ์เดิน 1ตา)</li>
                 <li><strong>มินิเกมดวลกล่อง:</strong> เดินตกช่องเดียวกันเป๊ะ ต้องสุ่มเปิดกล่องวัดดวง</li>
             </ul>
-            <button class="btn-main" type="button" style="margin-top: 20px;" onclick="startGame(event)"><span aria-hidden="true">🎮</span> เริ่มต้นความสนุกเลย</button>
+            <button class="btn-main" type="button" style="margin-top: 20px;" onclick="startGame()"><span aria-hidden="true">🎮</span> เริ่มต้นความสนุกเลย</button>
         </div>
     </div>
 
@@ -193,12 +186,9 @@
     </div>
 
     <div id="screen-gameover" class="screen">
-        <div id="gameover-art-container" aria-hidden="true">
-            <div id="gameover-art" class="game-over-art">🏆</div>
-        </div>
+        <div id="gameover-art" class="game-over-art">🏆</div>
         <h2 id="gameover-title" tabindex="-1" style="font-size: 2.5rem;">คุณคือผู้ชนะ!</h2>
-        <p id="gameover-message" style="font-size: 1.3rem; margin-bottom: 25px; font-weight: bold; text-align: center;"></p>
-        <button class="home-btn-hex" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
+        <button id="btn-restart" class="btn-main" type="button" onclick="resetGame()"><span aria-hidden="true">🔄</span> เล่นใหม่อีกครั้ง</button>
     </div>
 
     <script>
@@ -295,7 +285,6 @@
             playerSkip: false, botSkip: false,
             playerLucky: false, botLucky: false
         };
-        let isGameReady = true;
 
         const speaker = document.getElementById('game-speaker');
         const btnRoll = document.getElementById('btn-roll');
@@ -450,12 +439,7 @@
             });
         }
 
-        function startGame(event) {
-            if (event) event.stopPropagation(); // 1. หยุด Event Bubbling ป้องกันการคลิกทะลุ
-            
-            isGameReady = false; // Lock การใช้การ์ด
-            setTimeout(() => { isGameReady = true; }, 500); // ปลด Lock หลังผ่านไป 500ms
-
+        function startGame() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             startBGM();
 
@@ -531,25 +515,7 @@
             });
         }
 
-        function checkSquareAfterSwap(target) {
-            let pos = (target === 'player') ? playerPos : botPos;
-            let pName = (target === 'player') ? "คุณ" : "บอท";
-            let msg = "";
-
-            if (activeBuffs.traps[pos]) {
-                delete activeBuffs.traps[pos];
-                if (target === 'player') activeBuffs.playerSkip = true; else activeBuffs.botSkip = true;
-                msg = `${pName}เหยียบเปลือกกล้วย ต้องหยุดเดิน 1 ตา`;
-            } else if (quicksandSquares.includes(pos)) {
-                if (target === 'player') activeBuffs.playerSkip = true; else activeBuffs.botSkip = true;
-                msg = `${pName}ติดโคลนดูด ต้องหยุดเดิน 1 ตา`;
-            }
-            return msg;
-        }
-
         function useCard(index) {
-            if (!isGameReady) return; // ป้องกัน Event Bubbling หรือคลิกทะลุในช่วง Transition 
-
             let card = playerHand[index];
             playerHand.splice(index, 1);
             renderPlayerCards();
@@ -562,15 +528,8 @@
 
             if (card.id === 'swap') {
                 let temp = playerPos; playerPos = botPos; botPos = temp;
-                txt += `สลับตำแหน่งกับบอททันที! `;
+                txt += `สลับตำแหน่งกับบอททันที!`;
                 initBoardVisual();
-
-                let pSwapMsg = checkSquareAfterSwap('player');
-                let bSwapMsg = checkSquareAfterSwap('bot');
-                let combinedMsg = [pSwapMsg, bSwapMsg].filter(m => m !== "").join(" และ ");
-                if (combinedMsg !== "") {
-                    txt += combinedMsg;
-                }
             } else if (card.id === 'tripwire') {
                 activeBuffs.botDebuff = true;
                 txt += `บอทรอบหน้าเดินได้แค่ครึ่งเดียว!`;
@@ -975,13 +934,6 @@
                 if (card.id === 'swap') {
                     let temp = playerPos; playerPos = botPos; botPos = temp;
                     txt += `สลับพิกัด!`; initBoardVisual();
-                    
-                    let pSwapMsg = checkSquareAfterSwap('player');
-                    let bSwapMsg = checkSquareAfterSwap('bot');
-                    let combinedMsg = [pSwapMsg, bSwapMsg].filter(m => m !== "").join(" และ ");
-                    if (combinedMsg !== "") {
-                        txt += " " + combinedMsg;
-                    }
                 } else if (card.id === 'tripwire') {
                     activeBuffs.playerDebuff = true; txt += `รอบหน้า คุณ เดินได้ครึ่งเดียว!`;
                 } else if (card.id === 'banana') {
@@ -1026,33 +978,18 @@
             const title = document.getElementById('gameover-title');
             const art = document.getElementById('gameover-art');
             const screen = document.getElementById('screen-gameover');
-            const messageEl = document.getElementById('gameover-message');
-
-            const winQuotes = [
-                "สุดยอดฝีมือ! ชัยชนะนี้เป็นของคุณอย่างสมภาคภูมิ",
-                "ทักษะและดวงของคุณผสานกันได้อย่างลงตัว ไร้เทียมทาน!",
-                "เส้นชัยอยู่แค่เอื้อม และคุณก็คว้ามันมาได้อย่างงดงาม!"
-            ];
-            
-            const loseQuotes = [
-                "ไม่เป็นไรนะ พักหายใจแล้วกลับมาท้าทายใหม่ได้เสมอ!",
-                "ครั้งนี้อาจพลาดพลั้ง แต่ครั้งหน้าคุณจะแข็งแกร่งกว่าเดิมแน่นอน",
-                "ความพ่ายแพ้คือบทเรียนสำคัญ สู้ต่อไปอย่ายอมแพ้!"
-            ];
 
             if (isPlayerWin) {
                 playSound('win');
                 screen.className = "screen win-screen active-screen";
                 art.innerText = "🏆🎉✨";
                 title.innerText = "คุณคือผู้ชนะ!";
-                messageEl.innerText = winQuotes[Math.floor(Math.random() * winQuotes.length)];
                 speak("วิกตอรี่! คุณ แตะขอบเส้นชัยช่อง 100 สำเร็จ คว้าแชมป์มิติไปครอง!");
             } else {
                 playSound('lost');
                 screen.className = "screen lose-screen active-screen";
                 art.innerText = "🌧️💔👾";
                 title.innerText = "คุณพ่ายแพ้ให้บอท!";
-                messageEl.innerText = loseQuotes[Math.floor(Math.random() * loseQuotes.length)];
                 speak("ดีฟีท! บอท เหยียบช่อง 100 ตัดหน้าขโมยชัยชนะไปเรียบร้อย");
             }
             
