@@ -117,11 +117,6 @@
         
         /* 3. แผ่นใสสำหรับวาดเส้นกราฟิกงูขึ้น/งูลง */
         #snakes-ladders-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
-
-        /* CSS สำหรับหน้า Countdown ซีนก่อนเริ่มเกม */
-        #screen-countdown { background: radial-gradient(circle, #1e272e 0%, #000000 100%); transition: opacity 0.3s; }
-        .countdown-text { font-size: 10rem; font-weight: bold; color: #fdcb6e; text-shadow: 0 0 30px rgba(253, 203, 110, 0.8); animation: pulseCount 0.5s infinite alternate; margin: 0; }
-        @keyframes pulseCount { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.15); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -141,10 +136,6 @@
             </ul>
             <button class="btn-main" type="button" style="margin-top: 20px;" onclick="startGame(event)"><span aria-hidden="true">🎮</span> เริ่มต้นความสนุกเลย</button>
         </div>
-    </div>
-
-    <div id="screen-countdown" class="screen">
-        <div id="countdown-visual" class="countdown-text" aria-hidden="true"></div>
     </div>
 
     <div id="screen-turn" class="screen">
@@ -216,9 +207,7 @@
         const audioBuffers = {};
         let bgmSource = null;
 
-        // เพิ่มไฟล์ start.mp3 ตามที่ระบุ
         const soundFiles = {
-            start: 'audio/start.mp3',
             back: 'audio/back.mp3',
             dice: 'audio/dice.mp3',
             blank: 'audio/blank.mp3',
@@ -307,9 +296,6 @@
             playerLucky: false, botLucky: false
         };
         let isGameReady = true;
-        
-        // สถานะป้องกันการกดเบิ้ลรัวๆ ต้นเกม (แก้บั๊ก iOS)
-        let isGameStartingProcess = false;
 
         const speaker = document.getElementById('game-speaker');
         const btnRoll = document.getElementById('btn-roll');
@@ -327,7 +313,6 @@
             }
         }
 
-        // ฟังก์ชันอ่านเสียง (ซึ่งจะเคลียร์ข้อมูลล่วงหน้าเสมอ ตามกฎ aria-live)
         function speak(text) {
             speaker.innerText = '';
             clearTimeout(speakTimeout);
@@ -465,55 +450,15 @@
             });
         }
 
-        // --- แก้ไข startGame เพื่อรัน Countdown ซีน ---
         function startGame(event) {
-            if (event) {
-                event.preventDefault(); // กันปัญหาการกดคลิกค้าง หรือทัชเบิ้ลบน iOS
-                event.stopPropagation();
-            }
+            if (event) event.stopPropagation(); // 1. หยุด Event Bubbling ป้องกันการคลิกทะลุ
             
-            // ใช้ Flag ดักป้องกันการคลิกเบิ้ลรัวๆ ช่วงเริ่มต้น
-            if (isGameStartingProcess) return;
-            isGameStartingProcess = true;
+            isGameReady = false; // Lock การใช้การ์ด
+            setTimeout(() => { isGameReady = true; }, 500); // ปลด Lock หลังผ่านไป 500ms
 
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            
-            // เล่นเสียงไฟล์ start.mp3 ทันที
-            playSound('start');
-
-            switchScreen('screen-countdown');
-            
-            const visualElement = document.getElementById('countdown-visual');
-            let count = 3;
-            
-            // เริ่มต้นการนับที่เลข 3
-            visualElement.innerText = count;
-            speak(count.toString());
-
-            // หน่วงเวลาให้เข้ากับความยาวเสียง 6.4 วินาที (แบ่งจังหวะช่วงละ 1.6 วินาทีรวมเป็นประมาณ 6.4 วิพอดี)
-            const countInterval = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    visualElement.innerText = count;
-                    speak(count.toString());
-                } else if (count === 0) {
-                    // ประกาศครั้งสุดท้ายก่อนลบตัวนับ และเปลี่ยนซีน
-                    visualElement.innerText = "ลุย!";
-                    speak("พร้อมเริ่มเกมแล้ว");
-                } else {
-                    clearInterval(countInterval);
-                    isGameStartingProcess = false; // ปลดล็อกป้องกันการกดรัว
-                    initGameLogic(); // ส่งต่อไปสร้างกระดานและเตรียมเกม
-                }
-            }, 1600); // 1600ms * 4 steps = 6.4 วินาทีพอดี
-        }
-
-        // --- แยกส่วนเตรียมเกมออกมาหลังจากจบ Countdown ---
-        function initGameLogic() {
-            isGameReady = false; 
-            setTimeout(() => { isGameReady = true; }, 500); 
-
             startBGM();
+
             switchScreen('screen-turn');
             generateRandomBoard(); 
             
@@ -523,13 +468,11 @@
             initBoardVisual();
             renderPlayerCards();
 
-            // หน่วงเวลาตามคำขอเล็กน้อยก่อนประกาศว่าแจกการ์ดแล้ว
-            setTimeout(() => {
-                speak(`เริ่มเกม! คุณ ได้รับการ์ด ${playerHand[0].name}`);
-                document.getElementById('turn-title').innerText = `สุ่มแจกการ์ดเรียบร้อย!`;
-                
-                setTimeout(determineFirstPlayer, 2000);
-            }, 800);
+            speak(`เริ่มเกม! คุณ ได้รับการ์ด ${playerHand[0].name}`);
+            document.getElementById('turn-title').innerText = `สุ่มแจกการ์ดเรียบร้อย!`;
+            
+            // 2. ปรับความเร็วลดหน่วงเวลาลง 0.5 วินาที (จาก 2500 เป็น 2000)
+            setTimeout(determineFirstPlayer, 2000);
         }
 
         function determineFirstPlayer() {
