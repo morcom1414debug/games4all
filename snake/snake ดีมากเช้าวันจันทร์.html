@@ -22,7 +22,7 @@
         .active-screen { display: flex; }
 
         h2 { margin-top: 0; color: #2d3436; text-align: center; font-size: 1.8rem; }
-        h2:focus { outline: none; }
+        h2:focus { outline: none; } /* ลบกรอบ Focus ของ Headings ที่ใช้ tabindex="-1" */
         p { line-height: 1.6; color: #636e72; }
         
         .btn-main { background-color: var(--primary); color: #fff; border: none; padding: 15px 30px; font-size: 1.3rem; border-radius: 12px; cursor: pointer; font-weight: bold; transition: transform 0.2s, background-color 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 300px; text-align: center; text-decoration: none; }
@@ -277,15 +277,13 @@
         document.addEventListener('DOMContentLoaded', loadSounds);
         // --- End Web Audio API Setup ---
 
-        // เพิ่มการ์ดคูณ 2 ใน CARD_TYPES
         const CARD_TYPES = [
             { id: 'tripwire', name: 'เตะตัดขา', desc: 'ตารอบหน้าคู่ต่อสู้เดินได้แค่ครึ่งเดียวของแต้มที่ทอย', class: 'card-swap' },
             { id: 'swap', name: 'สลับมิติ', desc: 'สลับตำแหน่งบนกระดานของคุณกับบอททันที', class: 'card-swap' },
             { id: 'banana', name: 'เปลือกกล้วย', desc: 'วางกับดักตรงจุดยืนปัจจุบัน ใครเหยียบหยุดเดิน 1 ตา', class: 'card-banana' },
             { id: 'reverse', name: 'ถอยหลัง', desc: 'บังคับคู่ต่อสู้ต้องเดินถอยหลังในตาถัดไป', class: 'card-mirror' },
             { id: 'snatch', name: 'ขโมยซีน', desc: 'สุ่มขโมยการ์ดจากมือคู่ต่อสู้ 1 ใบมาเป็นของคุณทันที', class: 'card-swap' },
-            { id: 'lucky', name: 'แต้มล็อก', desc: 'ล็อกผลลูกเต๋าในรอบถัดไปของคุณให้ออก 6 แต้มเสมอ', class: 'card-banana' },
-            { id: 'mult2', name: 'พลังคูณสอง', desc: 'แต้มที่ทอยได้ในตานี้จะถูกคูณ 2 ทันที', class: 'card-banana' }
+            { id: 'lucky', name: 'แต้มล็อก', desc: 'ล็อกผลลูกเต๋าในรอบถัดไปของคุณให้ออก 6 แต้มเสมอ', class: 'card-banana' }
         ];
 
         let shortcuts = {};
@@ -297,14 +295,12 @@
         let playerHand = [];
         let botHand = [];
         let isPlayerTurn = true;
-        // เพิ่ม State ของการ์ดคูณ 2 (playerX2, botX2)
         let activeBuffs = { 
             playerDebuff: false, botDebuff: false, 
             playerReverse: false, botReverse: false, 
             traps: {}, 
             playerSkip: false, botSkip: false,
-            playerLucky: false, botLucky: false,
-            playerX2: false, botX2: false
+            playerLucky: false, botLucky: false
         };
         let isGameReady = true;
         let isGameStartingProcess = false;
@@ -551,10 +547,12 @@
             }
         }
 
+        // ปรับปรุงฟังก์ชัน render ให้เพิ่ม disabled ตามสถานะเกม
         function renderPlayerCards() {
             const container = document.getElementById('my-cards');
             container.innerHTML = '';
             
+            // ตรวจสอบว่าอยู่ในสถานะทอย หรือตาบอทหรือไม่
             const isGameBusy = btnRoll.disabled; // ถ้าปุ่มทอยปิดอยู่ แสดงว่าไม่ควรใช้การ์ด
 
             playerHand.forEach((card, index) => {
@@ -562,6 +560,7 @@
                 div.type = 'button'; 
                 div.className = `card ${card.class}`;
                 
+                // ถ้าไม่ใช่ตาผู้เล่น หรือกำลังทอย -> ห้ามกด
                 if (!isPlayerTurn || isGameBusy) {
                     div.disabled = true;
                 }
@@ -589,9 +588,11 @@
             return msg;
         }
 
+        // เพิ่มการป้องกันใน useCard อีกชั้น
         function useCard(index) {
             if (!isGameReady) return; 
 
+            // เช็คซ้ำอีกครั้งกันเหนียว
             if (!isPlayerTurn || btnRoll.disabled || isMiniGameProcessing) {
                 return; 
             }
@@ -637,9 +638,6 @@
             } else if (card.id === 'lucky') {
                 activeBuffs.playerLucky = true;
                 txt += `ล็อกผลให้ทอยออก 6 แต้มแน่นอน!`;
-            } else if (card.id === 'mult2') {
-                activeBuffs.playerX2 = true;
-                txt += `แต้มทอยของคุณจะคูณสอง!`;
             }
             speak(txt);
 
@@ -653,7 +651,7 @@
             playSound('dice');
 
             btnRoll.disabled = true;
-            renderPlayerCards(); 
+            renderPlayerCards(); // อัปเดต UI ให้ปุ่มการ์ดถูกล็อคทันทีที่กดทอย
             diceCube.classList.add('is-rolling');
             speak("คุณ กำลังทอยลูกเต๋า...");
 
@@ -666,24 +664,10 @@
                 const faceRotations = { 1: 'rotateX(0deg) rotateY(0deg)', 2: 'rotateY(-90deg)', 3: 'rotateY(-180deg)', 4: 'rotateY(90deg)', 5: 'rotateX(-90deg)', 6: 'rotateX(90deg)' };
                 diceCube.style.transform = faceRotations[rolled];
 
-                // จัดการการคำนวณแต้มเมื่อมีการ์ดแสดงผล
-                let originalRoll = rolled;
-                let isModified = false;
-
-                if (activeBuffs.playerX2) {
-                    rolled = rolled * 2;
-                    activeBuffs.playerX2 = false; // ล้างค่าทันที
-                    isModified = true;
-                }
-
                 if (activeBuffs.playerDebuff) {
-                    rolled = Math.max(1, Math.floor(rolled / 2));
+                    let old = rolled; rolled = Math.max(1, Math.floor(rolled / 2));
                     activeBuffs.playerDebuff = false;
-                    isModified = true;
-                }
-
-                if (isModified) {
-                    speak(`คุณ ทอยได้ ${originalRoll} แต้ม แต่ผลจากการ์ดทำให้เดินจริง ${rolled} ช่อง`);
+                    speak(`คุณ ติดสถานะ ทอยได้ ${old} แต่เดินจริง ${rolled} ช่อง`);
                 } else {
                     speak(`คุณ ทอยได้ ${rolled} แต้ม`);
                 }
@@ -1026,21 +1010,7 @@
 
         function triggerBotTurn() {
             if (botHand.length > 0 && Math.random() > 0.5) {
-                let cardIndex = botHand.length - 1;
-                let card = botHand[cardIndex];
-
-                // การตรวจสอบ AI บอท: ป้องกันไม่ให้บอทใช้การ์ดคูณสองถ้าใกล้เส้นชัยเกินไป (ป้องกันการเดินเด้งกลับ)
-                if (card.id === 'mult2' && botPos > 88) {
-                    if (botHand.length > 1) {
-                        cardIndex = 0; // ไปใช้การ์ดอีกใบแทน
-                        card = botHand[cardIndex];
-                    } else {
-                        botRollDice(); // ไม่มีไพ่อื่นให้เลือก ข้ามการใช้ไพ่ไปเลย
-                        return;
-                    }
-                }
-
-                botHand.splice(cardIndex, 1);
+                let card = botHand.pop();
                 let txt = `บอท ใช้ การ์ด${card.name}! `;
                 
                 playSound('selectcard', false, () => {
@@ -1070,8 +1040,6 @@
                     } else { txt += `บอท ขโมยล้มเหลว!`; }
                 } else if (card.id === 'lucky') {
                     activeBuffs.botLucky = true; txt += `ล็อกแต้ม บอท ให้ออก 6!`;
-                } else if (card.id === 'mult2') {
-                    activeBuffs.botX2 = true; txt += `แต้มทอยของบอทจะคูณสอง!`;
                 }
                 speak(txt);
                 setTimeout(botRollDice, 2000); 
@@ -1084,26 +1052,10 @@
             let rolled = Math.floor(Math.random() * 6) + 1;
             if (activeBuffs.botLucky) { rolled = 6; activeBuffs.botLucky = false; }
 
-            let originalRoll = rolled;
-            let isModified = false;
-
-            if (activeBuffs.botX2) {
-                rolled = rolled * 2;
-                activeBuffs.botX2 = false; // ล้างค่าทันที
-                isModified = true;
-            }
-
             if (activeBuffs.botDebuff) {
-                rolled = Math.max(1, Math.floor(rolled / 2));
-                activeBuffs.botDebuff = false;
-                isModified = true;
-            }
-
-            if (isModified) {
-                speak(`บอท ทอยได้ ${originalRoll} แต้ม แต่ผลจากการ์ดทำให้เดินจริง ${rolled} ช่อง`);
-            } else { 
-                speak(`บอท ทอยได้ ${rolled} แต้ม`); 
-            }
+                rolled = Math.max(1, Math.floor(rolled / 2)); activeBuffs.botDebuff = false;
+                speak(`บอท ติดสถานะ เดินได้ ${rolled} ช่อง`);
+            } else { speak(`บอท ทอยได้ ${rolled} แต้ม`); }
 
             setTimeout(() => {
                 switchScreen('screen-board');
@@ -1159,8 +1111,7 @@
             playerHand = []; botHand = [];
             activeBuffs = { 
                 playerDebuff: false, botDebuff: false, playerReverse: false, botReverse: false, 
-                traps: {}, playerSkip: false, botSkip: false, playerLucky: false, botLucky: false,
-                playerX2: false, botX2: false // รีเซ็ตการ์ดคูณ 2
+                traps: {}, playerSkip: false, botSkip: false, playerLucky: false, botLucky: false
             };
             btnRoll.disabled = true;
             isMiniGameProcessing = false;
