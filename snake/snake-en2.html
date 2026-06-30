@@ -435,17 +435,12 @@
         function startGame(event) {
             if (event) { event.preventDefault(); event.stopPropagation(); }
             if (isGameStartingProcess) return; isGameStartingProcess = true;
-            
-            // Hybrid Lock: ปิดใช้งานและซ่อนปุ่มทันที (ป้องกันคลิกซ้อน + เคลียร์โฟกัส VoiceOver)
-            const startBtn = document.getElementById('btn-start');
-            if (startBtn) {
-                startBtn.disabled = true;
-                startBtn.style.pointerEvents = 'none';
-                startBtn.setAttribute('aria-hidden', 'true');
-                startBtn.style.display = 'none';
-            }
-            
             if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            // เพิ่มคำสั่งนี้เพื่อซ่อนปุ่มทันทีเมื่อมีการกด (ป้องกันการกดซ้ำ)
+            const startBtn = document.getElementById('btn-start');
+            if (startBtn) startBtn.style.display = 'none';
+            
             playSound('start'); switchScreen('screen-countdown');
             const visualElement = document.getElementById('countdown-visual');
             let count = 3; visualElement.innerText = count; speak(count.toString());
@@ -454,17 +449,7 @@
                 count--;
                 if (count > 0) { visualElement.innerText = count; speak(count.toString()); }
                 else if (count === 0) { visualElement.innerText = "Go!"; speak("The game is ready."); }
-                else { 
-                    clearInterval(countInterval); 
-                    // ห้ามรีเซ็ต isGameStartingProcess ตรงนี้ เพื่อป้องกันบักกดซ้ำ
-                    initGameLogic(); 
-                    
-                    // ย้ายโฟกัส VoiceOver ไปยังหน้าจอใหม่ทันที
-                    const turnTitle = document.getElementById('turn-title');
-                    if (turnTitle) {
-                        turnTitle.focus();
-                    }
-                }
+                else { clearInterval(countInterval); isGameStartingProcess = false; initGameLogic(); }
             }, 1600); 
         }
 
