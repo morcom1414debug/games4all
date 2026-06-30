@@ -34,7 +34,6 @@
         .home-btn-hex:hover { background-color: #5b4cc4; transform: scale(1.1); }
         .home-btn-hex:focus { outline: 4px solid var(--secondary); outline-offset: 4px; }
         .pos-top-left { position: absolute; top: 20px; left: 20px; z-index: 100; }
-        .pos-top-right { position: absolute; top: 20px; right: 20px; z-index: 100; left: auto; font-size: 1.2rem; font-weight: bold; }
 
         .welcome-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; max-width: 500px; width: 100%; }
 
@@ -159,8 +158,6 @@
 
     <div id="screen-welcome" class="screen active-screen">
         <button class="home-btn-hex pos-top-left" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
-        <button class="home-btn-hex pos-top-right" aria-label="Change to English" onclick="window.location.href='snake-en.html'">Eng</button>
-        
         <div class="welcome-card">
             <h1 style="color: var(--primary); margin-bottom: 10px;">บันไดงูป่วนมิติ Audio Snakes and Ladders 🎲</h1>
             <hr style="border: 0; border-top: 1px solid #dfe6e9; margin: 20px 0;">
@@ -595,32 +592,20 @@
 
                 setTimeout(() => {
                     switchScreen('screen-board'); activeBuffs.playerReverse = false;
-                    let path = calculateMovementPath(playerPos, rolled, isRev);
+                    let path = generateDicePath(playerPos, rolled, isRev);
                     executePathMovement('player', path);
                 }, 1200);
 
             }, 1000);
         };
 
-        // --- Core Movement Logic ---
-        function calculateMovementPath(startPos, steps, isReverse = false) {
-            let path = [];
-            let current = startPos;
-            let direction = isReverse ? -1 : 1;
-
-            if (steps === 0) return path;
-
-            for (let i = 0; i < steps; i++) {
-                current += direction;
-                // Logic เด้งกลับเมื่อเกิน 100 หรือ ต่ำกว่า 1
-                if (current > 100) {
-                    direction = -1; 
-                    current = 99;
-                } else if (current < 1) {
-                    direction = 1; 
-                    current = 2;
-                }
-                path.push(current);
+        function generateDicePath(startPos, steps, isReverse = false) {
+            let path = []; let temp = startPos; 
+            if (!isReverse) {
+                let forward = true;
+                for (let i = 0; i < steps; i++) { if (temp === 100) forward = false; if (forward) temp++; else temp--; path.push(temp); }
+            } else {
+                for (let i = 0; i < steps; i++) { if (temp > 1) temp--; path.push(temp); }
             }
             return path;
         }
@@ -772,9 +757,6 @@
             
             let finalOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
             
-            // ข้อยกเว้น: อนุญาตให้เข้ามินิเกมซ้ำได้เฉพาะกรณีมิติโชค
-            let allowMinigameReentry = (finalOutcome.type === 'good');
-            
             // --- VISUAL ADDED ---
             if (finalOutcome.type === 'good') { playSound('best'); boxes[boxIdx].classList.add('box-good-anim'); }
             else if (finalOutcome.type === 'bad') { playSound('bomb'); boxes[boxIdx].classList.add('box-bomb-anim'); document.querySelector('.boxes-container').classList.add('board-shake'); }
@@ -787,90 +769,64 @@
                 if (targetHand.length === 0) {
                     const alertDiv = document.getElementById('steal-alert'); alertDiv.style.display = 'block';
                     speak(`${pName}พยายามขโมยการ์ด แต่ล้มเหลวเพราะอีกฝ่ายไม่มีการ์ด!`);
-                    setTimeout(() => { alertDiv.style.display = 'none'; exitMiniGameNormal(false); }, 3000); return;
+                    setTimeout(() => { alertDiv.style.display = 'none'; exitMiniGameNormal(); }, 3000); return;
                 } else {
                     if (isPlayerTurn) { playerHand.push(botHand.pop()); renderPlayerCards(); }
                     else { botHand.push(playerHand.pop()); }
                     speak(`${pName}ขโมยสำเร็จ! ริบการ์ดจากมืออีกฝ่าย 1 ใบ!`);
-                    setTimeout(() => exitMiniGameNormal(false), 2000); return;
+                    setTimeout(exitMiniGameNormal, 2000); return;
                 }
             }
 
-            let playerSteps = 0; let botSteps = 0;
-            let playerRev = false; let botRev = false;
+            let startPlayer = playerPos; let startBot = botPos;
+            let endPlayer = playerPos; let endBot = botPos;
 
             if (finalOutcome.type === 'good') {
-                if (isPlayerTurn) { playerSteps = 3; playerRev = false; botSteps = 3; botRev = true; }
-                else { botSteps = 3; botRev = false; playerSteps = 3; playerRev = true; }
+                if (isPlayerTurn) { endPlayer = Math.min(100, playerPos + 3); endBot = Math.max(1, botPos - 3); }
+                else { endBot = Math.min(100, botPos + 3); endPlayer = Math.max(1, playerPos - 3); }
             } else if (finalOutcome.type === 'bad') {
-                playerSteps = 4; playerRev = true; botSteps = 4; botRev = true;
+                endPlayer = Math.max(1, playerPos - 4); endBot = Math.max(1, botPos - 4);
             }
 
             setTimeout(() => { 
                 switchScreen('screen-board');
                 speak(`ผลลัพธ์: ${finalOutcome.text}`);
 
-                let playerPath = calculateMovementPath(playerPos, playerSteps, playerRev);
-                let botPath = calculateMovementPath(botPos, botSteps, botRev);
+                let playerPath = generateLinearPath(startPlayer, endPlayer); let botPath = generateLinearPath(startBot, endBot);
 
                 setTimeout(() => {
                     if (playerPath.length > 0) {
                         speak(`คุณ ขยับ:`);
                         setTimeout(() => {
                             executePathMovement('player', playerPath, () => {
-                                evaluateChainReaction('player', () => { setTimeout(() => animateBotMiniMove(botPath, allowMinigameReentry), 500); });
+                                evaluateChainReaction('player', () => { setTimeout(() => animateBotMiniMove(startBot, endBot, botPath), 500); });
                             });
                         }, 1200);
-                    } else { evaluateChainReaction('player', () => { animateBotMiniMove(botPath, allowMinigameReentry); }); }
+                    } else { evaluateChainReaction('player', () => { animateBotMiniMove(startBot, endBot, botPath); }); }
                 }, 2500);
             }, 600); // Wait for open box animation slightly
         }
 
-        function animateBotMiniMove(botPath, checkMinigameReentry) {
+        function animateBotMiniMove(startBot, endBot, botPath) {
             if (botPath.length > 0) {
                 speak(`บอท ขยับ:`);
                 setTimeout(() => {
-                    executePathMovement('bot', botPath, () => { 
-                        evaluateChainReaction('bot', () => { setTimeout(() => exitMiniGameNormal(checkMinigameReentry), 500); }); 
-                    });
+                    executePathMovement('bot', botPath, () => { evaluateChainReaction('bot', () => { setTimeout(exitMiniGameNormal, 500); }); });
                 }, 1200);
-            } else { evaluateChainReaction('bot', () => { exitMiniGameNormal(checkMinigameReentry); }); }
+            } else { evaluateChainReaction('bot', () => { exitMiniGameNormal(); }); }
         }
 
-        function exitMiniGameNormal(checkMinigameReentry = false) {
+        function exitMiniGameNormal() {
             isMiniGameProcessing = false;
             if (playerPos === 100) { showGameOver(true); return; }
             if (botPos === 100) { showGameOver(false); return; }
-
-            // ตรวจสอบเงื่อนไขเข้ามินิเกมซ้ำ (อนุญาตเฉพาะกรณีที่ไม่ได้ระเบิด)
-            if (checkMinigameReentry && playerPos === botPos) {
-                playSound('double');
-                setTimeout(() => {
-                    let initiator = isPlayerTurn ? 'player' : 'bot';
-                    speak(`โอ๊ะ! เดินมาทับช่องเดียวกันอีกแล้ว! ${initiator === 'player' ? "คุณ ได้สิทธิ์เลือกเปิดกล่อง" : "บอท กำลังเลือกกล่อง"}`);
-                    setTimeout(() => {
-                        switchScreen('screen-mini'); document.getElementById('steal-alert').style.display = 'none'; 
-                        
-                        document.querySelectorAll('.box-treasure').forEach(b => b.className = 'box-treasure');
-                        document.querySelector('.boxes-container').classList.remove('board-shake');
-                        isMiniGameProcessing = false;
-                        const boxes = document.querySelectorAll('.box-treasure');
-
-                        if (initiator === 'player') {
-                            document.getElementById('mini-title').innerText = "💥 ตกช่องเดียวกันอีกแล้ว! คุมชะตากล่องสมบัติ 💥";
-                            boxes.forEach(b => b.disabled = false);
-                            setTimeout(() => { const firstBox = document.getElementById('mini-box-1'); if(firstBox) firstBox.focus(); }, 100);
-                        } else {
-                            document.getElementById('mini-title').innerText = "💥 ตกช่องเดียวกันอีกแล้ว! บอทกำลังเลือกกล่อง... 💥";
-                            boxes.forEach(b => b.disabled = true);
-                            setTimeout(() => { openTreasure(Math.floor(Math.random() * 3)); }, 2000); 
-                        }
-                    }, 2000); 
-                }, 1500); 
-                return;
-            }
-
             isPlayerTurn = !isPlayerTurn; switchScreen('screen-turn'); startTurnCycle();
+        }
+
+        function generateLinearPath(start, end) {
+            let path = []; if (start === end) return path;
+            let temp = start; while(temp !== end) { if (start < end) temp++; else temp--; path.push(temp); }
+            return path;
         }
 
         function triggerBotTurn() {
@@ -944,7 +900,7 @@
 
             setTimeout(() => {
                 switchScreen('screen-board'); activeBuffs.botReverse = false;
-                let path = calculateMovementPath(botPos, rolled, isRev);
+                let path = generateDicePath(botPos, rolled, isRev);
                 executePathMovement('bot', path);
             }, 1200);
         }
