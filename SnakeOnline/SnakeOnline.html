@@ -160,7 +160,7 @@
 
     <div id="screen-welcome" class="screen active-screen">
         <button class="home-btn-hex pos-top-left" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
-        <button class="home-btn-hex pos-top-right" aria-label="Change to English" onclick="window.location.href='snake-en.html'">Eng</button>
+        <button id="btn-lang" class="home-btn-hex pos-top-right" aria-label="Change to English" onclick="window.location.href='snake-en.html'">Eng</button>
         
         <div class="welcome-card">
             <h1 style="color: var(--primary); margin-bottom: 10px;">บันไดงูป่วนมิติ (Online) 🎲</h1>
@@ -177,11 +177,13 @@
 
                 <div id="room-list-container">
                     <h3 style="margin-top:20px; color:#2d3436; text-align:left;">ห้องที่รอเพื่อน (คลิกเพื่อจอย):</h3>
-                    <div id="room-list" style="display: flex; flex-direction: column; text-align:left; max-height:150px; overflow-y:auto;"></div>
+                    <div id="room-list" style="display: flex; flex-direction: column; text-align:left; max-height:150px; overflow-y:auto;">
+                        </div>
                 </div>
             </div>
 
             <div id="lobby-status" aria-live="polite" style="font-weight:bold; color:var(--primary); font-size:1.2rem; display:none; padding: 20px;"></div>
+
         </div>
     </div>
 
@@ -272,7 +274,7 @@
         let myRole = null; 
         let currentRoomId = null;
         let prngSeed = 0; 
-        let hasRolled = false; 
+        let hasRolled = false; // ตัวแปรสำหรับตรวจสอบว่ากดทอยไปแล้วหรือยัง เพื่อล็อกการใช้การ์ด
         
         // PRNG
         function seededRandom() {
@@ -306,12 +308,17 @@
 
         window.createRoom = function() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            playSound('one'); 
+            playSound('one'); // เล่นเสียง 1.mp3 ทันทีที่กดสร้างห้อง
             
+            // ซ่อนเมนูทั้งหมด และโชว์แค่ข้อความสถานะ
             document.getElementById('lobby-content').style.display = 'none';
             const statusDiv = document.getElementById('lobby-status');
             statusDiv.style.display = 'block';
             statusDiv.innerText = 'กำลังสร้างห้อง...';
+            
+            // ซ่อนปุ่มเปลี่ยนภาษาในหน้าที่รอเพื่อน
+            const langBtn = document.getElementById('btn-lang');
+            if(langBtn) langBtn.style.display = 'none';
 
             const counterRef = ref(db, 'games/Snake/room_counter');
             runTransaction(counterRef, (currentData) => {
@@ -346,7 +353,7 @@
             onValue(statusRef, (snap) => {
                 if (snap.val() === 'playing') {
                     onValue(ref(db, `games/Snake/rooms/${rId}/seed`), (seedSnap) => {
-                        prngSeed = seedSnap.val(); 
+                        prngSeed = seedSnap.val(); // Sync Seed
                         document.querySelector('.welcome-card').style.display = 'none';
                         startEventSync();
                         if(myRole === 'p1') {
@@ -369,7 +376,7 @@
                 if (cmd.type === 'START_GAME') {
                     startCountdownSequence();
                 } else if (cmd.type === 'ROLL') {
-                    executeRollEvent(cmd.actor); 
+                    executeRollEvent(cmd.actor); // สร้างตัวเลขพร้อมกันด้วย Seed ที่ตรงกันจากภายใน Executor
                 } else if (cmd.type === 'USE_CARD') {
                     executeCardEvent(cmd.idx, cmd.actor);
                 } else if (cmd.type === 'MINIGAME') {
@@ -384,7 +391,7 @@
         let bgmSource = null;
         
         const soundFiles = {
-            one: 'audio/1.mp3', 
+            one: 'audio/1.mp3', // ไฟล์ใหม่ที่ต้องการ
             start: 'audio/start.mp3', back: 'audio/back.mp3', dice: 'audio/dice.mp3',
             blank: 'audio/blank.mp3', special: 'audio/special.mp3', stop: 'audio/stop.mp3',
             up: 'audio/up.mp3', down: 'audio/down.mp3', double: 'audio/double.mp3',
@@ -446,10 +453,6 @@
         function stopBGM() { if (bgmSource) { bgmSource.stop(); bgmSource = null; } }
 
         function switchScreen(screenId) {
-            // ล้างสถานะโฟกัส/โฮเวอร์ค้างของทุกปุ่มอย่างเท่าเทียมเมื่อสลับหน้าจอ
-            if (document.activeElement && typeof document.activeElement.blur === 'function') {
-                document.activeElement.blur();
-            }
             speaker.innerText = ''; 
             clearTimeout(speakTimeout);
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
@@ -480,7 +483,9 @@
         }
 
         function startCountdownSequence() {
+            // เล่นไฟล์ start.mp3 พร้อมกัน 2 เครื่องเมื่อเกมเริ่มนับถอยหลัง
             playSound('start'); 
+            
             switchScreen('screen-countdown');
             const visualElement = document.getElementById('countdown-visual');
             let count = 3; visualElement.innerText = count; speak(count.toString());
@@ -532,7 +537,8 @@
             updateStatusBar(); 
             document.getElementById('dice-cube').style.transform = 'rotateX(-22deg) rotateY(-45deg)';
             
-            hasRolled = false; 
+            hasRolled = false; // ปลดล็อกการ์ดเมื่อเริ่มเทิร์นใหม่
+            
             let skipKey = currentTurnRole === 'p1' ? 'p1Skip' : 'p2Skip';
             
             if (activeBuffs[skipKey]) {
@@ -548,13 +554,13 @@
             if (currentTurnRole === myRole) {
                 document.getElementById('turn-title').innerText = "ตาคุณ! กดทอยเลย";
                 btnRoll.disabled = false;
-                renderPlayerCards(); 
+                renderPlayerCards(); // รีเฟรชสถานะปุ่มการ์ด
                 speak("ตาคุณ! กดทอยเลย"); setTimeout(() => btnRoll.focus(), 100); 
             } else {
                 document.getElementById('turn-title').innerText = "ตาของเพื่อน (รอทอยเต๋า...)";
                 btnRoll.disabled = true;
-                btnRoll.blur(); 
-                renderPlayerCards(); 
+                btnRoll.blur(); // เคลียร์สถานะ focus เพื่อความสม่ำเสมอของปุ่ม
+                renderPlayerCards(); // รีเฟรชสถานะปุ่มการ์ด
                 speak("ตาของเพื่อน รอเพื่อนสั่งงาน...");
             }
         }
@@ -564,7 +570,7 @@
             let myH = getMyHand();
             myH.forEach((card, index) => {
                 let div = document.createElement('button'); div.type = 'button'; div.className = `card ${card.class}`;
-                if (currentTurnRole !== myRole || hasRolled) div.disabled = true; 
+                if (currentTurnRole !== myRole || hasRolled) div.disabled = true; // ล็อกการ์ดหากไม่ใช่เทิร์นตัวเอง หรือกดทอยไปแล้ว
                 div.setAttribute('aria-label', `ใช้การ์ด ${card.name}. รายละเอียด: ${card.desc}`);
                 div.innerHTML = `<div>${card.name}</div><div style='font-size:0.7rem; font-weight:normal;'>${card.desc}</div>`;
                 div.onclick = () => window.handleCardClick(index); 
@@ -574,16 +580,16 @@
 
         window.handleRollClick = function() {
             if (currentTurnRole !== myRole || hasRolled) return;
-            hasRolled = true; 
+            hasRolled = true; // ล็อกการใช้การ์ดทันทีที่กดทอย
             const btnRoll = document.getElementById('btn-roll');
             btnRoll.disabled = true;
-            btnRoll.blur(); 
-            renderPlayerCards(); 
-            pushEvent({ type: 'ROLL', actor: myRole }); 
+            btnRoll.blur(); // เคลียร์สถานะ focus
+            renderPlayerCards(); // ล็อกการ์ดแบบ Visual ทันที
+            pushEvent({ type: 'ROLL', actor: myRole }); // ส่งแค่คำสั่งไปยัง Firebase โดยไม่สุ่มตัวเลขเต๋าล่วงหน้า
         };
 
         window.handleCardClick = function(index) {
-            if (currentTurnRole !== myRole || hasRolled) return; 
+            if (currentTurnRole !== myRole || hasRolled) return; // หากทอยไปแล้วจะไม่ให้กดใช้งานการ์ดได้อีก
             pushEvent({ type: 'USE_CARD', idx: index, actor: myRole });
         };
 
@@ -594,6 +600,7 @@
         };
 
         // --- COMMAND EXECUTORS ---
+        
         function executeCardEvent(index, actorRole) {
             let targetHand = actorRole === 'p1' ? p1Hand : p2Hand;
             let oppHandRef = actorRole === 'p1' ? p2Hand : p1Hand;
@@ -604,6 +611,7 @@
             let uName = getUIName(actorRole);
             let txt = `${uName} ใช้ การ์ด${card.name}! `;
             
+            // เล่นเสียงการ์ด
             playSound('selectcard', false, () => { playSound('effect'); });
 
             let actorPosKey = actorRole === 'p1' ? 'p1Pos' : 'p2Pos';
@@ -646,6 +654,16 @@
                 document.getElementById(actorPawnId).classList.add('aura-active');
             }
             speak(txt);
+            
+            // นำ Focus กลับไปที่ปุ่มทอยเต๋าเมื่อเป็นการใช้งานการ์ดในเทิร์นตัวเอง
+            if (currentTurnRole === myRole && !hasRolled) {
+                setTimeout(() => {
+                    const btnRoll = document.getElementById('btn-roll');
+                    if (btnRoll && !btnRoll.disabled) {
+                        btnRoll.focus();
+                    }
+                }, 100);
+            }
         }
 
         function checkSquareAfterSwap(roleToCheck) {
@@ -665,14 +683,15 @@
         }
 
         function executeRollEvent(actorRole) {
-            let rolledValue = Math.floor(seededRandom() * 6) + 1; 
+            let rolledValue = Math.floor(seededRandom() * 6) + 1; // สุ่มตัวเลขพร้อมกันทั้ง 2 เครื่องเมื่ออีเวนต์มาถึง เพื่อให้ Seed ซิงค์กัน
             
             const btnRoll = document.getElementById('btn-roll');
             btnRoll.disabled = true;
-            btnRoll.blur(); 
+            btnRoll.blur(); // เคลียร์สถานะ focus
             if (actorRole === myRole) hasRolled = true; 
             renderPlayerCards(); 
             
+            // นำเสียงเต๋ากลับมา
             playSound('dice');
             
             const diceCube = document.getElementById('dice-cube');
@@ -800,7 +819,7 @@
             if (p1Pos === p2Pos) {
                 playSound('double');
                 setTimeout(() => {
-                    speak("โอ๊ะ! เดินมาทับช่องเดียวกัน! ได้สิทธิ์เลือกเปิดกล่อง");
+                    speak(`โอ๊ะ! เดินมาทับช่องเดียวกัน! ${uName} ได้สิทธิ์เลือกเปิดกล่อง`);
                     setTimeout(() => triggerMinigameUI(actorRole), 2000); 
                 }, 1500); 
                 return;
@@ -817,7 +836,7 @@
             document.getElementById('steal-alert').style.display = 'none'; 
             document.querySelectorAll('.box-treasure').forEach(b => { 
                 b.className = 'box-treasure'; 
-                b.blur(); 
+                b.blur(); // เคลียร์สถานะ focus เพื่อความสม่ำเสมอของปุ่ม
             });
             document.querySelector('.boxes-container').classList.remove('board-shake');
             
@@ -841,7 +860,7 @@
             const boxes = document.querySelectorAll('.box-treasure');
             boxes.forEach(b => { 
                 b.disabled = true; 
-                b.blur(); 
+                b.blur(); // เคลียร์สถานะ focus เพื่อความสม่ำเสมอของปุ่ม
             });
 
             const outcomes = [
@@ -891,7 +910,7 @@
 
                 setTimeout(() => {
                     if (p1Path.length > 0) {
-                        speak(`(P1) ขยับ:`);
+                        speak(`${getUIName('p1')} ขยับ:`);
                         setTimeout(() => {
                             executePathMovement('p1', p1Path, () => {
                                 evaluateChainReaction('p1', () => { setTimeout(() => animateMiniMove2(p2Path, allowMinigameReentry), 500); });
@@ -904,7 +923,7 @@
 
         function animateMiniMove2(p2Path, checkMinigameReentry) {
             if (p2Path.length > 0) {
-                speak(`(P2) ขยับ:`);
+                speak(`${getUIName('p2')} ขยับ:`);
                 setTimeout(() => {
                     executePathMovement('p2', p2Path, () => { 
                         evaluateChainReaction('p2', () => { setTimeout(() => exitMiniGameNormal(checkMinigameReentry), 500); }); 
