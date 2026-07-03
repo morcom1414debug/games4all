@@ -34,6 +34,7 @@
         .home-btn-hex:hover { background-color: #5b4cc4; transform: scale(1.1); }
         .home-btn-hex:focus { outline: 4px solid var(--secondary); outline-offset: 4px; }
         .pos-top-left { position: absolute; top: 20px; left: 20px; z-index: 100; }
+        .pos-top-right { position: absolute; top: 20px; right: 20px; z-index: 100; left: auto; font-size: 1.2rem; font-weight: bold; }
 
         .welcome-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; max-width: 500px; width: 100%; }
 
@@ -158,6 +159,8 @@
 
     <div id="screen-welcome" class="screen active-screen">
         <button class="home-btn-hex pos-top-left" aria-label="Back to Home" onclick="window.location.href='../index.html'">🏠</button>
+        <button class="home-btn-hex pos-top-right" aria-label="Change to Thai" onclick="window.location.href='snake.html'">Thai</button>
+
         <div class="welcome-card">
             <h1 style="color: var(--primary); margin-bottom: 10px;">Audio Snakes and Ladders: Dimension Chaos 🎲</h1>
             <hr style="border: 0; border-top: 1px solid #dfe6e9; margin: 20px 0;">
@@ -167,7 +170,7 @@
                 <li><strong>Obstacles:</strong> Watch out for snakeheads, banana peels, and <strong>quicksand</strong> (which traps you and forces you to lose 1 turn).</li>
                 <li><strong>Box Duel Minigame:</strong> When both tokens land on the exact same space, players draw a random mystery box to settle the score.</li>
             </ul>
-            <button class="btn-main" type="button" style="margin-top: 20px;" onclick="startGame(event)"><span aria-hidden="true">🎮</span> Start Game</button>
+            <button id="btn-start" class="btn-main" type="button" style="margin-top: 20px;" onclick="startGame(event)"><span aria-hidden="true">🎮</span> Start Game</button>
         </div>
     </div>
 
@@ -263,6 +266,7 @@
                     console.error(`Error loading audio: ${soundFiles[key]}`, e);
                 }
             }
+startGame();
         }
 
         function playSound(bufferName, loop = false, onEndedCallback = null) {
@@ -429,20 +433,56 @@
             });
         }
 
+        // --- UPDATED startGame FUNCTION ---
         function startGame(event) {
-            if (event) { event.preventDefault(); event.stopPropagation(); }
-            if (isGameStartingProcess) return; isGameStartingProcess = true;
+            if (event) { 
+                event.preventDefault(); 
+                event.stopPropagation(); 
+            }
+            
+            if (isGameStartingProcess) return; 
+            isGameStartingProcess = true;
+            
+            // Lock HTML and Accessibility immediately
+            const startBtn = document.getElementById('btn-start');
+            if (startBtn) {
+                startBtn.disabled = true;                
+                startBtn.style.pointerEvents = 'none';   
+                startBtn.setAttribute('aria-hidden', 'true'); 
+                startBtn.style.display = 'none';         
+            }
+
             if (audioCtx.state === 'suspended') audioCtx.resume();
             
-            playSound('start'); switchScreen('screen-countdown');
+            playSound('start'); 
+            switchScreen('screen-countdown');
             const visualElement = document.getElementById('countdown-visual');
-            let count = 3; visualElement.innerText = count; speak(count.toString());
+            let count = 3; 
+            visualElement.innerText = count; 
+            speak(count.toString());
 
             const countInterval = setInterval(() => {
                 count--;
-                if (count > 0) { visualElement.innerText = count; speak(count.toString()); }
-                else if (count === 0) { visualElement.innerText = "Go!"; speak("The game is ready."); }
-                else { clearInterval(countInterval); isGameStartingProcess = false; initGameLogic(); }
+                if (count > 0) { 
+                    visualElement.innerText = count; 
+                    speak(count.toString()); 
+                }
+                else if (count === 0) { 
+                    visualElement.innerText = "Go!"; 
+                    speak("The game is ready."); 
+                }
+                else { 
+                    clearInterval(countInterval); 
+                    
+                    // Do not reset isGameStartingProcess to false here
+                    initGameLogic(); 
+
+                    // Shift focus for screen readers
+                    const turnTitle = document.getElementById('turn-title');
+                    if (turnTitle) {
+                        turnTitle.focus();
+                    }
+                }
             }, 1600); 
         }
 
@@ -474,7 +514,7 @@
             if (isPlayerTurn) {
                 if (activeBuffs.playerSkip) {
                     activeBuffs.playerSkip = false; speak("You are skipped! It's the bot's turn.");
-                    isPlayerTurn = false; setTimeout(startTurnCycle, 1800); return;
+                    isPlayerTurn = false; setTimeout(startTurnCycle, 1900); return;
                 }
                 document.getElementById('turn-title').innerText = "Your turn! Roll the dice.";
                 btnRoll.disabled = false; renderPlayerCards();
@@ -482,11 +522,11 @@
             } else {
                 if (activeBuffs.botSkip) {
                     activeBuffs.botSkip = false; speak("The bot is skipped! It's your turn.");
-                    isPlayerTurn = true; setTimeout(startTurnCycle, 1800); return;
+                    isPlayerTurn = true; setTimeout(startTurnCycle, 1900); return;
                 }
                 document.getElementById('turn-title').innerText = "Bot's turn (Thinking...)";
                 btnRoll.disabled = true; renderPlayerCards();
-                setTimeout(triggerBotTurn, 900);
+                setTimeout(triggerBotTurn, 1300);
             }
         }
 
@@ -589,20 +629,32 @@
 
                 setTimeout(() => {
                     switchScreen('screen-board'); activeBuffs.playerReverse = false;
-                    let path = generateDicePath(playerPos, rolled, isRev);
+                    let path = calculateMovementPath(playerPos, rolled, isRev);
                     executePathMovement('player', path);
-                }, 1200);
+                }, 1300);
 
             }, 1000);
         };
 
-        function generateDicePath(startPos, steps, isReverse = false) {
-            let path = []; let temp = startPos; 
-            if (!isReverse) {
-                let forward = true;
-                for (let i = 0; i < steps; i++) { if (temp === 100) forward = false; if (forward) temp++; else temp--; path.push(temp); }
-            } else {
-                for (let i = 0; i < steps; i++) { if (temp > 1) temp--; path.push(temp); }
+        // --- Core Movement Logic ---
+        function calculateMovementPath(startPos, steps, isReverse = false) {
+            let path = [];
+            let current = startPos;
+            let direction = isReverse ? -1 : 1;
+
+            if (steps === 0) return path;
+
+            for (let i = 0; i < steps; i++) {
+                current += direction;
+                // Bounce back logic
+                if (current > 100) {
+                    direction = -1;
+                    current = 99;
+                } else if (current < 1) {
+                    direction = 1;
+                    current = 2;
+                }
+                path.push(current);
             }
             return path;
         }
@@ -698,7 +750,7 @@
                 }, 1500); 
                 return;
             }
-            setTimeout(() => { isPlayerTurn = (target !== 'player'); switchScreen('screen-turn'); startTurnCycle(); }, 1400); 
+            setTimeout(() => { isPlayerTurn = (target !== 'player'); switchScreen('screen-turn'); startTurnCycle(); }, 1800); 
         }
 
         function evaluateChainReaction(target, onComplete) {
@@ -753,6 +805,9 @@
             
             let finalOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
             
+            // Exception: Only allow re-entering minigame for "good" box
+            let allowMinigameReentry = (finalOutcome.type === 'good');
+
             if (finalOutcome.type === 'good') { playSound('best'); boxes[boxIdx].classList.add('box-good-anim'); }
             else if (finalOutcome.type === 'bad') { playSound('bomb'); boxes[boxIdx].classList.add('box-bomb-anim'); document.querySelector('.boxes-container').classList.add('board-shake'); }
             else if (finalOutcome.type === 'steal') { playSound('stolen'); spawnMinigameBeam(); }
@@ -763,64 +818,90 @@
                 if (targetHand.length === 0) {
                     const alertDiv = document.getElementById('steal-alert'); alertDiv.style.display = 'block';
                     speak(`${pName} tried to steal a card but failed because the opponent has no cards!`);
-                    setTimeout(() => { alertDiv.style.display = 'none'; exitMiniGameNormal(); }, 3000); return;
+                    setTimeout(() => { alertDiv.style.display = 'none'; exitMiniGameNormal(false); }, 3000); return;
                 } else {
                     if (isPlayerTurn) { playerHand.push(botHand.pop()); renderPlayerCards(); }
                     else { botHand.push(playerHand.pop()); }
                     speak(`${pName} stole successfully! Confiscated 1 card from the opponent\'s hand!`);
-                    setTimeout(exitMiniGameNormal, 2000); return;
+                    setTimeout(() => exitMiniGameNormal(false), 2000); return;
                 }
             }
 
-            let startPlayer = playerPos; let startBot = botPos;
-            let endPlayer = playerPos; let endBot = botPos;
+            let playerSteps = 0; let botSteps = 0;
+            let playerRev = false; let botRev = false;
 
             if (finalOutcome.type === 'good') {
-                if (isPlayerTurn) { endPlayer = Math.min(100, playerPos + 3); endBot = Math.max(1, botPos - 3); }
-                else { endBot = Math.min(100, botPos + 3); endPlayer = Math.max(1, playerPos - 3); }
+                if (isPlayerTurn) { playerSteps = 3; playerRev = false; botSteps = 3; botRev = true; }
+                else { botSteps = 3; botRev = false; playerSteps = 3; playerRev = true; }
             } else if (finalOutcome.type === 'bad') {
-                endPlayer = Math.max(1, playerPos - 4); endBot = Math.max(1, botPos - 4);
+                playerSteps = 4; playerRev = true; botSteps = 4; botRev = true;
             }
 
             setTimeout(() => { 
                 switchScreen('screen-board');
                 speak(`Outcome: ${finalOutcome.text}`);
 
-                let playerPath = generateLinearPath(startPlayer, endPlayer); let botPath = generateLinearPath(startBot, endBot);
+                let playerPath = calculateMovementPath(playerPos, playerSteps, playerRev);
+                let botPath = calculateMovementPath(botPos, botSteps, botRev);
 
                 setTimeout(() => {
                     if (playerPath.length > 0) {
                         speak(`You move:`);
                         setTimeout(() => {
                             executePathMovement('player', playerPath, () => {
-                                evaluateChainReaction('player', () => { setTimeout(() => animateBotMiniMove(startBot, endBot, botPath), 500); });
+                                evaluateChainReaction('player', () => { setTimeout(() => animateBotMiniMove(botPath, allowMinigameReentry), 500); });
                             });
-                        }, 1200);
-                    } else { evaluateChainReaction('player', () => { animateBotMiniMove(startBot, endBot, botPath); }); }
+                        }, 1300);
+                    } else { evaluateChainReaction('player', () => { animateBotMiniMove(botPath, allowMinigameReentry); }); }
                 }, 2500);
             }, 600);
         }
 
-        function animateBotMiniMove(startBot, endBot, botPath) {
+        function animateBotMiniMove(botPath, checkMinigameReentry) {
             if (botPath.length > 0) {
                 speak(`Bot moves:`);
                 setTimeout(() => {
-                    executePathMovement('bot', botPath, () => { evaluateChainReaction('bot', () => { setTimeout(exitMiniGameNormal, 500); }); });
-                }, 1200);
-            } else { evaluateChainReaction('bot', () => { exitMiniGameNormal(); }); }
+                    executePathMovement('bot', botPath, () => { 
+                        evaluateChainReaction('bot', () => { setTimeout(() => exitMiniGameNormal(checkMinigameReentry), 500); }); 
+                    });
+                }, 1300);
+            } else { evaluateChainReaction('bot', () => { exitMiniGameNormal(checkMinigameReentry); }); }
         }
 
-        function exitMiniGameNormal() {
+        function exitMiniGameNormal(checkMinigameReentry = false) {
             isMiniGameProcessing = false;
             if (playerPos === 100) { showGameOver(true); return; }
             if (botPos === 100) { showGameOver(false); return; }
-            isPlayerTurn = !isPlayerTurn; switchScreen('screen-turn'); startTurnCycle();
-        }
 
-        function generateLinearPath(start, end) {
-            let path = []; if (start === end) return path;
-            let temp = start; while(temp !== end) { if (start < end) temp++; else temp--; path.push(temp); }
-            return path;
+            // Check condition for re-entering minigame
+            if (checkMinigameReentry && playerPos === botPos) {
+                playSound('double');
+                setTimeout(() => {
+                    let initiator = isPlayerTurn ? 'player' : 'bot';
+                    speak(`Oh! Landed on the exact same space again! ${initiator === 'player' ? "You get to choose a box." : "The bot is choosing a box."}`);
+                    setTimeout(() => {
+                        switchScreen('screen-mini'); document.getElementById('steal-alert').style.display = 'none'; 
+                        
+                        document.querySelectorAll('.box-treasure').forEach(b => b.className = 'box-treasure');
+                        document.querySelector('.boxes-container').classList.remove('board-shake');
+                        isMiniGameProcessing = false;
+                        const boxes = document.querySelectorAll('.box-treasure');
+
+                        if (initiator === 'player') {
+                            document.getElementById('mini-title').innerText = "💥 Exact same space again! Choose a box 💥";
+                            boxes.forEach(b => b.disabled = false);
+                            setTimeout(() => { const firstBox = document.getElementById('mini-box-1'); if(firstBox) firstBox.focus(); }, 100);
+                        } else {
+                            document.getElementById('mini-title').innerText = "💥 Exact same space again! Bot is choosing... 💥";
+                            boxes.forEach(b => b.disabled = true);
+                            setTimeout(() => { openTreasure(Math.floor(Math.random() * 3)); }, 2000); 
+                        }
+                    }, 2000); 
+                }, 1500); 
+                return;
+            }
+
+            isPlayerTurn = !isPlayerTurn; switchScreen('screen-turn'); startTurnCycle();
         }
 
         function triggerBotTurn() {
@@ -892,9 +973,9 @@
 
             setTimeout(() => {
                 switchScreen('screen-board'); activeBuffs.botReverse = false;
-                let path = generateDicePath(botPos, rolled, isRev);
+                let path = calculateMovementPath(botPos, rolled, isRev);
                 executePathMovement('bot', path);
-            }, 1200);
+            }, 1300);
         }
 
         // Win quotes matching gaming environment
