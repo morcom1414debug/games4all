@@ -169,7 +169,7 @@
             <div id="lobby-content">
                 <ul style="text-align: left; font-size: 0.95rem; padding-left: 20px; line-height: 1.6; color: #636e72;">
                     <li><strong>Online 1v1:</strong> Take turns rolling the dice with a friend in real-time.</li>
-                    <li><strong>Card System:</strong> Hold up to 2 cards in your hand to disrupt Friend or protect yourself.</li>
+                    <li><strong>Card System:</strong> Hold up to 2 cards in your hand to disrupt your opponent or protect yourself.</li>
                     <li><strong>Box Duel Minigame:</strong> When both tokens land on the exact same space, players draw a random mystery box to settle the score.</li>
                 </ul>
                 
@@ -192,7 +192,7 @@
     </div>
 
     <div id="screen-turn" class="screen">
-        <div id="game-status-bar" class="status-bar" aria-live="polite">You 1 | Friend 1</div>
+        <div id="game-status-bar" class="status-bar" aria-live="polite">You: Space 1 | Opponent: Space 1</div>
         <h2 id="turn-title" tabindex="-1">Preparing board and deck...</h2>
         
         <div class="scene" aria-hidden="true">
@@ -213,7 +213,7 @@
     </div>
 
     <div id="screen-board" class="screen" aria-hidden="true">
-        <div id="board-status-bar" class="status-bar" style="margin-bottom: 5px;">You 1 | Friend 1</div>
+        <div id="board-status-bar" class="status-bar" style="margin-bottom: 5px;">You: Space 1 | Opponent: Space 1</div>
         <h2 id="board-status">Moving tokens...</h2>
         <div id="board-grid" class="board-wrapper">
             <svg id="snakes-ladders-svg" aria-hidden="true">
@@ -227,7 +227,7 @@
                 </defs>
             </svg>
             <div id="pawn-player" class="pawn pawn-p1">You</div>
-            <div id="pawn-bot" class="pawn pawn-p2">Friend</div>
+            <div id="pawn-bot" class="pawn pawn-p2">Opp.</div>
         </div>
     </div>
 
@@ -451,11 +451,11 @@
         };
 
         const CARD_TYPES = [
-            { id: 'tripwire', name: 'Tripwire', desc: 'On the next turn, Friend moves only half of their rolled points.', class: 'card-swap' },
-            { id: 'swap', name: 'Dimension Swap', desc: 'Instantly swap positions with Friend on the board.', class: 'card-swap' },
+            { id: 'tripwire', name: 'Tripwire', desc: 'On the next turn, the opponent moves only half of their rolled points.', class: 'card-swap' },
+            { id: 'swap', name: 'Dimension Swap', desc: 'Instantly swap positions with the opponent on the board.', class: 'card-swap' },
             { id: 'banana', name: 'Banana Peel', desc: 'Place a trap on your current space. Anyone who lands here loses 1 turn.', class: 'card-banana' },
-            { id: 'reverse', name: 'Reverse', desc: 'Force Friend to move backward on their next turn.', class: 'card-mirror' },
-            { id: 'snatch', name: 'Card Snatch', desc: 'Randomly steal 1 card from Friend\'s hand.', class: 'card-swap' },
+            { id: 'reverse', name: 'Reverse', desc: 'Force the opponent to move backward on their next turn.', class: 'card-mirror' },
+            { id: 'snatch', name: 'Card Snatch', desc: 'Randomly steal 1 card from the opponent\'s hand.', class: 'card-swap' },
             { id: 'lucky', name: 'Lucky 6', desc: 'Locks your next dice roll to guaranteed 6 points.', class: 'card-banana' },
             { id: 'mult2', name: 'Double Power', desc: 'Your dice roll points on this turn will be doubled instantly.', class: 'card-banana' }
         ];
@@ -524,11 +524,11 @@
         function getOppPos() { return myRole === 'p1' ? p2Pos : p1Pos; }
         function getMyHand() { return myRole === 'p1' ? p1Hand : p2Hand; }
         function getOppHand() { return myRole === 'p1' ? p2Hand : p1Hand; }
-        function getUIName(role) { return role === myRole ? 'You' : 'Friend'; }
+        function getUIName(role) { return role === myRole ? 'You' : 'The opponent'; }
         function getUIPawnId(role) { return role === myRole ? 'pawn-player' : 'pawn-bot'; }
 
         function updateStatusBar() {
-            const txt = `You ${getMyPos()} | Friend ${getOppPos()}`;
+            const txt = `You: Space ${getMyPos()} | Opponent: Space ${getOppPos()}`;
             document.getElementById('game-status-bar').innerText = txt;
             document.getElementById('board-status-bar').innerText = txt;
         }
@@ -577,7 +577,7 @@
                 currentTurnRole = seededRandom() >= 0.5 ? 'p1' : 'p2';
                 setTimeout(() => {
                     if(currentTurnRole === myRole) speak("Lucky you! You go first."); 
-                    else speak("Friend goes first.");
+                    else speak("The opponent goes first.");
                     setTimeout(startTurnCycle, 2800); 
                 }, 1600);
             }, 1400);
@@ -608,11 +608,11 @@
                 renderPlayerCards(); 
                 speak("Your turn! Roll the dice."); setTimeout(() => btnRoll.focus(), 100); 
             } else {
-                document.getElementById('turn-title').innerText = "Friend's turn (Waiting...)";
+                document.getElementById('turn-title').innerText = "Opponent's turn (Waiting...)";
                 btnRoll.disabled = true;
                 btnRoll.blur(); 
                 renderPlayerCards(); 
-                speak("Friend's turn. Please wait...");
+                speak("Opponent's turn. Please wait...");
             }
         }
 
@@ -680,7 +680,7 @@
                 let comb = [aMsg, oMsg].filter(m => m !== "").join(" and ");
                 if (comb !== "") txt += comb;
             } else if (card.id === 'tripwire') {
-                activeBuffs[`${oppRole}Debuff`] = true; txt += `Friend moves only half the distance next turn!`;
+                activeBuffs[`${oppRole}Debuff`] = true; txt += `The opponent moves only half the distance next turn!`;
                 document.getElementById(oppPawnId).classList.add('debuff-active');
                 showSlashOnPawn(oppPawnId);
             } else if (card.id === 'banana') {
@@ -688,7 +688,7 @@
                 activeBuffs.traps[pos] = actorRole; txt += `Placed a banana peel trap!`;
                 spawnBanana(pos);
             } else if (card.id === 'reverse') {
-                activeBuffs[`${oppRole}Reverse`] = true; txt += `Forced Friend to move backward!`;
+                activeBuffs[`${oppRole}Reverse`] = true; txt += `Forced the opponent to move backward!`;
                 document.getElementById(oppPawnId).classList.add('debuff-active');
             } else if (card.id === 'snatch') {
                 spawnFireball(actorRole !== myRole); 
@@ -899,8 +899,8 @@
                 boxes.forEach(b => b.disabled = false);
                 setTimeout(() => { const firstBox = document.getElementById('mini-box-1'); if(firstBox) firstBox.focus(); }, 100);
             } else {
-                document.getElementById('mini-title').innerText = "💥 Friend is choosing a box... 💥";
-                document.getElementById('mini-subtitle').innerText = "Please wait for Friend to decide.";
+                document.getElementById('mini-title').innerText = "💥 Opponent is choosing a box... 💥";
+                document.getElementById('mini-subtitle').innerText = "Please wait for the opponent to decide.";
                 boxes.forEach(b => b.disabled = true);
             }
         }
@@ -914,9 +914,9 @@
             });
 
             const outcomes = [
-                { type: 'good', text: 'Dimension Luck! The opener moves forward 3 spaces, Friend moves back 3 spaces!' },
+                { type: 'good', text: 'Dimension Luck! The opener moves forward 3 spaces, the opponent moves back 3 spaces!' },
                 { type: 'bad', text: 'Explosion! Both players are knocked back 4 spaces!' },
-                { type: 'steal', text: 'Thief Skill! The opener randomly steals 1 card from Friend\'s hand!' }
+                { type: 'steal', text: 'Thief Skill! The opener randomly steals 1 card from the opponent\'s hand!' }
             ];
             let finalOutcome = outcomes[Math.floor(seededRandom() * outcomes.length)];
             let allowMinigameReentry = (finalOutcome.type === 'good');
@@ -932,11 +932,11 @@
                 
                 if (victimHand.length === 0) {
                     const alertDiv = document.getElementById('steal-alert'); alertDiv.style.display = 'block';
-                    speak(`${uName} tried to steal a card but failed because Friend has no cards!`);
+                    speak(`${uName} tried to steal a card but failed because the opponent has no cards!`);
                     setTimeout(() => { alertDiv.style.display = 'none'; exitMiniGameNormal(false); }, 3000); return;
                 } else {
                     initHand.push(victimHand.pop()); renderPlayerCards();
-                    speak(`${uName} stole successfully! Confiscated 1 card from Friend's hand!`);
+                    speak(`${uName} stole successfully! Confiscated 1 card from the opponent's hand!`);
                     setTimeout(() => exitMiniGameNormal(false), 2000); return;
                 }
             }
@@ -1059,7 +1059,7 @@
             } else {
                 playSound('lost'); screen.className = "screen lose-screen active-screen"; art.innerText = "🌧️💔👾";
                 title.innerText = "You Lost!"; messageEl.innerText = loseQuotes[Math.floor(seededRandom() * loseQuotes.length)];
-                speak("Defeat! Friend stepped on space 100 and snatched the victory away.");
+                speak("Defeat! The opponent stepped on space 100 and snatched the victory away.");
             }
             setTimeout(() => title.focus(), 100);
         }
