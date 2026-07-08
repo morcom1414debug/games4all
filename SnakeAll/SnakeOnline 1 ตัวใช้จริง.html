@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Snakes and Ladders Online</title>
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         :root {
             --primary: #6c5ce7;
@@ -12,8 +11,6 @@
             --bg: #f5f6fa;
             --p1-color: #0984e3;
             --p2-color: #d63031;
-            /* เพิ่มสีสำหรับปุ่มไมค์ */
-            --danger: #d63031;
         }
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: var(--bg); margin: 0; padding: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -158,8 +155,6 @@
     </style>
 </head>
 <body>
-
-    <button id="btn-voice-mic" class="home-btn-hex" style="position: fixed; top: 20px; right: 90px; z-index: 10000; display: none; background-color: var(--danger);" onclick="window.toggleMic()" aria-label="สถานะไมค์: ปิดอยู่ กด Alt บวก M เพื่อสลับ" aria-pressed="false">🔇</button>
 
     <div id="game-speaker" class="sr-only" aria-live="assertive"></div>
 
@@ -340,9 +335,6 @@
                     currentRoomId = 'snake' + String(count).padStart(5, '0');
                     myRole = 'p1';
                     
-                    // --- เรียกใช้งานระบบเสียงของ Host ฝังอยู่ที่นี่ ---
-                    window.initVoiceHost(currentRoomId);
-                    
                     let newSeed = Math.floor(Math.random() * 1000000);
                     set(ref(db, `games/Snake/rooms/${currentRoomId}`), {
                         status: 'waiting', seed: newSeed
@@ -355,15 +347,15 @@
                     waitTimeoutTimer = setTimeout(() => {
                         statusDiv.innerHTML = `<h3>หมดเวลารอ</h3><p style="color:#d63031;">ยังไม่มีเพื่อนกดเข้าร่วม ระบบจะสลับโหมดของคุณเพื่อไปเล่นกับบอท...</p>`;
                         speak("ยังไม่มีเพื่อนกดเข้าร่วม ระบบจะสลับโหมดของคุณเพื่อไปเล่นกับบอท...");
-                        if (currentRoomId) {
-                            const roomRef = ref(db, `games/Snake/rooms/${currentRoomId}`);
-                            remove(roomRef).then(() => {
-                                console.log("ห้องถูกลบเรียบร้อยแล้ว");
-                            }).catch((error) => {
-                                console.error("ลบห้องไม่สำเร็จ: ", error);
-                            });
-                        }                        
-                        setTimeout(() => {
+// ลบห้องออกโดยอ้างอิงจาก currentRoomId
+    if (currentRoomId) {
+        const roomRef = ref(db, `games/Snake/rooms/${currentRoomId}`);
+        remove(roomRef).then(() => {
+            console.log("ห้องถูกลบเรียบร้อยแล้ว");
+        }).catch((error) => {
+            console.error("ลบห้องไม่สำเร็จ: ", error);
+        });
+    }                        setTimeout(() => {
                             window.location.href = 'snakestart.html?autoStart=true';
                         }, 4000);
                     }, WAIT_TIMEOUT_MS);
@@ -375,10 +367,6 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
             currentRoomId = rId;
             myRole = 'p2';
-            
-            // --- เรียกใช้งานระบบเสียงของ Client ฝังอยู่ที่นี่ ---
-            window.initVoiceClient(currentRoomId);
-
             update(ref(db, `games/Snake/rooms/${currentRoomId}`), { status: 'playing' });
             listenToGameStart(currentRoomId);
         };
@@ -1190,108 +1178,6 @@
         function spawnMinigameBeam() {
             const beam = document.createElement('div'); beam.className = 'steal-beam'; beam.setAttribute('aria-hidden', 'true');
             document.body.appendChild(beam); setTimeout(() => beam.remove(), 500);
-        }
-    </script>
-
-    <script>
-        let voicePeer = null;
-        let voiceStream = null;
-        let isVoiceMuted = true;
-        let remotePeerId = null;
-
-        function announceMicSR(message) {
-            const old = document.getElementById('sr-mic-announcer');
-            if (old) old.remove();
-            const el = document.createElement('div');
-            el.id = 'sr-mic-announcer';
-            el.className = 'sr-only';
-            el.setAttribute('aria-live', 'assertive');
-            document.body.appendChild(el);
-            setTimeout(() => { el.textContent = message; }, 50);
-            setTimeout(() => { el.remove(); }, 3000);
-        }
-
-        window.toggleMic = async function() {
-            const btn = document.getElementById('btn-voice-mic');
-            
-            // กรณีเปิดไมค์ครั้งแรก
-            if (!voiceStream) {
-                announceMicSR('ระบบกำลังขออนุญาตเข้าถึงไมโครโฟน โปรดยืนยันบนหน้าจอ');
-                try {
-                    voiceStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: { echoCancellation: true, noiseSuppression: true }, 
-                        video: false 
-                    });
-                    
-                    // โทรไปยังไอดีของอีกฝั่งเมื่อได้รับสิทธิ์
-                    if (voicePeer && remotePeerId) {
-                        const call = voicePeer.call(remotePeerId, voiceStream);
-                        if (call) {
-                            call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
-                        }
-                    }
-                    isVoiceMuted = false;
-                } catch (err) { 
-                    announceMicSR('ไม่สามารถเข้าถึงไมโครโฟนได้ หรือคุณปฏิเสธการให้สิทธิ์');
-                    return; 
-                }
-            } else {
-                // กรณีสลับเปิด/ปิดหลังจากให้สิทธิ์แล้ว
-                const track = voiceStream.getAudioTracks()[0];
-                track.enabled = !track.enabled;
-                isVoiceMuted = !track.enabled;
-            }
-
-            // อัปเดต UI ปุ่มไมค์
-            btn.innerHTML = isVoiceMuted ? '🔇' : '🎤';
-            btn.style.backgroundColor = isVoiceMuted ? 'var(--danger)' : 'var(--primary)';
-            btn.setAttribute('aria-pressed', !isVoiceMuted);
-            announceMicSR(isVoiceMuted ? 'ปิดไมค์แล้ว' : 'เปิดไมค์แล้ว');
-        };
-
-        // คีย์ลัด Alt+M
-        document.addEventListener('keydown', (e) => {
-            if (e.altKey && e.code === 'KeyM') {
-                e.preventDefault();
-                // อนุญาตให้กดลัดได้เฉพาะตอนที่ปุ่มไมค์แสดงอยู่ (เข้าห้องสำเร็จแล้ว)
-                if (document.getElementById('btn-voice-mic').style.display !== 'none') {
-                    window.toggleMic();
-                }
-            }
-        });
-
-        // เปิดระบบเสียงฝั่งผู้สร้างห้อง (Host)
-        window.initVoiceHost = function(roomId) {
-            remotePeerId = roomId + '-client';
-            voicePeer = new Peer(roomId + '-host');
-            voicePeer.on('call', (call) => {
-                call.answer(); // รับสายแม้ตัวเองจะยังไม่เปิดไมค์ เพื่อให้ได้ยินอีกฝั่ง
-                call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
-            });
-            document.getElementById('btn-voice-mic').style.display = 'flex';
-        };
-
-        // เปิดระบบเสียงฝั่งผู้จอยห้อง (Client)
-        window.initVoiceClient = function(roomId) {
-            remotePeerId = roomId + '-host';
-            voicePeer = new Peer(roomId + '-client');
-            voicePeer.on('call', (call) => {
-                call.answer(); 
-                call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
-            });
-            document.getElementById('btn-voice-mic').style.display = 'flex';
-        };
-
-        function playRemoteStream(stream, peerId) {
-            let audioEl = document.getElementById('audio-' + peerId);
-            if (!audioEl) {
-                audioEl = document.createElement('audio');
-                audioEl.id = 'audio-' + peerId;
-                audioEl.autoplay = true;
-                audioEl.setAttribute('playsinline', 'true');
-                document.body.appendChild(audioEl);
-            }
-            audioEl.srcObject = stream;
         }
     </script>
 </body>
