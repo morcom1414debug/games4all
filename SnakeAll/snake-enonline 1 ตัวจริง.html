@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Snakes and LaddersOnline</title>
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         :root {
             --primary: #6c5ce7;
@@ -77,7 +76,7 @@
 
         @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
         @keyframes sink { 0% { transform: translateY(0); } 100% { transform: translateY(2px); } }
-        @keyframes shrink { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes goalGlow { 0% { box-shadow: inset 0 0 10px #ffca28, 0 0 10px #ffca28; } 100% { box-shadow: inset 0 0 20px #ffca28, 0 0 25px #ffca28; } }
         
         .pawn { width: 28px; height: 28px; border-radius: 50%; position: absolute; z-index: 5; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; color: white; }
@@ -156,8 +155,6 @@
     </style>
 </head>
 <body>
-
-    <button id="btn-voice-mic" class="home-btn-hex" style="position: fixed; top: 20px; right: 90px; z-index: 10000; display: none; background-color: #d63031; width: 60px; height: 60px; font-size: 1.8rem;" onclick="window.toggleMic()" aria-label="Toggle voice microphone. Press Alt plus M to switch." aria-pressed="false">🔇</button>
 
     <div id="game-speaker" class="sr-only" aria-live="assertive"></div>
 
@@ -284,106 +281,6 @@
         let currentRoomId = null;
         let prngSeed = 0; 
         let hasRolled = false; 
-
-        // --- VOICE CHAT ADD-ON VARIABLES & FUNCTIONS ---
-        let peer = null;
-        let localStream = null;
-        let currentCall = null;
-        let dummyTrack = null;
-
-        function initVoiceChat() {
-            if (peer) return;
-            try {
-                const dummyCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const dst = dummyCtx.createMediaStreamDestination();
-                localStream = dst.stream;
-                dummyTrack = localStream.getAudioTracks()[0];
-            } catch (e) {
-                localStream = new MediaStream();
-            }
-            const peerId = `${currentRoomId}-${myRole}`;
-            peer = new Peer(peerId);
-            peer.on('call', (call) => {
-                currentCall = call;
-                call.answer(localStream);
-                handleCallStream(call);
-            });
-        }
-
-        function startVoiceCall() {
-            if (!peer || myRole !== 'p2') return;
-            setTimeout(() => {
-                const call = peer.call(`${currentRoomId}-p1`, localStream);
-                if (call) {
-                    currentCall = call;
-                    handleCallStream(call);
-                }
-            }, 1000);
-        }
-
-        function handleCallStream(call) {
-            call.on('stream', (remoteStream) => {
-                let audioElem = document.getElementById('remote-audio');
-                if (!audioElem) {
-                    audioElem = document.createElement('audio');
-                    audioElem.id = 'remote-audio';
-                    audioElem.autoplay = true;
-                    document.body.appendChild(audioElem);
-                }
-                audioElem.srcObject = remoteStream;
-            });
-        }
-
-        window.toggleMic = async function() {
-            const btn = document.getElementById('btn-voice-mic');
-            const hasRealTrack = localStream && localStream.getAudioTracks().some(t => t.label !== "");
-            if (!hasRealTrack) {
-                speak("The system is requesting microphone access. Please confirm on your screen.");
-                try {
-                    const realStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const realTrack = realStream.getAudioTracks()[0];
-                    if (currentCall && currentCall.peerConnection) {
-                        const senders = currentCall.peerConnection.getSenders();
-                        const sender = senders.find(s => s.track && s.track.kind === 'audio');
-                        if (sender) sender.replaceTrack(realTrack);
-                    }
-                    localStream = realStream;
-                    realTrack.enabled = true;
-                    btn.innerText = '🎤';
-                    btn.style.backgroundColor = 'var(--primary)';
-                    btn.setAttribute('aria-pressed', 'true');
-                    speak("Microphone unmuted.");
-                } catch (err) {
-                    speak("Microphone access denied.");
-                }
-                return;
-            }
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled;
-                if (audioTrack.enabled) {
-                    btn.innerText = '🎤';
-                    btn.style.backgroundColor = 'var(--primary)';
-                    btn.setAttribute('aria-pressed', 'true');
-                    speak("Microphone unmuted.");
-                } else {
-                    btn.innerText = '🔇';
-                    btn.style.backgroundColor = '#d63031';
-                    btn.setAttribute('aria-pressed', 'false');
-                    speak("Microphone muted.");
-                }
-            }
-        };
-
-        window.addEventListener('keydown', (e) => {
-            if (e.altKey && (e.key === 'm' || e.key === 'M')) {
-                e.preventDefault();
-                const micBtn = document.getElementById('btn-voice-mic');
-                if (micBtn && micBtn.style.display !== 'none') {
-                    window.toggleMic();
-                }
-            }
-        });
         
         // PRNG
         function seededRandom() {
@@ -442,10 +339,6 @@
                     });
 
                     statusDiv.innerHTML = `<h3>Room ${currentRoomId} is open!</h3><p style="color:#636e72;">Waiting for a friend to join, the game will start immediately...</p>`;
-                    
-                    document.getElementById('btn-voice-mic').style.display = 'flex';
-                    initVoiceChat();
-
                     listenToGameStart(currentRoomId);
 
                     // --- Start Wait Timeout ---
@@ -473,10 +366,6 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
             currentRoomId = rId;
             myRole = 'p2';
-
-            document.getElementById('btn-voice-mic').style.display = 'flex';
-            initVoiceChat();
-
             update(ref(db, `games/Snake/rooms/${currentRoomId}`), { status: 'playing' });
             listenToGameStart(currentRoomId);
         };
@@ -488,8 +377,6 @@
                     // --- Clear Wait Timeout if someone joins ---
                     if (waitTimeoutTimer) { clearTimeout(waitTimeoutTimer); waitTimeoutTimer = null; }
                     
-                    startVoiceCall();
-
                     onValue(ref(db, `games/Snake/rooms/${rId}/seed`), (seedSnap) => {
                         prngSeed = seedSnap.val(); // Sync Seed
                         document.querySelector('.welcome-card').style.display = 'none';
