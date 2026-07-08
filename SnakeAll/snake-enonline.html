@@ -12,6 +12,7 @@
             --bg: #f5f6fa;
             --p1-color: #0984e3;
             --p2-color: #d63031;
+            --danger: #d63031; /* Added for mic button */
         }
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: var(--bg); margin: 0; padding: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -77,7 +78,7 @@
 
         @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
         @keyframes sink { 0% { transform: translateY(0); } 100% { transform: translateY(2px); } }
-        @keyframes shrink { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes goalGlow { 0% { box-shadow: inset 0 0 10px #ffca28, 0 0 10px #ffca28; } 100% { box-shadow: inset 0 0 20px #ffca28, 0 0 25px #ffca28; } }
         
         .pawn { width: 28px; height: 28px; border-radius: 50%; position: absolute; z-index: 5; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; color: white; }
@@ -157,7 +158,7 @@
 </head>
 <body>
 
-    <button id="btn-voice-mic" class="home-btn-hex" style="position: fixed; top: 20px; right: 90px; z-index: 10000; display: none; background-color: #d63031; width: 60px; height: 60px; font-size: 1.8rem;" onclick="window.toggleMic()" aria-label="Toggle voice microphone. Press Alt plus M to switch." aria-pressed="false">🔇</button>
+    <button id="btn-voice-mic" class="home-btn-hex" style="position: fixed; top: 20px; right: 90px; z-index: 10000; display: none; background-color: var(--danger);" onclick="window.toggleMic()" aria-label="Toggle Microphone, press Alt + M to switch" aria-pressed="false">🔇</button>
 
     <div id="game-speaker" class="sr-only" aria-live="assertive"></div>
 
@@ -284,106 +285,6 @@
         let currentRoomId = null;
         let prngSeed = 0; 
         let hasRolled = false; 
-
-        // --- VOICE CHAT ADD-ON VARIABLES & FUNCTIONS ---
-        let peer = null;
-        let localStream = null;
-        let currentCall = null;
-        let dummyTrack = null;
-
-        function initVoiceChat() {
-            if (peer) return;
-            try {
-                const dummyCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const dst = dummyCtx.createMediaStreamDestination();
-                localStream = dst.stream;
-                dummyTrack = localStream.getAudioTracks()[0];
-            } catch (e) {
-                localStream = new MediaStream();
-            }
-            const peerId = `${currentRoomId}-${myRole}`;
-            peer = new Peer(peerId);
-            peer.on('call', (call) => {
-                currentCall = call;
-                call.answer(localStream);
-                handleCallStream(call);
-            });
-        }
-
-        function startVoiceCall() {
-            if (!peer || myRole !== 'p2') return;
-            setTimeout(() => {
-                const call = peer.call(`${currentRoomId}-p1`, localStream);
-                if (call) {
-                    currentCall = call;
-                    handleCallStream(call);
-                }
-            }, 1000);
-        }
-
-        function handleCallStream(call) {
-            call.on('stream', (remoteStream) => {
-                let audioElem = document.getElementById('remote-audio');
-                if (!audioElem) {
-                    audioElem = document.createElement('audio');
-                    audioElem.id = 'remote-audio';
-                    audioElem.autoplay = true;
-                    document.body.appendChild(audioElem);
-                }
-                audioElem.srcObject = remoteStream;
-            });
-        }
-
-        window.toggleMic = async function() {
-            const btn = document.getElementById('btn-voice-mic');
-            const hasRealTrack = localStream && localStream.getAudioTracks().some(t => t.label !== "");
-            if (!hasRealTrack) {
-                speak("The system is requesting microphone access. Please confirm on your screen.");
-                try {
-                    const realStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const realTrack = realStream.getAudioTracks()[0];
-                    if (currentCall && currentCall.peerConnection) {
-                        const senders = currentCall.peerConnection.getSenders();
-                        const sender = senders.find(s => s.track && s.track.kind === 'audio');
-                        if (sender) sender.replaceTrack(realTrack);
-                    }
-                    localStream = realStream;
-                    realTrack.enabled = true;
-                    btn.innerText = '🎤';
-                    btn.style.backgroundColor = 'var(--primary)';
-                    btn.setAttribute('aria-pressed', 'true');
-                    speak("Microphone unmuted.");
-                } catch (err) {
-                    speak("Microphone access denied.");
-                }
-                return;
-            }
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled;
-                if (audioTrack.enabled) {
-                    btn.innerText = '🎤';
-                    btn.style.backgroundColor = 'var(--primary)';
-                    btn.setAttribute('aria-pressed', 'true');
-                    speak("Microphone unmuted.");
-                } else {
-                    btn.innerText = '🔇';
-                    btn.style.backgroundColor = '#d63031';
-                    btn.setAttribute('aria-pressed', 'false');
-                    speak("Microphone muted.");
-                }
-            }
-        };
-
-        window.addEventListener('keydown', (e) => {
-            if (e.altKey && (e.key === 'm' || e.key === 'M')) {
-                e.preventDefault();
-                const micBtn = document.getElementById('btn-voice-mic');
-                if (micBtn && micBtn.style.display !== 'none') {
-                    window.toggleMic();
-                }
-            }
-        });
         
         // PRNG
         function seededRandom() {
@@ -436,16 +337,15 @@
                     currentRoomId = 'snake' + String(count).padStart(5, '0');
                     myRole = 'p1';
                     
+                    // --- Call Voice Host System ---
+                    window.initVoiceHost(currentRoomId);
+                    
                     let newSeed = Math.floor(Math.random() * 1000000);
                     set(ref(db, `games/Snake/rooms/${currentRoomId}`), {
                         status: 'waiting', seed: newSeed
                     });
 
                     statusDiv.innerHTML = `<h3>Room ${currentRoomId} is open!</h3><p style="color:#636e72;">Waiting for a friend to join, the game will start immediately...</p>`;
-                    
-                    document.getElementById('btn-voice-mic').style.display = 'flex';
-                    initVoiceChat();
-
                     listenToGameStart(currentRoomId);
 
                     // --- Start Wait Timeout ---
@@ -473,9 +373,9 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
             currentRoomId = rId;
             myRole = 'p2';
-
-            document.getElementById('btn-voice-mic').style.display = 'flex';
-            initVoiceChat();
+            
+            // --- Call Voice Client System ---
+            window.initVoiceClient(currentRoomId);
 
             update(ref(db, `games/Snake/rooms/${currentRoomId}`), { status: 'playing' });
             listenToGameStart(currentRoomId);
@@ -488,8 +388,6 @@
                     // --- Clear Wait Timeout if someone joins ---
                     if (waitTimeoutTimer) { clearTimeout(waitTimeoutTimer); waitTimeoutTimer = null; }
                     
-                    startVoiceCall();
-
                     onValue(ref(db, `games/Snake/rooms/${rId}/seed`), (seedSnap) => {
                         prngSeed = seedSnap.val(); // Sync Seed
                         document.querySelector('.welcome-card').style.display = 'none';
@@ -1293,6 +1191,108 @@
         function spawnMinigameBeam() {
             const beam = document.createElement('div'); beam.className = 'steal-beam'; beam.setAttribute('aria-hidden', 'true');
             document.body.appendChild(beam); setTimeout(() => beam.remove(), 500);
+        }
+    </script>
+
+    <script>
+        let voicePeer = null;
+        let voiceStream = null;
+        let isVoiceMuted = true;
+        let remotePeerId = null;
+
+        function announceMicSR(message) {
+            const old = document.getElementById('sr-mic-announcer');
+            if (old) old.remove();
+            const el = document.createElement('div');
+            el.id = 'sr-mic-announcer';
+            el.className = 'sr-only';
+            el.setAttribute('aria-live', 'assertive');
+            document.body.appendChild(el);
+            setTimeout(() => { el.textContent = message; }, 50);
+            setTimeout(() => { el.remove(); }, 3000);
+        }
+
+        window.toggleMic = async function() {
+            const btn = document.getElementById('btn-voice-mic');
+            
+            // First time mic open
+            if (!voiceStream) {
+                announceMicSR('Requesting microphone access. Please confirm on your screen.');
+                try {
+                    voiceStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { echoCancellation: true, noiseSuppression: true }, 
+                        video: false 
+                    });
+                    
+                    // Call remote peer when access is granted
+                    if (voicePeer && remotePeerId) {
+                        const call = voicePeer.call(remotePeerId, voiceStream);
+                        if (call) {
+                            call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
+                        }
+                    }
+                    isVoiceMuted = false;
+                } catch (err) { 
+                    announceMicSR('Microphone access denied.');
+                    return; 
+                }
+            } else {
+                // Toggle after permission granted
+                const track = voiceStream.getAudioTracks()[0];
+                track.enabled = !track.enabled;
+                isVoiceMuted = !track.enabled;
+            }
+
+            // Update Mic Button UI
+            btn.innerHTML = isVoiceMuted ? '🔇' : '🎤';
+            btn.style.backgroundColor = isVoiceMuted ? 'var(--danger)' : 'var(--primary)';
+            btn.setAttribute('aria-pressed', !isVoiceMuted);
+            announceMicSR(isVoiceMuted ? 'Microphone disabled' : 'Microphone enabled');
+        };
+
+        // Alt+M Shortcut
+        document.addEventListener('keydown', (e) => {
+            if (e.altKey && e.code === 'KeyM') {
+                e.preventDefault();
+                // Allow shortcut only when mic button is displayed (successfully entered room)
+                if (document.getElementById('btn-voice-mic').style.display !== 'none') {
+                    window.toggleMic();
+                }
+            }
+        });
+
+        // Init Voice Host
+        window.initVoiceHost = function(roomId) {
+            remotePeerId = roomId + '-client';
+            voicePeer = new Peer(roomId + '-host');
+            voicePeer.on('call', (call) => {
+                call.answer(); // Answer call automatically
+                call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
+            });
+            document.getElementById('btn-voice-mic').style.display = 'flex';
+        };
+
+        // Init Voice Client
+        window.initVoiceClient = function(roomId) {
+            remotePeerId = roomId + '-host';
+            voicePeer = new Peer(roomId + '-client');
+            voicePeer.on('call', (call) => {
+                call.answer(); 
+                call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
+            });
+            document.getElementById('btn-voice-mic').style.display = 'flex';
+        };
+
+        function playRemoteStream(stream, peerId) {
+            let audioEl = document.getElementById('audio-' + peerId);
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.id = 'audio-' + peerId;
+                audioEl.autoplay = true;
+                audioEl.setAttribute('playsinline', 'true');
+                document.body.appendChild(audioEl);
+            }
+            audioEl.srcObject = stream;
         }
     </script>
 </body>
