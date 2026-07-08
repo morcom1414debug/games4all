@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ห้องสนทนาเสียงออนไลน์</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #1e293b;
+            --primary: #3b82f6;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --border: #cbd5e1;
+        }
+        body { font-family: 'Prompt', sans-serif; background: var(--bg-color); color: var(--text-color); padding: 20px; max-width: 600px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .form-control { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+        .btn { padding: 12px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1em; width: 100%; font-family: inherit; margin-bottom: 10px; transition: all 0.2s; }
+        .btn:focus { outline: 3px solid #93c5fd; outline-offset: 2px; }
+        /* การรีเซ็ตสถานะปุ่มให้กลับมาเรียบเสมอกันหลังกด ป้องกันความสับสนของ UI */
+        .btn:active, .btn.reset-state { transform: scale(0.98); box-shadow: none; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .hidden { display: none; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+        .room-id-display { font-size: 2.5em; font-weight: bold; color: #d97706; text-align: center; letter-spacing: 2px; margin: 10px 0; }
+        .participant-list { margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px; }
+        .participant-item { display: flex; align-items: center; padding: 8px; background: #f1f5f9; margin-bottom: 5px; border-radius: 6px; }
+    </style>
+</head>
+<body>
+
+    <div id="sr-announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <div id="lobby-screen" class="card">
+        <h1 style="text-align: center;">🎧 ระบบห้องคุยด้วยเสียง</h1>
+        <p id="status-msg" style="text-align: center; color: var(--primary);"></p>
+
+        <div id="action-selection">
+            <label for="user-name">ชื่อของคุณ:</label>
+            <input type="text" id="user-name" class="form-control" placeholder="กรอกชื่อเล่นของคุณ">
+            
+            <button class="btn btn-primary" onclick="createRoom()">สร้างห้องใหม่</button>
+            
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 20px 0;">
+            
+            <label for="room-id-input">รหัสห้อง (6 หลัก):</label>
+            <input type="tel" id="room-id-input" class="form-control" placeholder="ตัวอย่าง: 123456" maxlength="6">
+            <button class="btn btn-success" onclick="joinRoom()">เข้าร่วมห้อง</button>
+        </div>
+    </div>
+
+    <div id="room-screen" class="card hidden">
+        <h2>รหัสห้องของคุณ</h2>
+        <div class="room-id-display" id="display-room-id">------</div>
+        
+        <div style="display: flex; gap: 10px;">
+            <input type="text" id="invite-link" class="form-control" readonly>
+            <button class="btn btn-primary" style="width: auto;" onclick="copyInviteLink()">คัดลอกลิงก์</button>
+        </div>
+
+        <div class="participant-list">
+            <h3>ผู้เข้าร่วม (<span id="player-count">1</span>/8)</h3>
+            <div id="participants-container">
+                </div>
+        </div>
+
+        <div style="margin-top: 20px; text-align: center;">
+            <button id="btn-mic" class="btn btn-success" onclick="toggleMic()" accesskey="m" aria-pressed="true" aria-label="สถานะไมค์: เปิดอยู่ กดคีย์ลัด Alt บวก M เพื่อสลับสถานะ">
+                🎤 ไมค์เปิดอยู่ (Alt+M)
+            </button>
+            <button class="btn btn-danger" onclick="leaveRoom()">❌ ออกจากห้อง</button>
+        </div>
+    </div>
+
+    <script>
+        const MAX_PLAYERS = 8;
+        let peer = null;
+        let localStream = null;
+        let isMicMuted = false;
+        let currentRoomId = null;
+        let connections = {}; // เก็บรายการการเชื่อมต่อ
+        let calls = {}; // เก็บรายการสายสนทนา
+
+        const srAnnouncer = document.getElementById('sr-announcer');
+        const btnMic = document.getElementById('btn-mic');
+
+        // ฟังก์ชันพูดสำหรับ Screen Reader
+        function announceToSR(message) {
+            srAnnouncer.textContent = message;
+        }
+
+        // จัดการลบสถานะ focus/hover ออกจากปุ่มเพื่อให้ UI ดูเป็นระเบียบหลังผู้ใช้กด
+        function clearButtonState(buttonElement) {
+            buttonElement.classList.add('reset-state');
+            setTimeout(() => {
+                buttonElement.classList.remove('reset-state');
+                buttonElement.blur();
+            }, 150);
+        }
+
+        // สุ่มรหัสห้อง 6 หลัก
+        function generateRoomId() {
+            return Math.floor(100000 + Math.random() * 900000).toString();
+        }
+
+        // ขอสิทธิ์ใช้งานไมโครโฟน
+        async function setupAudio() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                return true;
+            } catch (err) {
+                alert('ไม่สามารถเข้าถึงไมโครโฟนได้ กรุณาอนุญาตการใช้งานไมค์');
+                return false;
+            }
+        }
+
+        // เปิด/ปิดไมค์
+        function toggleMic() {
+            if (!localStream) return;
+            
+            isMicMuted = !isMicMuted;
+            localStream.getAudioTracks()[0].enabled = !isMicMuted;
+            
+            if (isMicMuted) {
+                btnMic.className = 'btn btn-danger';
+                btnMic.innerHTML = '🔇 ไมค์ปิดอยู่ (Alt+M)';
+                btnMic.setAttribute('aria-pressed', 'false');
+                announceToSR('ปิดไมโครโฟนแล้ว');
+            } else {
+                btnMic.className = 'btn btn-success';
+                btnMic.innerHTML = '🎤 ไมค์เปิดอยู่ (Alt+M)';
+                btnMic.setAttribute('aria-pressed', 'true');
+                announceToSR('เปิดไมโครโฟนแล้ว');
+            }
+            clearButtonState(btnMic);
+        }
+
+        // ดักจับคีย์ลัด Alt + M
+        document.addEventListener('keydown', (e) => {
+            if (e.altKey && e.key.toLowerCase() === 'm') {
+                e.preventDefault(); // ป้องกันพฤติกรรมดั้งเดิมของเบราว์เซอร์
+                toggleMic();
+            }
+        });
+
+        // สร้างห้อง
+        async function createRoom() {
+            const userName = document.getElementById('user-name').value || 'โฮสต์';
+            const audioReady = await setupAudio();
+            if (!audioReady) return;
+
+            currentRoomId = generateRoomId();
+            document.getElementById('status-msg').innerText = 'กำลังสร้างห้อง...';
+            announceToSR('กำลังสร้างห้อง กรุณารอสักครู่');
+
+            // ใช้ Room ID เป็น Peer ID
+            peer = new Peer(currentRoomId);
+
+            peer.on('open', (id) => {
+                showRoomScreen(id, userName);
+                setupPeerEvents();
+            });
+
+            peer.on('error', (err) => {
+                alert('เกิดข้อผิดพลาดในการสร้างห้อง: ' + err.type);
+            });
+        }
+
+        // เข้าร่วมห้อง
+        async function joinRoom() {
+            const userName = document.getElementById('user-name').value || 'ผู้เล่น';
+            const roomId = document.getElementById('room-id-input').value;
+            
+            if (roomId.length !== 6) {
+                alert('กรุณากรอกรหัสห้อง 6 หลัก');
+                return;
+            }
+
+            const audioReady = await setupAudio();
+            if (!audioReady) return;
+
+            document.getElementById('status-msg').innerText = 'กำลังเข้าร่วมห้อง...';
+            announceToSR('กำลังพยายามเข้าร่วมห้อง ' + roomId);
+
+            // ฝั่งคนจอย สร้าง Peer ID สุ่มขึ้นมา
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                currentRoomId = roomId;
+                // เชื่อมต่อข้อมูลเพื่อเช็คจำนวนคนก่อน
+                const conn = peer.connect(roomId, { metadata: { name: userName } });
+                
+                conn.on('open', () => {
+                    // โทรด้วยเสียงไปหา Host
+                    const call = peer.call(roomId, localStream);
+                    handleCall(call);
+                    showRoomScreen(roomId, userName);
+                });
+
+                conn.on('error', () => {
+                    alert('ไม่พบห้องที่ระบุ');
+                });
+            });
+        }
+
+        // จัดการเหตุการณ์ของ Peer (สำหรับ Host)
+        function setupPeerEvents() {
+            // รับการเชื่อมต่อสายเรียกเข้า
+            peer.on('call', (call) => {
+                if (Object.keys(calls).length + 1 >= MAX_PLAYERS) {
+                    // ปฏิเสธสายถ้าคนเต็ม (ไม่ตอบรับ)
+                    console.log('ห้องเต็มแล้ว');
+                    return;
+                }
+                
+                // รับสายและส่งเสียงของ Host กลับไป
+                call.answer(localStream);
+                handleCall(call);
+            });
+        }
+
+        // จัดการสตรีมเสียงที่ได้รับ
+        function handleCall(call) {
+            calls[call.peer] = call;
+            updatePlayerCount();
+            announceToSR('มีผู้เข้าร่วมใหม่เชื่อมต่อเสียงแล้ว');
+
+            call.on('stream', (remoteStream) => {
+                // สร้าง Audio Element สำหรับเสียงของเพื่อน
+                const audioElement = document.createElement('audio');
+                audioElement.srcObject = remoteStream;
+                audioElement.autoplay = true;
+                audioElement.id = 'audio-' + call.peer;
+                document.body.appendChild(audioElement);
+            });
+
+            call.on('close', () => {
+                const audioEl = document.getElementById('audio-' + call.peer);
+                if (audioEl) audioEl.remove();
+                delete calls[call.peer];
+                updatePlayerCount();
+                announceToSR('มีผู้เข้าร่วมออกจากห้อง');
+            });
+        }
+
+        function updatePlayerCount() {
+            // จำนวนคน = ตัวเราเอง (1) + จำนวนสายที่เชื่อมต่อ
+            const count = 1 + Object.keys(calls).length;
+            document.getElementById('player-count').innerText = count;
+        }
+
+        function showRoomScreen(roomId, userName) {
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('room-screen').classList.remove('hidden');
+            
+            document.getElementById('display-room-id').innerText = roomId;
+            
+            // สร้างลิงก์เชิญ (สมมติว่าอิงจาก URL ปัจจุบัน)
+            const inviteUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
+            document.getElementById('invite-link').value = inviteUrl;
+
+            // อัปเดตรายชื่อ (เบื้องต้นใส่แค่ตัวเรา)
+            document.getElementById('participants-container').innerHTML = 
+                `<div class="participant-item">👤 ${userName} (คุณ)</div>`;
+            
+            announceToSR(`เข้าสู่ห้องสำเร็จ รหัสห้องคือ ${roomId} ใช้คีย์ลัด Alt บวก M เพื่อเปิดปิดไมโครโฟน`);
+        }
+
+        function copyInviteLink() {
+            const linkInput = document.getElementById('invite-link');
+            linkInput.select();
+            document.execCommand('copy');
+            const btn = event.target;
+            btn.innerText = 'คัดลอกแล้ว!';
+            announceToSR('คัดลอกลิงก์ห้องเรียบร้อยแล้ว');
+            setTimeout(() => { btn.innerText = 'คัดลอกลิงก์'; clearButtonState(btn); }, 2000);
+        }
+
+        function leaveRoom() {
+            if (peer) peer.destroy();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            location.reload();
+        }
+
+        // เช็คลิงก์เข้าอัตโนมัติเมื่อโหลดหน้าเว็บ
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            if (roomParam) {
+                document.getElementById('room-id-input').value = roomParam;
+            }
+        };
+    </script>
+</body>
+</html>
