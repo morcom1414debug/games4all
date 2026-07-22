@@ -114,15 +114,6 @@
         }
         .card:hover, .card:focus { transform: translateY(-12px); outline: 3px solid #ffd700; border-color: #ffd700; }
         
-        /* สไตล์สำหรับตอนปุ่มโดนล็อก */
-        .card:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-            border-color: #aaa !important;
-            box-shadow: none !important;
-        }
-
         .action-row {
             display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 10px;
         }
@@ -304,7 +295,7 @@
 
         window.onload = () => {
             AudioSys.init();
-            AudioSys.loadAll(); 
+            AudioSys.loadAll(); // โหลดไฟล์เสียงเตรียมไว้
             renderColorButtons();
             announce("ยินดีต้อนรับสู่เกมฉลามงับ. เลือกสีประจำตัวและจำนวนบอท จากนั้นกดเริ่มเกม", true);
         };
@@ -338,6 +329,7 @@
             }
         }
 
+        // จัดการ Animation และเสียงตอนเริ่มเกม
         async function startGameSequence() {
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
             
@@ -345,27 +337,28 @@
             const text = document.getElementById('countdown-text');
             overlay.style.display = 'flex';
             
-            AudioSys.play('start'); 
+            AudioSys.play('start'); // เล่นเสียง start.mp3 (4.9 วินาที)
             
             const steps = ['3', '2', '1', 'เริ่มเกมได้!'];
-            const stepTime = 1225; 
+            const stepTime = 1225; // 4.9 วินาที / 4 ขั้นตอน = 1.225 วินาทีต่อขั้นตอน
             
             steps.forEach((msg, idx) => {
                 setTimeout(() => {
                     text.innerText = msg;
                     text.style.animation = 'none'; 
-                    void text.offsetWidth; 
+                    void text.offsetWidth; // บังคับให้เบราว์เซอร์รีเฟรช animation
                     text.style.animation = 'popIn 1.225s ease-in-out';
                 }, idx * stepTime);
             });
             
             setTimeout(() => {
                 overlay.style.display = 'none';
-                AudioSys.sources.bgm = AudioSys.play('bgm', true); 
+                AudioSys.sources.bgm = AudioSys.play('bgm', true); // เริ่ม bgm ทันทีที่จบ start
                 runGameLogic();
             }, 4900);
         }
 
+        // โลจิกเริ่มเกมเดิม (เปลี่ยนชื่อจาก startGame เป็น runGameLogic)
         function runGameLogic() {
             isAutoPlaying = false;
             let availableColors = [...COLORS];
@@ -455,12 +448,8 @@
 
         function playTurn(humanCardVal) {
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.ctx.resume();
-            AudioSys.stop('swim'); 
+            AudioSys.stop('swim'); // หยุดเสียงว่ายน้ำถ้ามีค้างจาก turn ก่อน
             AudioSys.play('select');
-            
-            // ป้องกันการกดซ้ำ โดยล็อกไพ่ทั้งหมดทันที
-            const cards = document.querySelectorAll('.card');
-            cards.forEach(c => c.disabled = true);
             
             humanPlayer.chosenCard = humanCardVal;
             humanPlayer.hand = humanPlayer.hand.filter(v => v !== humanCardVal);
@@ -474,13 +463,13 @@
             resolveRound();
         }
 
-        async function resolveRound() {
-            let scriptPhase1 = ""; 
+        function resolveRound() {
+            let script = ""; 
             
             // 1. ประกาศผลไพ่
             let playedMsg = "ผลการเปิดไพ่: ";
             players.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
-            scriptPhase1 += playedMsg.slice(0, -2) + ". ";
+            script += playedMsg.slice(0, -2) + ". ";
 
             // 2. เช็คไพ่ชนกัน
             let cardCounts = {};
@@ -491,13 +480,13 @@
 
             if (invalidPlayers.length > 0) {
                 let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
-                scriptPhase1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
+                script += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
             }
 
             // 3. จัดลำดับการขยับ
             if (validPlayers.length > 0) {
                 AudioSys.stop('swim'); 
-                AudioSys.sources.swim = AudioSys.play('swim'); 
+                AudioSys.sources.swim = AudioSys.play('swim'); // เสียงว่ายน้ำ
 
                 let ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
                 
@@ -506,43 +495,47 @@
                     lineup.unshift(p.id);
 
                     if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
+                        script += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
                     } else {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
+                        script += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
                     }
                 });
             }
 
-            // อัปเดต UI ให้เห็นการว่ายน้ำก่อน และประกาศ
-            updateVisualBoard();
-            announce(scriptPhase1, true);
-
-            // รอ Phase 1 (ว่ายน้ำและการอ่าน Aria) ให้จบ ประมาณ 5 วินาที
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            AudioSys.stop('swim'); 
-
-            // --- Phase 2: ฉลามงับ ---
-            let scriptPhase2 = "";
+            // 4. ฉลามงับ
             let bittenId = lineup[lineup.length - 1];
             let bittenPlayer = players.find(p => p.id === bittenId);
             
-            // เล่นเสียงฉลาม 
-            AudioSys.play('shark'); 
+            AudioSys.play('shark'); // เล่นเสียงฉลามทันที
+
             const sharkUI = document.getElementById('shark-ui');
             if(sharkUI) { sharkUI.classList.add('bite-anim'); setTimeout(() => { sharkUI.classList.remove('bite-anim'); }, 500); }
 
             let lostLimb = bittenPlayer.limbsStatus.pop(); 
             bittenPlayer.limbs -= 1;
 
-            scriptPhase2 += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
+            script += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
 
-            // จัดการการตกรอบและการเด้งกลับ
+            // เล่นเสียงถูกกัดเหลื่อมหลังจากฉลาม 2 วินาที
             if (bittenPlayer.limbs <= 0) {
-                scriptPhase2 += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
+                let dendFiles = ['dend', 'dend1'];
+                let chosenEnd = dendFiles[Math.floor(Math.random()*2)];
+                AudioSys.play(chosenEnd, false, 2.0);
+            } else {
+                let dFiles = [1,2,3,4,5,6];
+                let dChoices = dFiles.filter(x => x !== AudioSys.lastD);
+                let chosenD = dChoices[Math.floor(Math.random()*dChoices.length)];
+                AudioSys.lastD = chosenD;
+                AudioSys.play('d' + chosenD, false, 2.0);
+            }
+
+            // 5. จัดการการตกรอบและการเด้งกลับ
+            if (bittenPlayer.limbs <= 0) {
+                script += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
                 lineup = lineup.filter(id => id !== bittenId);
                 players = players.filter(p => p.id !== bittenId);
             } else {
-                scriptPhase2 += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
+                script += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
                 lineup = lineup.filter(id => id !== bittenId);
                 lineup.unshift(bittenId);
             }
@@ -557,51 +550,34 @@
                     if (p.hand.length === 1) {
                         p.hand = p.hand.concat(p.playedCards);
                         p.playedCards = [];
-                        scriptPhase2 += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
+                        script += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
                     }
                 }
                 p.chosenCard = null;
             });
 
-            // อัปเดต UI หลังจากฉลามงับ และเพิ่ม Log การงับ
+            // 6. อัปเดตสถานะและลำดับปัจจุบัน
             updateVisualBoard();
-            announce(scriptPhase2, false); 
 
-            // หน่วงเวลาเป๊ะๆ 2 วินาที (เพื่อให้ shark ร้องนำไปก่อน)
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // เล่นเสียงร้องเหลื่อมทับ
-            if (bittenPlayer.limbs <= 0) {
-                let dendFiles = ['dend', 'dend1'];
-                let chosenEnd = dendFiles[Math.floor(Math.random()*2)];
-                AudioSys.play(chosenEnd);
-            } else {
-                let dFiles = [1,2,3,4,5,6];
-                let dChoices = dFiles.filter(x => x !== AudioSys.lastD);
-                let chosenD = dChoices[Math.floor(Math.random()*dChoices.length)];
-                AudioSys.lastD = chosenD;
-                AudioSys.play('d' + chosenD);
-            }
-
-            // รอเสียงร้องให้จบ (เผื่อไว้อีกประมาณ 3.6 วินาที)
-            await new Promise(resolve => setTimeout(resolve, 3600));
-
-            // --- Phase 3: เช็คการจบเกมและอัปเดตเทิร์นถัดไป ---
-            let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
+            script += `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
                       lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
 
+            // 7. เช็คการจบเกม
             if (players.length === 1) {
-                AudioSys.stop('bgm'); 
+                AudioSys.stop('bgm'); // หยุด bgm
                 const winner = players[0];
                 const handDiv = document.getElementById('player-hand');
                 let isHumanWin = winner.type === 'human';
                 
-                if(isHumanWin) AudioSys.play('win');
-                else AudioSys.play('lost');
+                // รอให้เสียงฉลาม/โดนงับตาย เล่นจบ (ประมาณ 5.6 วิ) ก่อนเล่นเสียงจบเกม
+                setTimeout(() => {
+                    if(isHumanWin) AudioSys.play('win');
+                    else AudioSys.play('lost');
+                }, 5600);
                 
                 if (isHumanWin) {
                     const randomMsg = VICTORY_MESSAGES[Math.floor(Math.random() * VICTORY_MESSAGES.length)];
-                    scriptPhase3 += randomMsg;
+                    script += randomMsg;
                     document.getElementById('turn-indicator').innerText = "🏆 จบเกม! คุณคือผู้ชนะ";
                     
                     handDiv.innerHTML = `
@@ -611,7 +587,7 @@
                         </div>
                     `;
                 } else {
-                    scriptPhase3 += `จบเกม! ผู้ชนะคือ ${winner.name} รอดชีวิตเป็นคนสุดท้าย`;
+                    script += `จบเกม! ผู้ชนะคือ ${winner.name} รอดชีวิตเป็นคนสุดท้าย`;
                     document.getElementById('turn-indicator').innerText = `จบเกม! ${winner.name} เป็นผู้ชนะ`;
                     
                     handDiv.innerHTML = `
@@ -621,7 +597,7 @@
                     `;
                 }
             } else if (!players.find(p => p.type === 'human')) {
-                scriptPhase3 += `คุณถูกคัดออกแล้ว! สามารถเลือกดูบอทเล่นต่อจนจบ หรือกลับสู่ชุมชนได้`;
+                script += `คุณถูกคัดออกแล้ว! สามารถเลือกดูบอทเล่นต่อจนจบ หรือกลับสู่ชุมชนได้`;
                 document.getElementById('turn-indicator').innerText = `คุณถูกคัดออกแล้ว...`;
                 
                 document.getElementById('player-hand').innerHTML = `
@@ -631,16 +607,16 @@
                     </div>
                 `;
             } else {
-                scriptPhase3 += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
-                // renderHand() จะสร้างปุ่มไพ่ชุดใหม่ขึ้นมาแทนที่ตัวเดิม ทำให้ปลดล็อก (disabled) ให้กลับมากดได้ตามปกติอัตโนมัติ
+                script += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
                 renderHand();
             }
 
-            announce(scriptPhase3, false);
+            announce(script, true);
 
             if (isAutoPlaying && players.length > 1) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                executeBotTurn();
+                setTimeout(() => {
+                    executeBotTurn();
+                }, 3500);
             }
         }
 
