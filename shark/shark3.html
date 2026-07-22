@@ -17,6 +17,7 @@
             background-color: var(--bg); color: var(--text);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             min-height: 100vh; padding: 10px; text-align: center; overflow-x: hidden;
+            /* เพิ่มพื้นหลังใต้ทะเล */
             background: radial-gradient(circle at bottom, #0f3460, #1a1a2e);
         }
         
@@ -143,6 +144,7 @@
         
         .bandaid { display: none; width: 10px; height: 10px; font-size: 8px; position: absolute; line-height: 10px; text-align: center; }
         
+        /* Animation ว่ายน้ำทีละคน */
         .swim-to-front { animation: swimDash 0.8s ease-in-out forwards; }
         @keyframes swimDash {
             0% { transform: scale(1); }
@@ -150,6 +152,7 @@
             100% { transform: scale(1) translateY(0) translateX(0); z-index: 1; }
         }
 
+        /* Animation โดนงับหลุด */
         .limb-fly-away { animation: flyAway 1s forwards cubic-bezier(0.36, 0, 0.66, -0.56); }
         @keyframes flyAway {
             to { transform: translate(-40px, -60px) rotate(360deg); opacity: 0; }
@@ -184,6 +187,7 @@
             opacity: 0.6; cursor: not-allowed; transform: scale(0.9); border-color: #aaa; box-shadow: none;
         }
         
+        /* การ์ดใน Showdown Arena (3D Flip) */
         .showdown-card-container { width: 55px; height: 80px; perspective: 1000px; margin: 0 5px;}
         .showdown-card-inner {
             width: 100%; height: 100%; transition: transform 0.6s;
@@ -306,6 +310,7 @@
     <div id="aria-announcer" aria-live="assertive" class="sr-only"></div>
 
     <script>
+        // สร้างฟองอากาศพื้นหลัง
         const bubblesBg = document.getElementById('bg-bubbles');
         for(let i=0; i<15; i++) {
             let b = document.createElement('div');
@@ -463,11 +468,13 @@
                     void text.offsetWidth; 
                     text.style.animation = 'popIn 1.225s ease-in-out';
                     
+                    // Ripple effect
                     const r = document.createElement('div');
                     r.className = 'ripple';
                     rippleContainer.appendChild(r);
                     setTimeout(() => r.remove(), 1200);
 
+                    // Shark swim by
                     if(msg === 'เริ่มเกมได้!') {
                         const sharkBy = document.createElement('div');
                         sharkBy.innerText = '🦈';
@@ -534,8 +541,10 @@
                 const el = document.createElement('div');
                 el.className = 'swimmer'; 
                 el.id = `ui_${pid}`;
+                // ใช้ aria-hidden บัง UI เสมือนทั้งหมด
                 el.setAttribute('aria-hidden', 'true'); 
                 
+                // สร้าง Chibi Diver
                 let diverHTML = `
                     <div class="chibi-diver" style="color: ${p.colorInfo.hex}">
                         <div class="diver-head"><div class="diver-goggles"></div></div>
@@ -549,6 +558,7 @@
                     if (hasLimb) {
                         diverHTML += `<div class="diver-limb ${limbClass} ui-limb-${limbClass}"></div>`;
                     } else {
+                        // โดนงับไปแล้ว ใส่พลาสเตอร์แทน
                         diverHTML += `<div class="bandaid" style="display:block; ${limb === 'แขนซ้าย' ? 'top:22px;left:4px;' : limb === 'แขนขวา' ? 'top:22px;right:4px;' : limb === 'ขาซ้าย' ? 'bottom:-6px;left:10px;' : 'bottom:-6px;right:10px;'}">🩹</div>`;
                     }
                 });
@@ -566,6 +576,7 @@
             shark.setAttribute('aria-hidden', 'true');
             board.appendChild(shark);
 
+            // อัปเดต aria-label สำหรับ SC
             board.setAttribute('aria-label', `สถานะแถวปัจจุบัน: ` + statusParts.join(', '));
         }
 
@@ -592,6 +603,7 @@
             AudioSys.stop('swim'); 
             AudioSys.play('select');
             
+            // ล็อกไพ่
             const cards = document.querySelectorAll('.card');
             cards.forEach(c => c.disabled = true);
             
@@ -604,13 +616,14 @@
                 bot.hand.splice(randomIndex, 1);
             });
 
-            await sleep(500); 
+            await sleep(500); // รอให้เลือกเสร็จแปปนึง
             resolveRound();
         }
 
         async function resolveRound() {
             const handDiv = document.getElementById('player-hand');
             
+            // สร้าง Showdown Arena
             let arenaHTML = `<div id="showdown-arena" style="display:flex; gap:10px; width:100%; justify-content:center; flex-wrap:wrap;" aria-hidden="true">`;
             players.forEach(p => {
                 arenaHTML += `
@@ -641,39 +654,30 @@
                 scriptPhase1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
             }
 
-            // --- ส่วนที่คืนกลับมา: ผสมข้อความผลการขยับว่ายน้ำลงไปใน scriptPhase1 ด้วย ---
-            let ascPlayers = [];
-            if (validPlayers.length > 0) {
-                ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
-                ascPlayers.forEach((p, idx) => {
-                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
-                    } else {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
-                    }
-                });
-            }
-
+            // จังหวะพลิกไพ่พร้อมกัน
             await sleep(800);
             players.forEach(p => document.getElementById(`show-card-${p.id}`).classList.add('flipped'));
             await sleep(800);
 
+            // ไพ่ซ้ำสั่น + ขึ้น X
             invalidPlayers.forEach(p => {
                 let cFront = document.querySelector(`#show-card-${p.id} .showdown-card-front`);
                 cFront.innerHTML = `❌<br><span style="font-size:0.8rem">${p.colorInfo.icon}</span>`;
                 document.getElementById(`show-card-${p.id}`).classList.add('card-shake');
             });
             
-            // ประกาศผลไพ่และลำดับการว่าย (อ่านรวดเดียวสมบูรณ์)
+            // ประกาศ SC สำหรับ Phase 1
             announce(scriptPhase1, true);
+            await sleep(1000);
 
             // Phase 1 (Animation ว่ายทีละคน)
-            let swimAnimTime = 0;
             if (validPlayers.length > 0) {
                 validPlayers.forEach(p => document.getElementById(`show-card-${p.id}`).classList.add('card-glow'));
                 
                 AudioSys.stop('swim'); 
                 AudioSys.sources.swim = AudioSys.play('swim'); 
+
+                let ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
                 
                 for(let i = 0; i < ascPlayers.length; i++) {
                     let p = ascPlayers[i];
@@ -681,19 +685,16 @@
                     lineup.unshift(p.id);
                     
                     updateVisualBoard();
+                    // เพิ่ม Animation ว่ายแซง
                     let frontEl = document.getElementById(`ui_${p.id}`);
                     if(frontEl) frontEl.classList.add('swim-to-front');
                     
-                    await sleep(1200); 
-                    swimAnimTime += 1200;
+                    await sleep(900); // หน่วงเวลาให้ตัวละครว่ายขึ้นหน้าทีละคิวให้เสร็จ
                 }
             } else {
                 updateVisualBoard();
+                await sleep(2000);
             }
-
-            // หน่วงเวลาที่เหลือให้ครบ 10 วินาทีพอดี (ลบเวลาที่แสดง Animation ไปแล้ว)
-            let remainingSleep = 10000 - swimAnimTime;
-            if (remainingSleep > 0) await sleep(remainingSleep);
 
             AudioSys.stop('swim'); 
 
@@ -717,6 +718,7 @@
             let lostLimb = bittenPlayer.limbsStatus.pop(); 
             bittenPlayer.limbs -= 1;
             
+            // Animation ชิ้นส่วนกระเด็นหลุด
             let limbClass = LIMBS_MAP[lostLimb];
             let limbEl = document.querySelector(`#ui_${bittenId} .ui-limb-${limbClass}`);
             if(limbEl) limbEl.classList.add('limb-fly-away');
@@ -752,6 +754,7 @@
             
             await sleep(2000); 
             
+            // เล่นเสียงร้อง
             if (bittenPlayer.limbs <= 0) {
                 let dendFiles = ['dend', 'dend1'];
                 AudioSys.play(dendFiles[Math.floor(Math.random()*2)]);
@@ -762,6 +765,7 @@
                 AudioSys.play('d' + chosenD);
             }
             
+            // อัปเดตบอร์ดหลังงับเสร็จ (เด้งขึ้นหน้าสุด)
             updateVisualBoard();
             if (bittenPlayer.limbs > 0) {
                 let dashEl = document.getElementById(`ui_${bittenId}`);
@@ -781,7 +785,7 @@
                 
                 if(isHumanWin) {
                     AudioSys.play('win');
-                    triggerConfetti(); 
+                    triggerConfetti(); // Visual effect พลุกระดาษ
                 } else {
                     AudioSys.play('lost');
                 }
@@ -853,6 +857,7 @@
             }
         }
 
+        // --- ระบบจุดพลุกระดาษฉลองผู้เล่นชนะ ---
         function triggerConfetti() {
             const canvas = document.getElementById('confetti-canvas');
             const ctx = canvas.getContext('2d');
