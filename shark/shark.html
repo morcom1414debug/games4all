@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมฉลามงับ (Get Bit!)</title>
+    <style>
+        :root {
+            --red: #ff4d4d; --yellow: #ffd700; --green: #32cd32;
+            --blue: #1e90ff; --pink: #ff69b4; --orange: #ff8c00;
+            --bg: #1a1a2e; --text: #eaeaea;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 10px; text-align: center; overflow-x: hidden;
+        }
+        
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0;
+            margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
+            white-space: nowrap;
+        }
+
+        /* --- หน้า Setup --- */
+        #setup-screen {
+            position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+            max-width: 500px; width: 100%; max-height: 95vh; padding: 25px 20px 20px 20px;
+            background: #16213e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        .home-btn-top {
+            position: absolute; top: 12px; left: 12px;
+            background: #4a4e69; color: white; border: none; border-radius: 6px;
+            padding: 6px 12px; font-size: 1.125rem; cursor: pointer; transition: 0.2s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .home-btn-top:hover, .home-btn-top:focus { background: #9a8c98; outline: 3px solid #ffd700; }
+
+        h1 { font-size: 1.5rem; margin-bottom: 10px; margin-top: 10px; }
+        .setup-section-title { font-size: 1rem; margin: 10px 0 5px 0; color: #b8c1ec; }
+
+        .color-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+            width: 100%; margin-bottom: 10px;
+        }
+
+        .color-btn {
+            padding: 12px 5px; font-size: 0.9375rem; font-weight: bold; border: 2px solid transparent;
+            border-radius: 8px; cursor: pointer; color: white; text-shadow: 1px 1px 2px black;
+            transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .color-btn:hover, .color-btn:focus { outline: none; border-color: #ffffff; transform: scale(1.05); }
+        .color-btn.selected { border-color: #ffffff; box-shadow: 0 0 10px #ffffff; }
+
+        .bot-counter-container {
+            display: flex; align-items: center; justify-content: center; gap: 15px;
+            margin: 10px 0; background: #0f3460; padding: 10px 20px; border-radius: 8px; width: 100%;
+        }
+
+        .counter-btn {
+            width: 48px; height: 48px; font-size: 1.375rem; font-weight: bold;
+            background: #4a4e69; color: white; border: none; border-radius: 8px;
+            cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        .counter-btn:hover, .counter-btn:focus { background: #9a8c98; outline: 3px solid #f2e9e4; }
+
+        .bot-count-display { font-size: 1.125rem; font-weight: bold; min-width: 80px; }
+
+        .start-btn {
+            width: 100%; padding: 14px; font-size: 1.125rem; font-weight: bold;
+            background: #e94560; color: white; border: none; border-radius: 8px;
+            cursor: pointer; margin-top: 15px; transition: 0.2s;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .start-btn:hover, .start-btn:focus { background: #ff6b81; outline: 3px solid #ffffff; }
+
+        /* --- หน้าเล่นเกม (Game Screen) --- */
+        #game-screen { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 800px; }
+        
+        .board-container {
+            display: flex; align-items: center; justify-content: flex-start;
+            background: #16213e; padding: 15px; border-radius: 10px;
+            margin: 10px 0; overflow-x: auto; width: 100%;
+            border: 2px solid transparent; transition: border-color 0.2s;
+        }
+        .board-container:focus { outline: none; border-color: #ffd700; }
+
+        .swimmer {
+            width: 75px; height: 85px; margin: 0 5px; border-radius: 8px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-weight: bold; text-shadow: 1px 1px 2px black; font-size: 0.75rem;
+            position: relative; border: 2px solid white; flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+        .shark { font-size: 2.5rem; margin-left: 10px; animation: swim 2s infinite alternate; flex-shrink: 0; }
+        @keyframes swim { 0% { transform: translateY(-5px); } 100% { transform: translateY(5px); } }
+        @keyframes bite { 0% { transform: scale(1.2); } 50% { transform: scale(1.5) translateX(-15px); } 100% { transform: scale(1.2); } }
+        .bite-anim { animation: bite 0.5s ease; color: red; }
+        
+        .hand-container { 
+            display: flex; gap: 6px; margin-top: 15px; width: 100%;
+            justify-content: center; flex-wrap: nowrap;
+        }
+        .card {
+            flex: 1; max-width: 55px; height: 75px; font-size: 1.5rem; font-weight: bold;
+            border-radius: 8px; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; transition: all 0.2s; border: 2px solid #ffffff;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .card:hover, .card:focus { transform: translateY(-12px); outline: 3px solid #ffd700; border-color: #ffd700; }
+        
+        .action-row {
+            display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 10px;
+        }
+
+        .end-game-container {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            width: 100%; margin: 15px 0; padding: 20px; background: #16213e; border-radius: 12px;
+        }
+        .victory-text {
+            font-size: 1.125rem; font-weight: bold; color: #ffd700; margin: 15px 0; line-height: 1.5;
+        }
+
+        .log-box { 
+            margin-top: 15px; padding: 10px; background: #0f3460; 
+            border-radius: 8px; width: 100%; text-align: left; min-height: 100px; 
+        }
+        ul { list-style-type: disc; padding-left: 20px; }
+        li { margin-bottom: 5px; font-size: 0.875rem; line-height: 1.3; }
+
+        /* --- Countdown Overlay --- */
+        #countdown-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(26, 26, 46, 0.9); z-index: 9999;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        .countdown-text {
+            font-size: 5rem; font-weight: bold; color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            20% { transform: scale(1.2); opacity: 1; }
+            80% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Countdown Overlay สำหรับ Start Animation -->
+    <div id="countdown-overlay">
+        <div id="countdown-text" class="countdown-text"></div>
+    </div>
+
+    <!-- หน้าตั้งค่าเกม -->
+    <div id="setup-screen">
+        <button class="home-btn-top" onclick="goHome()" aria-label="กลับสู่ชุมชน">🏠</button>
+
+        <h1>🦈 เกมฉลามงับ (Get Bit!)</h1>
+        
+        <div style="width:100%;">
+            <p class="setup-section-title">1. เลือกสีประจำตัวของคุณ:</p>
+            <div class="color-grid" id="color-selection" role="radiogroup" aria-label="เลือกสีตัวละคร"></div>
+        </div>
+
+        <div style="width:100%;">
+            <p class="setup-section-title">2. เลือกจำนวนบอทที่จะเล่นด้วย:</p>
+            <div class="bot-counter-container">
+                <button class="counter-btn" onclick="adjustBot(-1)" aria-label="ลดจำนวนบอท">-</button>
+                <div class="bot-count-display" id="bot-count-text">1 ตัว</div>
+                <button class="counter-btn" onclick="adjustBot(1)" aria-label="เพิ่มจำนวนบอท">+</button>
+            </div>
+        </div>
+
+        <button class="start-btn" onclick="startGameSequence()">เริ่มเกม</button>
+    </div>
+
+    <!-- หน้าเล่นเกม -->
+    <div id="game-screen">
+        <h2 id="turn-indicator" tabindex="-1">เลือกลงไพ่ของคุณ</h2>
+        
+        <div class="board-container" id="visual-board" tabindex="0" role="region" aria-label="สถานะแถวปัจจุบัน"></div>
+
+        <div class="hand-container" id="player-hand" role="group" aria-label="ไพ่ในมือของคุณ" tabindex="-1"></div>
+
+        <div class="log-box" aria-hidden="true">
+            <h3>📜 เหตุการณ์ล่าสุด:</h3>
+            <ul id="game-log"></ul>
+        </div>
+    </div>
+
+    <!-- กล่องประกาศ ARIA -->
+    <div id="aria-announcer" aria-live="assertive" class="sr-only"></div>
+
+    <script>
+        // --- Web Audio API Manager ---
+        const AudioSys = {
+            ctx: null, buffers: {}, sources: {},
+            lastD: -1,
+            init() {
+                if (!this.ctx) {
+                    const CtxClass = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new CtxClass();
+                }
+            },
+            async loadAll() {
+                const files = [
+                    'start', 'bgm', 'select', 'swim', 'shark', 'win', 'lost',
+                    'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'dend', 'dend1'
+                ];
+                for(let f of files) {
+                    try {
+                        const res = await fetch(`audio/${f}.mp3`);
+                        const arr = await res.arrayBuffer();
+                        this.buffers[f] = await this.ctx.decodeAudioData(arr);
+                    } catch(e) { console.warn('Audio load error:', f); }
+                }
+            },
+            play(name, loop = false, delaySec = 0) {
+                if(!this.ctx || !this.buffers[name]) return null;
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.buffers[name];
+                src.loop = loop;
+                src.connect(this.ctx.destination);
+                src.start(this.ctx.currentTime + delaySec);
+                return src;
+            },
+            stop(srcName) {
+                if(this.sources[srcName]) {
+                    try { this.sources[srcName].stop(); } catch(e){}
+                    this.sources[srcName] = null;
+                }
+            }
+        };
+
+        // --- ข้อมูลพื้นฐาน ---
+        const COLORS = [
+            { id: 'red', hex: 'var(--red)', name: 'สีแดง', icon: '⭐', textColor: '#ffffff' },
+            { id: 'yellow', hex: 'var(--yellow)', name: 'สีเหลือง', icon: '☀️', textColor: '#000000' },
+            { id: 'green', hex: 'var(--green)', name: 'สีเขียว', icon: '🍃', textColor: '#ffffff' },
+            { id: 'blue', hex: 'var(--blue)', name: 'สีฟ้า', icon: '🌊', textColor: '#ffffff' },
+            { id: 'pink', hex: 'var(--pink)', name: 'สีชมพู', icon: '💖', textColor: '#000000' },
+            { id: 'orange', hex: 'var(--orange)', name: 'สีส้ม', icon: '🔥', textColor: '#000000' }
+        ];
+
+        const VICTORY_MESSAGES = [
+            "สุดยอด! คุณว่ายน้ำได้เร็วเหนือใคร รอดชีวิตจากฉลามงับมาได้อย่างปลอดภัย!",
+            "ชัยชนะอันยิ่งใหญ่! คุณปั่นหัวบอทและตบตาฉลามจนรอดมาเป็นคนสุดท้าย!",
+            "เทพแห่งท้องทะเล! ทักษะการลงไพ่ของคุณพาให้รอดพ้นจากคมเคี้ยวของฉลาม!",
+            "ฉลามยังต้องยอมแพ้! คุณรอดชีวิตและกลายเป็นผู้ชนะในเกมนี้อย่างสมเกียรติ!",
+            "ยินดีด้วยอย่างยิ่ง! คุณหนีฉลามได้หวุดหวิดและคว้าชัยชนะมาครองได้สำเร็จ!",
+            "ผู้รอดชีวิตเพียงหนึ่งเดียว! สมองอันชาญฉลาดของคุณพาให้รอดมาได้จนจบเกม!",
+            "ปรบมือดังๆ ให้ผู้ชนะ! ฉลามอิ่มบอท แต่คุณอิ่มความภาคภูมิใจ!",
+            "ชัยชนะไร้รอยขีดข่วน! คุณคุมเกมได้อยู่หมัด และอยู่รอดเป็นคนสุดท้าย!",
+            "สุดยอดสัญชาตญาณ! คุณอ่านเกมขาด ว่ายแซงบอททุกตัวจนรอดชีวิตมาได้!",
+            "คมเคี้ยวฉลามทำอะไรคุณไม่ได้! ขอแสดงยินดีกับผู้รอดชีวิตเพียงหนึ่งเดียว!"
+        ];
+
+        let currentBotCount = 1;
+        let selectedColorId = 'red';
+        let players = [];
+        let lineup = []; 
+        let humanPlayer = null;
+        let scTimeout = null;
+        let isAutoPlaying = false;
+
+        function goHome() {
+            AudioSys.stop('bgm');
+            window.location.href = '../index.html';
+        }
+
+        function announce(message, clearLog = false) {
+            const announcer = document.getElementById('aria-announcer');
+            announcer.innerText = message;
+            
+            clearTimeout(scTimeout);
+            scTimeout = setTimeout(() => { announcer.innerText = ''; }, 10000);
+
+            const logBox = document.getElementById('game-log');
+            if (clearLog) logBox.innerHTML = ''; 
+            
+            const sentences = message.split('. ').filter(s => s.trim().length > 0);
+            sentences.forEach(s => {
+                const li = document.createElement('li');
+                li.innerText = s;
+                logBox.appendChild(li);
+            });
+        }
+
+        window.onload = () => {
+            AudioSys.init();
+            AudioSys.loadAll(); // โหลดไฟล์เสียงเตรียมไว้
+            renderColorButtons();
+            announce("ยินดีต้อนรับสู่เกมฉลามงับ. เลือกสีประจำตัวและจำนวนบอท จากนั้นกดเริ่มเกม", true);
+        };
+
+        function renderColorButtons() {
+            const colorDiv = document.getElementById('color-selection');
+            colorDiv.innerHTML = '';
+            COLORS.forEach(c => {
+                const btn = document.createElement('button');
+                btn.className = `color-btn ${c.id === selectedColorId ? 'selected' : ''}`;
+                btn.style.backgroundColor = c.hex;
+                btn.style.color = c.textColor;
+                btn.innerHTML = `${c.icon} ${c.name}`;
+                btn.setAttribute('role', 'radio');
+                btn.setAttribute('aria-checked', c.id === selectedColorId ? 'true' : 'false');
+                btn.onclick = () => {
+                    selectedColorId = c.id;
+                    renderColorButtons();
+                    announce(`คุณเลือก ${c.name} แล้ว`);
+                };
+                colorDiv.appendChild(btn);
+            });
+        }
+
+        function adjustBot(delta) {
+            let nextCount = currentBotCount + delta;
+            if (nextCount >= 1 && nextCount <= 5) {
+                currentBotCount = nextCount;
+                document.getElementById('bot-count-text').innerText = `${currentBotCount} ตัว`;
+                announce(`ปรับจำนวนบอทเป็น ${currentBotCount} ตัว`);
+            }
+        }
+
+        // จัดการ Animation และเสียงตอนเริ่มเกม
+        async function startGameSequence() {
+            if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
+            
+            const overlay = document.getElementById('countdown-overlay');
+            const text = document.getElementById('countdown-text');
+            overlay.style.display = 'flex';
+            
+            AudioSys.play('start'); // เล่นเสียง start.mp3 (4.9 วินาที)
+            
+            const steps = ['3', '2', '1', 'เริ่มเกมได้!'];
+            const stepTime = 1225; // 4.9 วินาที / 4 ขั้นตอน = 1.225 วินาทีต่อขั้นตอน
+            
+            steps.forEach((msg, idx) => {
+                setTimeout(() => {
+                    text.innerText = msg;
+                    text.style.animation = 'none'; 
+                    void text.offsetWidth; // บังคับให้เบราว์เซอร์รีเฟรช animation
+                    text.style.animation = 'popIn 1.225s ease-in-out';
+                }, idx * stepTime);
+            });
+            
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                AudioSys.sources.bgm = AudioSys.play('bgm', true); // เริ่ม bgm ทันทีที่จบ start
+                runGameLogic();
+            }, 4900);
+        }
+
+        // โลจิกเริ่มเกมเดิม (เปลี่ยนชื่อจาก startGame เป็น runGameLogic)
+        function runGameLogic() {
+            isAutoPlaying = false;
+            let availableColors = [...COLORS];
+            const humanCol = availableColors.find(c => c.id === selectedColorId);
+            availableColors = availableColors.filter(c => c.id !== selectedColorId);
+
+            players = [];
+            humanPlayer = {
+                id: 'player_1', name: `คุณ`, colorInfo: humanCol,
+                type: 'human', limbs: 4, limbsStatus: ['แขนซ้าย', 'แขนขวา', 'ขาซ้าย', 'ขาขวา'],
+                hand: [1,2,3,4,5,6,7], playedCards: [], chosenCard: null
+            };
+            players.push(humanPlayer);
+
+            availableColors.sort(() => Math.random() - 0.5); 
+            for (let i = 0; i < currentBotCount; i++) {
+                players.push({
+                    id: `bot_${i}`, name: `บอท${availableColors[i].name}`, colorInfo: availableColors[i],
+                    type: 'bot', limbs: 4, limbsStatus: ['แขนซ้าย', 'แขนขวา', 'ขาซ้าย', 'ขาขวา'],
+                    hand: [1,2,3,4,5,6,7], playedCards: [], chosenCard: null
+                });
+            }
+
+            lineup = players.map(p => p.id).sort(() => Math.random() - 0.5);
+
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
+            
+            let startMsg = `เริ่มเกม! ลำดับในน้ำตอนนี้จากหน้าไปหลังคือ: ` + 
+                           lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. ` + 
+                           `กรุณาเลือกลงไพ่ใบแรกของคุณ.`;
+            
+            announce(startMsg, true);
+            updateVisualBoard();
+            renderHand();
+            setTimeout(() => { document.getElementById('player-hand').focus(); }, 100);
+        }
+
+        function updateVisualBoard() {
+            const board = document.getElementById('visual-board');
+            board.innerHTML = '';
+            
+            let statusParts = [];
+
+            lineup.forEach((pid, index) => {
+                const p = players.find(x => x.id === pid);
+                
+                const el = document.createElement('div');
+                el.className = 'swimmer'; 
+                el.id = `ui_${pid}`;
+                el.style.backgroundColor = p.colorInfo.hex;
+                el.style.color = p.colorInfo.textColor;
+                el.setAttribute('aria-hidden', 'true'); 
+                el.innerHTML = `${p.colorInfo.icon}<br>${p.name}<br>${p.limbs}/4 ชิ้น`;
+                board.appendChild(el);
+
+                let positionText = index === 0 ? "หน้าสุด" : (index === lineup.length - 1 ? "ท้ายสุด" : `${index + 1}`);
+                let playerInfoStr = p.type === 'human' ? `${p.name} ${p.colorInfo.name}` : `${p.name}`;
+                statusParts.push(`${positionText}: ${playerInfoStr} ${p.limbs}/4 ชิ้น`);
+            });
+            
+            const shark = document.createElement('div');
+            shark.className = 'shark'; shark.id = 'shark-ui'; shark.innerText = '🦈';
+            shark.setAttribute('aria-hidden', 'true');
+            board.appendChild(shark);
+
+            board.setAttribute('aria-label', `สถานะแถวปัจจุบัน: ` + statusParts.join(', '));
+        }
+
+        function renderHand() {
+            const handDiv = document.getElementById('player-hand');
+            handDiv.innerHTML = '';
+            humanPlayer.hand.forEach(val => {
+                const card = document.createElement('button');
+                card.className = 'card'; 
+                card.innerText = val;
+                
+                card.style.backgroundColor = humanPlayer.colorInfo.hex;
+                card.style.color = humanPlayer.colorInfo.textColor;
+                
+                card.setAttribute('aria-label', `ไพ่ ${val}`);
+                card.onclick = () => playTurn(val);
+                handDiv.appendChild(card);
+            });
+            handDiv.focus();
+        }
+
+        function playTurn(humanCardVal) {
+            if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.ctx.resume();
+            AudioSys.stop('swim'); // หยุดเสียงว่ายน้ำถ้ามีค้างจาก turn ก่อน
+            AudioSys.play('select');
+            
+            humanPlayer.chosenCard = humanCardVal;
+            humanPlayer.hand = humanPlayer.hand.filter(v => v !== humanCardVal);
+
+            players.filter(p => p.type === 'bot').forEach(bot => {
+                const randomIndex = Math.floor(Math.random() * bot.hand.length);
+                bot.chosenCard = bot.hand[randomIndex];
+                bot.hand.splice(randomIndex, 1);
+            });
+
+            resolveRound();
+        }
+
+        function resolveRound() {
+            let script = ""; 
+            
+            // 1. ประกาศผลไพ่
+            let playedMsg = "ผลการเปิดไพ่: ";
+            players.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
+            script += playedMsg.slice(0, -2) + ". ";
+
+            // 2. เช็คไพ่ชนกัน
+            let cardCounts = {};
+            players.forEach(p => { cardCounts[p.chosenCard] = (cardCounts[p.chosenCard] || 0) + 1; });
+
+            let validPlayers = players.filter(p => cardCounts[p.chosenCard] === 1);
+            let invalidPlayers = players.filter(p => cardCounts[p.chosenCard] > 1);
+
+            if (invalidPlayers.length > 0) {
+                let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
+                script += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
+            }
+
+            // 3. จัดลำดับการขยับ
+            if (validPlayers.length > 0) {
+                AudioSys.stop('swim'); 
+                AudioSys.sources.swim = AudioSys.play('swim'); // เสียงว่ายน้ำ
+
+                let ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
+                
+                ascPlayers.forEach((p, idx) => {
+                    lineup = lineup.filter(id => id !== p.id);
+                    lineup.unshift(p.id);
+
+                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
+                        script += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
+                    } else {
+                        script += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
+                    }
+                });
+            }
+
+            // 4. ฉลามงับ
+            let bittenId = lineup[lineup.length - 1];
+            let bittenPlayer = players.find(p => p.id === bittenId);
+            
+            AudioSys.play('shark'); // เล่นเสียงฉลามทันที
+
+            const sharkUI = document.getElementById('shark-ui');
+            if(sharkUI) { sharkUI.classList.add('bite-anim'); setTimeout(() => { sharkUI.classList.remove('bite-anim'); }, 500); }
+
+            let lostLimb = bittenPlayer.limbsStatus.pop(); 
+            bittenPlayer.limbs -= 1;
+
+            script += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
+
+            // เล่นเสียงถูกกัดเหลื่อมหลังจากฉลาม 2 วินาที
+            if (bittenPlayer.limbs <= 0) {
+                let dendFiles = ['dend', 'dend1'];
+                let chosenEnd = dendFiles[Math.floor(Math.random()*2)];
+                AudioSys.play(chosenEnd, false, 2.0);
+            } else {
+                let dFiles = [1,2,3,4,5,6];
+                let dChoices = dFiles.filter(x => x !== AudioSys.lastD);
+                let chosenD = dChoices[Math.floor(Math.random()*dChoices.length)];
+                AudioSys.lastD = chosenD;
+                AudioSys.play('d' + chosenD, false, 2.0);
+            }
+
+            // 5. จัดการการตกรอบและการเด้งกลับ
+            if (bittenPlayer.limbs <= 0) {
+                script += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
+                lineup = lineup.filter(id => id !== bittenId);
+                players = players.filter(p => p.id !== bittenId);
+            } else {
+                script += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
+                lineup = lineup.filter(id => id !== bittenId);
+                lineup.unshift(bittenId);
+            }
+
+            // คืนไพ่ตามกติกา
+            players.forEach(p => {
+                if (p.id === bittenId && p.limbs > 0) {
+                    p.hand = p.hand.concat(p.playedCards).concat([p.chosenCard]);
+                    p.playedCards = [];
+                } else {
+                    p.playedCards.push(p.chosenCard);
+                    if (p.hand.length === 1) {
+                        p.hand = p.hand.concat(p.playedCards);
+                        p.playedCards = [];
+                        script += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
+                    }
+                }
+                p.chosenCard = null;
+            });
+
+            // 6. อัปเดตสถานะและลำดับปัจจุบัน
+            updateVisualBoard();
+
+            script += `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
+                      lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
+
+            // 7. เช็คการจบเกม
+            if (players.length === 1) {
+                AudioSys.stop('bgm'); // หยุด bgm
+                const winner = players[0];
+                const handDiv = document.getElementById('player-hand');
+                let isHumanWin = winner.type === 'human';
+                
+                // รอให้เสียงฉลาม/โดนงับตาย เล่นจบ (ประมาณ 5.6 วิ) ก่อนเล่นเสียงจบเกม
+                setTimeout(() => {
+                    if(isHumanWin) AudioSys.play('win');
+                    else AudioSys.play('lost');
+                }, 5600);
+                
+                if (isHumanWin) {
+                    const randomMsg = VICTORY_MESSAGES[Math.floor(Math.random() * VICTORY_MESSAGES.length)];
+                    script += randomMsg;
+                    document.getElementById('turn-indicator').innerText = "🏆 จบเกม! คุณคือผู้ชนะ";
+                    
+                    handDiv.innerHTML = `
+                        <div class="end-game-container">
+                            <div class="victory-text">${randomMsg}</div>
+                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
+                        </div>
+                    `;
+                } else {
+                    script += `จบเกม! ผู้ชนะคือ ${winner.name} รอดชีวิตเป็นคนสุดท้าย`;
+                    document.getElementById('turn-indicator').innerText = `จบเกม! ${winner.name} เป็นผู้ชนะ`;
+                    
+                    handDiv.innerHTML = `
+                        <div class="end-game-container">
+                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
+                        </div>
+                    `;
+                }
+            } else if (!players.find(p => p.type === 'human')) {
+                script += `คุณถูกคัดออกแล้ว! สามารถเลือกดูบอทเล่นต่อจนจบ หรือกลับสู่ชุมชนได้`;
+                document.getElementById('turn-indicator').innerText = `คุณถูกคัดออกแล้ว...`;
+                
+                document.getElementById('player-hand').innerHTML = `
+                    <div class="action-row">
+                        <button class="start-btn" onclick="startAutoPlayBots()" style="margin:0; flex:1;">▶️ ดูบอทเล่นต่อจนจบ</button>
+                        <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="margin:0; flex:1; background-color:#4a4e69;">🏠</button>
+                    </div>
+                `;
+            } else {
+                script += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
+                renderHand();
+            }
+
+            announce(script, true);
+
+            if (isAutoPlaying && players.length > 1) {
+                setTimeout(() => {
+                    executeBotTurn();
+                }, 3500);
+            }
+        }
+
+        function startAutoPlayBots() {
+            isAutoPlaying = true;
+            document.getElementById('player-hand').innerHTML = '<span style="margin-top:15px; font-weight:bold; color:var(--yellow);">กำลังจำลองการเล่นของบอท...</span>';
+            announce("เริ่มแสดงการเล่นของบอทจนจบเกม...");
+            executeBotTurn();
+        }
+
+        function executeBotTurn() {
+            AudioSys.stop('swim');
+            if (players.length > 1) {
+                players.forEach(bot => {
+                    const randomIndex = Math.floor(Math.random() * bot.hand.length);
+                    bot.chosenCard = bot.hand[randomIndex];
+                    bot.hand.splice(randomIndex, 1);
+                });
+                resolveRound();
+            }
+        }
+    </script>
+</body>
+</html>
