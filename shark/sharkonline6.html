@@ -945,12 +945,13 @@
 
         function handleAfkTimeout() {
             if (isHost) {
+                // Host forces anyone who hasn't chosen a card and is still alive
                 players.forEach(pl => {
                     if (pl.limbs > 0 && pl.chosenCard === null) {
                         let pId = pl.id;
                         consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
                         if (consecutiveAfkCounts[pId] >= 4) {
-                            
+                            // User is continuously AFK, but we continue forcing to keep the game alive
                         }
                         let autoCard = pl.hand[0]; 
                         
@@ -958,11 +959,13 @@
                             announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]})`);
                             playTurn(autoCard);
                         } else {
+                            // Force Guest action centrally
                             handlePlayerAction(pId, autoCard);
                         }
                     }
                 });
             } else {
+                // Guest auto-plays for themselves to update local UI
                 if (humanPlayer && humanPlayer.limbs > 0 && humanPlayer.chosenCard === null) {
                     let pId = humanPlayer.id;
                     consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
@@ -1102,20 +1105,17 @@
 
             receivedActions[playerId] = cardVal;
 
-            if (isHost) {
-                let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
-                let humansChosenCount = aliveHumans.filter(pl => pl.chosenCard !== null).length;
+            let allHumansChosen = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0).every(pl => pl.chosenCard !== null);
+            
+            if (allHumansChosen) {
+                players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
+                    let posIndex = lineup.indexOf(bot.id);
+                    bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
+                    bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
+                });
 
-                if (humansChosenCount === aliveHumans.length) {
-                    
-                    players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
-                        let posIndex = lineup.indexOf(bot.id);
-                        bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                        bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                    });
-
-                    let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    
+                let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
+                if (isHost) {
                     broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
                     executeResolveRound(roundData);
                 }
@@ -1128,6 +1128,7 @@
                     let pl = players.find(x => x.id === rd.id);
                     if (pl) {
                         pl.chosenCard = rd.chosenCard;
+                        // ให้ Firebase เป็นคนกลางและบังคับข้อมูลไพ่ในมือทุกเครื่องให้ตรงกัน 100%
                         pl.hand = pl.hand.filter(v => v !== rd.chosenCard); 
                     }
                 });
