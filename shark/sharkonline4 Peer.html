@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>เกมฉลามงับออนไลน์ (Get Bit! Online)</title>
-    <!-- นำ PeerJS ออก และเราจะเรียกใช้ Firebase ผ่าน ES Module แทน -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         :root {
             --red: #ff4d4d; --yellow: #ffd700; --green: #32cd32;
@@ -286,6 +286,7 @@
 
         <h1>🦈 เกมฉลามงับออนไลน์</h1>
         
+        <!-- ห่อส่วนเลือกสีไว้สำหรับซ่อนในกรณี Guest -->
         <div style="width:100%;" id="color-select-section">
             <p class="setup-section-title">เลือกสีตัวละครของคุณ:</p>
             <div class="color-grid" id="color-selection" role="radiogroup" aria-label="เลือกสีตัวละคร"></div>
@@ -300,13 +301,14 @@
             </div>
         </div>
 
+        <!-- ชุดปุ่ม 2 ปุ่ม ซ้ายขวา สำหรับโฮสต์และแขก -->
         <div id="action-buttons-container" style="display: flex; gap: 10px; width: 100%; margin-top: 15px;">
             <button class="start-btn setup-control-btn" id="btn-create-room" onclick="createOrJoinRoom()" style="margin:0; flex:1; background-color:#e94560;">สร้างห้องออนไลน์</button>
             <button class="start-btn setup-control-btn" id="btn-show-join" onclick="showJoinScreen()" style="margin:0; flex:1; background-color:#0f3460;">กดเข้าร่วมโดยใช้รหัส</button>
         </div>
     </div>
 
-    <!-- หน้ากรอกรหัสเข้าร่วมห้อง -->
+    <!-- หน้ากรอกรหัสเข้าร่วมห้อง (สลับแทน Setup Screen เพื่อความเข้ากันได้กับ Screen Reader) -->
     <div id="join-screen">
         <button class="home-btn-top" onclick="hideJoinScreen()" aria-label="ยกเลิกและกลับไปหน้าก่อนหน้า">🔙</button>
         <h1>เข้าร่วมห้องด้วยรหัส</h1>
@@ -327,6 +329,7 @@
             <p style="font-size:0.9rem; color:#b8c1ec;">รหัสห้องของคุณ (6 หลัก):</p>
             <div id="display-room-id" style="font-size:2rem; font-weight:bold; color:var(--yellow); letter-spacing:4px; margin:5px 0;">------</div>
             
+            <!-- ส่วนแชร์ลิงก์ (แสดงเฉพาะ Host) -->
             <div id="share-link-section" style="display:none; margin-top:10px; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px;">
                 <p style="font-size:0.85rem; color:#b8c1ec; margin-bottom:5px; text-align:left;">ลิงก์สำหรับเชิญเพื่อน:</p>
                 <div style="display:flex; gap:5px; align-items:center;">
@@ -362,26 +365,10 @@
         </div>
     </div>
 
+    <!-- กล่องประกาศ ARIA -->
     <div id="aria-announcer" aria-live="assertive" class="sr-only"></div>
 
-    <!-- โค้ด Script แบบ Module รองรับ Firebase 100% -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getDatabase, ref, set, push, onChildAdded, onValue, onDisconnect, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-
-        // ตั้งค่า Firebase ตามที่คุณให้มา
-        const firebaseConfig = {
-            apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
-            authDomain: "xo-game-134ec.firebaseapp.com",
-            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "xo-game-134ec",
-            storageBucket: "xo-game-134ec.firebasestorage.app",
-            messagingSenderId: "318375224157",
-            appId: "1:318375224157:web:721abe70ef34c377b77eb4"
-        };
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-
+    <script>
         const bubblesBg = document.getElementById('bg-bubbles');
         for(let i=0; i<15; i++) {
             let b = document.createElement('div');
@@ -462,9 +449,11 @@
             "จบกันชีวิตนักดำน้ำ... ไม่เป็นไร เริ่มใหม่ได้เสมอ!"
         ];
 
+        let peer = null;
         let myPeerId = null;
         let roomId = null;
         let isHost = false;
+        let hostConnection = null;
         let guestConnections = []; 
 
         let currentBotCount = 0;
@@ -537,7 +526,7 @@
                 renderColorButtons();
             }
 
-            initConnection();
+            initPeerConnection();
         };
 
         function showJoinScreen() {
@@ -561,12 +550,67 @@
             }
         }
 
-        function initConnection() {
-            myPeerId = isHost ? "shark-host-" + roomId : "shark-guest-" + Math.random().toString(36).substring(2, 8);
-            if (isHost) {
-                roomPlayers = [{ id: myPeerId, color: selectedColorId, isHost: true, isBot: false }];
-                updateWaitingRoomUI();
-            }
+        function initPeerId() {
+            return isHost ? "shark-host-" + roomId : "shark-guest-" + Math.random().toString(36).substring(2, 8);
+        }
+
+        function initPeerConnection() {
+            peer = new Peer(initPeerId());
+
+            peer.on('open', (id) => {
+                myPeerId = id;
+                if (isHost) {
+                    roomPlayers = [{ id: myPeerId, color: selectedColorId, isHost: true, isBot: false }];
+                    updateWaitingRoomUI();
+                }
+            });
+
+            peer.on('connection', (conn) => {
+                if (!isHost) return;
+                
+                conn.on('data', (data) => {
+                    if (data.type === 'JOIN_ROOM') {
+                        const totalOccupied = roomPlayers.length + currentBotCount;
+                        if (totalOccupied >= 6) {
+                            conn.send({ type: 'JOIN_REJECT', reason: 'ห้องเต็มแล้ว' });
+                            setTimeout(() => conn.close(), 500);
+                            return;
+                        }
+
+                        let usedColors = roomPlayers.map(p => p.color).concat(botColors);
+                        let availableColors = COLORS.filter(c => !usedColors.includes(c.id));
+                        let assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)].id;
+
+                        roomPlayers.push({ id: conn.peer, color: assignedColor, isHost: false, isBot: false });
+                        guestConnections.push(conn);
+                        
+                        AudioSys.play('select');
+                        let joinedColName = COLORS.find(c => c.id === assignedColor).name;
+                        let joinMsg = `ผู้เล่นเข้าร่วมห้องใหม่ ได้รับ${joinedColName}`;
+                        
+                        broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: joinMsg });
+                        updateWaitingRoomUI();
+                        announce(joinMsg);
+                    }
+                    else if (data.type === 'PLAYER_ACTION') {
+                        handlePlayerAction(data.playerId, data.cardVal);
+                    }
+                });
+
+                conn.on('close', () => {
+                    if (!isHost) return;
+                    roomPlayers = roomPlayers.filter(p => p.id !== conn.peer);
+                    guestConnections = guestConnections.filter(c => c.peer !== conn.peer);
+                    
+                    checkAndReassignHost();
+                    broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
+                    updateWaitingRoomUI();
+                });
+            });
+
+            peer.on('error', (err) => {
+                console.warn("PeerJS error:", err);
+            });
         }
 
         function checkAndReassignHost() {
@@ -582,7 +626,9 @@
         }
 
         function broadcastToAll(data) {
-            push(ref(db, `rooms/${roomId}/messages/to_all`), data);
+            guestConnections.forEach(conn => {
+                if (conn && conn.open) conn.send(data);
+            });
         }
 
         function renderColorButtons() {
@@ -668,88 +714,27 @@
 
                 updateWaitingRoomUI();
                 announce("สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ " + roomId.split('').join(' ') + " ระบบคัดลอกลิงก์ให้เรียบร้อยแล้ว");
-
-                // จัดการ Firebase สำหรับ Host
-                const hostRef = ref(db, `rooms/${roomId}/host`);
-                set(hostRef, true);
-                onDisconnect(hostRef).remove();
-
-                const toHostRef = ref(db, `rooms/${roomId}/messages/to_host`);
-                onChildAdded(toHostRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data.type === 'JOIN_ROOM') {
-                        const totalOccupied = roomPlayers.length + currentBotCount;
-                        if (totalOccupied >= 6) {
-                            push(ref(db, `rooms/${roomId}/messages/to_guest_${data.sender}`), { type: 'JOIN_REJECT', reason: 'ห้องเต็มแล้ว' });
-                            return;
-                        }
-
-                        let usedColors = roomPlayers.map(p => p.color).concat(botColors);
-                        let availableColors = COLORS.filter(c => !usedColors.includes(c.id));
-                        let assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)].id;
-
-                        roomPlayers.push({ id: data.sender, color: assignedColor, isHost: false, isBot: false });
-                        if (!guestConnections.includes(data.sender)) guestConnections.push(data.sender);
-                        
-                        AudioSys.play('select');
-                        let joinedColName = COLORS.find(c => c.id === assignedColor).name;
-                        let joinMsg = `ผู้เล่นเข้าร่วมห้องใหม่ ได้รับ${joinedColName}`;
-                        
-                        broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: joinMsg });
-                        updateWaitingRoomUI();
-                        announce(joinMsg);
-                    }
-                    else if (data.type === 'PLAYER_ACTION') {
-                        handlePlayerAction(data.playerId, data.cardVal);
-                    }
-                });
-
-                const presenceRef = ref(db, `rooms/${roomId}/presence/guests`);
-                onChildRemoved(presenceRef, (snapshot) => {
-                    const connPeer = snapshot.key;
-                    roomPlayers = roomPlayers.filter(p => p.id !== connPeer);
-                    guestConnections = guestConnections.filter(c => c !== connPeer);
-                    
-                    checkAndReassignHost();
-                    broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
-                    updateWaitingRoomUI();
-                });
-
             } else {
                 let btn = document.getElementById('btn-create-room');
                 btn.disabled = true;
                 btn.innerText = 'กำลังเชื่อมต่อห้อง...';
 
                 setTimeout(() => {
-                    // จัดการ Firebase สำหรับ Guest
-                    const hostPresenceRef = ref(db, `rooms/${roomId}/host`);
-                    onValue(hostPresenceRef, (snapshot) => {
-                        // หากไม่มี Host แสดงว่า Host ออกจากเกม
-                        if (!snapshot.val() && document.getElementById('setup-screen').style.display === 'none') {
-                            alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
-                            location.reload();
-                        }
+                    peer.on('open', () => {});
+                    hostConnection = peer.connect("shark-host-" + roomId);
+                    
+                    hostConnection.on('open', () => {
+                        hostConnection.send({ type: 'JOIN_ROOM' }); 
                     });
 
-                    const myPresenceRef = ref(db, `rooms/${roomId}/presence/guests/${myPeerId}`);
-                    set(myPresenceRef, true);
-                    onDisconnect(myPresenceRef).remove();
-
-                    const toMeRef = ref(db, `rooms/${roomId}/messages/to_guest_${myPeerId}`);
-                    onChildAdded(toMeRef, (snapshot) => {
-                        const data = snapshot.val();
+                    hostConnection.on('data', (data) => {
                         if (data.type === 'JOIN_REJECT') {
                             alert("เข้าห้องไม่ได้: " + data.reason);
                             location.href = window.location.pathname; 
                         }
-                    });
-
-                    const toAllRef = ref(db, `rooms/${roomId}/messages/to_all`);
-                    onChildAdded(toAllRef, (snapshot) => {
-                        const data = snapshot.val();
                         if (data.type === 'LOBBY_UPDATE') {
-                            roomPlayers = data.roomPlayers || [];
-                            currentBotCount = data.botCount || 0;
+                            roomPlayers = data.roomPlayers;
+                            currentBotCount = data.botCount;
                             botColors = data.botColors || [];
                             takenColors = roomPlayers.map(p => p.color).concat(botColors);
                             
@@ -765,13 +750,16 @@
                         if (data.type === 'START_GAME_SIGNAL') {
                             startOnlineGamePlay(data.gameData);
                         }
+                        // ระบบรับสัญญาณ RESOLVE_ROUND จากเครื่อง Host
                         if (data.type === 'RESOLVE_ROUND') {
                             executeResolveRound(data.roundData);
                         }
                     });
 
-                    // ส่งสัญญาณขอเข้าห้องไปที่ Host
-                    push(ref(db, `rooms/${roomId}/messages/to_host`), { type: 'JOIN_ROOM', sender: myPeerId });
+                    hostConnection.on('close', () => {
+                        alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
+                        location.reload();
+                    });
                 }, 500);
             }
         }
@@ -879,6 +867,7 @@
             players = gameData.players;
             lineup = gameData.lineup;
 
+            // ระบบแสดงผลชื่อตัวละครแบบ Dynamic Display ตามมุมมองแต่ละเครื่อง
             players.forEach(p => {
                 if (p.type === 'bot' || p.id.startsWith('bot_')) {
                     p.type = 'bot';
@@ -1085,7 +1074,7 @@
             if (isHost) {
                 handlePlayerAction(humanPlayer.id, humanCardVal);
             } else {
-                push(ref(db, `rooms/${roomId}/messages/to_host`), { type: 'PLAYER_ACTION', playerId: humanPlayer.id, cardVal: humanCardVal });
+                hostConnection.send({ type: 'PLAYER_ACTION', playerId: humanPlayer.id, cardVal: humanCardVal });
             }
         }
 
@@ -1100,6 +1089,7 @@
             let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
             
             if (allHumansChosen) {
+                // Host ประมวลผลบอทให้เสร็จสมบูรณ์เพียงเครื่องเดียว
                 players.filter(pl => pl.type === 'bot').forEach(bot => {
                     let posIndex = lineup.indexOf(bot.id);
                     bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
@@ -1394,16 +1384,6 @@
             }
             draw();
         }
-
-        // เชื่อมโยงฟังก์ชันเข้าสู่หน้าจอ HTML เนื่องจากใช้ <script type="module">
-        window.goHome = goHome;
-        window.adjustBot = adjustBot;
-        window.createOrJoinRoom = createOrJoinRoom;
-        window.showJoinScreen = showJoinScreen;
-        window.hideJoinScreen = hideJoinScreen;
-        window.confirmJoinRoom = confirmJoinRoom;
-        window.copyRoomLink = copyRoomLink;
-        window.hostStartGame = hostStartGame;
     </script>
 </body>
 </html>
