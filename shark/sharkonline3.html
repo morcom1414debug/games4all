@@ -460,7 +460,7 @@
         let selectedColorId = 'red';
         let takenColors = []; 
         let roomPlayers = []; 
-        let botColors = []; 
+        let botColors = []; // เพิ่มตัวแปรสำหรับเก็บสีบอทโดยเฉพาะ
         
         let players = [];
         let lineup = []; 
@@ -514,11 +514,13 @@
             const urlParams = new URLSearchParams(window.location.search);
             const targetRoom = urlParams.get('room');
             if (targetRoom) {
+                // เมื่อเข้ามาด้วยรหัสห้องแล้ว จะซ่อนปุ่มเข้าร่วมด้วยรหัส และเปลี่ยนปุ่มหลักให้เป็นปุ่มเข้าร่วม
                 roomId = targetRoom;
                 isHost = false;
                 document.getElementById('host-bot-section').style.display = 'none';
                 document.getElementById('btn-show-join').style.display = 'none';
                 document.getElementById('btn-create-room').innerText = 'เข้าร่วมห้องออนไลน์';
+                // ตัดการเลือกสีของผู้เล่น Guest ออก เพื่อป้องกันปัญหาทับซ้อนและให้ระบบสุ่มให้[cite: 2]
                 document.getElementById('color-select-section').style.display = 'none'; 
             } else {
                 isHost = true;
@@ -529,6 +531,7 @@
             initPeerConnection();
         };
 
+        // ฟังก์ชันสลับหน้าไปกรอกรหัส (แทน Modal)
         function showJoinScreen() {
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('join-screen').style.display = 'flex';
@@ -577,6 +580,7 @@
                             return;
                         }
 
+                        // สุ่มสีที่ยังว่างอยู่ให้ผู้เล่น Guest[cite: 2]
                         let usedColors = roomPlayers.map(p => p.color).concat(botColors);
                         let availableColors = COLORS.filter(c => !usedColors.includes(c.id));
                         let assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)].id;
@@ -632,7 +636,7 @@
         }
 
         function renderColorButtons() {
-            if (!isHost) return; 
+            if (!isHost) return; // เฉพาะโฮสต์เท่านั้นที่มีสิทธิ์กดเลือกสีตั้งต้น[cite: 2]
             const colorDiv = document.getElementById('color-selection');
             colorDiv.innerHTML = '';
             
@@ -660,6 +664,7 @@
                         return;
                     }
                     selectedColorId = c.id;
+                    // อัปเดตสีโฮสต์ใน roomPlayers ด้วย[cite: 2]
                     if (roomPlayers.length > 0) roomPlayers[0].color = selectedColorId; 
                     renderColorButtons();
                     updateWaitingRoomUI();
@@ -681,6 +686,7 @@
             } else {
                 currentBotCount = nextCount;
                 
+                // สุ่มสีให้บอททันทีและอัปเดตสถานะ[cite: 2]
                 let usedColors = roomPlayers.map(p => p.color);
                 let available = COLORS.filter(c => !usedColors.includes(c.id)).sort(() => Math.random() - 0.5);
                 botColors = available.slice(0, currentBotCount).map(c => c.id);
@@ -692,19 +698,23 @@
             }
         }
 
+        // กดปุ่มสร้างห้อง หรือ เข้าร่วมห้อง
         async function createOrJoinRoom() {
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
 
             if (isHost) {
+                // เล่นไฟล์เสียง 1.mp3 ทันทีเมื่อโฮสต์กดปุ่ม
                 AudioSys.play('1');
 
                 document.getElementById('setup-screen').style.display = 'none';
                 document.getElementById('waiting-room-screen').style.display = 'flex';
                 
+                // จัดการแสดงผลส่วนของการสร้างและคัดลอกลิงก์
                 document.getElementById('share-link-section').style.display = 'block';
                 let shareLink = window.location.origin + window.location.pathname + "?room=" + roomId;
                 document.getElementById('display-room-link').value = shareLink;
                 
+                // สั่งคัดลอกลง Clipboard ให้อัตโนมัติ
                 navigator.clipboard.writeText(shareLink).then(() => {
                     document.getElementById('copy-status-text').innerText = "คัดลอกลิงก์ให้อัตโนมัติแล้ว นำไปวางส่งต่อได้เลย!";
                     setTimeout(() => { document.getElementById('copy-status-text').innerText = ""; }, 4000);
@@ -724,7 +734,7 @@
                     hostConnection = peer.connect("shark-host-" + roomId);
                     
                     hostConnection.on('open', () => {
-                        hostConnection.send({ type: 'JOIN_ROOM' }); 
+                        hostConnection.send({ type: 'JOIN_ROOM' }); // ไม่ต้องส่งสี เพราะโฮสต์จะสุ่มให้[cite: 2]
                     });
 
                     hostConnection.on('data', (data) => {
@@ -738,6 +748,7 @@
                             botColors = data.botColors || [];
                             takenColors = roomPlayers.map(p => p.color).concat(botColors);
                             
+                            // Guest จะได้รู้สีของตัวเองที่ถูกสุ่มให้
                             let me = roomPlayers.find(p => p.id === myPeerId);
                             if (me) {
                                 let myColorName = COLORS.find(c => c.id === me.color).name;
@@ -750,10 +761,6 @@
                         if (data.type === 'START_GAME_SIGNAL') {
                             startOnlineGamePlay(data.gameData);
                         }
-                        // ระบบรับสัญญาณ RESOLVE_ROUND จากเครื่อง Host
-                        if (data.type === 'RESOLVE_ROUND') {
-                            executeResolveRound(data.roundData);
-                        }
                     });
 
                     hostConnection.on('close', () => {
@@ -764,6 +771,7 @@
             }
         }
 
+        // ฟังก์ชันสำหรับปุ่มกดคัดลอกลิงก์ซ้ำ
         function copyRoomLink() {
             let copyText = document.getElementById('display-room-link');
             copyText.select();
@@ -797,6 +805,7 @@
                 listEl.appendChild(li);
             });
 
+            // แสดงสีของบอทที่สุ่มได้บน Lobby[cite: 2]
             botColors.forEach((bColor, i) => {
                 let colObj = COLORS.find(c => c.id === bColor);
                 let li = document.createElement('li');
@@ -807,6 +816,7 @@
             if (isHost) {
                 const startBtn = document.getElementById('btn-host-start');
                 startBtn.style.display = 'block';
+                // Lock ปุ่มเริ่มเกม หากมี 1 คนเท่านั้นในห้อง[cite: 2]
                 if (totalCount < 2) {
                     startBtn.disabled = true;
                 } else {
@@ -826,21 +836,17 @@
             roomPlayers.forEach(rp => {
                 let col = COLORS.find(c => c.id === rp.color);
                 allParticipants.push({
-                    id: rp.id, 
-                    isHost: rp.isHost,
-                    colorInfo: col,
-                    type: rp.id === myPeerId ? 'human' : 'remote', 
-                    limbs: 4, limbsStatus: ['แขนซ้าย', 'แขนขวา', 'ขาซ้าย', 'ขาขวา'],
+                    id: rp.id, name: rp.isHost ? `คุณ(เจ้าของห้อง)` : `เพื่อน${col.name}`, colorInfo: col,
+                    type: rp.id === myPeerId ? 'human' : 'remote', limbs: 4, limbsStatus: ['แขนซ้าย', 'แขนขวา', 'ขาซ้าย', 'ขาขวา'],
                     hand: [1,2,3,4,5,6,7], playedCards: [], chosenCard: null
                 });
             });
 
+            // บอทถูกสร้างตามสีที่สุ่มไว้ล่วงหน้าจาก botColors[cite: 2]
             botColors.forEach((bColor, i) => {
                 let col = COLORS.find(c => c.id === bColor);
                 allParticipants.push({
-                    id: `bot_${i}`, 
-                    isHost: false,
-                    colorInfo: col,
+                    id: `bot_${i}`, name: `บอท${col.name}`, colorInfo: col,
                     type: 'bot', limbs: 4, limbsStatus: ['แขนซ้าย', 'แขนขวา', 'ขาซ้าย', 'ขาขวา'],
                     hand: [1,2,3,4,5,6,7], playedCards: [], chosenCard: null
                 });
@@ -866,23 +872,6 @@
 
             players = gameData.players;
             lineup = gameData.lineup;
-
-            // ระบบแสดงผลชื่อตัวละครแบบ Dynamic Display ตามมุมมองแต่ละเครื่อง
-            players.forEach(p => {
-                if (p.type === 'bot' || p.id.startsWith('bot_')) {
-                    p.type = 'bot';
-                    p.name = `บอท ${p.colorInfo.name}`;
-                } else if (p.id === myPeerId) {
-                    p.type = 'human';
-                    p.name = `คุณ`;
-                } else if (p.isHost) {
-                    p.type = 'remote';
-                    p.name = `Host ${p.colorInfo.name}`;
-                } else {
-                    p.type = 'remote';
-                    p.name = `เพื่อน ${p.colorInfo.name}`;
-                }
-            });
             
             humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
 
@@ -1082,14 +1071,15 @@
         function handlePlayerAction(playerId, cardVal) {
             let p = players.find(x => x.id === playerId);
             if (p) p.chosenCard = cardVal;
-            if (p && p.hand) p.hand = p.hand.filter(v => v !== cardVal);
+            p.hand = p.hand.filter(v => v !== cardVal);
 
             receivedActions[playerId] = cardVal;
 
+            // แก้ไขปัญหาการรอ Bot ค้าง: ตรวจสอบเฉพาะผู้เล่นที่ไม่ใช่ Bot ว่าเลือกครบหรือยัง[cite: 2]
             let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
             
             if (allHumansChosen) {
-                // Host ประมวลผลบอทให้เสร็จสมบูรณ์เพียงเครื่องเดียว
+                // หากคนทุกคนในห้องเลือกครบแล้ว จึงสั่งให้บอทเริ่มสุ่มเลือกไพ่ทันที
                 players.filter(pl => pl.type === 'bot').forEach(bot => {
                     let posIndex = lineup.indexOf(bot.id);
                     bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
