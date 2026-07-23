@@ -286,8 +286,7 @@
 
         <h1>🦈 เกมฉลามงับออนไลน์</h1>
         
-        <!-- ห่อส่วนเลือกสีไว้สำหรับซ่อนในกรณี Guest -->
-        <div style="width:100%;" id="color-select-section">
+        <div style="width:100%;">
             <p class="setup-section-title">เลือกสีตัวละครของคุณ:</p>
             <div class="color-grid" id="color-selection" role="radiogroup" aria-label="เลือกสีตัวละคร"></div>
         </div>
@@ -391,6 +390,7 @@
                 }
             },
             async loadAll() {
+                // เพิ่มไฟล์ '1' (1.mp3) เข้ามาใน array เพื่อให้พร้อมใช้งานทันที
                 const files = ['1', 'start', 'bgm', 'select', 'swim', 'shark', 'win', 'lost', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'dend', 'dend1'];
                 for(let f of files) {
                     try {
@@ -460,7 +460,6 @@
         let selectedColorId = 'red';
         let takenColors = []; 
         let roomPlayers = []; 
-        let botColors = []; // เพิ่มตัวแปรสำหรับเก็บสีบอทโดยเฉพาะ
         
         let players = [];
         let lineup = []; 
@@ -520,14 +519,12 @@
                 document.getElementById('host-bot-section').style.display = 'none';
                 document.getElementById('btn-show-join').style.display = 'none';
                 document.getElementById('btn-create-room').innerText = 'เข้าร่วมห้องออนไลน์';
-                // ตัดการเลือกสีของผู้เล่น Guest ออก เพื่อป้องกันปัญหาทับซ้อนและให้ระบบสุ่มให้[cite: 2]
-                document.getElementById('color-select-section').style.display = 'none'; 
             } else {
                 isHost = true;
                 roomId = Math.floor(100000 + Math.random() * 900000).toString();
-                renderColorButtons();
             }
 
+            renderColorButtons();
             initPeerConnection();
         };
 
@@ -547,6 +544,7 @@
         function confirmJoinRoom() {
             let code = document.getElementById('input-room-code').value.trim();
             if(code.length > 0) {
+                // โหลดหน้าเว็บใหม่พร้อมแนบ parameter ของห้อง ผู้เล่นจะเข้าสู่โหมดเลือกตัวละคร
                 window.location.href = window.location.pathname + "?room=" + code;
             } else {
                 alert("กรุณากรอกรหัสห้องตัวเลขให้ถูกต้อง");
@@ -574,25 +572,20 @@
                 conn.on('data', (data) => {
                     if (data.type === 'JOIN_ROOM') {
                         const totalOccupied = roomPlayers.length + currentBotCount;
-                        if (totalOccupied >= 6) {
-                            conn.send({ type: 'JOIN_REJECT', reason: 'ห้องเต็มแล้ว' });
+                        if (totalOccupied >= 6 || roomPlayers.some(p => p.color === data.color)) {
+                            conn.send({ type: 'JOIN_REJECT', reason: 'ห้องเต็มแล้ว หรือสีนี้ถูกเลือกไปแล้ว' });
                             setTimeout(() => conn.close(), 500);
                             return;
                         }
 
-                        // สุ่มสีที่ยังว่างอยู่ให้ผู้เล่น Guest[cite: 2]
-                        let usedColors = roomPlayers.map(p => p.color).concat(botColors);
-                        let availableColors = COLORS.filter(c => !usedColors.includes(c.id));
-                        let assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)].id;
-
-                        roomPlayers.push({ id: conn.peer, color: assignedColor, isHost: false, isBot: false });
+                        roomPlayers.push({ id: conn.peer, color: data.color, isHost: false, isBot: false });
                         guestConnections.push(conn);
                         
                         AudioSys.play('select');
-                        let joinedColName = COLORS.find(c => c.id === assignedColor).name;
-                        let joinMsg = `ผู้เล่นเข้าร่วมห้องใหม่ ได้รับ${joinedColName}`;
+                        let joinedColName = COLORS.find(c => c.id === data.color).name;
+                        let joinMsg = `ผู้เล่น ${joinedColName} กดเข้าร่วมห้องแล้ว`;
                         
-                        broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: joinMsg });
+                        broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, msg: joinMsg });
                         updateWaitingRoomUI();
                         announce(joinMsg);
                     }
@@ -607,7 +600,7 @@
                     guestConnections = guestConnections.filter(c => c.peer !== conn.peer);
                     
                     checkAndReassignHost();
-                    broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
+                    broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, msg: 'มีผู้เล่นออกจากห้อง' });
                     updateWaitingRoomUI();
                 });
             });
@@ -623,7 +616,7 @@
                 if (roomPlayers[0].id === myPeerId) {
                     isHost = true;
                     document.getElementById('btn-host-start').style.display = 'block';
-                    updateWaitingRoomUI();
+                    document.getElementById('btn-host-start').disabled = false;
                     announce("เจ้าของห้องเดิมออกจากเกม คุณได้เลื่อนขั้นเป็นเจ้าของห้องคนใหม่แล้ว");
                 }
             }
@@ -636,11 +629,10 @@
         }
 
         function renderColorButtons() {
-            if (!isHost) return; // เฉพาะโฮสต์เท่านั้นที่มีสิทธิ์กดเลือกสีตั้งต้น[cite: 2]
             const colorDiv = document.getElementById('color-selection');
             colorDiv.innerHTML = '';
             
-            let unavailableColors = isHost ? roomPlayers.map(p => p.color).concat(botColors) : takenColors;
+            let unavailableColors = isHost ? roomPlayers.map(p => p.color) : takenColors;
 
             COLORS.forEach(c => {
                 const btn = document.createElement('button');
@@ -660,14 +652,11 @@
 
                 btn.onclick = () => {
                     if (isTaken) {
-                        announce("สีนี้มีผู้เล่นอื่นหรือบอทเลือกไปแล้ว กรุณาเลือกสีตัวละครใหม่");
+                        announce("สีนี้มีผู้เล่นอื่นเลือกไปแล้ว กรุณาเลือกสีตัวละครใหม่");
                         return;
                     }
                     selectedColorId = c.id;
-                    // อัปเดตสีโฮสต์ใน roomPlayers ด้วย[cite: 2]
-                    if (roomPlayers.length > 0) roomPlayers[0].color = selectedColorId; 
                     renderColorButtons();
-                    updateWaitingRoomUI();
                     announce(`คุณเลือก ${c.name} แล้ว`);
                 };
                 colorDiv.appendChild(btn);
@@ -685,15 +674,9 @@
                 announce("ห้องเต็มแล้ว 6 คนรวมบอท ไม่สามารถเพิ่มบอทได้อีก");
             } else {
                 currentBotCount = nextCount;
-                
-                // สุ่มสีให้บอททันทีและอัปเดตสถานะ[cite: 2]
-                let usedColors = roomPlayers.map(p => p.color);
-                let available = COLORS.filter(c => !usedColors.includes(c.id)).sort(() => Math.random() - 0.5);
-                botColors = available.slice(0, currentBotCount).map(c => c.id);
-
                 document.getElementById('bot-count-text').innerText = `${currentBotCount} ตัว`;
                 announce(`ปรับจำนวนบอทเป็น ${currentBotCount} ตัว`);
-                broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors });
+                broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount });
                 updateWaitingRoomUI();
             }
         }
@@ -734,7 +717,7 @@
                     hostConnection = peer.connect("shark-host-" + roomId);
                     
                     hostConnection.on('open', () => {
-                        hostConnection.send({ type: 'JOIN_ROOM' }); // ไม่ต้องส่งสี เพราะโฮสต์จะสุ่มให้[cite: 2]
+                        hostConnection.send({ type: 'JOIN_ROOM', color: selectedColorId });
                     });
 
                     hostConnection.on('data', (data) => {
@@ -745,16 +728,8 @@
                         if (data.type === 'LOBBY_UPDATE') {
                             roomPlayers = data.roomPlayers;
                             currentBotCount = data.botCount;
-                            botColors = data.botColors || [];
-                            takenColors = roomPlayers.map(p => p.color).concat(botColors);
-                            
-                            // Guest จะได้รู้สีของตัวเองที่ถูกสุ่มให้
-                            let me = roomPlayers.find(p => p.id === myPeerId);
-                            if (me) {
-                                let myColorName = COLORS.find(c => c.id === me.color).name;
-                                announce(`เชื่อมต่อสำเร็จ คุณได้รับ ${myColorName} อัตโนมัติ`);
-                            }
-                            
+                            takenColors = roomPlayers.map(p => p.color);
+                            renderColorButtons();
                             updateWaitingRoomUI();
                             if (data.msg) announce(data.msg);
                         }
@@ -771,7 +746,7 @@
             }
         }
 
-        // ฟังก์ชันสำหรับปุ่มกดคัดลอกลิงก์ซ้ำ
+        // ฟังก์ชันสำหรับปุ่มกดคัดลอกลิงก์ซ้ำ (ในกรณีที่หลุดหรืออยากคัดลอกอีกครั้ง)
         function copyRoomLink() {
             let copyText = document.getElementById('display-room-link');
             copyText.select();
@@ -791,7 +766,7 @@
             listEl.innerHTML = '';
 
             let assignedColors = roomPlayers.map(p => p.color);
-            takenColors = assignedColors.concat(botColors);
+            takenColors = assignedColors;
             renderColorButtons();
 
             let totalCount = roomPlayers.length + currentBotCount;
@@ -805,23 +780,16 @@
                 listEl.appendChild(li);
             });
 
-            // แสดงสีของบอทที่สุ่มได้บน Lobby[cite: 2]
-            botColors.forEach((bColor, i) => {
-                let colObj = COLORS.find(c => c.id === bColor);
+            for (let i = 0; i < currentBotCount; i++) {
                 let li = document.createElement('li');
-                li.innerText = `บอท AI ตัวที่ ${i + 1} (${colObj.name})`;
+                li.innerText = `บอท AI ตัวที่ ${i + 1}`;
                 listEl.appendChild(li);
-            });
+            }
 
             if (isHost) {
                 const startBtn = document.getElementById('btn-host-start');
                 startBtn.style.display = 'block';
-                // Lock ปุ่มเริ่มเกม หากมี 1 คนเท่านั้นในห้อง[cite: 2]
-                if (totalCount < 2) {
-                    startBtn.disabled = true;
-                } else {
-                    startBtn.disabled = false;
-                }
+                startBtn.disabled = false;
             } else {
                 document.getElementById('guest-waiting-text').style.display = 'block';
             }
@@ -842,15 +810,16 @@
                 });
             });
 
-            // บอทถูกสร้างตามสีที่สุ่มไว้ล่วงหน้าจาก botColors[cite: 2]
-            botColors.forEach((bColor, i) => {
-                let col = COLORS.find(c => c.id === bColor);
+            let availableColors = COLORS.filter(c => !takenColors.includes(c.id));
+            availableColors.sort(() => Math.random() - 0.5);
+            for (let i = 0; i < currentBotCount; i++) {
+                let col = availableColors[i];
                 allParticipants.push({
                     id: `bot_${i}`, name: `บอท${col.name}`, colorInfo: col,
                     type: 'bot', limbs: 4, limbsStatus: ['แขนซ้าย', 'แขนขวา', 'ขาซ้าย', 'ขาขวา'],
                     hand: [1,2,3,4,5,6,7], playedCards: [], chosenCard: null
                 });
-            });
+            }
 
             let lineupOrder = allParticipants.map(p => p.id).sort(() => Math.random() - 0.5);
 
@@ -1075,11 +1044,8 @@
 
             receivedActions[playerId] = cardVal;
 
-            // แก้ไขปัญหาการรอ Bot ค้าง: ตรวจสอบเฉพาะผู้เล่นที่ไม่ใช่ Bot ว่าเลือกครบหรือยัง[cite: 2]
-            let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
-            
-            if (allHumansChosen) {
-                // หากคนทุกคนในห้องเลือกครบแล้ว จึงสั่งให้บอทเริ่มสุ่มเลือกไพ่ทันที
+            let allChosen = players.every(pl => pl.chosenCard !== null);
+            if (allChosen) {
                 players.filter(pl => pl.type === 'bot').forEach(bot => {
                     let posIndex = lineup.indexOf(bot.id);
                     bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
