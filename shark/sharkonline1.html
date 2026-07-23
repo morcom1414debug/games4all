@@ -41,14 +41,14 @@
         }
 
         /* --- หน้า Setup & Lobby --- */
-        #setup-screen, #waiting-room-screen, #join-screen {
+        #setup-screen, #waiting-room-screen {
             position: relative; z-index: 2;
             display: flex; flex-direction: column; align-items: center; justify-content: space-between;
             max-width: 500px; width: 100%; max-height: 95vh; padding: 25px 20px 20px 20px;
             background: rgba(22, 33, 62, 0.9); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             backdrop-filter: blur(5px); overflow-y: auto;
         }
-        #waiting-room-screen, #join-screen { display: none; }
+        #waiting-room-screen { display: none; }
 
         .home-btn-top {
             position: absolute; top: 12px; left: 12px;
@@ -300,23 +300,7 @@
             </div>
         </div>
 
-        <!-- ชุดปุ่ม 2 ปุ่ม ซ้ายขวา สำหรับโฮสต์และแขก -->
-        <div id="action-buttons-container" style="display: flex; gap: 10px; width: 100%; margin-top: 15px;">
-            <button class="start-btn setup-control-btn" id="btn-create-room" onclick="createOrJoinRoom()" style="margin:0; flex:1; background-color:#e94560;">สร้างห้องออนไลน์</button>
-            <button class="start-btn setup-control-btn" id="btn-show-join" onclick="showJoinScreen()" style="margin:0; flex:1; background-color:#0f3460;">กดเข้าร่วมโดยใช้รหัส</button>
-        </div>
-    </div>
-
-    <!-- หน้ากรอกรหัสเข้าร่วมห้อง (สลับแทน Setup Screen เพื่อความเข้ากันได้กับ Screen Reader) -->
-    <div id="join-screen">
-        <button class="home-btn-top" onclick="hideJoinScreen()" aria-label="ยกเลิกและกลับไปหน้าก่อนหน้า">🔙</button>
-        <h1>เข้าร่วมห้องด้วยรหัส</h1>
-        <div style="width:100%; text-align:center;">
-            <label for="input-room-code" class="setup-section-title" style="display:block; text-align:center;">พิมพ์รหัสห้องตัวเลข 6 หลัก</label>
-            <input type="number" id="input-room-code" placeholder="เช่น 123456" pattern="[0-9]*" inputmode="numeric" 
-                style="width:80%; max-width:300px; padding:14px; font-size:1.5rem; text-align:center; margin:20px 0; border-radius:8px; border:2px solid #4a4e69; background:#0f3460; color:#ffd700; font-weight:bold;">
-        </div>
-        <button class="start-btn" onclick="confirmJoinRoom()" style="background:#32cd32;">ยืนยันเพื่อเข้าร่วม</button>
+        <button class="start-btn setup-control-btn" id="btn-create-or-join" onclick="createOrJoinRoom()">สร้างห้องออนไลน์</button>
     </div>
 
     <!-- หน้าห้องรอ (Lobby / Waiting Room) -->
@@ -327,18 +311,7 @@
         <div class="room-info-box">
             <p style="font-size:0.9rem; color:#b8c1ec;">รหัสห้องของคุณ (6 หลัก):</p>
             <div id="display-room-id" style="font-size:2rem; font-weight:bold; color:var(--yellow); letter-spacing:4px; margin:5px 0;">------</div>
-            
-            <!-- ส่วนแชร์ลิงก์ (แสดงเฉพาะ Host) -->
-            <div id="share-link-section" style="display:none; margin-top:10px; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px;">
-                <p style="font-size:0.85rem; color:#b8c1ec; margin-bottom:5px; text-align:left;">ลิงก์สำหรับเชิญเพื่อน:</p>
-                <div style="display:flex; gap:5px; align-items:center;">
-                    <input type="text" id="display-room-link" readonly style="flex:1; padding:8px; font-size:0.85rem; border-radius:4px; border:none; background:#1a1a2e; color:#eaeaea;" aria-label="ลิงก์ห้องสำหรับคัดลอก">
-                    <button onclick="copyRoomLink()" style="padding:8px 12px; background:#1e90ff; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;" aria-label="คัดลอกลิงก์">คัดลอก</button>
-                </div>
-                <p id="copy-status-text" style="font-size:0.75rem; color:#32cd32; margin-top:5px; min-height:1rem;" aria-live="polite"></p>
-            </div>
-
-            <p id="room-status-desc" style="font-size:0.85rem; color:#eaeaea; margin-top:10px;"></p>
+            <p id="room-status-desc" style="font-size:0.85rem; color:#eaeaea; margin-top:5px;"></p>
         </div>
 
         <div style="width:100%; margin-bottom:10px; text-align:left;">
@@ -390,8 +363,7 @@
                 }
             },
             async loadAll() {
-                // เพิ่มไฟล์ '1' (1.mp3) เข้ามาใน array เพื่อให้พร้อมใช้งานทันที
-                const files = ['1', 'start', 'bgm', 'select', 'swim', 'shark', 'win', 'lost', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'dend', 'dend1'];
+                const files = ['start', 'bgm', 'select', 'swim', 'shark', 'win', 'lost', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'dend', 'dend1'];
                 for(let f of files) {
                     try {
                         const res = await fetch(`audio/${f}.mp3`);
@@ -449,17 +421,18 @@
             "จบกันชีวิตนักดำน้ำ... ไม่เป็นไร เริ่มใหม่ได้เสมอ!"
         ];
 
+        // ตัวแปรระบบออนไลน์ PeerJS
         let peer = null;
         let myPeerId = null;
         let roomId = null;
         let isHost = false;
         let hostConnection = null;
-        let guestConnections = []; 
+        let guestConnections = []; // สำหรับ Host เก็บ Connection ของ Guest ทุกคน
 
         let currentBotCount = 0;
         let selectedColorId = 'red';
-        let takenColors = []; 
-        let roomPlayers = []; 
+        let takenColors = []; // สีที่มีผู้เล่นอื่นเลือกไปแล้วในห้อง
+        let roomPlayers = []; // ข้อมูลสมาชิกในห้อง (Host และ Guests / Bots)
         
         let players = [];
         let lineup = []; 
@@ -469,9 +442,10 @@
         let announceLock = false;
         let currentAnnounceMessage = "";
 
+        // ตัวแปรระบบ AFK 1 นาที เตะออกเมื่อครบ 3 ครั้งติด
         let turnTimer = null;
         let turnTimeRemaining = 60;
-        let consecutiveAfkCounts = {}; 
+        let consecutiveAfkCounts = {}; // นับจำนวนครั้งที่ไม่ได้กดเลือกไพ่ติดต่อกัน
 
         function goHome() {
             AudioSys.stop('bgm');
@@ -510,15 +484,14 @@
             AudioSys.init();
             AudioSys.loadAll(); 
             
+            // ตรวจสอบ URL ว่ามีพารามิเตอร์ ?room=XXXXXX หรือไม่
             const urlParams = new URLSearchParams(window.location.search);
             const targetRoom = urlParams.get('room');
             if (targetRoom) {
-                // เมื่อเข้ามาด้วยรหัสห้องแล้ว จะซ่อนปุ่มเข้าร่วมด้วยรหัส และเปลี่ยนปุ่มหลักให้เป็นปุ่มเข้าร่วม
                 roomId = targetRoom;
                 isHost = false;
                 document.getElementById('host-bot-section').style.display = 'none';
-                document.getElementById('btn-show-join').style.display = 'none';
-                document.getElementById('btn-create-room').innerText = 'เข้าร่วมห้องออนไลน์';
+                document.getElementById('btn-create-or-join').innerText = 'เข้าร่วมห้องออนไลน์';
             } else {
                 isHost = true;
                 roomId = Math.floor(100000 + Math.random() * 900000).toString();
@@ -527,29 +500,6 @@
             renderColorButtons();
             initPeerConnection();
         };
-
-        // ฟังก์ชันสลับหน้าไปกรอกรหัส (แทน Modal)
-        function showJoinScreen() {
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('join-screen').style.display = 'flex';
-            setTimeout(() => { document.getElementById('input-room-code').focus(); }, 100);
-        }
-
-        function hideJoinScreen() {
-            document.getElementById('join-screen').style.display = 'none';
-            document.getElementById('setup-screen').style.display = 'flex';
-            setTimeout(() => { document.getElementById('btn-show-join').focus(); }, 100);
-        }
-
-        function confirmJoinRoom() {
-            let code = document.getElementById('input-room-code').value.trim();
-            if(code.length > 0) {
-                // โหลดหน้าเว็บใหม่พร้อมแนบ parameter ของห้อง ผู้เล่นจะเข้าสู่โหมดเลือกตัวละคร
-                window.location.href = window.location.pathname + "?room=" + code;
-            } else {
-                alert("กรุณากรอกรหัสห้องตัวเลขให้ถูกต้อง");
-            }
-        }
 
         function initPeerId() {
             return isHost ? "shark-host-" + roomId : "shark-guest-" + Math.random().toString(36).substring(2, 8);
@@ -571,6 +521,7 @@
                 
                 conn.on('data', (data) => {
                     if (data.type === 'JOIN_ROOM') {
+                        // ตรวจสอบว่าสีซ้ำหรือห้องเต็ม (สูงสุด 6 คนรวมบอทและโฮสต์)
                         const totalOccupied = roomPlayers.length + currentBotCount;
                         if (totalOccupied >= 6 || roomPlayers.some(p => p.color === data.color)) {
                             conn.send({ type: 'JOIN_REJECT', reason: 'ห้องเต็มแล้ว หรือสีนี้ถูกเลือกไปแล้ว' });
@@ -578,9 +529,11 @@
                             return;
                         }
 
+                        // ยอมรับเข้าห้อง
                         roomPlayers.push({ id: conn.peer, color: data.color, isHost: false, isBot: false });
                         guestConnections.push(conn);
                         
+                        // เล่นเสียง select.mp3 เมื่อมีผู้เล่นกดเข้าร่วมห้องสำเร็จ และแจ้งทุกคน
                         AudioSys.play('select');
                         let joinedColName = COLORS.find(c => c.id === data.color).name;
                         let joinMsg = `ผู้เล่น ${joinedColName} กดเข้าร่วมห้องแล้ว`;
@@ -599,6 +552,7 @@
                     roomPlayers = roomPlayers.filter(p => p.id !== conn.peer);
                     guestConnections = guestConnections.filter(c => c.peer !== conn.peer);
                     
+                    // ตรวจสอบสิทธิ์ Host (ถ้าโฮสต์เดิมหลุด ให้ส่งสิทธิ์ให้ผู้เล่นลำดับถัดไป)
                     checkAndReassignHost();
                     broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, msg: 'มีผู้เล่นออกจากห้อง' });
                     updateWaitingRoomUI();
@@ -632,6 +586,7 @@
             const colorDiv = document.getElementById('color-selection');
             colorDiv.innerHTML = '';
             
+            // หาว่าสีไหนถูกเลือกไปแล้วบ้าง
             let unavailableColors = isHost ? roomPlayers.map(p => p.color) : takenColors;
 
             COLORS.forEach(c => {
@@ -686,29 +641,18 @@
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
 
             if (isHost) {
-                // เล่นไฟล์เสียง 1.mp3 ทันทีเมื่อโฮสต์กดปุ่ม
-                AudioSys.play('1');
-
+                // เปลี่ยนหน้าไปยัง Lobby รอเพื่อน
                 document.getElementById('setup-screen').style.display = 'none';
                 document.getElementById('waiting-room-screen').style.display = 'flex';
                 
-                // จัดการแสดงผลส่วนของการสร้างและคัดลอกลิงก์
-                document.getElementById('share-link-section').style.display = 'block';
-                let shareLink = window.location.origin + window.location.pathname + "?room=" + roomId;
-                document.getElementById('display-room-link').value = shareLink;
-                
-                // สั่งคัดลอกลง Clipboard ให้อัตโนมัติ
-                navigator.clipboard.writeText(shareLink).then(() => {
-                    document.getElementById('copy-status-text').innerText = "คัดลอกลิงก์ให้อัตโนมัติแล้ว นำไปวางส่งต่อได้เลย!";
-                    setTimeout(() => { document.getElementById('copy-status-text').innerText = ""; }, 4000);
-                }).catch(err => {
-                    console.warn("ไม่สามารถคัดลอกอัตโนมัติได้", err);
-                });
+                // เล่นไฟล์เสียง 1.mp3 แบบ Web Audio API
+                AudioSys.play('1');
 
                 updateWaitingRoomUI();
-                announce("สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ " + roomId.split('').join(' ') + " ระบบคัดลอกลิงก์ให้เรียบร้อยแล้ว");
+                announce("สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ " + roomId.split('').join(' '));
             } else {
-                let btn = document.getElementById('btn-create-room');
+                // ผู้เล่นกดเข้าร่วมห้องผ่านลิงก์
+                let btn = document.getElementById('btn-create-or-join');
                 btn.disabled = true;
                 btn.innerText = 'กำลังเชื่อมต่อห้อง...';
 
@@ -723,7 +667,7 @@
                     hostConnection.on('data', (data) => {
                         if (data.type === 'JOIN_REJECT') {
                             alert("เข้าห้องไม่ได้: " + data.reason);
-                            location.href = window.location.pathname; 
+                            location.href = window.location.pathname; // รีเซ็ตกลับหน้าหลัก
                         }
                         if (data.type === 'LOBBY_UPDATE') {
                             roomPlayers = data.roomPlayers;
@@ -744,20 +688,6 @@
                     });
                 }, 500);
             }
-        }
-
-        // ฟังก์ชันสำหรับปุ่มกดคัดลอกลิงก์ซ้ำ (ในกรณีที่หลุดหรืออยากคัดลอกอีกครั้ง)
-        function copyRoomLink() {
-            let copyText = document.getElementById('display-room-link');
-            copyText.select();
-            copyText.setSelectionRange(0, 99999); 
-            navigator.clipboard.writeText(copyText.value).then(() => {
-                document.getElementById('copy-status-text').innerText = "คัดลอกลิงก์สำเร็จ!";
-                announce("คัดลอกลิงก์สำเร็จแล้ว");
-                setTimeout(() => { document.getElementById('copy-status-text').innerText = ""; }, 3000);
-            }).catch(err => {
-                alert("เกิดข้อผิดพลาดในการคัดลอก");
-            });
         }
 
         function updateWaitingRoomUI() {
@@ -795,10 +725,12 @@
             }
         }
 
+        // เจ้าของห้องกด "เริ่มเกมทันที"
         async function hostStartGame() {
             const startBtn = document.getElementById('btn-host-start');
-            startBtn.disabled = true; 
+            startBtn.disabled = true; // ล็อคปุ่มกดทันทีตามเงื่อนไข
 
+            // รวบรวมข้อมูลสร้างตัวละครทั้งหมด (ผู้เล่นจริง + บอท)
             let allParticipants = [];
             
             roomPlayers.forEach(rp => {
@@ -810,6 +742,7 @@
                 });
             });
 
+            // เพิ่มบอทที่เหลือตามจำนวนที่ตั้งไว้
             let availableColors = COLORS.filter(c => !takenColors.includes(c.id));
             availableColors.sort(() => Math.random() - 0.5);
             for (let i = 0; i < currentBotCount; i++) {
@@ -828,20 +761,22 @@
                 lineup: lineupOrder
             };
 
+            // ส่งสัญญาณเริ่มเกมให้ผู้เล่นทุกคนในห้อง
             broadcastToAll({ type: 'START_GAME_SIGNAL', gameData: gameData });
             startOnlineGamePlay(gameData);
         }
 
         async function startOnlineGamePlay(gameData) {
             document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('join-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'none';
             
+            // เล่น Countdown 3 2 1 พร้อมเสียง start.mp3
             await runCountdownAnimation();
 
             players = gameData.players;
             lineup = gameData.lineup;
             
+            // กำหนด humanPlayer ของเครื่องนี้
             humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
 
             document.getElementById('game-screen').style.display = 'flex';
@@ -891,6 +826,7 @@
             overlay.style.display = 'none';
         }
 
+        // ระบบจับเวลา 1 นาทีต่อเทิร์น (ถ้าไม่เลือก 3 ครั้งติด จะถูกเตะออก)
         function startTurnTimer() {
             clearInterval(turnTimer);
             turnTimeRemaining = 60;
@@ -911,12 +847,14 @@
             consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
             
             if (consecutiveAfkCounts[pId] >= 4) {
+                // ครั้งที่ 4 เตะออกจากเกมทันที
                 announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 4 ครั้ง ถูกเตะออกจากเกมแล้ว!");
                 alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองภายในเวลาที่กำหนด");
                 goHome();
                 return;
             }
 
+            // เลือกไพ่ใบแรกที่เหลืออยู่ในมือให้อัตโนมัติทันที
             let autoCard = humanPlayer.hand[0];
             announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]}/3)`);
             playTurn(autoCard);
@@ -1016,19 +954,20 @@
         }
 
         async function playTurn(humanCardVal) {
-            clearInterval(turnTimer); 
-            consecutiveAfkCounts[humanPlayer.id] = 0; 
+            clearInterval(turnTimer); // หยุดเวลา AFK เมื่อผู้เล่นกดเลือกไพ่แล้ว
+            consecutiveAfkCounts[humanPlayer.id] = 0; // รีเซ็ตการนับ AFK
 
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.ctx.resume();
             AudioSys.stop('swim'); 
             AudioSys.play('select');
             
             const cards = document.querySelectorAll('.card');
-            cards.forEach(c => c.disabled = true); 
+            cards.forEach(c => c.disabled = true); // ล็อคปุ่มไพ่ ห้ามกดซ้ำ
             
             humanPlayer.chosenCard = humanCardVal;
             humanPlayer.hand = humanPlayer.hand.filter(v => v !== humanCardVal);
 
+            // ส่งค่าไพ่ที่เลือกไปยังเครื่องอื่นๆ (หรือให้โฮสต์รวบรวม)
             if (isHost) {
                 handlePlayerAction(humanPlayer.id, humanCardVal);
             } else {
@@ -1036,6 +975,7 @@
             }
         }
 
+        // จัดการ Action ของผู้เล่น (รันบนเครื่อง Host เป็นหลักเพื่อความสอดคล้อง)
         let receivedActions = {};
         function handlePlayerAction(playerId, cardVal) {
             let p = players.find(x => x.id === playerId);
@@ -1044,20 +984,28 @@
 
             receivedActions[playerId] = cardVal;
 
+            // ตรวจสอบว่าทุกคนหรือบอทเลือกไพ่ครบหรือยัง
             let allChosen = players.every(pl => pl.chosenCard !== null);
             if (allChosen) {
+                // ให้บอทสุ่มเลือกไพ่
                 players.filter(pl => pl.type === 'bot').forEach(bot => {
                     let posIndex = lineup.indexOf(bot.id);
                     bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
                     bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
                 });
 
+                // ส่งข้อมูลการเปิดไพ่ทั้งหมดให้ทุกคนซิงค์กัน
                 let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
                 if (isHost) {
                     broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
                     executeResolveRound(roundData);
                 }
             }
+        }
+
+        // รองรับ Guest รับข้อมูล RESOLVE_ROUND จาก Host
+        if (!isHost) {
+            // ผูก Event รับข้อมูลเพิ่มเติมใน Peer connection เมื่อเชื่อมต่อสำเร็จ
         }
 
         async function executeResolveRound(roundData) {
@@ -1242,6 +1190,7 @@
             let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
                       lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
 
+            // ตรวจสอบผลลัพธ์ของแต่ละเครื่องให้ถูกต้องที่สุด
             let myStillAlive = players.some(p => p.id === humanPlayer.id);
 
             if (players.length === 1) {
@@ -1297,7 +1246,7 @@
             } else {
                 scriptPhase3 += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
                 renderHand();
-                startTurnTimer(); 
+                startTurnTimer(); // เริ่มจับเวลา 1 นาทีสำหรับตาใหม่
             }
 
             announce(scriptPhase3, false);
