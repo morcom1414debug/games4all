@@ -471,9 +471,6 @@
         let turnTimer = null;
         let turnTimeRemaining = 60;
         let consecutiveAfkCounts = {}; 
-        
-        let isAnimating = false;
-        let pendingSyncState = null;
 
         function goHome() {
             AudioSys.stop('bgm');
@@ -507,20 +504,6 @@
                 logBox.appendChild(li);
             });
         }
-        
-        window.applySyncState = function(data) {
-            players = data.statePlayers || [];
-            lineup = data.stateLineup || [];
-            humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
-            
-            if (document.getElementById('setup-screen').style.display === 'none') {
-                let myStillAlive = players.some(p => p.id === myPeerId);
-                updateVisualBoard();
-                if (players.length > 1 && myStillAlive) {
-                    renderHand();
-                }
-            }
-        };
 
         window.onload = () => {
             AudioSys.init();
@@ -717,13 +700,14 @@
                     broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
                     updateWaitingRoomUI();
                     
+                    // หากผู้เล่นตัดการเชื่อมต่อระหว่างเล่นเกม
                     if (document.getElementById('setup-screen').style.display === 'none' && players.length > 0) {
                         players = players.filter(p => p.id !== connPeer);
                         lineup = lineup.filter(id => id !== connPeer);
                         updateVisualBoard();
-                        broadcastToAll({ type: 'SYNC_GAME_STATE', statePlayers: players, stateLineup: lineup });
 
-                        if (isHost && !isAnimating) {
+                        // ตรวจสอบและให้เกมเดินหน้าต่อหากผู้เล่นที่เหลือตัดสินใจครบแล้ว
+                        if (isHost) {
                             let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
                             if (aliveHumans.length > 0 && aliveHumans.every(pl => pl.chosenCard !== null)) {
                                 players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
@@ -734,7 +718,7 @@
                                     }
                                 });
                                 let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                                broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData, activePlayers: players, activeLineup: lineup });
+                                broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
                                 executeResolveRound(roundData);
                             }
                         }
@@ -750,6 +734,7 @@
                     const hostPresenceRef = ref(db, `rooms/${roomId}/host`);
                     onValue(hostPresenceRef, (snapshot) => {
                         if (!snapshot.val() && document.getElementById('setup-screen').style.display === 'none') {
+                            // จัดการเมื่อเจ้าของห้อง (Host) หลุดระหว่างเกม
                             clearInterval(turnTimer);
                             document.getElementById('turn-indicator').innerText = "❌ จบเกม";
                             document.getElementById('player-hand').innerHTML = `
@@ -782,14 +767,7 @@
                     const toAllRef = ref(db, `rooms/${roomId}/messages/to_all`);
                     onChildAdded(toAllRef, (snapshot) => {
                         const data = snapshot.val();
-                        if (data.type === 'SYNC_GAME_STATE') {
-                            if (isAnimating) {
-                                pendingSyncState = data;
-                            } else {
-                                applySyncState(data);
-                            }
-                        }
-                        else if (data.type === 'LOBBY_UPDATE') {
+                        if (data.type === 'LOBBY_UPDATE') {
                             roomPlayers = data.roomPlayers || [];
                             currentBotCount = data.botCount || 0;
                             botColors = data.botColors || [];
@@ -804,13 +782,10 @@
                             updateWaitingRoomUI();
                             if (data.msg) announce(data.msg);
                         }
-                        else if (data.type === 'START_GAME_SIGNAL') {
+                        if (data.type === 'START_GAME_SIGNAL') {
                             startOnlineGamePlay(data.gameData);
                         }
-                        else if (data.type === 'RESOLVE_ROUND') {
-                            if (data.activePlayers) players = data.activePlayers;
-                            if (data.activeLineup) lineup = data.activeLineup;
-                            humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
+                        if (data.type === 'RESOLVE_ROUND') {
                             executeResolveRound(data.roundData);
                         }
                     });
@@ -1008,8 +983,6 @@
             if (isHost) {
                 let hostDropped = false;
                 let autoActions = [];
-                let someoneKicked = false;
-                
                 players.forEach(pl => {
                     if (pl.limbs > 0 && pl.chosenCard === null) {
                         let pId = pl.id;
@@ -1021,7 +994,7 @@
                                 announce(`${pl.name} ถูกเตะออกจากห้องเนื่องจากไม่ตอบสนอง`);
                                 players = players.filter(p => p.id !== pId);
                                 lineup = lineup.filter(id => id !== pId);
-                                someoneKicked = true;
+                                updateVisualBoard();
                             }
                         } else {
                             let autoCard = pl.hand[0]; 
@@ -1045,11 +1018,6 @@
                     return; 
                 }
 
-                if (someoneKicked) {
-                    updateVisualBoard();
-                    broadcastToAll({ type: 'SYNC_GAME_STATE', statePlayers: players, stateLineup: lineup });
-                }
-
                 autoActions.forEach(action => {
                     if (action.id === myPeerId) {
                         announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${action.card} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[action.id]})`);
@@ -1060,7 +1028,7 @@
                 });
 
                 let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
-                if (!isAnimating && aliveHumans.length > 0 && aliveHumans.every(pl => pl.chosenCard !== null)) {
+                if (aliveHumans.length > 0 && aliveHumans.every(pl => pl.chosenCard !== null)) {
                     players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
                         if (bot.chosenCard === null) {
                             let posIndex = lineup.indexOf(bot.id);
@@ -1069,7 +1037,7 @@
                         }
                     });
                     let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData, activePlayers: players, activeLineup: lineup });
+                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
                     executeResolveRound(roundData);
                 }
             } else {
@@ -1223,7 +1191,7 @@
                 let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
                 let humansChosenCount = aliveHumans.filter(pl => pl.chosenCard !== null).length;
 
-                if (!isAnimating && humansChosenCount === aliveHumans.length) {
+                if (humansChosenCount === aliveHumans.length) {
                     
                     players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
                         if (bot.chosenCard === null) {
@@ -1235,14 +1203,13 @@
 
                     let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
                     
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData, activePlayers: players, activeLineup: lineup });
+                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
                     executeResolveRound(roundData);
                 }
             }
         }
 
         async function executeResolveRound(roundData) {
-            isAnimating = true;
             if (roundData) {
                 roundData.forEach(rd => {
                     let pl = players.find(x => x.id === rd.id);
@@ -1424,23 +1391,15 @@
 
             await sleep(3600);
 
-            if (isHost) {
-                broadcastToAll({
-                    type: 'SYNC_GAME_STATE',
-                    statePlayers: players,
-                    stateLineup: lineup
-                });
-            }
-
             let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
                       lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
 
-            let myStillAlive = players.some(p => p.id === myPeerId);
+            let myStillAlive = players.some(p => p.id === humanPlayer.id);
 
             if (players.length === 1) {
                 AudioSys.stop('bgm'); 
                 const winner = players[0];
-                let isMyWin = (winner.id === myPeerId);
+                let isMyWin = (winner.id === humanPlayer.id);
                 
                 if(isMyWin) {
                     AudioSys.play('win');
@@ -1489,18 +1448,11 @@
                 `;
             } else {
                 scriptPhase3 += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
-                humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
                 renderHand();
                 startTurnTimer(); 
             }
 
             announce(scriptPhase3, false);
-            
-            isAnimating = false;
-            if (pendingSyncState) {
-                window.applySyncState(pendingSyncState);
-                pendingSyncState = null;
-            }
         }
 
         function triggerConfetti() {
