@@ -734,9 +734,8 @@
                                     }
                                 });
                                 let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                                let plan = calculateRoundPlan(roundData);
-                                broadcastToAll({ type: 'RESOLVE_ROUND', roundPlan: plan });
-                                executeResolveRoundPlan(plan);
+                                broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData, activePlayers: players, activeLineup: lineup });
+                                executeResolveRound(roundData);
                             }
                         }
                     }
@@ -809,7 +808,10 @@
                             startOnlineGamePlay(data.gameData);
                         }
                         else if (data.type === 'RESOLVE_ROUND') {
-                            executeResolveRoundPlan(data.roundPlan);
+                            if (data.activePlayers) players = data.activePlayers;
+                            if (data.activeLineup) lineup = data.activeLineup;
+                            humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
+                            executeResolveRound(data.roundData);
                         }
                     });
 
@@ -1067,9 +1069,8 @@
                         }
                     });
                     let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    let plan = calculateRoundPlan(roundData);
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundPlan: plan });
-                    executeResolveRoundPlan(plan);
+                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData, activePlayers: players, activeLineup: lineup });
+                    executeResolveRound(roundData);
                 }
             } else {
                 if (humanPlayer && humanPlayer.limbs > 0 && humanPlayer.chosenCard === null) {
@@ -1233,122 +1234,24 @@
                     });
 
                     let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    let plan = calculateRoundPlan(roundData);
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundPlan: plan });
-                    executeResolveRoundPlan(plan);
+                    
+                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData, activePlayers: players, activeLineup: lineup });
+                    executeResolveRound(roundData);
                 }
             }
         }
 
-        function calculateRoundPlan(roundData) {
-            let tempPlayers = JSON.parse(JSON.stringify(players));
-            let tempLineup = [...lineup];
-
-            roundData.forEach(rd => {
-                let pl = tempPlayers.find(x => x.id === rd.id);
-                if (pl) {
-                    pl.chosenCard = rd.chosenCard;
-                    pl.hand = pl.hand.filter(v => v !== rd.chosenCard);
-                }
-            });
-
-            let scriptPhase1 = "";
-            let playedMsg = "ผลการเปิดไพ่: ";
-            tempPlayers.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
-            scriptPhase1 += playedMsg.slice(0, -2) + ". ";
-
-            let cardCounts = {};
-            tempPlayers.forEach(p => { cardCounts[p.chosenCard] = (cardCounts[p.chosenCard] || 0) + 1; });
-            let validPlayers = tempPlayers.filter(p => cardCounts[p.chosenCard] === 1);
-            let invalidPlayers = tempPlayers.filter(p => cardCounts[p.chosenCard] > 1);
-
-            if (invalidPlayers.length > 0) {
-                let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
-                scriptPhase1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
-            }
-
-            let ascPlayers = [];
-            let swimSteps = [];
-            if (validPlayers.length > 0) {
-                ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
-                ascPlayers.forEach((p, idx) => {
-                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
-                    } else {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
+        async function executeResolveRound(roundData) {
+            isAnimating = true;
+            if (roundData) {
+                roundData.forEach(rd => {
+                    let pl = players.find(x => x.id === rd.id);
+                    if (pl) {
+                        pl.chosenCard = rd.chosenCard;
+                        pl.hand = pl.hand.filter(v => v !== rd.chosenCard); 
                     }
-                    tempLineup = tempLineup.filter(id => id !== p.id);
-                    tempLineup.unshift(p.id);
-                    swimSteps.push({ swimmerId: p.id, newLineup: [...tempLineup] });
                 });
             }
-
-            let scriptPhase2 = "";
-            let bittenId = tempLineup[tempLineup.length - 1];
-            let bittenPlayer = tempPlayers.find(p => p.id === bittenId);
-
-            let lostLimb = bittenPlayer.limbsStatus.pop();
-            bittenPlayer.limbs -= 1;
-
-            scriptPhase2 += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
-
-            let bittenEliminated = false;
-            if (bittenPlayer.limbs <= 0) {
-                scriptPhase2 += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
-                bittenEliminated = true;
-                tempLineup = tempLineup.filter(id => id !== bittenId);
-                tempPlayers = tempPlayers.filter(p => p.id !== bittenId);
-            } else {
-                scriptPhase2 += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
-                tempLineup = tempLineup.filter(id => id !== bittenId);
-                tempLineup.unshift(bittenId);
-            }
-
-            tempPlayers.forEach(p => {
-                if (p.id === bittenId && p.limbs > 0) {
-                    p.hand = p.hand.concat(p.playedCards).concat([p.chosenCard]);
-                    p.playedCards = [];
-                } else {
-                    p.playedCards.push(p.chosenCard);
-                    if (p.hand.length === 0) {
-                        p.hand = p.hand.concat(p.playedCards);
-                        p.playedCards = [];
-                        scriptPhase2 += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
-                    }
-                }
-                p.chosenCard = null;
-            });
-
-            let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
-                               tempLineup.map(id => tempPlayers.find(p => p.id === id).name).join(', ') + `. `;
-
-            return {
-                roundData: roundData,
-                cardCounts: cardCounts,
-                invalidPlayerIds: invalidPlayers.map(p => p.id),
-                ascPlayerIds: ascPlayers.map(p => p.id),
-                swimSteps: swimSteps,
-                bittenId: bittenId,
-                lostLimb: lostLimb,
-                bittenEliminated: bittenEliminated,
-                scriptPhase1: scriptPhase1,
-                scriptPhase2: scriptPhase2,
-                scriptPhase3: scriptPhase3,
-                finalPlayers: tempPlayers,
-                finalLineup: tempLineup
-            };
-        }
-
-        async function executeResolveRoundPlan(plan) {
-            isAnimating = true;
-
-            plan.roundData.forEach(rd => {
-                let pl = players.find(x => x.id === rd.id);
-                if (pl) {
-                    pl.chosenCard = rd.chosenCard;
-                    pl.hand = pl.hand.filter(v => v !== rd.chosenCard);
-                }
-            });
 
             const handDiv = document.getElementById('player-hand');
             handDiv.className = 'hand-container'; 
@@ -1368,42 +1271,67 @@
             arenaHTML += `</div>`;
             handDiv.innerHTML = arenaHTML;
 
+            let scriptPhase1 = ""; 
+            let playedMsg = "ผลการเปิดไพ่: ";
+            players.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
+            scriptPhase1 += playedMsg.slice(0, -2) + ". ";
+
+            let cardCounts = {};
+            players.forEach(p => { cardCounts[p.chosenCard] = (cardCounts[p.chosenCard] || 0) + 1; });
+            let validPlayers = players.filter(p => cardCounts[p.chosenCard] === 1);
+            let invalidPlayers = players.filter(p => cardCounts[p.chosenCard] > 1);
+
+            if (invalidPlayers.length > 0) {
+                let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
+                scriptPhase1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
+            }
+
+            let ascPlayers = [];
+            if (validPlayers.length > 0) {
+                ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
+                ascPlayers.forEach((p, idx) => {
+                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
+                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
+                    } else {
+                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
+                    }
+                });
+            }
+
             await sleep(800);
             players.forEach(p => document.getElementById(`show-card-${p.id}`).classList.add('flipped'));
             
-            if (plan.ascPlayerIds.length > 0) {
+            if (validPlayers.length > 0) {
                 AudioSys.stop('swim'); 
                 AudioSys.sources.swim = AudioSys.play('swim'); 
             }
 
             await sleep(800);
 
-            plan.invalidPlayerIds.forEach(id => {
-                let p = players.find(x => x.id === id);
-                if (p) {
-                    let cFront = document.querySelector(`#show-card-${p.id} .showdown-card-front`);
-                    if(cFront) cFront.innerHTML = `❌<br><span style="font-size:0.8rem">${p.colorInfo.icon}</span>`;
-                    let cardContainer = document.getElementById(`show-card-${p.id}`);
-                    if(cardContainer) cardContainer.classList.add('card-shake');
-                }
+            invalidPlayers.forEach(p => {
+                let cFront = document.querySelector(`#show-card-${p.id} .showdown-card-front`);
+                if(cFront) cFront.innerHTML = `❌<br><span style="font-size:0.8rem">${p.colorInfo.icon}</span>`;
+                let cardContainer = document.getElementById(`show-card-${p.id}`);
+                if(cardContainer) cardContainer.classList.add('card-shake');
             });
             
-            announce(plan.scriptPhase1, true);
+            announce(scriptPhase1, true);
             await sleep(3500);
 
             let swimAnimTime = 0;
-            if (plan.ascPlayerIds.length > 0) {
-                plan.ascPlayerIds.forEach(id => {
-                    let cardContainer = document.getElementById(`show-card-${id}`);
+            if (validPlayers.length > 0) {
+                validPlayers.forEach(p => {
+                    let cardContainer = document.getElementById(`show-card-${p.id}`);
                     if(cardContainer) cardContainer.classList.add('card-glow');
                 });
                 
-                for(let i = 0; i < plan.swimSteps.length; i++) {
-                    let step = plan.swimSteps[i];
-                    lineup = step.newLineup;
+                for(let i = 0; i < ascPlayers.length; i++) {
+                    let p = ascPlayers[i];
+                    lineup = lineup.filter(id => id !== p.id);
+                    lineup.unshift(p.id);
                     
                     updateVisualBoard();
-                    let frontEl = document.getElementById(`ui_${step.swimmerId}`);
+                    let frontEl = document.getElementById(`ui_${p.id}`);
                     if(frontEl) frontEl.classList.add('swim-to-front');
                     
                     await sleep(1200); 
@@ -1425,9 +1353,13 @@
 
             AudioSys.stop('swim'); 
 
+            let scriptPhase2 = "";
+            let bittenId = lineup[lineup.length - 1];
+            let bittenPlayer = players.find(p => p.id === bittenId);
+            
             AudioSys.play('shark'); 
             const sharkUI = document.getElementById('shark-ui');
-            const bittenUI = document.getElementById(`ui_${plan.bittenId}`);
+            const bittenUI = document.getElementById(`ui_${bittenId}`);
             
             if(sharkUI) {
                 sharkUI.classList.remove('shark-float');
@@ -1437,14 +1369,44 @@
                 bittenUI.style.animation = 'invalidShake 0.5s ease-in-out';
             }
 
-            let limbClass = LIMBS_MAP[plan.lostLimb];
-            let limbEl = document.querySelector(`#ui_${plan.bittenId} .ui-limb-${limbClass}`);
+            let lostLimb = bittenPlayer.limbsStatus.pop(); 
+            bittenPlayer.limbs -= 1;
+            
+            let limbClass = LIMBS_MAP[lostLimb];
+            let limbEl = document.querySelector(`#ui_${bittenId} .ui-limb-${limbClass}`);
             if(limbEl) limbEl.classList.add('limb-fly-away');
 
-            announce(plan.scriptPhase2, false); 
+            scriptPhase2 += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
+
+            if (bittenPlayer.limbs <= 0) {
+                scriptPhase2 += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
+                lineup = lineup.filter(id => id !== bittenId);
+                players = players.filter(p => p.id !== bittenId);
+            } else {
+                scriptPhase2 += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
+                lineup = lineup.filter(id => id !== bittenId);
+                lineup.unshift(bittenId);
+            }
+
+            players.forEach(p => {
+                if (p.id === bittenId && p.limbs > 0) {
+                    p.hand = p.hand.concat(p.playedCards).concat([p.chosenCard]);
+                    p.playedCards = [];
+                } else {
+                    p.playedCards.push(p.chosenCard);
+                    if (p.hand.length === 0) {
+                        p.hand = p.hand.concat(p.playedCards);
+                        p.playedCards = [];
+                        scriptPhase2 += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
+                    }
+                }
+                p.chosenCard = null;
+            });
+
+            announce(scriptPhase2, false); 
             await sleep(2000); 
             
-            if (plan.bittenEliminated) {
+            if (bittenPlayer.limbs <= 0) {
                 let dendFiles = ['dend', 'dend1'];
                 AudioSys.play(dendFiles[Math.floor(Math.random()*dendFiles.length)]);
             } else {
@@ -1453,14 +1415,10 @@
                 AudioSys.lastD = chosenD;
                 AudioSys.play('d' + chosenD);
             }
-
-            players = plan.finalPlayers;
-            lineup = plan.finalLineup;
-            humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
-
+            
             updateVisualBoard();
-            if (!plan.bittenEliminated) {
-                let dashEl = document.getElementById(`ui_${plan.bittenId}`);
+            if (bittenPlayer.limbs > 0) {
+                let dashEl = document.getElementById(`ui_${bittenId}`);
                 if(dashEl) dashEl.classList.add('swim-to-front');
             }
 
@@ -1474,7 +1432,9 @@
                 });
             }
 
-            let scriptPhase3 = plan.scriptPhase3;
+            let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
+                      lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
+
             let myStillAlive = players.some(p => p.id === myPeerId);
 
             if (players.length === 1) {
@@ -1529,6 +1489,7 @@
                 `;
             } else {
                 scriptPhase3 += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
+                humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
                 renderHand();
                 startTurnTimer(); 
             }
