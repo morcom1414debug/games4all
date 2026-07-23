@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>เกมฉลามงับออนไลน์ (Get Bit! Online)</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
         :root {
             --red: #ff4d4d; --yellow: #ffd700; --green: #32cd32;
@@ -26,6 +27,7 @@
             white-space: nowrap;
         }
 
+        /* --- เอฟเฟกต์ฟองอากาศพื้นหลัง --- */
         .bubbles-container {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; z-index: 0; overflow: hidden;
@@ -38,14 +40,15 @@
             to { transform: translateY(-120vh) translateX(20px); opacity: 0; }
         }
 
-        #setup-screen, #waiting-room-screen, #join-screen {
+        /* --- หน้า Setup & Lobby --- */
+        #setup-screen, #waiting-room-screen {
             position: relative; z-index: 2;
             display: flex; flex-direction: column; align-items: center; justify-content: space-between;
             max-width: 500px; width: 100%; max-height: 95vh; padding: 25px 20px 20px 20px;
             background: rgba(22, 33, 62, 0.9); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             backdrop-filter: blur(5px); overflow-y: auto;
         }
-        #waiting-room-screen, #join-screen { display: none; }
+        #waiting-room-screen { display: none; }
 
         .home-btn-top {
             position: absolute; top: 12px; left: 12px;
@@ -54,10 +57,39 @@
             display: flex; align-items: center; justify-content: center;
         }
         .home-btn-top:hover, .home-btn-top:focus { background: #9a8c98; outline: 3px solid #ffd700; }
-        .home-btn-top:disabled { opacity: 0; pointer-events: none; }
 
         h1 { font-size: 1.5rem; margin-bottom: 10px; margin-top: 10px; }
-        .setup-section-title { font-size: 1rem; margin: 10px 0 5px 0; color: #b8c1ec; text-align: left; width: 100%; }
+        .setup-section-title { font-size: 1rem; margin: 15px 0 8px 0; color: #b8c1ec; text-align: left; width: 100%; }
+
+        /* ปุ่มสร้างห้องใหญ่ตรงกลางหน้าแรก */
+        .main-create-btn {
+            width: 100%; padding: 18px; font-size: 1.25rem; font-weight: bold;
+            background: linear-gradient(135deg, #e94560, #ff6b81); color: white;
+            border: none; border-radius: 12px; cursor: pointer; margin: 15px 0;
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4); transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .main-create-btn:hover, .main-create-btn:focus {
+            transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233, 69, 96, 0.6);
+            outline: 3px solid #ffffff;
+        }
+
+        /* โซนรายการห้องหน้าแรก */
+        .room-list-box {
+            width: 100%; background: rgba(15, 52, 96, 0.8); border-radius: 8px;
+            padding: 12px; min-height: 120px; max-height: 200px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .room-item-btn {
+            width: 100%; padding: 12px 15px; background: #1f4068; color: white;
+            border: 2px solid #4a4e69; border-radius: 8px; cursor: pointer;
+            font-size: 1rem; font-weight: bold; display: flex; justify-content: space-between;
+            align-items: center; transition: 0.2s;
+        }
+        .room-item-btn:hover, .room-item-btn:focus {
+            background: #00b4d8; border-color: #ffffff; outline: none; transform: scale(1.02);
+        }
+        .no-room-text { color: #a0a0a0; font-size: 0.9rem; margin: auto; font-style: italic; }
 
         .color-grid {
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
@@ -90,17 +122,18 @@
 
         .start-btn {
             width: 100%; padding: 14px; font-size: 1.125rem; font-weight: bold;
-            background: #e94560; color: white; border: none; border-radius: 8px;
+            background: #32cd32; color: white; border: none; border-radius: 8px;
             cursor: pointer; margin-top: 15px; transition: 0.2s;
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .start-btn:hover:not(:disabled), .start-btn:focus:not(:disabled) { background: #ff6b81; outline: 3px solid #ffffff; box-shadow: 0 0 15px #ff6b81;}
+        .start-btn:hover:not(:disabled), .start-btn:focus:not(:disabled) { background: #3cb371; outline: 3px solid #ffffff; box-shadow: 0 0 15px #32cd32;}
         .start-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .room-info-box {
             background: #0f3460; padding: 12px; border-radius: 8px; width: 100%; margin-bottom: 10px;
         }
 
+        /* --- หน้าเล่นเกม (Game Screen) --- */
         #game-screen { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 800px; z-index: 2; position: relative;}
         
         .board-container {
@@ -112,6 +145,7 @@
         }
         .board-container:focus { outline: none; border-color: #ffd700; }
 
+        /* --- Visual UI นักดำน้ำ & ฉลาม --- */
         .swimmer {
             width: 75px; height: 100px; margin: 0 5px; border-radius: 8px;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -171,6 +205,7 @@
             100% { transform: scale(1) rotate(0deg); } 
         }
         
+        /* --- Showdown Arena & ไพ่ --- */
         .hand-container { 
             display: flex; gap: 8px; margin-top: 15px; width: 100%;
             justify-content: center; flex-wrap: wrap; min-height: 80px; perspective: 1000px;
@@ -228,6 +263,7 @@
         ul { list-style-type: disc; padding-left: 20px; }
         li { margin-bottom: 5px; font-size: 0.875rem; line-height: 1.3; }
 
+        /* --- Countdown Overlay & Animations --- */
         #countdown-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(15, 52, 96, 0.95); z-index: 9999;
@@ -273,16 +309,43 @@
         <div id="ripple-container"></div>
     </div>
 
+    <!-- หน้า Setup หลัก (หน้าแรก) -->
     <div id="setup-screen">
-        <button class="home-btn-top" id="setup-home-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน">🏠</button>
+        <button class="home-btn-top" onclick="goHome()" aria-label="รีเฟรชหน้าหลัก">🏠</button>
 
         <h1>🦈 เกมฉลามงับออนไลน์</h1>
+        <p style="color:#b8c1ec; font-size:0.9rem;">สร้างห้องรอเพื่อน หรือเลือกกดเข้าร่วมห้องด้านล่างได้ทันที</p>
         
+        <!-- ปุ่มสร้างห้องออนไลน์โดดเด่นตรงกลาง -->
+        <button class="main-create-btn" id="btn-create-room" onclick="createNewRoom()">
+            <span>🦈</span>
+            <span>สร้างห้องออนไลน์</span>
+        </button>
+
+        <p class="setup-section-title">ห้องที่กำลังรอผู้เล่น:</p>
+        <div class="room-list-box" id="room-list-container">
+            <div class="no-room-text" id="no-room-text">กำลังค้นหาห้องที่มีอยู่...</div>
+        </div>
+    </div>
+
+    <!-- หน้าห้องรอ (Lobby / Waiting Room) -->
+    <div id="waiting-room-screen">
+        <button class="home-btn-top" onclick="goHome()" aria-label="ออกจากห้อง">🏠</button>
+        <h1>🦈 ห้องรอผู้เล่น</h1>
+        
+        <div class="room-info-box">
+            <p style="font-size:0.85rem; color:#b8c1ec;">รหัสห้องของคุณ:</p>
+            <div id="display-room-id" style="font-size:2rem; font-weight:bold; color:var(--yellow); letter-spacing:2px; margin:5px 0;">shark00001</div>
+            <p id="room-status-desc" style="font-size:0.85rem; color:#eaeaea; margin-top:5px;"></p>
+        </div>
+
+        <!-- ย้ายการเลือกสีตัวละครมาไว้ใน Lobby -->
         <div style="width:100%;" id="color-select-section">
             <p class="setup-section-title">เลือกสีตัวละครของคุณ:</p>
             <div class="color-grid" id="color-selection" role="radiogroup" aria-label="เลือกสีตัวละคร"></div>
         </div>
 
+        <!-- ย้ายการเลือกจำนวนบอทมาไว้ใน Lobby (แสดงเฉพาะ Host) -->
         <div id="host-bot-section" style="width:100%;">
             <p class="setup-section-title">เลือกจำนวนบอทในห้อง:</p>
             <div class="bot-counter-container">
@@ -290,43 +353,6 @@
                 <div class="bot-count-display" id="bot-count-text">0 ตัว</div>
                 <button class="counter-btn setup-control-btn" id="btn-bot-plus" onclick="adjustBot(1)" aria-label="เพิ่มจำนวนบอท">+</button>
             </div>
-        </div>
-
-        <div id="action-buttons-container" style="display: flex; gap: 10px; width: 100%; margin-top: 15px;">
-            <button class="start-btn setup-control-btn" id="btn-create-room" onclick="createOrJoinRoom()" style="margin:0; flex:1; background-color:#e94560;">สร้างห้องออนไลน์</button>
-            <button class="start-btn setup-control-btn" id="btn-show-join" onclick="showJoinScreen()" style="margin:0; flex:1; background-color:#0f3460;">กดเข้าร่วมโดยใช้รหัส</button>
-        </div>
-    </div>
-
-    <div id="join-screen">
-        <button class="home-btn-top" onclick="hideJoinScreen()" aria-label="ยกเลิกและกลับไปหน้าก่อนหน้า">🔙</button>
-        <h1>เข้าร่วมห้องด้วยรหัส</h1>
-        <div style="width:100%; text-align:center;">
-            <label for="input-room-code" class="setup-section-title" style="display:block; text-align:center;">พิมพ์รหัสห้องตัวเลข 6 หลัก</label>
-            <input type="number" id="input-room-code" placeholder="เช่น 123456" pattern="[0-9]*" inputmode="numeric" 
-                style="width:80%; max-width:300px; padding:14px; font-size:1.5rem; text-align:center; margin:20px 0; border-radius:8px; border:2px solid #4a4e69; background:#0f3460; color:#ffd700; font-weight:bold;">
-        </div>
-        <button class="start-btn" onclick="confirmJoinRoom()" style="background:#32cd32;">ยืนยันเพื่อเข้าร่วม</button>
-    </div>
-
-    <div id="waiting-room-screen">
-        <button class="home-btn-top" onclick="goHome()" aria-label="ออกจากห้อง">🏠</button>
-        <h1>🦈 ห้องรอผู้เล่น</h1>
-        
-        <div class="room-info-box">
-            <p style="font-size:0.9rem; color:#b8c1ec;">รหัสห้องของคุณ (6 หลัก):</p>
-            <div id="display-room-id" style="font-size:2rem; font-weight:bold; color:var(--yellow); letter-spacing:4px; margin:5px 0;">------</div>
-            
-            <div id="share-link-section" style="display:none; margin-top:10px; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px;">
-                <p style="font-size:0.85rem; color:#b8c1ec; margin-bottom:5px; text-align:left;">ลิงก์สำหรับเชิญเพื่อน:</p>
-                <div style="display:flex; gap:5px; align-items:center;">
-                    <input type="text" id="display-room-link" readonly style="flex:1; padding:8px; font-size:0.85rem; border-radius:4px; border:none; background:#1a1a2e; color:#eaeaea;" aria-label="ลิงก์ห้องสำหรับคัดลอก">
-                    <button onclick="copyRoomLink()" style="padding:8px 12px; background:#1e90ff; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;" aria-label="คัดลอกลิงก์">คัดลอก</button>
-                </div>
-                <p id="copy-status-text" style="font-size:0.75rem; color:#32cd32; margin-top:5px; min-height:1rem;" aria-live="polite"></p>
-            </div>
-
-            <p id="room-status-desc" style="font-size:0.85rem; color:#eaeaea; margin-top:10px;"></p>
         </div>
 
         <div style="width:100%; margin-bottom:10px; text-align:left;">
@@ -338,6 +364,7 @@
         <p id="guest-waiting-text" style="color:var(--yellow); font-weight:bold; margin-top:10px; display:none;">รอเจ้าของห้องกดเริ่มเกม...</p>
     </div>
 
+    <!-- หน้าเล่นเกม -->
     <div id="game-screen">
         <h2 id="turn-indicator" tabindex="-1">เลือกลงไพ่ของคุณ</h2>
         
@@ -351,24 +378,11 @@
         </div>
     </div>
 
+    <!-- กล่องประกาศ ARIA -->
     <div id="aria-announcer" aria-live="assertive" class="sr-only"></div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getDatabase, ref, set, push, onChildAdded, onValue, onDisconnect, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
-            authDomain: "xo-game-134ec.firebaseapp.com",
-            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "xo-game-134ec",
-            storageBucket: "xo-game-134ec.firebasestorage.app",
-            messagingSenderId: "318375224157",
-            appId: "1:318375224157:web:721abe70ef34c377b77eb4"
-        };
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-
+    <script>
+        // --- สร้างเอฟเฟกต์ฟองอากาศ ---
         const bubblesBg = document.getElementById('bg-bubbles');
         for(let i=0; i<15; i++) {
             let b = document.createElement('div');
@@ -381,6 +395,7 @@
             bubblesBg.appendChild(b);
         }
 
+        // --- ระบบเสียง (Audio System) ---
         const AudioSys = {
             ctx: null, buffers: {}, sources: {},
             lastD: -1,
@@ -449,10 +464,14 @@
             "จบกันชีวิตนักดำน้ำ... ไม่เป็นไร เริ่มใหม่ได้เสมอ!"
         ];
 
+        // --- ตัวแปรหลักของระบบ P2P และเกม ---
+        let peer = null;
         let myPeerId = null;
         let roomId = null;
         let isHost = false;
+        let hostConnection = null;
         let guestConnections = []; 
+        let roomState = 'WAITING'; // WAITING | IN_GAME
 
         let currentBotCount = 0;
         let selectedColorId = 'red';
@@ -471,13 +490,13 @@
         let turnTimer = null;
         let turnTimeRemaining = 60;
         let consecutiveAfkCounts = {}; 
-        
-        let isAnimating = false;
-        let pendingSyncState = null;
+
+        let scannedRooms = {};
+        let scanInterval = null;
 
         function goHome() {
             AudioSys.stop('bgm');
-            window.location.href = '../index.html';
+            window.location.href = window.location.pathname;
         }
 
         const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -507,70 +526,245 @@
                 logBox.appendChild(li);
             });
         }
-        
-        window.applySyncState = function(data) {
-            players = data.statePlayers || [];
-            lineup = data.stateLineup || [];
-            humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
-            
-            if (document.getElementById('setup-screen').style.display === 'none') {
-                let myStillAlive = players.some(p => p.id === myPeerId);
-                updateVisualBoard();
-                if (players.length > 1 && myStillAlive) {
-                    renderHand();
-                }
-            }
-        };
 
         window.onload = () => {
             AudioSys.init();
             AudioSys.loadAll(); 
             
-            const urlParams = new URLSearchParams(window.location.search);
-            const targetRoom = urlParams.get('room');
-            if (targetRoom) {
-                roomId = targetRoom;
-                isHost = false;
-                document.getElementById('host-bot-section').style.display = 'none';
-                document.getElementById('btn-show-join').style.display = 'none';
-                document.getElementById('btn-create-room').innerText = 'เข้าร่วมห้องออนไลน์';
-                document.getElementById('color-select-section').style.display = 'none'; 
-            } else {
-                isHost = true;
-                roomId = Math.floor(100000 + Math.random() * 900000).toString();
-                renderColorButtons();
-            }
-
-            initConnection();
+            initBasePeer();
+            startRoomScanner();
         };
 
-        function showJoinScreen() {
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('join-screen').style.display = 'flex';
-            setTimeout(() => { document.getElementById('input-room-code').focus(); }, 100);
+        // --- ระบบรันรหัสวนลูป shark00001 - shark99999 ---
+        function getNextRoomNumber() {
+            let num = parseInt(localStorage.getItem('shark_room_seq') || '1');
+            return num;
+        }
+        function incrementRoomNumber() {
+            let num = parseInt(localStorage.getItem('shark_room_seq') || '1');
+            num = (num % 99999) + 1;
+            localStorage.setItem('shark_room_seq', num.toString());
+        }
+        function formatRoomCode(num) {
+            return 'shark' + String(num).padStart(5, '0');
         }
 
-        function hideJoinScreen() {
-            document.getElementById('join-screen').style.display = 'none';
-            document.getElementById('setup-screen').style.display = 'flex';
-            setTimeout(() => { document.getElementById('btn-show-join').focus(); }, 100);
+        function initBasePeer() {
+            myPeerId = "shark-client-" + Math.random().toString(36).substring(2, 8);
+            peer = new Peer(myPeerId);
         }
 
-        function confirmJoinRoom() {
-            let code = document.getElementById('input-room-code').value.trim();
-            if(code.length > 0) {
-                window.location.href = window.location.pathname + "?room=" + code;
-            } else {
-                alert("กรุณากรอกรหัสห้องตัวเลขให้ถูกต้อง");
+        // --- สแกนหาห้องเปิดอยู่เพื่อนำขึ้นมาโชว์ที่หน้าแรก ---
+        function startRoomScanner() {
+            scanRooms();
+            scanInterval = setInterval(scanRooms, 3500);
+        }
+
+        function scanRooms() {
+            if (isHost || roomState === 'IN_GAME' || !peer || !peer.open) return;
+            
+            let startNum = 1;
+            for (let i = startNum; i <= 10; i++) {
+                let checkRoomId = formatRoomCode(i);
+                probeRoom(checkRoomId);
             }
         }
 
-        function initConnection() {
-            myPeerId = isHost ? "shark-host-" + roomId : "shark-guest-" + Math.random().toString(36).substring(2, 8);
-            if (isHost) {
+        function probeRoom(rId) {
+            let targetPeerId = "shark-host-" + rId;
+            let conn = peer.connect(targetPeerId, { reliable: false });
+            let timer = setTimeout(() => {
+                conn.close();
+                delete scannedRooms[rId];
+                renderRoomList();
+            }, 1200);
+
+            conn.on('open', () => {
+                conn.send({ type: 'PROBE_ROOM' });
+            });
+
+            conn.on('data', (data) => {
+                clearTimeout(timer);
+                if (data.type === 'ROOM_STATUS') {
+                    if (data.state === 'WAITING' && data.playerCount < 6) {
+                        scannedRooms[rId] = data;
+                    } else {
+                        delete scannedRooms[rId];
+                    }
+                    renderRoomList();
+                }
+                conn.close();
+            });
+
+            conn.on('error', () => {
+                clearTimeout(timer);
+                delete scannedRooms[rId];
+                renderRoomList();
+            });
+        }
+
+        function renderRoomList() {
+            const listContainer = document.getElementById('room-list-container');
+            const roomKeys = Object.keys(scannedRooms);
+
+            if (roomKeys.length === 0) {
+                listContainer.innerHTML = '<div class="no-room-text">ไม่มีห้องที่กำลังรอในขณะนี้ (กดสร้างห้องได้เลย)</div>';
+                return;
+            }
+
+            listContainer.innerHTML = '';
+            roomKeys.forEach(rId => {
+                let info = scannedRooms[rId];
+                let btn = document.createElement('button');
+                btn.className = 'room-item-btn';
+                btn.innerHTML = `<span>🌊 ห้อง ${rId} (${info.playerCount}/6 คน)</span> <span style="color:#ffd700;">กดเข้าร่วม ➔</span>`;
+                btn.onclick = () => joinRoomDirect(rId);
+                listContainer.appendChild(btn);
+            });
+        }
+
+        // --- การสร้างห้องใหม่ ---
+        async function createNewRoom() {
+            if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
+            AudioSys.play('1');
+
+            clearInterval(scanInterval);
+            isHost = true;
+
+            let seqNum = getNextRoomNumber();
+            roomId = formatRoomCode(seqNum);
+            incrementRoomNumber();
+
+            peer.destroy(); // ปิด Connection เดิมเพื่อเปิด Peer ในฐานะ Host
+            
+            peer = new Peer("shark-host-" + roomId);
+
+            peer.on('open', (id) => {
+                myPeerId = id;
                 roomPlayers = [{ id: myPeerId, color: selectedColorId, isHost: true, isBot: false }];
+                
+                document.getElementById('setup-screen').style.display = 'none';
+                document.getElementById('waiting-room-screen').style.display = 'flex';
+                document.getElementById('host-bot-section').style.display = 'block';
+
                 updateWaitingRoomUI();
-            }
+                announce(`สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ ${roomId}`);
+            });
+
+            listenHostConnections();
+        }
+
+        // --- การเข้าร่วมห้องจากปุ่มหน้าแรก ---
+        async function joinRoomDirect(targetRoomId) {
+            if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
+            AudioSys.play('select');
+
+            clearInterval(scanInterval);
+            isHost = false;
+            roomId = targetRoomId;
+
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('waiting-room-screen').style.display = 'flex';
+            document.getElementById('host-bot-section').style.display = 'none';
+            document.getElementById('color-select-section').style.display = 'none';
+
+            hostConnection = peer.connect("shark-host-" + roomId);
+
+            hostConnection.on('open', () => {
+                hostConnection.send({ type: 'JOIN_ROOM' });
+            });
+
+            hostConnection.on('data', (data) => {
+                if (data.type === 'JOIN_REJECT') {
+                    alert("เข้าห้องไม่ได้: " + data.reason);
+                    location.reload();
+                }
+                if (data.type === 'LOBBY_UPDATE') {
+                    roomPlayers = data.roomPlayers;
+                    currentBotCount = data.botCount;
+                    botColors = data.botColors || [];
+                    takenColors = roomPlayers.map(p => p.color).concat(botColors);
+                    
+                    let me = roomPlayers.find(p => p.id === myPeerId);
+                    if (me) {
+                        let myColorName = COLORS.find(c => c.id === me.color).name;
+                        announce(`เชื่อมต่อสำเร็จ คุณได้รับ ${myColorName} อัตโนมัติ`);
+                    }
+                    
+                    updateWaitingRoomUI();
+                    if (data.msg) announce(data.msg);
+                }
+                if (data.type === 'START_GAME_SIGNAL') {
+                    startOnlineGamePlay(data.gameData);
+                }
+                if (data.type === 'RESOLVE_ROUND') {
+                    executeResolveRound(data.roundData);
+                }
+            });
+
+            hostConnection.on('close', () => {
+                alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
+                location.reload();
+            });
+        }
+
+        function listenHostConnections() {
+            peer.on('connection', (conn) => {
+                conn.on('data', (data) => {
+                    if (data.type === 'PROBE_ROOM') {
+                        conn.send({
+                            type: 'ROOM_STATUS',
+                            roomId: roomId,
+                            playerCount: roomPlayers.length + currentBotCount,
+                            state: roomState
+                        });
+                        return;
+                    }
+
+                    if (data.type === 'JOIN_ROOM') {
+                        if (roomState !== 'WAITING') {
+                            conn.send({ type: 'JOIN_REJECT', reason: 'เกมเริ่มไปแล้ว' });
+                            setTimeout(() => conn.close(), 500);
+                            return;
+                        }
+
+                        const totalOccupied = roomPlayers.length + currentBotCount;
+                        if (totalOccupied >= 6) {
+                            conn.send({ type: 'JOIN_REJECT', reason: 'ห้องเต็มแล้ว' });
+                            setTimeout(() => conn.close(), 500);
+                            return;
+                        }
+
+                        let usedColors = roomPlayers.map(p => p.color).concat(botColors);
+                        let availableColors = COLORS.filter(c => !usedColors.includes(c.id));
+                        let assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)].id;
+
+                        roomPlayers.push({ id: conn.peer, color: assignedColor, isHost: false, isBot: false });
+                        guestConnections.push(conn);
+                        
+                        AudioSys.play('select');
+                        let joinedColName = COLORS.find(c => c.id === assignedColor).name;
+                        let joinMsg = `ผู้เล่นเข้าร่วมห้องใหม่ ได้รับ${joinedColName}`;
+                        
+                        broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: joinMsg });
+                        updateWaitingRoomUI();
+                        announce(joinMsg);
+                    }
+                    else if (data.type === 'PLAYER_ACTION') {
+                        handlePlayerAction(data.playerId, data.cardVal);
+                    }
+                });
+
+                conn.on('close', () => {
+                    if (!isHost) return;
+                    roomPlayers = roomPlayers.filter(p => p.id !== conn.peer);
+                    guestConnections = guestConnections.filter(c => c.peer !== conn.peer);
+                    
+                    checkAndReassignHost();
+                    broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
+                    updateWaitingRoomUI();
+                });
+            });
         }
 
         function checkAndReassignHost() {
@@ -579,6 +773,8 @@
                 if (roomPlayers[0].id === myPeerId) {
                     isHost = true;
                     document.getElementById('btn-host-start').style.display = 'block';
+                    document.getElementById('host-bot-section').style.display = 'block';
+                    document.getElementById('color-select-section').style.display = 'block';
                     updateWaitingRoomUI();
                     announce("เจ้าของห้องเดิมออกจากเกม คุณได้เลื่อนขั้นเป็นเจ้าของห้องคนใหม่แล้ว");
                 }
@@ -586,11 +782,12 @@
         }
 
         function broadcastToAll(data) {
-            push(ref(db, `rooms/${roomId}/messages/to_all`), data);
+            guestConnections.forEach(conn => {
+                if (conn && conn.open) conn.send(data);
+            });
         }
 
         function renderColorButtons() {
-            if (!isHost) return; 
             const colorDiv = document.getElementById('color-selection');
             colorDiv.innerHTML = '';
             
@@ -629,7 +826,6 @@
 
         function adjustBot(delta) {
             if (!isHost) return;
-            let currentTotal = roomPlayers.length + currentBotCount;
             let nextCount = currentBotCount + delta;
             
             if (nextCount < 0) {
@@ -650,187 +846,6 @@
             }
         }
 
-        async function createOrJoinRoom() {
-            if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
-
-            if (isHost) {
-                AudioSys.play('1');
-
-                document.getElementById('setup-screen').style.display = 'none';
-                document.getElementById('waiting-room-screen').style.display = 'flex';
-                
-                document.getElementById('share-link-section').style.display = 'block';
-                let shareLink = window.location.origin + window.location.pathname + "?room=" + roomId;
-                document.getElementById('display-room-link').value = shareLink;
-                
-                navigator.clipboard.writeText(shareLink).then(() => {
-                    document.getElementById('copy-status-text').innerText = "คัดลอกลิงก์ให้อัตโนมัติแล้ว นำไปวางส่งต่อได้เลย!";
-                    setTimeout(() => { document.getElementById('copy-status-text').innerText = ""; }, 4000);
-                }).catch(err => {
-                    console.warn("ไม่สามารถคัดลอกอัตโนมัติได้", err);
-                });
-
-                updateWaitingRoomUI();
-                announce("สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ " + roomId.split('').join(' ') + " ระบบคัดลอกลิงก์ให้เรียบร้อยแล้ว");
-
-                const hostRef = ref(db, `rooms/${roomId}/host`);
-                set(hostRef, true);
-                onDisconnect(hostRef).remove();
-
-                const toHostRef = ref(db, `rooms/${roomId}/messages/to_host`);
-                onChildAdded(toHostRef, (snapshot) => {
-                    const data = snapshot.val();
-                    if (data.type === 'JOIN_ROOM') {
-                        const totalOccupied = roomPlayers.length + currentBotCount;
-                        if (totalOccupied >= 6) {
-                            push(ref(db, `rooms/${roomId}/messages/to_guest_${data.sender}`), { type: 'JOIN_REJECT', reason: 'ห้องเต็มแล้ว' });
-                            return;
-                        }
-
-                        let usedColors = roomPlayers.map(p => p.color).concat(botColors);
-                        let availableColors = COLORS.filter(c => !usedColors.includes(c.id));
-                        let assignedColor = availableColors[Math.floor(Math.random() * availableColors.length)].id;
-
-                        roomPlayers.push({ id: data.sender, color: assignedColor, isHost: false, isBot: false });
-                        if (!guestConnections.includes(data.sender)) guestConnections.push(data.sender);
-                        
-                        AudioSys.play('select');
-                        let joinedColName = COLORS.find(c => c.id === assignedColor).name;
-                        let joinMsg = `ผู้เล่นเข้าร่วมห้องใหม่ ได้รับ${joinedColName}`;
-                        
-                        broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: joinMsg });
-                        updateWaitingRoomUI();
-                        announce(joinMsg);
-                    }
-                    else if (data.type === 'PLAYER_ACTION') {
-                        handlePlayerAction(data.playerId, data.cardVal);
-                    }
-                });
-
-                const presenceRef = ref(db, `rooms/${roomId}/presence/guests`);
-                onChildRemoved(presenceRef, (snapshot) => {
-                    const connPeer = snapshot.key;
-                    roomPlayers = roomPlayers.filter(p => p.id !== connPeer);
-                    guestConnections = guestConnections.filter(c => c !== connPeer);
-                    
-                    checkAndReassignHost();
-                    broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
-                    updateWaitingRoomUI();
-                    
-                    if (document.getElementById('setup-screen').style.display === 'none' && players.length > 0) {
-                        players = players.filter(p => p.id !== connPeer);
-                        lineup = lineup.filter(id => id !== connPeer);
-                        updateVisualBoard();
-                        broadcastToAll({ type: 'SYNC_GAME_STATE', statePlayers: players, stateLineup: lineup });
-
-                        if (isHost && !isAnimating) {
-                            let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
-                            if (aliveHumans.length > 0 && aliveHumans.every(pl => pl.chosenCard !== null)) {
-                                players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
-                                    if (bot.chosenCard === null) {
-                                        let posIndex = lineup.indexOf(bot.id);
-                                        bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                                        bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                                    }
-                                });
-                                let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                                let plan = calculateRoundPlan(roundData);
-                                broadcastToAll({ type: 'RESOLVE_ROUND', roundPlan: plan });
-                                executeResolveRoundPlan(plan);
-                            }
-                        }
-                    }
-                });
-
-            } else {
-                let btn = document.getElementById('btn-create-room');
-                btn.disabled = true;
-                btn.innerText = 'กำลังเชื่อมต่อห้อง...';
-
-                setTimeout(() => {
-                    const hostPresenceRef = ref(db, `rooms/${roomId}/host`);
-                    onValue(hostPresenceRef, (snapshot) => {
-                        if (!snapshot.val() && document.getElementById('setup-screen').style.display === 'none') {
-                            clearInterval(turnTimer);
-                            document.getElementById('turn-indicator').innerText = "❌ จบเกม";
-                            document.getElementById('player-hand').innerHTML = `
-                                <div class="end-game-container">
-                                    <div style="font-size:3rem; margin-bottom:10px;">🔌</div>
-                                    <div class="defeat-text">เจ้าของห้องหลุดออกจากเกม หรือไม่ตอบสนองเกินกำหนด เกมจึงยุติลง</div>
-                                    <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
-                                </div>
-                            `;
-                            announce("เจ้าของห้องหลุดออกจากเกม เกมจึงยุติลง");
-                        } else if (!snapshot.val()) {
-                            alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
-                            location.reload();
-                        }
-                    });
-
-                    const myPresenceRef = ref(db, `rooms/${roomId}/presence/guests/${myPeerId}`);
-                    set(myPresenceRef, true);
-                    onDisconnect(myPresenceRef).remove();
-
-                    const toMeRef = ref(db, `rooms/${roomId}/messages/to_guest_${myPeerId}`);
-                    onChildAdded(toMeRef, (snapshot) => {
-                        const data = snapshot.val();
-                        if (data.type === 'JOIN_REJECT') {
-                            alert("เข้าห้องไม่ได้: " + data.reason);
-                            location.href = window.location.pathname; 
-                        }
-                    });
-
-                    const toAllRef = ref(db, `rooms/${roomId}/messages/to_all`);
-                    onChildAdded(toAllRef, (snapshot) => {
-                        const data = snapshot.val();
-                        if (data.type === 'SYNC_GAME_STATE') {
-                            if (isAnimating) {
-                                pendingSyncState = data;
-                            } else {
-                                applySyncState(data);
-                            }
-                        }
-                        else if (data.type === 'LOBBY_UPDATE') {
-                            roomPlayers = data.roomPlayers || [];
-                            currentBotCount = data.botCount || 0;
-                            botColors = data.botColors || [];
-                            takenColors = roomPlayers.map(p => p.color).concat(botColors);
-                            
-                            let me = roomPlayers.find(p => p.id === myPeerId);
-                            if (me) {
-                                let myColorName = COLORS.find(c => c.id === me.color).name;
-                                announce(`เชื่อมต่อสำเร็จ คุณได้รับ ${myColorName} อัตโนมัติ`);
-                            }
-                            
-                            updateWaitingRoomUI();
-                            if (data.msg) announce(data.msg);
-                        }
-                        else if (data.type === 'START_GAME_SIGNAL') {
-                            startOnlineGamePlay(data.gameData);
-                        }
-                        else if (data.type === 'RESOLVE_ROUND') {
-                            executeResolveRoundPlan(data.roundPlan);
-                        }
-                    });
-
-                    push(ref(db, `rooms/${roomId}/messages/to_host`), { type: 'JOIN_ROOM', sender: myPeerId });
-                }, 500);
-            }
-        }
-
-        function copyRoomLink() {
-            let copyText = document.getElementById('display-room-link');
-            copyText.select();
-            copyText.setSelectionRange(0, 99999); 
-            navigator.clipboard.writeText(copyText.value).then(() => {
-                document.getElementById('copy-status-text').innerText = "คัดลอกลิงก์สำเร็จ!";
-                announce("คัดลอกลิงก์สำเร็จแล้ว");
-                setTimeout(() => { document.getElementById('copy-status-text').innerText = ""; }, 3000);
-            }).catch(err => {
-                alert("เกิดข้อผิดพลาดในการคัดลอก");
-            });
-        }
-
         function updateWaitingRoomUI() {
             document.getElementById('display-room-id').innerText = roomId;
             const listEl = document.getElementById('waiting-players-list');
@@ -843,7 +858,7 @@
             let totalCount = roomPlayers.length + currentBotCount;
             document.getElementById('room-status-desc').innerText = `จำนวนในห้อง: ${totalCount} / 6 คน`;
 
-            roomPlayers.forEach((p, idx) => {
+            roomPlayers.forEach((p) => {
                 let colObj = COLORS.find(c => c.id === p.color);
                 let li = document.createElement('li');
                 let roleStr = p.isHost ? ' (เจ้าของห้อง)' : '';
@@ -861,11 +876,7 @@
             if (isHost) {
                 const startBtn = document.getElementById('btn-host-start');
                 startBtn.style.display = 'block';
-                if (totalCount < 2) {
-                    startBtn.disabled = true;
-                } else {
-                    startBtn.disabled = false;
-                }
+                startBtn.disabled = (totalCount < 2);
             } else {
                 document.getElementById('guest-waiting-text').style.display = 'block';
             }
@@ -874,6 +885,8 @@
         async function hostStartGame() {
             const startBtn = document.getElementById('btn-host-start');
             startBtn.disabled = true; 
+
+            roomState = 'IN_GAME'; // เปลี่ยนสถานะเป็นเริ่มเกม ทำให้ห้องหายไปจากสแกนหน้าแรก
 
             let allParticipants = [];
             
@@ -913,7 +926,6 @@
 
         async function startOnlineGamePlay(gameData) {
             document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('join-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'none';
             
             await runCountdownAnimation();
@@ -922,21 +934,18 @@
             lineup = gameData.lineup;
 
             players.forEach(p => {
-                let colorName = p.colorInfo.name;
-                let cleanColorName = colorName.startsWith('สี') ? colorName : 'สี' + colorName;
-
                 if (p.type === 'bot' || p.id.startsWith('bot_')) {
                     p.type = 'bot';
-                    p.name = `บอท${cleanColorName}`;
+                    p.name = `บอท ${p.colorInfo.name}`;
                 } else if (p.id === myPeerId) {
                     p.type = 'human';
-                    p.name = `คุณ${cleanColorName}`;
+                    p.name = `คุณ`;
                 } else if (p.isHost) {
                     p.type = 'remote';
-                    p.name = `Host${cleanColorName}`;
+                    p.name = `Host ${p.colorInfo.name}`;
                 } else {
                     p.type = 'remote';
-                    p.name = `เพื่อน${cleanColorName}`;
+                    p.name = `เพื่อน ${p.colorInfo.name}`;
                 }
             });
             
@@ -1003,95 +1012,21 @@
         }
 
         function handleAfkTimeout() {
-            if (isHost) {
-                let hostDropped = false;
-                let autoActions = [];
-                let someoneKicked = false;
-                
-                players.forEach(pl => {
-                    if (pl.limbs > 0 && pl.chosenCard === null) {
-                        let pId = pl.id;
-                        consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
-                        if (consecutiveAfkCounts[pId] >= 4) {
-                            if (pId === myPeerId) {
-                                hostDropped = true;
-                            } else {
-                                announce(`${pl.name} ถูกเตะออกจากห้องเนื่องจากไม่ตอบสนอง`);
-                                players = players.filter(p => p.id !== pId);
-                                lineup = lineup.filter(id => id !== pId);
-                                someoneKicked = true;
-                            }
-                        } else {
-                            let autoCard = pl.hand[0]; 
-                            autoActions.push({ id: pId, card: autoCard });
-                        }
-                    }
-                });
-
-                if (hostDropped) {
-                    const hostRef = ref(db, `rooms/${roomId}/host`);
-                    set(hostRef, null); 
-                    clearInterval(turnTimer);
-                    document.getElementById('turn-indicator').innerText = "❌ หมดเวลา";
-                    document.getElementById('player-hand').innerHTML = `
-                        <div class="end-game-container">
-                            <div style="font-size:3rem; margin-bottom:10px;">🔌</div>
-                            <div class="defeat-text">คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองเกินกำหนด</div>
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
-                        </div>
-                    `;
-                    return; 
-                }
-
-                if (someoneKicked) {
-                    updateVisualBoard();
-                    broadcastToAll({ type: 'SYNC_GAME_STATE', statePlayers: players, stateLineup: lineup });
-                }
-
-                autoActions.forEach(action => {
-                    if (action.id === myPeerId) {
-                        announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${action.card} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[action.id]})`);
-                        playTurn(action.card);
-                    } else {
-                        handlePlayerAction(action.id, action.card);
-                    }
-                });
-
-                let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
-                if (!isAnimating && aliveHumans.length > 0 && aliveHumans.every(pl => pl.chosenCard !== null)) {
-                    players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
-                        if (bot.chosenCard === null) {
-                            let posIndex = lineup.indexOf(bot.id);
-                            bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                            bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                        }
-                    });
-                    let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    let plan = calculateRoundPlan(roundData);
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundPlan: plan });
-                    executeResolveRoundPlan(plan);
-                }
-            } else {
-                if (humanPlayer && humanPlayer.limbs > 0 && humanPlayer.chosenCard === null) {
-                    let pId = humanPlayer.id;
-                    consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
-                    if (consecutiveAfkCounts[pId] >= 4) {
-                        clearInterval(turnTimer);
-                        document.getElementById('turn-indicator').innerText = "❌ หมดเวลา";
-                        document.getElementById('player-hand').innerHTML = `
-                            <div class="end-game-container">
-                                <div style="font-size:3rem; margin-bottom:10px;">🔌</div>
-                                <div class="defeat-text">คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองเกินกำหนด</div>
-                                <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
-                            </div>
-                        `;
-                        return;
-                    }
-                    let autoCard = humanPlayer.hand[0];
-                    announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]})`);
-                    playTurn(autoCard);
-                }
+            if (!humanPlayer || humanPlayer.limbs <= 0) return;
+            
+            let pId = humanPlayer.id;
+            consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
+            
+            if (consecutiveAfkCounts[pId] >= 4) {
+                announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 4 ครั้ง ถูกเตะออกจากเกมแล้ว!");
+                alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองภายในเวลาที่กำหนด");
+                goHome();
+                return;
             }
+
+            let autoCard = humanPlayer.hand[0];
+            announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]}/3)`);
+            playTurn(autoCard);
         }
 
         function updateVisualBoard() {
@@ -1204,151 +1139,42 @@
             if (isHost) {
                 handlePlayerAction(humanPlayer.id, humanCardVal);
             } else {
-                push(ref(db, `rooms/${roomId}/messages/to_host`), { type: 'PLAYER_ACTION', playerId: humanPlayer.id, cardVal: humanCardVal });
+                hostConnection.send({ type: 'PLAYER_ACTION', playerId: humanPlayer.id, cardVal: humanCardVal });
             }
         }
 
         let receivedActions = {};
         function handlePlayerAction(playerId, cardVal) {
             let p = players.find(x => x.id === playerId);
-            if (!p || p.limbs <= 0 || p.chosenCard !== null) return; 
-
-            p.chosenCard = cardVal;
-            p.hand = p.hand.filter(v => v !== cardVal);
+            if (p) p.chosenCard = cardVal;
+            if (p && p.hand) p.hand = p.hand.filter(v => v !== cardVal);
 
             receivedActions[playerId] = cardVal;
 
-            if (isHost) {
-                let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
-                let humansChosenCount = aliveHumans.filter(pl => pl.chosenCard !== null).length;
+            let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
+            
+            if (allHumansChosen) {
+                players.filter(pl => pl.type === 'bot').forEach(bot => {
+                    let posIndex = lineup.indexOf(bot.id);
+                    bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
+                    bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
+                });
 
-                if (!isAnimating && humansChosenCount === aliveHumans.length) {
-                    
-                    players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
-                        if (bot.chosenCard === null) {
-                            let posIndex = lineup.indexOf(bot.id);
-                            bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                            bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                        }
-                    });
-
-                    let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    let plan = calculateRoundPlan(roundData);
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundPlan: plan });
-                    executeResolveRoundPlan(plan);
+                let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
+                if (isHost) {
+                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
+                    executeResolveRound(roundData);
                 }
             }
         }
 
-        function calculateRoundPlan(roundData) {
-            let tempPlayers = JSON.parse(JSON.stringify(players));
-            let tempLineup = [...lineup];
-
-            roundData.forEach(rd => {
-                let pl = tempPlayers.find(x => x.id === rd.id);
-                if (pl) {
-                    pl.chosenCard = rd.chosenCard;
-                    pl.hand = pl.hand.filter(v => v !== rd.chosenCard);
-                }
-            });
-
-            let scriptPhase1 = "";
-            let playedMsg = "ผลการเปิดไพ่: ";
-            tempPlayers.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
-            scriptPhase1 += playedMsg.slice(0, -2) + ". ";
-
-            let cardCounts = {};
-            tempPlayers.forEach(p => { cardCounts[p.chosenCard] = (cardCounts[p.chosenCard] || 0) + 1; });
-            let validPlayers = tempPlayers.filter(p => cardCounts[p.chosenCard] === 1);
-            let invalidPlayers = tempPlayers.filter(p => cardCounts[p.chosenCard] > 1);
-
-            if (invalidPlayers.length > 0) {
-                let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
-                scriptPhase1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
-            }
-
-            let ascPlayers = [];
-            let swimSteps = [];
-            if (validPlayers.length > 0) {
-                ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
-                ascPlayers.forEach((p, idx) => {
-                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
-                    } else {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
-                    }
-                    tempLineup = tempLineup.filter(id => id !== p.id);
-                    tempLineup.unshift(p.id);
-                    swimSteps.push({ swimmerId: p.id, newLineup: [...tempLineup] });
+        async function executeResolveRound(roundData) {
+            if (roundData) {
+                roundData.forEach(rd => {
+                    let pl = players.find(x => x.id === rd.id);
+                    if (pl) pl.chosenCard = rd.chosenCard;
                 });
             }
-
-            let scriptPhase2 = "";
-            let bittenId = tempLineup[tempLineup.length - 1];
-            let bittenPlayer = tempPlayers.find(p => p.id === bittenId);
-
-            let lostLimb = bittenPlayer.limbsStatus.pop();
-            bittenPlayer.limbs -= 1;
-
-            scriptPhase2 += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
-
-            let bittenEliminated = false;
-            if (bittenPlayer.limbs <= 0) {
-                scriptPhase2 += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
-                bittenEliminated = true;
-                tempLineup = tempLineup.filter(id => id !== bittenId);
-                tempPlayers = tempPlayers.filter(p => p.id !== bittenId);
-            } else {
-                scriptPhase2 += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
-                tempLineup = tempLineup.filter(id => id !== bittenId);
-                tempLineup.unshift(bittenId);
-            }
-
-            tempPlayers.forEach(p => {
-                if (p.id === bittenId && p.limbs > 0) {
-                    p.hand = p.hand.concat(p.playedCards).concat([p.chosenCard]);
-                    p.playedCards = [];
-                } else {
-                    p.playedCards.push(p.chosenCard);
-                    if (p.hand.length === 0) {
-                        p.hand = p.hand.concat(p.playedCards);
-                        p.playedCards = [];
-                        scriptPhase2 += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
-                    }
-                }
-                p.chosenCard = null;
-            });
-
-            let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
-                               tempLineup.map(id => tempPlayers.find(p => p.id === id).name).join(', ') + `. `;
-
-            return {
-                roundData: roundData,
-                cardCounts: cardCounts,
-                invalidPlayerIds: invalidPlayers.map(p => p.id),
-                ascPlayerIds: ascPlayers.map(p => p.id),
-                swimSteps: swimSteps,
-                bittenId: bittenId,
-                lostLimb: lostLimb,
-                bittenEliminated: bittenEliminated,
-                scriptPhase1: scriptPhase1,
-                scriptPhase2: scriptPhase2,
-                scriptPhase3: scriptPhase3,
-                finalPlayers: tempPlayers,
-                finalLineup: tempLineup
-            };
-        }
-
-        async function executeResolveRoundPlan(plan) {
-            isAnimating = true;
-
-            plan.roundData.forEach(rd => {
-                let pl = players.find(x => x.id === rd.id);
-                if (pl) {
-                    pl.chosenCard = rd.chosenCard;
-                    pl.hand = pl.hand.filter(v => v !== rd.chosenCard);
-                }
-            });
 
             const handDiv = document.getElementById('player-hand');
             handDiv.className = 'hand-container'; 
@@ -1368,42 +1194,67 @@
             arenaHTML += `</div>`;
             handDiv.innerHTML = arenaHTML;
 
+            let scriptPhase1 = ""; 
+            let playedMsg = "ผลการเปิดไพ่: ";
+            players.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
+            scriptPhase1 += playedMsg.slice(0, -2) + ". ";
+
+            let cardCounts = {};
+            players.forEach(p => { cardCounts[p.chosenCard] = (cardCounts[p.chosenCard] || 0) + 1; });
+            let validPlayers = players.filter(p => cardCounts[p.chosenCard] === 1);
+            let invalidPlayers = players.filter(p => cardCounts[p.chosenCard] > 1);
+
+            if (invalidPlayers.length > 0) {
+                let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
+                scriptPhase1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
+            }
+
+            let ascPlayers = [];
+            if (validPlayers.length > 0) {
+                ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
+                ascPlayers.forEach((p, idx) => {
+                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
+                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
+                    } else {
+                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
+                    }
+                });
+            }
+
             await sleep(800);
             players.forEach(p => document.getElementById(`show-card-${p.id}`).classList.add('flipped'));
             
-            if (plan.ascPlayerIds.length > 0) {
+            if (validPlayers.length > 0) {
                 AudioSys.stop('swim'); 
                 AudioSys.sources.swim = AudioSys.play('swim'); 
             }
 
             await sleep(800);
 
-            plan.invalidPlayerIds.forEach(id => {
-                let p = players.find(x => x.id === id);
-                if (p) {
-                    let cFront = document.querySelector(`#show-card-${p.id} .showdown-card-front`);
-                    if(cFront) cFront.innerHTML = `❌<br><span style="font-size:0.8rem">${p.colorInfo.icon}</span>`;
-                    let cardContainer = document.getElementById(`show-card-${p.id}`);
-                    if(cardContainer) cardContainer.classList.add('card-shake');
-                }
+            invalidPlayers.forEach(p => {
+                let cFront = document.querySelector(`#show-card-${p.id} .showdown-card-front`);
+                if(cFront) cFront.innerHTML = `❌<br><span style="font-size:0.8rem">${p.colorInfo.icon}</span>`;
+                let cardContainer = document.getElementById(`show-card-${p.id}`);
+                if(cardContainer) cardContainer.classList.add('card-shake');
             });
             
-            announce(plan.scriptPhase1, true);
+            announce(scriptPhase1, true);
             await sleep(3500);
 
             let swimAnimTime = 0;
-            if (plan.ascPlayerIds.length > 0) {
-                plan.ascPlayerIds.forEach(id => {
-                    let cardContainer = document.getElementById(`show-card-${id}`);
+            if (validPlayers.length > 0) {
+                validPlayers.forEach(p => {
+                    let cardContainer = document.getElementById(`show-card-${p.id}`);
                     if(cardContainer) cardContainer.classList.add('card-glow');
                 });
                 
-                for(let i = 0; i < plan.swimSteps.length; i++) {
-                    let step = plan.swimSteps[i];
-                    lineup = step.newLineup;
+                for(let i = 0; i < ascPlayers.length; i++) {
+                    let p = ascPlayers[i];
+                    lineup = lineup.filter(id => id !== p.id);
+                    lineup.unshift(p.id);
                     
                     updateVisualBoard();
-                    let frontEl = document.getElementById(`ui_${step.swimmerId}`);
+                    let frontEl = document.getElementById(`ui_${p.id}`);
                     if(frontEl) frontEl.classList.add('swim-to-front');
                     
                     await sleep(1200); 
@@ -1425,9 +1276,13 @@
 
             AudioSys.stop('swim'); 
 
+            let scriptPhase2 = "";
+            let bittenId = lineup[lineup.length - 1];
+            let bittenPlayer = players.find(p => p.id === bittenId);
+            
             AudioSys.play('shark'); 
             const sharkUI = document.getElementById('shark-ui');
-            const bittenUI = document.getElementById(`ui_${plan.bittenId}`);
+            const bittenUI = document.getElementById(`ui_${bittenId}`);
             
             if(sharkUI) {
                 sharkUI.classList.remove('shark-float');
@@ -1437,14 +1292,44 @@
                 bittenUI.style.animation = 'invalidShake 0.5s ease-in-out';
             }
 
-            let limbClass = LIMBS_MAP[plan.lostLimb];
-            let limbEl = document.querySelector(`#ui_${plan.bittenId} .ui-limb-${limbClass}`);
+            let lostLimb = bittenPlayer.limbsStatus.pop(); 
+            bittenPlayer.limbs -= 1;
+            
+            let limbClass = LIMBS_MAP[lostLimb];
+            let limbEl = document.querySelector(`#ui_${bittenId} .ui-limb-${limbClass}`);
             if(limbEl) limbEl.classList.add('limb-fly-away');
 
-            announce(plan.scriptPhase2, false); 
+            scriptPhase2 += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
+
+            if (bittenPlayer.limbs <= 0) {
+                scriptPhase2 += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
+                lineup = lineup.filter(id => id !== bittenId);
+                players = players.filter(p => p.id !== bittenId);
+            } else {
+                scriptPhase2 += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
+                lineup = lineup.filter(id => id !== bittenId);
+                lineup.unshift(bittenId);
+            }
+
+            players.forEach(p => {
+                if (p.id === bittenId && p.limbs > 0) {
+                    p.hand = p.hand.concat(p.playedCards).concat([p.chosenCard]);
+                    p.playedCards = [];
+                } else {
+                    p.playedCards.push(p.chosenCard);
+                    if (p.hand.length === 1) {
+                        p.hand = p.hand.concat(p.playedCards);
+                        p.playedCards = [];
+                        scriptPhase2 += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
+                    }
+                }
+                p.chosenCard = null;
+            });
+
+            announce(scriptPhase2, false); 
             await sleep(2000); 
             
-            if (plan.bittenEliminated) {
+            if (bittenPlayer.limbs <= 0) {
                 let dendFiles = ['dend', 'dend1'];
                 AudioSys.play(dendFiles[Math.floor(Math.random()*dendFiles.length)]);
             } else {
@@ -1453,34 +1338,24 @@
                 AudioSys.lastD = chosenD;
                 AudioSys.play('d' + chosenD);
             }
-
-            players = plan.finalPlayers;
-            lineup = plan.finalLineup;
-            humanPlayer = players.find(p => p.id === myPeerId) || players.find(p => p.type === 'human');
-
+            
             updateVisualBoard();
-            if (!plan.bittenEliminated) {
-                let dashEl = document.getElementById(`ui_${plan.bittenId}`);
+            if (bittenPlayer.limbs > 0) {
+                let dashEl = document.getElementById(`ui_${bittenId}`);
                 if(dashEl) dashEl.classList.add('swim-to-front');
             }
 
             await sleep(3600);
 
-            if (isHost) {
-                broadcastToAll({
-                    type: 'SYNC_GAME_STATE',
-                    statePlayers: players,
-                    stateLineup: lineup
-                });
-            }
+            let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
+                      lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
 
-            let scriptPhase3 = plan.scriptPhase3;
-            let myStillAlive = players.some(p => p.id === myPeerId);
+            let myStillAlive = players.some(p => p.id === humanPlayer.id);
 
             if (players.length === 1) {
                 AudioSys.stop('bgm'); 
                 const winner = players[0];
-                let isMyWin = (winner.id === myPeerId);
+                let isMyWin = (winner.id === humanPlayer.id);
                 
                 if(isMyWin) {
                     AudioSys.play('win');
@@ -1497,7 +1372,7 @@
                     handDiv.innerHTML = `
                         <div class="end-game-container">
                             <div class="victory-text">${randomMsg}</div>
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
+                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่หน้าแรก" style="max-width:200px;">🏠</button>
                         </div>
                     `;
                 } else {
@@ -1509,13 +1384,13 @@
                         <div class="end-game-container">
                             <div style="font-size:3rem; margin-bottom:10px;">👻</div>
                             <div class="defeat-text">${failMsg}</div>
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
+                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่หน้าแรก" style="max-width:200px;">🏠</button>
                         </div>
                     `;
                 }
             } else if (!myStillAlive) {
                 const failMsg = DEFEAT_MESSAGES[Math.floor(Math.random() * DEFEAT_MESSAGES.length)];
-                scriptPhase3 += `คุณถูกคัดออกแล้ว! สามารถกลับสู่ชุมชนได้`;
+                scriptPhase3 += `คุณถูกคัดออกแล้ว! สามารถกลับสู่หน้าแรกได้`;
                 document.getElementById('turn-indicator').innerText = `คุณถูกคัดออกแล้ว...`;
                 
                 handDiv.innerHTML = `
@@ -1523,7 +1398,7 @@
                         <div style="font-size:3rem; margin-bottom:10px;">👻</div>
                         <div class="defeat-text">${failMsg}</div>
                         <div class="action-row">
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="margin:0; flex:1; background-color:#4a4e69;">🏠</button>
+                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่หน้าแรก" style="margin:0; flex:1; background-color:#4a4e69;">🏠</button>
                         </div>
                     </div>
                 `;
@@ -1534,12 +1409,6 @@
             }
 
             announce(scriptPhase3, false);
-            
-            isAnimating = false;
-            if (pendingSyncState) {
-                window.applySyncState(pendingSyncState);
-                pendingSyncState = null;
-            }
         }
 
         function triggerConfetti() {
@@ -1579,15 +1448,6 @@
             }
             draw();
         }
-
-        window.goHome = goHome;
-        window.adjustBot = adjustBot;
-        window.createOrJoinRoom = createOrJoinRoom;
-        window.showJoinScreen = showJoinScreen;
-        window.hideJoinScreen = hideJoinScreen;
-        window.confirmJoinRoom = confirmJoinRoom;
-        window.copyRoomLink = copyRoomLink;
-        window.hostStartGame = hostStartGame;
     </script>
 </body>
 </html>
