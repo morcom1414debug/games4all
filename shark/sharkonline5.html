@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>เกมฉลามงับออนไลน์ (Get Bit! Online)</title>
+    <!-- นำ PeerJS ออก และเราจะเรียกใช้ Firebase ผ่าน ES Module แทน -->
     <style>
         :root {
             --red: #ff4d4d; --yellow: #ffd700; --green: #32cd32;
@@ -26,6 +27,7 @@
             white-space: nowrap;
         }
 
+        /* --- เอฟเฟกต์ฟองอากาศพื้นหลัง --- */
         .bubbles-container {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; z-index: 0; overflow: hidden;
@@ -38,6 +40,7 @@
             to { transform: translateY(-120vh) translateX(20px); opacity: 0; }
         }
 
+        /* --- หน้า Setup & Lobby --- */
         #setup-screen, #waiting-room-screen, #join-screen {
             position: relative; z-index: 2;
             display: flex; flex-direction: column; align-items: center; justify-content: space-between;
@@ -101,6 +104,7 @@
             background: #0f3460; padding: 12px; border-radius: 8px; width: 100%; margin-bottom: 10px;
         }
 
+        /* --- หน้าเล่นเกม (Game Screen) --- */
         #game-screen { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 800px; z-index: 2; position: relative;}
         
         .board-container {
@@ -112,6 +116,7 @@
         }
         .board-container:focus { outline: none; border-color: #ffd700; }
 
+        /* --- Visual UI นักดำน้ำ & ฉลาม --- */
         .swimmer {
             width: 75px; height: 100px; margin: 0 5px; border-radius: 8px;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -171,6 +176,7 @@
             100% { transform: scale(1) rotate(0deg); } 
         }
         
+        /* --- Showdown Arena & ไพ่ --- */
         .hand-container { 
             display: flex; gap: 8px; margin-top: 15px; width: 100%;
             justify-content: center; flex-wrap: wrap; min-height: 80px; perspective: 1000px;
@@ -228,6 +234,7 @@
         ul { list-style-type: disc; padding-left: 20px; }
         li { margin-bottom: 5px; font-size: 0.875rem; line-height: 1.3; }
 
+        /* --- Countdown Overlay & Animations --- */
         #countdown-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(15, 52, 96, 0.95); z-index: 9999;
@@ -273,6 +280,7 @@
         <div id="ripple-container"></div>
     </div>
 
+    <!-- หน้า Setup สำหรับสร้างห้องหรือเข้าร่วม -->
     <div id="setup-screen">
         <button class="home-btn-top" id="setup-home-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน">🏠</button>
 
@@ -298,6 +306,7 @@
         </div>
     </div>
 
+    <!-- หน้ากรอกรหัสเข้าร่วมห้อง -->
     <div id="join-screen">
         <button class="home-btn-top" onclick="hideJoinScreen()" aria-label="ยกเลิกและกลับไปหน้าก่อนหน้า">🔙</button>
         <h1>เข้าร่วมห้องด้วยรหัส</h1>
@@ -309,6 +318,7 @@
         <button class="start-btn" onclick="confirmJoinRoom()" style="background:#32cd32;">ยืนยันเพื่อเข้าร่วม</button>
     </div>
 
+    <!-- หน้าห้องรอ (Lobby / Waiting Room) -->
     <div id="waiting-room-screen">
         <button class="home-btn-top" onclick="goHome()" aria-label="ออกจากห้อง">🏠</button>
         <h1>🦈 ห้องรอผู้เล่น</h1>
@@ -338,6 +348,7 @@
         <p id="guest-waiting-text" style="color:var(--yellow); font-weight:bold; margin-top:10px; display:none;">รอเจ้าของห้องกดเริ่มเกม...</p>
     </div>
 
+    <!-- หน้าเล่นเกม -->
     <div id="game-screen">
         <h2 id="turn-indicator" tabindex="-1">เลือกลงไพ่ของคุณ</h2>
         
@@ -353,10 +364,12 @@
 
     <div id="aria-announcer" aria-live="assertive" class="sr-only"></div>
 
+    <!-- โค้ด Script แบบ Module รองรับ Firebase 100% -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getDatabase, ref, set, push, onChildAdded, onValue, onDisconnect, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
+        // ตั้งค่า Firebase ตามที่คุณให้มา
         const firebaseConfig = {
             apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
             authDomain: "xo-game-134ec.firebaseapp.com",
@@ -656,6 +669,7 @@
                 updateWaitingRoomUI();
                 announce("สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ " + roomId.split('').join(' ') + " ระบบคัดลอกลิงก์ให้เรียบร้อยแล้ว");
 
+                // จัดการ Firebase สำหรับ Host
                 const hostRef = ref(db, `rooms/${roomId}/host`);
                 set(hostRef, true);
                 onDisconnect(hostRef).remove();
@@ -707,8 +721,10 @@
                 btn.innerText = 'กำลังเชื่อมต่อห้อง...';
 
                 setTimeout(() => {
+                    // จัดการ Firebase สำหรับ Guest
                     const hostPresenceRef = ref(db, `rooms/${roomId}/host`);
                     onValue(hostPresenceRef, (snapshot) => {
+                        // หากไม่มี Host แสดงว่า Host ออกจากเกม
                         if (!snapshot.val() && document.getElementById('setup-screen').style.display === 'none') {
                             alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
                             location.reload();
@@ -754,6 +770,7 @@
                         }
                     });
 
+                    // ส่งสัญญาณขอเข้าห้องไปที่ Host
                     push(ref(db, `rooms/${roomId}/messages/to_host`), { type: 'JOIN_ROOM', sender: myPeerId });
                 }, 500);
             }
@@ -863,21 +880,18 @@
             lineup = gameData.lineup;
 
             players.forEach(p => {
-                let colorName = p.colorInfo.name;
-                let cleanColorName = colorName.startsWith('สี') ? colorName : 'สี' + colorName;
-
                 if (p.type === 'bot' || p.id.startsWith('bot_')) {
                     p.type = 'bot';
-                    p.name = `บอท${cleanColorName}`;
+                    p.name = `บอท ${p.colorInfo.name}`;
                 } else if (p.id === myPeerId) {
                     p.type = 'human';
-                    p.name = `คุณ${cleanColorName}`;
+                    p.name = `คุณ`;
                 } else if (p.isHost) {
                     p.type = 'remote';
-                    p.name = `Host${cleanColorName}`;
+                    p.name = `Host ${p.colorInfo.name}`;
                 } else {
                     p.type = 'remote';
-                    p.name = `เพื่อน${cleanColorName}`;
+                    p.name = `เพื่อน ${p.colorInfo.name}`;
                 }
             });
             
@@ -944,41 +958,21 @@
         }
 
         function handleAfkTimeout() {
-            if (isHost) {
-                // Host forces anyone who hasn't chosen a card and is still alive
-                players.forEach(pl => {
-                    if (pl.limbs > 0 && pl.chosenCard === null) {
-                        let pId = pl.id;
-                        consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
-                        if (consecutiveAfkCounts[pId] >= 4) {
-                            // User is continuously AFK, but we continue forcing to keep the game alive
-                        }
-                        let autoCard = pl.hand[0]; 
-                        
-                        if (pId === myPeerId) {
-                            announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]})`);
-                            playTurn(autoCard);
-                        } else {
-                            // Force Guest action centrally
-                            handlePlayerAction(pId, autoCard);
-                        }
-                    }
-                });
-            } else {
-                // Guest auto-plays for themselves to update local UI
-                if (humanPlayer && humanPlayer.limbs > 0 && humanPlayer.chosenCard === null) {
-                    let pId = humanPlayer.id;
-                    consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
-                    if (consecutiveAfkCounts[pId] >= 4) {
-                        alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองภายในเวลาที่กำหนด");
-                        goHome();
-                        return;
-                    }
-                    let autoCard = humanPlayer.hand[0];
-                    announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]})`);
-                    playTurn(autoCard);
-                }
+            if (!humanPlayer || humanPlayer.limbs <= 0) return;
+            
+            let pId = humanPlayer.id;
+            consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
+            
+            if (consecutiveAfkCounts[pId] >= 4) {
+                announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 4 ครั้ง ถูกเตะออกจากเกมแล้ว!");
+                alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองภายในเวลาที่กำหนด");
+                goHome();
+                return;
             }
+
+            let autoCard = humanPlayer.hand[0];
+            announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]}/3)`);
+            playTurn(autoCard);
         }
 
         function updateVisualBoard() {
@@ -1098,23 +1092,21 @@
         let receivedActions = {};
         function handlePlayerAction(playerId, cardVal) {
             let p = players.find(x => x.id === playerId);
-            if (!p || p.limbs <= 0 || p.chosenCard !== null) return; 
-
-            p.chosenCard = cardVal;
-            p.hand = p.hand.filter(v => v !== cardVal);
+            if (p) p.chosenCard = cardVal;
+            if (p && p.hand) p.hand = p.hand.filter(v => v !== cardVal);
 
             receivedActions[playerId] = cardVal;
 
-            let allHumansChosen = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0).every(pl => pl.chosenCard !== null);
+            let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
             
             if (allHumansChosen) {
-                players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
+                players.filter(pl => pl.type === 'bot').forEach(bot => {
                     let posIndex = lineup.indexOf(bot.id);
                     bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
                     bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
                 });
 
-                let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
+                let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
                 if (isHost) {
                     broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
                     executeResolveRound(roundData);
@@ -1126,11 +1118,7 @@
             if (roundData) {
                 roundData.forEach(rd => {
                     let pl = players.find(x => x.id === rd.id);
-                    if (pl) {
-                        pl.chosenCard = rd.chosenCard;
-                        // ให้ Firebase เป็นคนกลางและบังคับข้อมูลไพ่ในมือทุกเครื่องให้ตรงกัน 100%
-                        pl.hand = pl.hand.filter(v => v !== rd.chosenCard); 
-                    }
+                    if (pl) pl.chosenCard = rd.chosenCard;
                 });
             }
 
@@ -1275,7 +1263,7 @@
                     p.playedCards = [];
                 } else {
                     p.playedCards.push(p.chosenCard);
-                    if (p.hand.length === 0) {
+                    if (p.hand.length === 1) {
                         p.hand = p.hand.concat(p.playedCards);
                         p.playedCards = [];
                         scriptPhase2 += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
@@ -1407,6 +1395,7 @@
             draw();
         }
 
+        // เชื่อมโยงฟังก์ชันเข้าสู่หน้าจอ HTML เนื่องจากใช้ <script type="module">
         window.goHome = goHome;
         window.adjustBot = adjustBot;
         window.createOrJoinRoom = createOrJoinRoom;
