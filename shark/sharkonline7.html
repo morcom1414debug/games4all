@@ -699,30 +699,6 @@
                     checkAndReassignHost();
                     broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
                     updateWaitingRoomUI();
-                    
-                    // หากผู้เล่นตัดการเชื่อมต่อระหว่างเล่นเกม
-                    if (document.getElementById('setup-screen').style.display === 'none' && players.length > 0) {
-                        players = players.filter(p => p.id !== connPeer);
-                        lineup = lineup.filter(id => id !== connPeer);
-                        updateVisualBoard();
-
-                        // ตรวจสอบและให้เกมเดินหน้าต่อหากผู้เล่นที่เหลือตัดสินใจครบแล้ว
-                        if (isHost) {
-                            let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
-                            if (aliveHumans.length > 0 && aliveHumans.every(pl => pl.chosenCard !== null)) {
-                                players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
-                                    if (bot.chosenCard === null) {
-                                        let posIndex = lineup.indexOf(bot.id);
-                                        bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                                        bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                                    }
-                                });
-                                let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                                broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
-                                executeResolveRound(roundData);
-                            }
-                        }
-                    }
                 });
 
             } else {
@@ -734,18 +710,6 @@
                     const hostPresenceRef = ref(db, `rooms/${roomId}/host`);
                     onValue(hostPresenceRef, (snapshot) => {
                         if (!snapshot.val() && document.getElementById('setup-screen').style.display === 'none') {
-                            // จัดการเมื่อเจ้าของห้อง (Host) หลุดระหว่างเกม
-                            clearInterval(turnTimer);
-                            document.getElementById('turn-indicator').innerText = "❌ จบเกม";
-                            document.getElementById('player-hand').innerHTML = `
-                                <div class="end-game-container">
-                                    <div style="font-size:3rem; margin-bottom:10px;">🔌</div>
-                                    <div class="defeat-text">เจ้าของห้องหลุดออกจากเกม หรือไม่ตอบสนองเกินกำหนด เกมจึงยุติลง</div>
-                                    <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
-                                </div>
-                            `;
-                            announce("เจ้าของห้องหลุดออกจากเกม เกมจึงยุติลง");
-                        } else if (!snapshot.val()) {
                             alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
                             location.reload();
                         }
@@ -981,79 +945,30 @@
 
         function handleAfkTimeout() {
             if (isHost) {
-                let hostDropped = false;
-                let autoActions = [];
                 players.forEach(pl => {
                     if (pl.limbs > 0 && pl.chosenCard === null) {
                         let pId = pl.id;
                         consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
                         if (consecutiveAfkCounts[pId] >= 4) {
-                            if (pId === myPeerId) {
-                                hostDropped = true;
-                            } else {
-                                announce(`${pl.name} ถูกเตะออกจากห้องเนื่องจากไม่ตอบสนอง`);
-                                players = players.filter(p => p.id !== pId);
-                                lineup = lineup.filter(id => id !== pId);
-                                updateVisualBoard();
-                            }
+                            
+                        }
+                        let autoCard = pl.hand[0]; 
+                        
+                        if (pId === myPeerId) {
+                            announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]})`);
+                            playTurn(autoCard);
                         } else {
-                            let autoCard = pl.hand[0]; 
-                            autoActions.push({ id: pId, card: autoCard });
+                            handlePlayerAction(pId, autoCard);
                         }
                     }
                 });
-
-                if (hostDropped) {
-                    const hostRef = ref(db, `rooms/${roomId}/host`);
-                    set(hostRef, null); 
-                    clearInterval(turnTimer);
-                    document.getElementById('turn-indicator').innerText = "❌ หมดเวลา";
-                    document.getElementById('player-hand').innerHTML = `
-                        <div class="end-game-container">
-                            <div style="font-size:3rem; margin-bottom:10px;">🔌</div>
-                            <div class="defeat-text">คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองเกินกำหนด</div>
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
-                        </div>
-                    `;
-                    return; 
-                }
-
-                autoActions.forEach(action => {
-                    if (action.id === myPeerId) {
-                        announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${action.card} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[action.id]})`);
-                        playTurn(action.card);
-                    } else {
-                        handlePlayerAction(action.id, action.card);
-                    }
-                });
-
-                let aliveHumans = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0);
-                if (aliveHumans.length > 0 && aliveHumans.every(pl => pl.chosenCard !== null)) {
-                    players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
-                        if (bot.chosenCard === null) {
-                            let posIndex = lineup.indexOf(bot.id);
-                            bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                            bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                        }
-                    });
-                    let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
-                    executeResolveRound(roundData);
-                }
             } else {
                 if (humanPlayer && humanPlayer.limbs > 0 && humanPlayer.chosenCard === null) {
                     let pId = humanPlayer.id;
                     consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
                     if (consecutiveAfkCounts[pId] >= 4) {
-                        clearInterval(turnTimer);
-                        document.getElementById('turn-indicator').innerText = "❌ หมดเวลา";
-                        document.getElementById('player-hand').innerHTML = `
-                            <div class="end-game-container">
-                                <div style="font-size:3rem; margin-bottom:10px;">🔌</div>
-                                <div class="defeat-text">คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองเกินกำหนด</div>
-                                <button class="start-btn" onclick="goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠</button>
-                            </div>
-                        `;
+                        alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองภายในเวลาที่กำหนด");
+                        goHome();
                         return;
                     }
                     let autoCard = humanPlayer.hand[0];
@@ -1194,11 +1109,9 @@
                 if (humansChosenCount === aliveHumans.length) {
                     
                     players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
-                        if (bot.chosenCard === null) {
-                            let posIndex = lineup.indexOf(bot.id);
-                            bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                            bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                        }
+                        let posIndex = lineup.indexOf(bot.id);
+                        bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
+                        bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
                     });
 
                     let roundData = players.filter(pl => pl.limbs > 0).map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
