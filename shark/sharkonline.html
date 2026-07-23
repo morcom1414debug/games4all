@@ -311,13 +311,13 @@
 
     <!-- หน้า Setup หลัก (หน้าแรก) -->
     <div id="setup-screen">
-        <button class="home-btn-top" onclick="goHome()" aria-label="รีเฟรชหน้าหลัก">🏠</button>
+        <button class="home-btn-top" onclick="window.goHome()" aria-label="รีเฟรชหน้าหลัก">🏠</button>
 
         <h1>🦈 เกมฉลามงับออนไลน์</h1>
         <p style="color:#b8c1ec; font-size:0.9rem;">สร้างห้องรอเพื่อน หรือเลือกกดเข้าร่วมห้องด้านล่างได้ทันที</p>
         
         <!-- ปุ่มสร้างห้องออนไลน์โดดเด่นตรงกลาง -->
-        <button class="main-create-btn" id="btn-create-room" onclick="createNewRoom()">
+        <button class="main-create-btn" id="btn-create-room" onclick="window.createNewRoom()">
             <span>🦈</span>
             <span>สร้างห้องออนไลน์</span>
         </button>
@@ -330,7 +330,7 @@
 
     <!-- หน้าห้องรอ (Lobby / Waiting Room) -->
     <div id="waiting-room-screen">
-        <button class="home-btn-top" onclick="goHome()" aria-label="ออกจากห้อง">🏠</button>
+        <button class="home-btn-top" onclick="window.goHome()" aria-label="ออกจากห้อง">🏠</button>
         <h1>🦈 ห้องรอผู้เล่น</h1>
         
         <div class="room-info-box">
@@ -349,9 +349,9 @@
         <div id="host-bot-section" style="width:100%;">
             <p class="setup-section-title">เลือกจำนวนบอทในห้อง:</p>
             <div class="bot-counter-container">
-                <button class="counter-btn setup-control-btn" id="btn-bot-minus" onclick="adjustBot(-1)" aria-label="ลดจำนวนบอท">-</button>
+                <button class="counter-btn setup-control-btn" id="btn-bot-minus" onclick="window.adjustBot(-1)" aria-label="ลดจำนวนบอท">-</button>
                 <div class="bot-count-display" id="bot-count-text">0 ตัว</div>
-                <button class="counter-btn setup-control-btn" id="btn-bot-plus" onclick="adjustBot(1)" aria-label="เพิ่มจำนวนบอท">+</button>
+                <button class="counter-btn setup-control-btn" id="btn-bot-plus" onclick="window.adjustBot(1)" aria-label="เพิ่มจำนวนบอท">+</button>
             </div>
         </div>
 
@@ -360,7 +360,7 @@
             <ul id="waiting-players-list" style="background:#0f3460; padding:10px 20px; border-radius:8px; max-height:150px; overflow-y:auto;"></ul>
         </div>
 
-        <button class="start-btn" id="btn-host-start" onclick="hostStartGame()" style="display:none;" disabled>เริ่มเกมทันที</button>
+        <button class="start-btn" id="btn-host-start" onclick="window.hostStartGame()" style="display:none;" disabled>เริ่มเกมทันที</button>
         <p id="guest-waiting-text" style="color:var(--yellow); font-weight:bold; margin-top:10px; display:none;">รอเจ้าของห้องกดเริ่มเกม...</p>
     </div>
 
@@ -381,7 +381,24 @@
     <!-- กล่องประกาศ ARIA -->
     <div id="aria-announcer" aria-live="assertive" class="sr-only"></div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+        // --- ตั้งค่า Firebase ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
+            authDomain: "xo-game-134ec.firebaseapp.com",
+            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "xo-game-134ec",
+            storageBucket: "xo-game-134ec.firebasestorage.app",
+            messagingSenderId: "318375224157",
+            appId: "1:318375224157:web:721abe70ef34c377b77eb4"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const GAME_ID = "shark_get_bit_online"; // กันไม่ให้ซ้ำกับเกมอื่นใน Database เดียวกัน
+
         // --- สร้างเอฟเฟกต์ฟองอากาศ ---
         const bubblesBg = document.getElementById('bg-bubbles');
         for(let i=0; i<15; i++) {
@@ -492,12 +509,23 @@
         let consecutiveAfkCounts = {}; 
 
         let scannedRooms = {};
-        let scanInterval = null;
 
-        function goHome() {
+        // Expose functions to window since we are inside a module
+        window.goHome = function() {
             AudioSys.stop('bgm');
-            window.location.href = window.location.pathname;
-        }
+            // ลบห้องตัวเองออกจาก Firebase ทันทีที่กดปุ่ม Home (ถ้าเป็น Host และยังไม่เริ่มเกม)
+            if (isHost && roomId && roomState === 'WAITING') {
+                remove(ref(db, GAME_ID + '/rooms/' + roomId)).then(() => {
+                    window.location.href = window.location.pathname;
+                });
+            } else {
+                window.location.href = window.location.pathname;
+            }
+        };
+        window.createNewRoom = createNewRoom;
+        window.joinRoomDirect = joinRoomDirect;
+        window.adjustBot = adjustBot;
+        window.hostStartGame = hostStartGame;
 
         const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -532,73 +560,28 @@
             AudioSys.loadAll(); 
             
             initBasePeer();
-            startRoomScanner();
+            startRoomScanner(); // จะเปลี่ยนไปใช้ Firebase แบบ Realtime Listener
         };
-
-        // --- ระบบรันรหัสวนลูป shark00001 - shark99999 ---
-        function getNextRoomNumber() {
-            let num = parseInt(localStorage.getItem('shark_room_seq') || '1');
-            return num;
-        }
-        function incrementRoomNumber() {
-            let num = parseInt(localStorage.getItem('shark_room_seq') || '1');
-            num = (num % 99999) + 1;
-            localStorage.setItem('shark_room_seq', num.toString());
-        }
-        function formatRoomCode(num) {
-            return 'shark' + String(num).padStart(5, '0');
-        }
 
         function initBasePeer() {
             myPeerId = "shark-client-" + Math.random().toString(36).substring(2, 8);
             peer = new Peer(myPeerId);
         }
 
-        // --- สแกนหาห้องเปิดอยู่เพื่อนำขึ้นมาโชว์ที่หน้าแรก ---
+        // --- สแกนหาห้องด้วย Firebase Realtime DB ---
         function startRoomScanner() {
-            scanRooms();
-            scanInterval = setInterval(scanRooms, 3500);
-        }
-
-        function scanRooms() {
-            if (isHost || roomState === 'IN_GAME' || !peer || !peer.open) return;
-            
-            let startNum = 1;
-            for (let i = startNum; i <= 10; i++) {
-                let checkRoomId = formatRoomCode(i);
-                probeRoom(checkRoomId);
-            }
-        }
-
-        function probeRoom(rId) {
-            let targetPeerId = "shark-host-" + rId;
-            let conn = peer.connect(targetPeerId, { reliable: false });
-            let timer = setTimeout(() => {
-                conn.close();
-                delete scannedRooms[rId];
-                renderRoomList();
-            }, 1200);
-
-            conn.on('open', () => {
-                conn.send({ type: 'PROBE_ROOM' });
-            });
-
-            conn.on('data', (data) => {
-                clearTimeout(timer);
-                if (data.type === 'ROOM_STATUS') {
-                    if (data.state === 'WAITING' && data.playerCount < 6) {
-                        scannedRooms[rId] = data;
-                    } else {
-                        delete scannedRooms[rId];
+            const roomsRef = ref(db, GAME_ID + '/rooms');
+            onValue(roomsRef, (snapshot) => {
+                scannedRooms = {};
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    for (let rId in data) {
+                        // โชว์เฉพาะห้องที่สถานะรออยู่และคนไม่เต็ม
+                        if (data[rId].state === 'WAITING' && data[rId].playerCount < 6) {
+                            scannedRooms[rId] = data[rId];
+                        }
                     }
-                    renderRoomList();
                 }
-                conn.close();
-            });
-
-            conn.on('error', () => {
-                clearTimeout(timer);
-                delete scannedRooms[rId];
                 renderRoomList();
             });
         }
@@ -618,48 +601,72 @@
                 let btn = document.createElement('button');
                 btn.className = 'room-item-btn';
                 btn.innerHTML = `<span>🌊 ห้อง ${rId} (${info.playerCount}/6 คน)</span> <span style="color:#ffd700;">กดเข้าร่วม ➔</span>`;
-                btn.onclick = () => joinRoomDirect(rId);
+                btn.onclick = () => window.joinRoomDirect(rId);
                 listContainer.appendChild(btn);
             });
         }
 
-        // --- การสร้างห้องใหม่ ---
+        // --- การสร้างห้องใหม่ (Firebase Transaction) ---
         async function createNewRoom() {
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
             AudioSys.play('1');
-
-            clearInterval(scanInterval);
             isHost = true;
 
-            let seqNum = getNextRoomNumber();
-            roomId = formatRoomCode(seqNum);
-            incrementRoomNumber();
+            const seqRef = ref(db, GAME_ID + '/room_seq');
+            runTransaction(seqRef, (currentData) => {
+                let nextNum = (currentData || 0) + 1;
+                if(nextNum > 99999) nextNum = 1;
+                return nextNum;
+            }).then((result) => {
+                if (result.committed) {
+                    let seqNum = result.snapshot.val();
+                    roomId = 'shark' + String(seqNum).padStart(5, '0');
 
-            peer.destroy(); // ปิด Connection เดิมเพื่อเปิด Peer ในฐานะ Host
-            
-            peer = new Peer("shark-host-" + roomId);
+                    if (peer) peer.destroy(); // ปิด Connection เดิมเพื่อเปิด Peer ในฐานะ Host
+                    
+                    peer = new Peer("shark-host-" + roomId);
 
-            peer.on('open', (id) => {
-                myPeerId = id;
-                roomPlayers = [{ id: myPeerId, color: selectedColorId, isHost: true, isBot: false }];
-                
-                document.getElementById('setup-screen').style.display = 'none';
-                document.getElementById('waiting-room-screen').style.display = 'flex';
-                document.getElementById('host-bot-section').style.display = 'block';
+                    peer.on('open', (id) => {
+                        myPeerId = id;
+                        roomPlayers = [{ id: myPeerId, color: selectedColorId, isHost: true, isBot: false }];
+                        
+                        // นำห้องขึ้น Firebase ให้ทุกคนเห็น
+                        const myRoomRef = ref(db, GAME_ID + '/rooms/' + roomId);
+                        set(myRoomRef, {
+                            roomId: roomId,
+                            playerCount: 1 + currentBotCount,
+                            state: 'WAITING',
+                            timestamp: Date.now()
+                        });
+                        
+                        // ถ้าเจ้าของห้องหลุดหรือปิดเว็บ ให้ Firebase ลบห้องนี้ทิ้งให้อัตโนมัติทันที
+                        onDisconnect(myRoomRef).remove();
 
-                updateWaitingRoomUI();
-                announce(`สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ ${roomId}`);
+                        document.getElementById('setup-screen').style.display = 'none';
+                        document.getElementById('waiting-room-screen').style.display = 'flex';
+                        document.getElementById('host-bot-section').style.display = 'block';
+
+                        updateWaitingRoomUI();
+                        announce(`สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ ${roomId}`);
+                        listenHostConnections();
+                    });
+                }
             });
-
-            listenHostConnections();
         }
 
-        // --- การเข้าร่วมห้องจากปุ่มหน้าแรก ---
+        // ฟังก์ชันช่วยอัปเดตจำนวนคนใน Lobby บน Firebase ให้ตรงตามจริง
+        function updateFirebaseRoomCount() {
+            if (isHost && roomState === 'WAITING' && roomId) {
+                update(ref(db, GAME_ID + '/rooms/' + roomId), {
+                    playerCount: roomPlayers.length + currentBotCount
+                });
+            }
+        }
+
+        // --- การเข้าร่วมห้องจากปุ่มหน้าแรก (ไม่เปลี่ยนแปลง ยังใช้ PeerJS เหมือนเดิม) ---
         async function joinRoomDirect(targetRoomId) {
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
             AudioSys.play('select');
-
-            clearInterval(scanInterval);
             isHost = false;
             roomId = targetRoomId;
 
@@ -711,16 +718,6 @@
         function listenHostConnections() {
             peer.on('connection', (conn) => {
                 conn.on('data', (data) => {
-                    if (data.type === 'PROBE_ROOM') {
-                        conn.send({
-                            type: 'ROOM_STATUS',
-                            roomId: roomId,
-                            playerCount: roomPlayers.length + currentBotCount,
-                            state: roomState
-                        });
-                        return;
-                    }
-
                     if (data.type === 'JOIN_ROOM') {
                         if (roomState !== 'WAITING') {
                             conn.send({ type: 'JOIN_REJECT', reason: 'เกมเริ่มไปแล้ว' });
@@ -746,6 +743,8 @@
                         let joinedColName = COLORS.find(c => c.id === assignedColor).name;
                         let joinMsg = `ผู้เล่นเข้าร่วมห้องใหม่ ได้รับ${joinedColName}`;
                         
+                        updateFirebaseRoomCount(); // อัปเดตยอดผู้เล่นรวมบน Firebase 
+
                         broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: joinMsg });
                         updateWaitingRoomUI();
                         announce(joinMsg);
@@ -761,6 +760,8 @@
                     guestConnections = guestConnections.filter(c => c.peer !== conn.peer);
                     
                     checkAndReassignHost();
+                    updateFirebaseRoomCount(); // อัปเดตยอดผู้เล่นหลังคนออกบน Firebase
+
                     broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
                     updateWaitingRoomUI();
                 });
@@ -841,6 +842,9 @@
 
                 document.getElementById('bot-count-text').innerText = `${currentBotCount} ตัว`;
                 announce(`ปรับจำนวนบอทเป็น ${currentBotCount} ตัว`);
+                
+                updateFirebaseRoomCount(); // อัปเดตยอดผู้เล่นรวมบน Firebase
+
                 broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors });
                 updateWaitingRoomUI();
             }
@@ -886,7 +890,10 @@
             const startBtn = document.getElementById('btn-host-start');
             startBtn.disabled = true; 
 
-            roomState = 'IN_GAME'; // เปลี่ยนสถานะเป็นเริ่มเกม ทำให้ห้องหายไปจากสแกนหน้าแรก
+            roomState = 'IN_GAME';
+            
+            // ลบห้องออกจาก Firebase ทันที เพื่อไม่ให้คนอื่นในหน้าแรกมองเห็นหรือกดเข้ามาได้อีก
+            remove(ref(db, GAME_ID + '/rooms/' + roomId));
 
             let allParticipants = [];
             
@@ -1020,7 +1027,7 @@
             if (consecutiveAfkCounts[pId] >= 4) {
                 announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 4 ครั้ง ถูกเตะออกจากเกมแล้ว!");
                 alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองภายในเวลาที่กำหนด");
-                goHome();
+                window.goHome();
                 return;
             }
 
@@ -1372,7 +1379,7 @@
                     handDiv.innerHTML = `
                         <div class="end-game-container">
                             <div class="victory-text">${randomMsg}</div>
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่หน้าแรก" style="max-width:200px;">🏠</button>
+                            <button class="start-btn" onclick="window.goHome()" aria-label="กลับสู่หน้าแรก" style="max-width:200px;">🏠</button>
                         </div>
                     `;
                 } else {
@@ -1384,7 +1391,7 @@
                         <div class="end-game-container">
                             <div style="font-size:3rem; margin-bottom:10px;">👻</div>
                             <div class="defeat-text">${failMsg}</div>
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่หน้าแรก" style="max-width:200px;">🏠</button>
+                            <button class="start-btn" onclick="window.goHome()" aria-label="กลับสู่หน้าแรก" style="max-width:200px;">🏠</button>
                         </div>
                     `;
                 }
@@ -1398,7 +1405,7 @@
                         <div style="font-size:3rem; margin-bottom:10px;">👻</div>
                         <div class="defeat-text">${failMsg}</div>
                         <div class="action-row">
-                            <button class="start-btn" onclick="goHome()" aria-label="กลับสู่หน้าแรก" style="margin:0; flex:1; background-color:#4a4e69;">🏠</button>
+                            <button class="start-btn" onclick="window.goHome()" aria-label="กลับสู่หน้าแรก" style="margin:0; flex:1; background-color:#4a4e69;">🏠</button>
                         </div>
                     </div>
                 `;
