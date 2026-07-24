@@ -394,7 +394,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction, update, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
         // --- ตั้งค่า Firebase ---
         const firebaseConfig = {
@@ -741,12 +741,35 @@
             }
         }
 
-        // --- การเข้าร่วมห้องจากปุ่มหน้าแรก ---
+        // --- การเข้าร่วมห้องจากปุ่มหน้าแรก / ลิงก์ ---
         async function joinRoomDirect(targetRoomId) {
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
             AudioSys.play('select');
             isHost = false;
             roomId = targetRoomId;
+
+            // ตรวจสอบสถานะห้องจาก Firebase Realtime Database ก่อนการเชื่อมต่อ
+            try {
+                const roomSnap = await get(ref(db, GAME_ID + '/rooms/' + targetRoomId));
+                if (!roomSnap.exists()) {
+                    alert("เข้าห้องไม่ได้: ห้องนี้ถูกปิดไปแล้ว หรือไม่พบห้อง");
+                    window.location.href = window.location.pathname;
+                    return;
+                }
+                const roomData = roomSnap.val();
+                if (roomData.state !== 'WAITING') {
+                    alert("เข้าห้องไม่ได้: เกมในห้องนี้เริ่มเล่นไปแล้ว");
+                    window.location.href = window.location.pathname;
+                    return;
+                }
+                if (roomData.playerCount >= 6) {
+                    alert("เข้าห้องไม่ได้: ห้องเต็มแล้ว (ครบ 6 คน)");
+                    window.location.href = window.location.pathname;
+                    return;
+                }
+            } catch(e) {
+                console.error("Error checking room state:", e);
+            }
 
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'flex';
@@ -756,14 +779,26 @@
 
             hostConnection = peer.connect("shark-host-" + roomId);
 
+            let connectTimeout = setTimeout(() => {
+                alert("ไม่สามารถเชื่อมต่อกับเจ้าของห้องได้ (ห้องอาจจะถูกปิดไปแล้ว)");
+                window.location.href = window.location.pathname;
+            }, 5000);
+
             hostConnection.on('open', () => {
+                clearTimeout(connectTimeout);
                 hostConnection.send({ type: 'JOIN_ROOM' });
+            });
+
+            hostConnection.on('error', (err) => {
+                clearTimeout(connectTimeout);
+                alert("การเชื่อมต่อล้มเหลว: ห้องอาจจะถูกปิดไปแล้ว");
+                window.location.href = window.location.pathname;
             });
 
             hostConnection.on('data', (data) => {
                 if (data.type === 'JOIN_REJECT') {
                     alert("เข้าห้องไม่ได้: " + data.reason);
-                    location.reload();
+                    window.location.href = window.location.pathname;
                 }
                 if (data.type === 'LOBBY_UPDATE') {
                     roomPlayers = data.roomPlayers;
