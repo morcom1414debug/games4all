@@ -335,10 +335,7 @@
         
         <div class="room-info-box">
             <p style="font-size:0.85rem; color:#b8c1ec;">รหัสห้องของคุณ:</p>
-            <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-                <div id="display-room-id" style="font-size:2rem; font-weight:bold; color:var(--yellow); letter-spacing:2px; margin:5px 0;">shark00001</div>
-                <button id="btn-share-room" onclick="window.shareRoom()" style="display:none; background: #1e90ff; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-weight: bold; cursor: pointer; font-size: 0.9rem;">🔗 แชร์</button>
-            </div>
+            <div id="display-room-id" style="font-size:2rem; font-weight:bold; color:var(--yellow); letter-spacing:2px; margin:5px 0;">shark00001</div>
             <p id="room-status-desc" style="font-size:0.85rem; color:#eaeaea; margin-top:5px;"></p>
         </div>
 
@@ -525,29 +522,6 @@
                 window.location.href = '../index.html';
             }
         };
-        
-        window.shareRoom = async function() {
-            const shareUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
-            try {
-                await navigator.clipboard.writeText(shareUrl);
-                updateGameLog("คัดลอกลิงก์ห้องเรียบร้อยแล้ว");
-            } catch(e) {}
-            
-            if (navigator.share) {
-                try {
-                    await navigator.share({
-                        title: 'เกมฉลามงับออนไลน์',
-                        text: 'มาเล่นเกมฉลามงับด้วยกันเถอะ! กดลิงก์นี้เพื่อเข้าห้องอัตโนมัติทันที',
-                        url: shareUrl
-                    });
-                } catch(err) {
-                    console.log('Share canceled or failed', err);
-                }
-            } else {
-                alert("คัดลอกลิงก์ห้องให้แล้ว นำไปวางส่งให้เพื่อนได้เลย:\n" + shareUrl);
-            }
-        };
-
         window.createNewRoom = createNewRoom;
         window.joinRoomDirect = joinRoomDirect;
         window.adjustBot = adjustBot;
@@ -555,40 +529,37 @@
 
         const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-        // --- แก้ไขระบบประกาศเพื่อแก้ปัญหาอ่านซ้ำบน iOS ---
-        function speakAria(message) {
+        // ปรับปรุงฟังก์ชันประกาศเพื่อแก้ปัญหา iOS VoiceOver อ่านซ้ำ 
+        function announce(message, clearLog = false) {
             if (announceLock && currentAnnounceMessage === message) return;
             const announcer = document.getElementById('aria-announcer');
-            announcer.innerText = ''; // ล้างค่าทันที ป้องกัน iOS ดึงข้อความเก่ามาอ่านซ้ำ
+            
+            // 1. เคลียร์ข้อความให้เป็นค่าว่างก่อน เพื่อ Reset สถานะของ WebKit/VoiceOver
+            announcer.textContent = '';
             announceLock = true;
             currentAnnounceMessage = message;
 
+            // 2. หน่วงเวลาเล็กน้อยเพื่อให้ระบบจับการเคลียร์ค่าได้ทัน ก่อนใส่ข้อความใหม่เข้าไป
             setTimeout(() => {
-                announcer.innerText = message;
+                announcer.textContent = message;
                 announceLock = false;
-            }, 100);
+            }, 50);
             
             clearTimeout(scTimeout);
-            scTimeout = setTimeout(() => { announcer.innerText = ''; }, 10000);
-        }
+            scTimeout = setTimeout(() => { announcer.textContent = ''; }, 10000);
 
-        function updateGameLog(message, clearLog = false) {
             const logBox = document.getElementById('game-log');
-            if (clearLog) logBox.innerHTML = ''; 
+            if (clearLog && logBox) logBox.innerHTML = ''; 
             
-            const sentences = message.split('. ').filter(s => s.trim().length > 0);
-            sentences.forEach(s => {
-                const li = document.createElement('li');
-                li.innerText = s;
-                logBox.appendChild(li);
-            });
+            if(logBox) {
+                const sentences = message.split('. ').filter(s => s.trim().length > 0);
+                sentences.forEach(s => {
+                    const li = document.createElement('li');
+                    li.innerText = s;
+                    logBox.appendChild(li);
+                });
+            }
         }
-
-        function announce(message, clearLog = false) {
-            speakAria(message);
-            updateGameLog(message, clearLog);
-        }
-        // ------------------------------------------------
 
         window.onload = () => {
             AudioSys.init();
@@ -596,23 +567,21 @@
             
             initBasePeer();
             startRoomScanner(); 
-
-            // ตรวจสอบ Deep Link (การเข้าห้องอัตโนมัติ)
-            const urlParams = new URLSearchParams(window.location.search);
-            const roomToJoin = urlParams.get('room');
-            if (roomToJoin) {
-                // ดีเลย์เล็กน้อยเพื่อให้ PeerJS เตรียมตัวเสร็จก่อนเชื่อมต่อ
-                setTimeout(() => {
-                    window.joinRoomDirect(roomToJoin);
-                    // เคลียร์ URL ให้สะอาด ป้องกันการรีเฟรชแล้วเข้าซ้ำ
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                }, 800);
-            }
         };
 
         function initBasePeer() {
             myPeerId = "shark-client-" + Math.random().toString(36).substring(2, 8);
             peer = new Peer(myPeerId);
+            
+            // เพิ่มระบบลิงก์เชิญ: ตรวจสอบพารามิเตอร์ URL ว่ามี room= หรือไม่ ถ้ามีให้เชื่อมต่อห้องอัตโนมัติ
+            const urlParams = new URLSearchParams(window.location.search);
+            const joinRoomId = urlParams.get('room');
+            if (joinRoomId) {
+                peer.on('open', () => {
+                    window.joinRoomDirect(joinRoomId);
+                    window.history.replaceState({}, document.title, window.location.pathname); // เคลียร์ URL ป้องกันการเข้าห้องซ้ำหากรีเฟรช
+                });
+            }
         }
 
         // --- สแกนหาห้องด้วย Firebase Realtime DB ---
@@ -645,11 +614,34 @@
             listContainer.innerHTML = '';
             roomKeys.forEach(rId => {
                 let info = scannedRooms[rId];
+                
+                // แก้ไขการแสดงผลเพื่อเพิ่มปุ่ม Copy Link 
+                let wrapper = document.createElement('div');
+                wrapper.style.display = 'flex';
+                wrapper.style.gap = '8px';
+                wrapper.style.width = '100%';
+                
                 let btn = document.createElement('button');
                 btn.className = 'room-item-btn';
+                btn.style.flex = '1';
                 btn.innerHTML = `<span>🌊 ห้อง ${rId} (${info.playerCount}/6 คน)</span> <span style="color:#ffd700;">กดเข้าร่วม ➔</span>`;
                 btn.onclick = () => window.joinRoomDirect(rId);
-                listContainer.appendChild(btn);
+                
+                let copyBtn = document.createElement('button');
+                copyBtn.className = 'room-item-btn';
+                copyBtn.style.flex = '0 0 auto';
+                copyBtn.style.padding = '12px';
+                copyBtn.style.backgroundColor = '#4a4e69';
+                copyBtn.innerHTML = '📋 ลิงก์';
+                copyBtn.onclick = () => {
+                    let shareUrl = window.location.origin + window.location.pathname + '?room=' + rId;
+                    navigator.clipboard.writeText(shareUrl).catch(() => {});
+                    announce(`คัดลอกลิงก์ห้อง ${rId} แล้ว`);
+                };
+
+                wrapper.appendChild(btn);
+                wrapper.appendChild(copyBtn);
+                listContainer.appendChild(wrapper);
             });
         }
 
@@ -692,14 +684,14 @@
                         document.getElementById('setup-screen').style.display = 'none';
                         document.getElementById('waiting-room-screen').style.display = 'flex';
                         document.getElementById('host-bot-section').style.display = 'block';
-                        
-                        // เปิดแสดงปุ่มแชร์สำหรับคนสร้างห้องและคัดลอกลงคลิปบอร์ดทันที
-                        document.getElementById('btn-share-room').style.display = 'block';
-                        const shareUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
-                        navigator.clipboard.writeText(shareUrl).catch(() => {});
 
                         updateWaitingRoomUI();
-                        announce(`สร้างห้องออนไลน์สำเร็จ รหัสห้องคือ ${roomId} ได้ทำการคัดลอกลิงก์ห้องให้คุณอัตโนมัติแล้ว`);
+                        
+                        // ทำการคัดลอกลิงก์ห้องลง Clipboard อัตโนมัติเมื่อ Host สร้างห้องสำเร็จ
+                        let shareUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
+                        navigator.clipboard.writeText(shareUrl).catch(() => {});
+                        announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${roomId} ได้คัดลอกลิงก์สำหรับชวนเพื่อนให้เรียบร้อยแล้ว`);
+                        
                         listenHostConnections();
                     });
                 }
@@ -715,7 +707,7 @@
             }
         }
 
-        // --- การเข้าร่วมห้องจากปุ่มหน้าแรก ---
+        // --- การเข้าร่วมห้องจากปุ่มหน้าแรก (ไม่เปลี่ยนแปลง ยังใช้ PeerJS เหมือนเดิม) ---
         async function joinRoomDirect(targetRoomId) {
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') await AudioSys.ctx.resume();
             AudioSys.play('select');
@@ -726,7 +718,6 @@
             document.getElementById('waiting-room-screen').style.display = 'flex';
             document.getElementById('host-bot-section').style.display = 'none';
             document.getElementById('color-select-section').style.display = 'none';
-            document.getElementById('btn-share-room').style.display = 'none'; // ซ่อนปุ่มแชร์ของฝั่งผู้เล่น
 
             hostConnection = peer.connect("shark-host-" + roomId);
 
@@ -829,7 +820,6 @@
                     document.getElementById('btn-host-start').style.display = 'block';
                     document.getElementById('host-bot-section').style.display = 'block';
                     document.getElementById('color-select-section').style.display = 'block';
-                    document.getElementById('btn-share-room').style.display = 'block';
                     updateWaitingRoomUI();
                     announce("เจ้าของห้องเดิมออกจากเกม คุณได้เลื่อนขั้นเป็นเจ้าของห้องคนใหม่แล้ว");
                 }
@@ -1237,63 +1227,93 @@
                 });
             }
 
-            // --- เริ่มคำนวณล่วงหน้าสำหรับประกาศ ARIA รอบเดียวจบ (เพื่อแก้ปัญหาอ่านซ้ำและตัดบทบน iOS) ---
-            let simLineup = [...lineup];
-            let simPlayers = players.map(p => ({
-                id: p.id, name: p.name, chosenCard: p.chosenCard, 
-                limbs: p.limbs, limbsStatus: [...p.limbsStatus], 
-                playedCards: [...p.playedCards], hand: [...p.hand]
-            }));
+            // === 1. จำลองและรวบรวมข้อความ (Simulation Block) สำหรับประกาศ ARIA รวดเดียวในครั้งแรก ===
+            let simScript = "";
+            let randomVictoryMsg = VICTORY_MESSAGES[Math.floor(Math.random() * VICTORY_MESSAGES.length)];
+            let randomDefeatMsg = DEFEAT_MESSAGES[Math.floor(Math.random() * DEFEAT_MESSAGES.length)];
 
-            let simScript1 = "ผลการเปิดไพ่: ";
-            simPlayers.forEach(p => { simScript1 += `${p.name} ลง ${p.chosenCard}, `; });
-            simScript1 = simScript1.slice(0, -2) + ". ";
+            let playedMsg = "ผลการเปิดไพ่: ";
+            players.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
+            simScript += playedMsg.slice(0, -2) + ". ";
 
-            let simCounts = {};
-            simPlayers.forEach(p => { simCounts[p.chosenCard] = (simCounts[p.chosenCard] || 0) + 1; });
-            let simValid = simPlayers.filter(p => simCounts[p.chosenCard] === 1);
-            let simInvalid = simPlayers.filter(p => simCounts[p.chosenCard] > 1);
+            let cardCounts = {};
+            players.forEach(p => { cardCounts[p.chosenCard] = (cardCounts[p.chosenCard] || 0) + 1; });
+            let validPlayers = players.filter(p => cardCounts[p.chosenCard] === 1);
+            let invalidPlayers = players.filter(p => cardCounts[p.chosenCard] > 1);
 
-            if (simInvalid.length > 0) {
-                let dupNames = simInvalid.map(p => p.name).join(' และ ');
-                simScript1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
+            if (invalidPlayers.length > 0) {
+                let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
+                simScript += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
             }
 
-            let simAsc = [];
-            if (simValid.length > 0) {
-                simAsc = [...simValid].sort((a, b) => a.chosenCard - b.chosenCard);
-                simAsc.forEach((p, idx) => {
-                    if (idx === simAsc.length - 1 && simAsc.length > 1) {
-                        simScript1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
+            let ascPlayers = [];
+            if (validPlayers.length > 0) {
+                ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
+                ascPlayers.forEach((p, idx) => {
+                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
+                        simScript += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
                     } else {
-                        simScript1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
+                        simScript += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
                     }
                 });
-                for(let i = 0; i < simAsc.length; i++) {
-                    let p = simAsc[i];
-                    simLineup = simLineup.filter(id => id !== p.id);
-                    simLineup.unshift(p.id);
-                }
             }
 
-            let simBittenId = simLineup[simLineup.length - 1];
-            let simBittenPlayer = simPlayers.find(p => p.id === simBittenId);
-            let simLostLimb = simBittenPlayer.limbsStatus[simBittenPlayer.limbsStatus.length - 1];
-            let simRemainingLimbs = simBittenPlayer.limbs - 1;
+            let tempLineup = [...lineup];
+            ascPlayers.forEach(p => {
+                tempLineup = tempLineup.filter(id => id !== p.id);
+                tempLineup.unshift(p.id);
+            });
 
-            let simScript2 = `ฉลามงับ! ${simBittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${simLostLimb} ขาด! เหลืออวัยวะ ${simRemainingLimbs} ชิ้น. `;
+            let bittenIdTemp = tempLineup[tempLineup.length - 1];
+            let bittenPlayerTemp = players.find(p => p.id === bittenIdTemp);
+            let lostLimbTemp = bittenPlayerTemp.limbsStatus[bittenPlayerTemp.limbsStatus.length - 1];
+            let limbsLeftTemp = bittenPlayerTemp.limbs - 1;
 
-            if (simRemainingLimbs <= 0) {
-                simScript2 += `${simBittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
+            simScript += `ฉลามงับ! ${bittenPlayerTemp.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimbTemp} ขาด! เหลืออวัยวะ ${limbsLeftTemp} ชิ้น. `;
+
+            if (limbsLeftTemp <= 0) {
+                simScript += `${bittenPlayerTemp.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
+                tempLineup = tempLineup.filter(id => id !== bittenIdTemp);
             } else {
-                simScript2 += `${simBittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
+                simScript += `${bittenPlayerTemp.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
+                tempLineup = tempLineup.filter(id => id !== bittenIdTemp);
+                tempLineup.unshift(bittenIdTemp);
             }
-            
-            // อ่านประกาศแอคชั่นไพ่และฉลามงับรวบยอดครั้งเดียว ป้องกันช่วงว่างที่ iOS จะกลับไปอ่านใหม่
-            speakAria(simScript1 + simScript2);
-            // --- จบการคำนวณล่วงหน้า ---
 
+            players.forEach(p => {
+                if (p.id !== bittenIdTemp || limbsLeftTemp <= 0) {
+                    let tempHandSize = p.hand.length; // ค่าความยาวปัจจุบันที่กรองออกตอนเลือกลงแล้ว
+                    if (tempHandSize === 0) { // เดิมทีมีใบเดียว เลือกลงแล้วกลายเป็น 0
+                        simScript += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
+                    }
+                }
+            });
 
+            simScript += `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
+                      tempLineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
+
+            let aliveCount = tempLineup.length;
+            let myStillAlive = tempLineup.includes(humanPlayer.id);
+
+            if (aliveCount === 1) {
+                let winnerId = tempLineup[0];
+                if (winnerId === humanPlayer.id) {
+                    simScript += "จบเกม! คุณคือผู้ชนะ"; 
+                } else {
+                    let winnerName = players.find(p => p.id === winnerId).name;
+                    simScript += `จบเกม! ผู้ชนะคือ ${winnerName} รอดชีวิตเป็นคนสุดท้าย`;
+                }
+            } else if (!myStillAlive) {
+                simScript += `คุณถูกคัดออกแล้ว! สามารถกลับสู่หน้าแรกได้`;
+            } else {
+                simScript += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
+            }
+
+            // ประกาศ ARIA รวดเดียวตั้งแต่ต้นจนจบเพื่อให้ VoiceOver อ่านโดยไม่โดนขัดจังหวะ 
+            announce(simScript, true);
+            // =========================================================================
+
+            // === 2. โค้ดส่วนแสดงผล UI, Effect และการหน่วงเวลา (ทำงานตามปกติเหมือนเดิม) ===
             const handDiv = document.getElementById('player-hand');
             handDiv.className = 'hand-container'; 
             
@@ -1312,33 +1332,6 @@
             arenaHTML += `</div>`;
             handDiv.innerHTML = arenaHTML;
 
-            let scriptPhase1 = ""; 
-            let playedMsg = "ผลการเปิดไพ่: ";
-            players.forEach(p => { playedMsg += `${p.name} ลง ${p.chosenCard}, `; });
-            scriptPhase1 += playedMsg.slice(0, -2) + ". ";
-
-            let cardCounts = {};
-            players.forEach(p => { cardCounts[p.chosenCard] = (cardCounts[p.chosenCard] || 0) + 1; });
-            let validPlayers = players.filter(p => cardCounts[p.chosenCard] === 1);
-            let invalidPlayers = players.filter(p => cardCounts[p.chosenCard] > 1);
-
-            if (invalidPlayers.length > 0) {
-                let dupNames = invalidPlayers.map(p => p.name).join(' และ ');
-                scriptPhase1 += `ตรวจสอบพบว่า ${dupNames} ลงไพ่ซ้ำกัน ไพ่เป็นโมฆะและไม่ได้ขยับ! `;
-            }
-
-            let ascPlayers = [];
-            if (validPlayers.length > 0) {
-                ascPlayers = [...validPlayers].sort((a, b) => a.chosenCard - b.chosenCard);
-                ascPlayers.forEach((p, idx) => {
-                    if (idx === ascPlayers.length - 1 && ascPlayers.length > 1) {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} สูงสุดในกลุ่มขยับ ได้ว่ายแซงขึ้นไปอยู่นำหน้าสุด! `;
-                    } else {
-                        scriptPhase1 += `${p.name} ลงเลข ${p.chosenCard} ได้ว่ายขยับขึ้นหน้า. `;
-                    }
-                });
-            }
-
             await sleep(800);
             players.forEach(p => document.getElementById(`show-card-${p.id}`).classList.add('flipped'));
             
@@ -1356,8 +1349,6 @@
                 if(cardContainer) cardContainer.classList.add('card-shake');
             });
             
-            // อัปเดตเฉพาะกล่องข้อความ (ไม่ส่งให้ ARIA อ่านซ้ำ)
-            updateGameLog(scriptPhase1, true);
             await sleep(3500);
 
             let swimAnimTime = 0;
@@ -1395,7 +1386,6 @@
 
             AudioSys.stop('swim'); 
 
-            let scriptPhase2 = "";
             let bittenId = lineup[lineup.length - 1];
             let bittenPlayer = players.find(p => p.id === bittenId);
             
@@ -1418,14 +1408,10 @@
             let limbEl = document.querySelector(`#ui_${bittenId} .ui-limb-${limbClass}`);
             if(limbEl) limbEl.classList.add('limb-fly-away');
 
-            scriptPhase2 += `ฉลามงับ! ${bittenPlayer.name} อยู่รั้งท้ายสุด ถูกฉลามงับ ${lostLimb} ขาด! เหลืออวัยวะ ${bittenPlayer.limbs} ชิ้น. `;
-
             if (bittenPlayer.limbs <= 0) {
-                scriptPhase2 += `${bittenPlayer.name} อวัยวะหมดตัว ถูกฉลามกินและตกรอบไปแล้ว! `;
                 lineup = lineup.filter(id => id !== bittenId);
                 players = players.filter(p => p.id !== bittenId);
             } else {
-                scriptPhase2 += `${bittenPlayer.name} หนีตายขึ้นไปอยู่หน้าสุดของแถว และได้ไพ่ทั้งหมดกลับคืนขึ้นมือ. `;
                 lineup = lineup.filter(id => id !== bittenId);
                 lineup.unshift(bittenId);
             }
@@ -1439,14 +1425,11 @@
                     if (p.hand.length === 1) {
                         p.hand = p.hand.concat(p.playedCards);
                         p.playedCards = [];
-                        scriptPhase2 += `${p.name} เหลือไพ่ในมือใบเดียว จึงได้ไพ่กลับคืนขึ้นมือทั้งหมดตามกติกา. `;
                     }
                 }
                 p.chosenCard = null;
             });
 
-            // อัปเดตเฉพาะกล่องข้อความ (ไม่ส่งให้ ARIA อ่านซ้ำ)
-            updateGameLog(scriptPhase2, false); 
             await sleep(2000); 
             
             if (bittenPlayer.limbs <= 0) {
@@ -1467,10 +1450,7 @@
 
             await sleep(3600);
 
-            let scriptPhase3 = `สถานการณ์แถวปัจจุบัน จากหน้าสุดไปท้ายสุดคือ: ` + 
-                      lineup.map(id => players.find(p => p.id === id).name).join(', ') + `. `;
-
-            let myStillAlive = players.some(p => p.id === humanPlayer.id);
+            let isMyStillAlive = players.some(p => p.id === humanPlayer.id);
 
             if (players.length === 1) {
                 AudioSys.stop('bgm'); 
@@ -1485,38 +1465,32 @@
                 }
                 
                 if (isMyWin) {
-                    const randomMsg = VICTORY_MESSAGES[Math.floor(Math.random() * VICTORY_MESSAGES.length)];
-                    scriptPhase3 += randomMsg;
                     document.getElementById('turn-indicator').innerText = "🏆 จบเกม! คุณคือผู้ชนะ";
                     
                     handDiv.innerHTML = `
                         <div class="end-game-container">
-                            <div class="victory-text">${randomMsg}</div>
+                            <div class="victory-text">${randomVictoryMsg}</div>
                             <button class="start-btn" onclick="window.goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠 กลับสู่ชุมชน</button>
                         </div>
                     `;
                 } else {
-                    const failMsg = DEFEAT_MESSAGES[Math.floor(Math.random() * DEFEAT_MESSAGES.length)];
-                    scriptPhase3 += `จบเกม! ผู้ชนะคือ ${winner.name} รอดชีวิตเป็นคนสุดท้าย`;
                     document.getElementById('turn-indicator').innerText = `จบเกม! ${winner.name} เป็นผู้ชนะ`;
                     
                     handDiv.innerHTML = `
                         <div class="end-game-container">
                             <div style="font-size:3rem; margin-bottom:10px;">👻</div>
-                            <div class="defeat-text">${failMsg}</div>
+                            <div class="defeat-text">${randomDefeatMsg}</div>
                             <button class="start-btn" onclick="window.goHome()" aria-label="กลับสู่ชุมชน" style="max-width:200px;">🏠 กลับสู่ชุมชน</button>
                         </div>
                     `;
                 }
-            } else if (!myStillAlive) {
-                const failMsg = DEFEAT_MESSAGES[Math.floor(Math.random() * DEFEAT_MESSAGES.length)];
-                scriptPhase3 += `คุณถูกคัดออกแล้ว! สามารถกลับสู่หน้าแรกได้`;
+            } else if (!isMyStillAlive) {
                 document.getElementById('turn-indicator').innerText = `คุณถูกคัดออกแล้ว...`;
                 
                 handDiv.innerHTML = `
                     <div class="end-game-container">
                         <div style="font-size:3rem; margin-bottom:10px;">👻</div>
-                        <div class="defeat-text">${failMsg}</div>
+                        <div class="defeat-text">${randomDefeatMsg}</div>
                         <div class="action-row" style="max-width: 350px;">
                             <button class="start-btn" onclick="document.getElementById('player-hand').innerHTML = '';" style="margin:0; flex:1; background-color:#1e90ff;">👀 ดูต่อ</button>
                             <button class="start-btn" onclick="window.goHome()" aria-label="กลับสู่ชุมชน" style="margin:0; flex:1; background-color:#4a4e69;">🏠 กลับสู่ชุมชน</button>
@@ -1524,14 +1498,9 @@
                     </div>
                 `;
             } else {
-                scriptPhase3 += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
                 renderHand();
                 startTurnTimer(); 
             }
-
-            // ประกาศสถานะแถวเฉพาะแค่ตอนเริ่มรอบใหม่ (หลังแอนิเมชันจบแล้ว) เท่านั้น
-            updateGameLog(scriptPhase3, false);
-            speakAria(scriptPhase3);
         }
 
         function triggerConfetti() {
