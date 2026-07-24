@@ -336,6 +336,10 @@
         <div class="room-info-box">
             <p style="font-size:0.85rem; color:#b8c1ec;">รหัสห้องของคุณ:</p>
             <div id="display-room-id" style="font-size:2rem; font-weight:bold; color:var(--yellow); letter-spacing:2px; margin:5px 0;">shark00001</div>
+            
+            <!-- เพิ่มปุ่มสำหรับกดคัดลอกลิงก์ตรงๆ ได้ในห้องรอ -->
+            <button onclick="window.copyRoomLink(roomId, false)" style="background:#1e90ff; color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-weight:bold; margin-bottom:5px; font-size: 0.9rem; transition: 0.2s;" onmouseover="this.style.background='#00b4d8'" onmouseout="this.style.background='#1e90ff'">📋 คัดลอกลิงก์ชวนเพื่อน</button>
+            
             <p id="room-status-desc" style="font-size:0.85rem; color:#eaeaea; margin-top:5px;"></p>
         </div>
 
@@ -510,6 +514,41 @@
 
         let scannedRooms = {};
 
+        // --- ระบบคัดลอกลิงก์ปรับปรุงใหม่ ---
+        window.copyRoomLink = function(overrideRoomId, silentAlert = false) {
+            let targetRoom = overrideRoomId || roomId;
+            let shareUrl = window.location.origin + window.location.pathname + '?room=' + targetRoom;
+            
+            let successMsg = 'คัดลอกลิงก์ห้อง ' + targetRoom + ' เรียบร้อยแล้ว!\nนำไปส่งให้เพื่อนเพื่อเข้าห้องได้เลย';
+            
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                    if(!silentAlert) alert(successMsg);
+                }).catch(() => fallbackCopyTextToClipboard(shareUrl, successMsg, silentAlert));
+            } else {
+                fallbackCopyTextToClipboard(shareUrl, successMsg, silentAlert);
+            }
+            announce(`คัดลอกลิงก์ห้อง ${targetRoom} แล้ว`);
+        };
+
+        function fallbackCopyTextToClipboard(text, successMsg, silentAlert) {
+            let textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                if(!silentAlert) alert(successMsg);
+            } catch (err) {
+                alert('ไม่สามารถคัดลอกลิงก์อัตโนมัติได้ กรุณาคัดลอกลิงก์นี้ด้วยตนเอง:\n\n' + text);
+            }
+            document.body.removeChild(textArea);
+        }
+
         // Expose functions to window since we are inside a module
         window.goHome = function() {
             AudioSys.stop('bgm');
@@ -633,10 +672,17 @@
                 copyBtn.style.padding = '12px';
                 copyBtn.style.backgroundColor = '#4a4e69';
                 copyBtn.innerHTML = '📋 ลิงก์';
+                
+                // ปรับปรุงการกดคัดลอกจากหน้ารายการห้อง
                 copyBtn.onclick = () => {
-                    let shareUrl = window.location.origin + window.location.pathname + '?room=' + rId;
-                    navigator.clipboard.writeText(shareUrl).catch(() => {});
-                    announce(`คัดลอกลิงก์ห้อง ${rId} แล้ว`);
+                    window.copyRoomLink(rId, true); // true = ไม่บังคับเด้ง alert
+                    let originalText = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '✅ คัดลอกแล้ว';
+                    copyBtn.style.backgroundColor = '#32cd32';
+                    setTimeout(() => { 
+                        copyBtn.innerHTML = originalText; 
+                        copyBtn.style.backgroundColor = '#4a4e69';
+                    }, 2000);
                 };
 
                 wrapper.appendChild(btn);
@@ -688,8 +734,7 @@
                         updateWaitingRoomUI();
                         
                         // ทำการคัดลอกลิงก์ห้องลง Clipboard อัตโนมัติเมื่อ Host สร้างห้องสำเร็จ
-                        let shareUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
-                        navigator.clipboard.writeText(shareUrl).catch(() => {});
+                        window.copyRoomLink(roomId, true); 
                         announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${roomId} ได้คัดลอกลิงก์สำหรับชวนเพื่อนให้เรียบร้อยแล้ว`);
                         
                         listenHostConnections();
