@@ -516,7 +516,7 @@
         let currentAnnounceMessage = "";
 
         let turnTimer = null;
-        let turnTimeRemaining = 40; // ปรับเวลาเป็น 40 วินาที
+        let turnTimeRemaining = 40; // อัปเดต: เปลี่ยนเป็น 40 วินาที
         let consecutiveAfkCounts = {}; 
 
         let scannedRooms = {};
@@ -765,11 +765,6 @@
                     alert("เข้าห้องไม่ได้: " + data.reason);
                     location.reload();
                 }
-                if (data.type === 'KICKED_AFK') {
-                    alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ได้เลือกไพ่ในเวลาที่กำหนดครบ 3 ครั้ง ระบบได้เปลี่ยนคุณเป็นบอทแทนแล้ว");
-                    if (hostConnection) hostConnection.close();
-                    window.goHome();
-                }
                 if (data.type === 'LOBBY_UPDATE') {
                     roomPlayers = data.roomPlayers;
                     currentBotCount = data.botCount;
@@ -838,7 +833,7 @@
                     }
                 });
 
-                // การจัดการเมื่อมีผู้เล่นหลุดการเชื่อมต่อ
+                // อัปเดต: การจัดการเมื่อมีผู้เล่นหลุดการเชื่อมต่อ
                 conn.on('close', () => {
                     if (!isHost) return;
                     
@@ -1118,7 +1113,7 @@
 
         function startTurnTimer() {
             clearInterval(turnTimer);
-            turnTimeRemaining = 40; // ปรับเวลาเป็น 40 วินาที
+            turnTimeRemaining = 40; // อัปเดต: เปลี่ยนเป็น 40 วินาที
             
             turnTimer = setInterval(() => {
                 turnTimeRemaining--;
@@ -1129,75 +1124,45 @@
             }, 1000);
         }
 
-        // --- ระบบ Host Authoritative จัดการการหมดเวลา ---
         function handleAfkTimeout() {
-            if (isHost) {
-                // Host เป็นผู้จัดการเวลาให้ทุกคน หากครบกำหนด Host จะบังคับลงไพ่แทน
-                players.forEach(p => {
-                    if ((p.type === 'human' || p.type === 'remote') && p.limbs > 0 && p.chosenCard === null) {
-                        consecutiveAfkCounts[p.id] = (consecutiveAfkCounts[p.id] || 0) + 1;
-                        
-                        let autoCard = p.hand[0]; // เลือกไพ่ใบแรกให้
-                        
-                        if (consecutiveAfkCounts[p.id] >= 3) {
-                            p.type = 'bot'; // สลับผู้เล่นที่ไม่ตอบสนองครบ 3 ครั้งเป็นบอท
-                            p.name = `บอท ${p.colorInfo.name} (AFK)`;
-                            
-                            if (p.id === myPeerId) {
-                                // ถ้า Host ช้าเอง
-                                announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 3 ครั้ง ระบบจึงให้บอทเล่นแทนคุณ (กรุณาเปิดหน้านี้ทิ้งไว้เพื่อรักษาห้องให้เพื่อนเล่นต่อ)");
-                                document.getElementById('player-hand').innerHTML = '<div style="color:var(--yellow); text-align:center; padding:20px;">คุณถูกเปลี่ยนเป็นบอทเนื่องจากไม่ตอบสนอง (AFK)<br><br><button class="start-btn" onclick="window.goHome()" style="background:#ff4d4d;">ยุบห้องและกลับสู่ชุมชน</button></div>';
-                            } else {
-                                // ถ้าคนอื่นช้า
-                                announce(`ผู้เล่น ${p.colorInfo.name} ไม่ตอบสนองครบ 3 ครั้ง ถูกระบบสลับเป็นบอทแล้ว`);
-                                let conn = guestConnections.find(c => c.peer === p.id);
-                                if (conn && conn.open) {
-                                    conn.send({ type: 'KICKED_AFK' });
-                                    setTimeout(() => conn.close(), 500);
-                                }
-                            }
-                        } else {
-                            if (p.id === myPeerId) {
-                                announce(`คุณหมดเวลาในตานี้ ระบบเลือกลงไพ่ ${autoCard} ให้อัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[p.id]}/2)`);
-                            }
-                        }
-                        
-                        // บังคับลงไพ่
-                        p.chosenCard = autoCard;
-                        p.hand = p.hand.filter(v => v !== autoCard);
-                    }
-                });
-
-                // ประมวลผลเกมต่อได้ทันที เพราะ Host จัดการไพ่ให้คนที่ค้าง/หลุดครบทุกคนแล้ว
-                let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
-                if (allHumansChosen) {
-                    players.filter(pl => pl.type === 'bot').forEach(bot => {
-                        if (bot.chosenCard === null) {
-                            let posIndex = lineup.indexOf(bot.id);
-                            bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                            bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                        }
-                    });
-                    let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
-                    executeResolveRound(roundData);
-                }
-            } else {
-                // ฝั่ง Guest
-                if (humanPlayer && humanPlayer.limbs > 0 && humanPlayer.chosenCard === null) {
-                    consecutiveAfkCounts[myPeerId] = (consecutiveAfkCounts[myPeerId] || 0) + 1;
+            if (!humanPlayer || humanPlayer.limbs <= 0) return;
+            
+            let pId = humanPlayer.id;
+            consecutiveAfkCounts[pId] = (consecutiveAfkCounts[pId] || 0) + 1;
+            
+            // อัปเดต: จัดการ AFK ครบ 3 ครั้ง ให้เปลี่ยนเป็นบอทและตัดการเชื่อมต่อ
+            if (consecutiveAfkCounts[pId] >= 3) {
+                if (isHost) {
+                    announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 3 ครั้ง ระบบจึงให้บอทเล่นแทนคุณ (แต่คุณยังต้องเปิดหน้าเว็บไว้เพื่อรักษาห้อง)");
+                    humanPlayer.type = 'bot';
+                    humanPlayer.name = `บอท ${humanPlayer.colorInfo.name} (แทน Host)`;
+                    document.getElementById('player-hand').innerHTML = '<div style="color:var(--yellow); text-align:center; padding:20px;">คุณถูกเปลี่ยนเป็นบอทเนื่องจาก AFK<br><br><button class="start-btn" onclick="window.goHome()" style="background:#ff4d4d;">ยุบห้องและกลับสู่ชุมชน</button></div>';
                     
-                    if (consecutiveAfkCounts[myPeerId] < 3) {
-                        let autoCard = humanPlayer.hand[0];
-                        announce(`คุณหมดเวลาในตานี้ ระบบกำลังเลือกลงไพ่ ${autoCard} ให้อัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[myPeerId]}/2)`);
-                        playTurn(autoCard); 
-                    } else {
-                        // หากครบ 3 ครั้ง หน้าจอของ Guest จะแค่ตัดการควบคุมและรอคำสั่ง KICKED_AFK จาก Host
-                        const cards = document.querySelectorAll('.card');
-                        cards.forEach(c => c.disabled = true);
+                    let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
+                    if (allHumansChosen) {
+                        players.filter(pl => pl.type === 'bot').forEach(bot => {
+                            if (bot.chosenCard === null) {
+                                let posIndex = lineup.indexOf(bot.id);
+                                bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
+                                bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
+                            }
+                        });
+                        let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
+                        broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
+                        executeResolveRound(roundData);
                     }
+                } else {
+                    announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 3 ครั้ง ถูกตัดการเชื่อมต่อและเปลี่ยนเป็นบอทแล้ว!");
+                    alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ตอบสนองภายในเวลาที่กำหนด ระบบได้เปลี่ยนให้บอทเล่นแทนคุณแล้ว");
+                    if (hostConnection) hostConnection.close();
+                    window.goHome();
                 }
+                return;
             }
+
+            let autoCard = humanPlayer.hand[0];
+            announce(`คุณหมดเวลาในตานี้ ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[pId]}/2)`);
+            playTurn(autoCard);
         }
 
         function updateVisualBoard() {
@@ -1295,7 +1260,6 @@
 
         async function playTurn(humanCardVal) {
             clearInterval(turnTimer); 
-            // รีเซ็ตตัวนับการ AFK เฉพาะเวลาเลือกด้วยตัวเองเสร็จ
             consecutiveAfkCounts[humanPlayer.id] = 0; 
 
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.ctx.resume();
@@ -1318,15 +1282,6 @@
         let receivedActions = {};
         function handlePlayerAction(playerId, cardVal) {
             let p = players.find(x => x.id === playerId);
-            
-            // ป้องกันกรณีที่ผู้เล่นกลายเป็นบอทไปแล้ว แต่ยังมีการส่งข้อมูลเก่าตกค้างมา
-            if (p && p.type === 'bot') return;
-
-            // ฝั่ง Host จะรีเซ็ตการนับ AFK เมื่อผู้เล่นส่งคำสั่งสำเร็จ
-            if (isHost) {
-                consecutiveAfkCounts[playerId] = 0;
-            }
-
             if (p) p.chosenCard = cardVal;
             if (p && p.hand) p.hand = p.hand.filter(v => v !== cardVal);
 
@@ -1334,6 +1289,7 @@
 
             let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
             
+            // อัปเดต: เพิ่มเช็ค if (bot.chosenCard === null) ป้องกันการสุ่มไพ่ทับคนเล่นที่เพิ่งหลุด/เป็นบอทหลังจากลงไพ่ไปแล้ว
             if (allHumansChosen) {
                 players.filter(pl => pl.type === 'bot').forEach(bot => {
                     if (bot.chosenCard === null) {
