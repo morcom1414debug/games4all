@@ -517,7 +517,6 @@
 
         let turnTimer = null;
         let turnTimeRemaining = 24;
-        let hostResponseTimer = null; // ตัวแปรเก็บ Timer รอผลเฉลยรอบจาก Host (Grace Period 10s)
 
         let scannedRooms = {};
 
@@ -595,14 +594,6 @@
         function announce(message, clearLog = false) {
             speakAria(message);
             updateGameLog(message, clearLog);
-        }
-
-        // ฟังก์ชันจัดการแจ้งเตือนเมื่อ Host ขาดการเชื่อมต่อหรือเน็ตหลุด
-        function handleHostDisconnected() {
-            clearTimeout(hostResponseTimer);
-            announce("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
-            alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
-            location.reload();
         }
         // ------------------------------------------------
 
@@ -792,17 +783,13 @@
                     startOnlineGamePlay(data.gameData);
                 }
                 if (data.type === 'RESOLVE_ROUND') {
-                    clearTimeout(hostResponseTimer); // Host ตอบกลับทันเวลา ยกเลิก Timer สำรองทันที
                     executeResolveRound(data.roundData);
                 }
             });
 
             hostConnection.on('close', () => {
-                handleHostDisconnected();
-            });
-
-            hostConnection.on('error', () => {
-                handleHostDisconnected();
+                alert("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
+                location.reload();
             });
         }
 
@@ -1104,8 +1091,7 @@
 
         function startTurnTimer() {
             clearInterval(turnTimer);
-            clearTimeout(hostResponseTimer); // ล้าง Timer สำรองทุกครั้งเมื่อเริ่มรอบใหม่
-            turnTimeRemaining = 24; // กำหนดเวลาสำหรับแต่ละรอบเป็น 24 วินาที
+            turnTimeRemaining = 24; // เปลี่ยนเป็น 24 ตามตกลง
             
             // ระบบตรวจสอบของ Host (Fallback) สำหรับกรณีผู้เล่นหลุดหรือค้าง
             if (isHost) {
@@ -1144,7 +1130,7 @@
         function handleAfkTimeout() {
             if (!humanPlayer || humanPlayer.limbs <= 0 || humanPlayer.type === 'bot') return;
             
-            // เมื่อเวลาหมด ฝั่ง Client จะสุ่มไพ่อัตโนมัติและส่งให้ Host
+            // เมื่อเวลาหมด ฝั่ง Client จะสุ่มไพ่อัตโนมัติและส่งให้ Host ตามระบบเดิม
             let hand = humanPlayer.hand;
             let autoCard = hand[Math.floor(Math.random() * hand.length)];
             announce(`คุณหมดเวลาในตานี้ ระบบสุ่มไพ่ ${autoCard} ให้โดยอัตโนมัติ`);
@@ -1260,15 +1246,7 @@
             if (isHost) {
                 handlePlayerAction(humanPlayer.id, humanCardVal);
             } else {
-                // 1. ส่งไพ่ไปหา Host
                 hostConnection.send({ type: 'PLAYER_ACTION', playerId: humanPlayer.id, cardVal: humanCardVal });
-
-                // 2. เริ่มนับเวลาสำรอง 10 วินาที (Grace Period) รอผลลัพธ์จาก Host
-                clearTimeout(hostResponseTimer);
-                hostResponseTimer = setTimeout(() => {
-                    // ถ้าครบ 10 วินาทีหลังจากเลือกไพ่แล้ว Host ยังไม่ส่ง RESOLVE_ROUND มา ถือว่า Host หลุด
-                    handleHostDisconnected();
-                }, 10000); // 10 วินาที
             }
         }
 
