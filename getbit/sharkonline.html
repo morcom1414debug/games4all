@@ -515,10 +515,8 @@
         let announceLock = false;
         let currentAnnounceMessage = "";
 
-        // ปรับเวลาเป็น 30 วินาที
         let turnTimer = null;
-        let turnTimeRemaining = 30;
-        let consecutiveAfkCounts = {}; 
+        let turnTimeRemaining = 24;
 
         let scannedRooms = {};
 
@@ -766,14 +764,6 @@
                     alert("เข้าห้องไม่ได้: " + data.reason);
                     location.reload();
                 }
-                
-                // รับ Event บังคับเตะออกเมื่อ AFK ครบ 3 ครั้งจาก Host
-                if (data.type === 'KICKED_AFK') {
-                    alert("คุณถูกเตะออกจากเกมเนื่องจากไม่ได้เลือกไพ่ในเวลาที่กำหนดครบ 3 ครั้ง ระบบได้เปลี่ยนคุณเป็นบอทแทนแล้ว");
-                    if (hostConnection) hostConnection.close();
-                    window.goHome();
-                }
-
                 if (data.type === 'LOBBY_UPDATE') {
                     roomPlayers = data.roomPlayers;
                     currentBotCount = data.botCount;
@@ -844,40 +834,14 @@
 
                 conn.on('close', () => {
                     if (!isHost) return;
+                    roomPlayers = roomPlayers.filter(p => p.id !== conn.peer);
+                    guestConnections = guestConnections.filter(c => c.peer !== conn.peer);
                     
-                    // จัดการกรณีปิดเว็บหนีหรือหลุดการเชื่อมต่อกลางเกมส์
-                    if (roomState === 'IN_GAME') {
-                        let disconnectedPlayer = players.find(p => p.id === conn.peer);
-                        if (disconnectedPlayer && disconnectedPlayer.type !== 'bot') {
-                            disconnectedPlayer.type = 'bot';
-                            disconnectedPlayer.name = `บอท ${disconnectedPlayer.colorInfo.name} (หลุด)`;
-                            announce(`ผู้เล่น ${disconnectedPlayer.colorInfo.name} หลุดจากเกม ระบบเปลี่ยนให้บอทเล่นแทนแล้ว`);
-                            
-                            // ตรวจสอบความพร้อมและเดินเกมต่อได้ทันทีหากทุกคนเลือกไพ่ครบแล้ว
-                            let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
-                            if (allHumansChosen) {
-                                players.filter(pl => pl.type === 'bot').forEach(bot => {
-                                    if (bot.chosenCard === null) {
-                                        let posIndex = lineup.indexOf(bot.id);
-                                        bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                                        bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                                    }
-                                });
-                                let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                                broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
-                                executeResolveRound(roundData);
-                            }
-                        }
-                    } else {
-                        roomPlayers = roomPlayers.filter(p => p.id !== conn.peer);
-                        guestConnections = guestConnections.filter(c => c.peer !== conn.peer);
-                        
-                        checkAndReassignHost();
-                        updateFirebaseRoomCount(); 
+                    checkAndReassignHost();
+                    updateFirebaseRoomCount(); // อัปเดตยอดผู้เล่นหลังคนออกบน Firebase
 
-                        broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
-                        updateWaitingRoomUI();
-                    }
+                    broadcastToAll({ type: 'LOBBY_UPDATE', roomPlayers: roomPlayers, botCount: currentBotCount, botColors: botColors, msg: 'มีผู้เล่นออกจากห้อง' });
+                    updateWaitingRoomUI();
                 });
             });
         }
@@ -1122,7 +1086,7 @@
 
         function startTurnTimer() {
             clearInterval(turnTimer);
-            turnTimeRemaining = 30; // ปรับลดเวลาเลือกไพ่เหลือ 30 วินาที
+            turnTimeRemaining = 24;
             
             turnTimer = setInterval(() => {
                 turnTimeRemaining--;
@@ -1133,71 +1097,45 @@
             }, 1000);
         }
 
-        // --- ระบบ Host จัดการเวลาและควบคุมการแปลงร่างเป็นบอทแบบเด็ดขาด ---
         function handleAfkTimeout() {
-            if (isHost) {
-                // Host ตรวจสอบผู้เล่นทุกคนที่ยังไม่เลือกไพ่เมื่อหมดเวลา 30 วินาที
-                players.forEach(p => {
-                    if ((p.type === 'human' || p.type === 'remote') && p.limbs > 0 && p.chosenCard === null) {
-                        consecutiveAfkCounts[p.id] = (consecutiveAfkCounts[p.id] || 0) + 1;
-                        
-                        if (consecutiveAfkCounts[p.id] >= 3) {
-                            // ครบ 3 ครั้ง: เปลี่ยนเป็นบอททันที
-                            p.type = 'bot';
-                            p.name = `บอท ${p.colorInfo.name} (AFK)`;
-                            
-                            if (p.id === myPeerId) {
-                                announce("คุณไม่ได้เลือกไพ่ติดต่อกัน 3 ครั้ง ระบบจึงให้บอทเล่นแทนคุณ");
-                                document.getElementById('player-hand').innerHTML = '<div style="color:var(--yellow); text-align:center; padding:20px;">คุณถูกเปลี่ยนเป็นบอทเนื่องจากไม่ตอบสนอง (AFK)<br><br><button class="start-btn" onclick="window.goHome()" style="background:#ff4d4d;">ยุบห้องและกลับสู่ชุมชน</button></div>';
-                            } else {
-                                announce(`ผู้เล่น ${p.colorInfo.name} ไม่ตอบสนองครบ 3 ครั้ง ถูกระบบสลับเป็นบอทแล้ว`);
-                                let conn = guestConnections.find(c => c.peer === p.id);
-                                if (conn && conn.open) {
-                                    conn.send({ type: 'KICKED_AFK' });
-                                    setTimeout(() => conn.close(), 500);
-                                }
-                            }
-                        }
+            // ปิดไพ่ไม่ให้ผู้เล่นกดได้อีกเมื่อหมดเวลา
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(c => c.disabled = true);
 
-                        // บังคับเลือกไพ่ใบแรกให้ เพื่อให้เกมเดินหน้าต่อได้ทันที
-                        let autoCard = p.hand[0];
-                        p.chosenCard = autoCard;
-                        p.hand = p.hand.filter(v => v !== autoCard);
-                        
-                        if (p.id === myPeerId && p.type !== 'bot') {
-                            announce(`หมดเวลา! ระบบเลือกลงไพ่ ${autoCard} ให้อัตโนมัติ (ครั้งที่ ${consecutiveAfkCounts[p.id]}/3)`);
-                        }
-                    }
+            if (!isHost) {
+                if (humanPlayer && humanPlayer.chosenCard === null && humanPlayer.limbs > 0) {
+                    announce("หมดเวลา! รอระบบดำเนินการแทนคุณ...");
+                }
+                return;
+            }
+
+            // --- ส่วนของ Host จัดการคนหลุด/หมดเวลา ---
+            let missingPlayers = players.filter(pl => pl.type !== 'bot' && pl.chosenCard === null && pl.limbs > 0);
+            
+            if (missingPlayers.length > 0) {
+                missingPlayers.forEach(p => {
+                    p.type = 'bot'; // แปลงร่างเป็นบอทถาวร
+                    let autoCard = p.hand[0]; // สุ่มเลือกไพ่ใบแรกจากมือตามสั่ง
+                    p.chosenCard = autoCard;
+                    p.hand = p.hand.filter(v => v !== autoCard);
+                    announce(`ผู้เล่น ${p.name} ไม่ตอบสนอง ถูกแปลงเป็นบอทและลงไพ่ให้อัตโนมัติ`);
+                });
+            }
+            
+            // ตรวจสอบว่าทุกคน(มนุษย์ที่เหลือ) เลือกไพ่ครบแล้วหรือยัง
+            let allHumansChosen = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0).every(pl => pl.chosenCard !== null);
+            
+            if (allHumansChosen) {
+                // ให้บอทเดิมในเกมเลือกไพ่
+                players.filter(pl => pl.type === 'bot' && pl.chosenCard === null && pl.limbs > 0).forEach(bot => {
+                    let posIndex = lineup.indexOf(bot.id);
+                    bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
+                    bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
                 });
 
-                // เมื่อ Host จัดการคนหมดเวลาเสร็จ เช็คว่าทุกคนเลือกครบหรือยังเพื่อเปิดไพ่
-                let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
-                if (allHumansChosen) {
-                    players.filter(pl => pl.type === 'bot').forEach(bot => {
-                        if (bot.chosenCard === null) {
-                            let posIndex = lineup.indexOf(bot.id);
-                            bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                            bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                        }
-                    });
-                    let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                    broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
-                    executeResolveRound(roundData);
-                }
-            } else {
-                // ฝั่งผู้เล่นทั่วไป (Guest) หากหมดเวลา 30 วินาทีแล้วยังไม่กด ให้ส่งค่าใบแรกออกไปอัตโนมัติ
-                if (humanPlayer && humanPlayer.limbs > 0 && humanPlayer.chosenCard === null) {
-                    consecutiveAfkCounts[myPeerId] = (consecutiveAfkCounts[myPeerId] || 0) + 1;
-                    if (consecutiveAfkCounts[myPeerId] < 3) {
-                        let autoCard = humanPlayer.hand[0];
-                        announce(`หมดเวลา! ระบบเลือกไพ่ ${autoCard} ให้โดยอัตโนมัติ`);
-                        playTurn(autoCard);
-                    } else {
-                        // ปิดปุ่มรอรับสัญญาณ Kick จาก Host
-                        const cards = document.querySelectorAll('.card');
-                        cards.forEach(c => c.disabled = true);
-                    }
-                }
+                let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
+                broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
+                executeResolveRound(roundData);
             }
         }
 
@@ -1296,7 +1234,6 @@
 
         async function playTurn(humanCardVal) {
             clearInterval(turnTimer); 
-            consecutiveAfkCounts[humanPlayer.id] = 0; 
 
             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.ctx.resume();
             AudioSys.stop('swim'); 
@@ -1318,12 +1255,6 @@
         let receivedActions = {};
         function handlePlayerAction(playerId, cardVal) {
             let p = players.find(x => x.id === playerId);
-            if (p && p.type === 'bot') return; // ป้องกันบอทถูกทับข้อมูลจากการส่งช้า
-
-            if (isHost) {
-                consecutiveAfkCounts[playerId] = 0; // รีเซ็ตการนับ AFK เมื่อ Host ได้รับข้อมูลจากผู้เล่น
-            }
-
             if (p) p.chosenCard = cardVal;
             if (p && p.hand) p.hand = p.hand.filter(v => v !== cardVal);
 
@@ -1333,11 +1264,9 @@
             
             if (allHumansChosen) {
                 players.filter(pl => pl.type === 'bot').forEach(bot => {
-                    if (bot.chosenCard === null) {
-                        let posIndex = lineup.indexOf(bot.id);
-                        bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                        bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                    }
+                    let posIndex = lineup.indexOf(bot.id);
+                    bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
+                    bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
                 });
 
                 let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
@@ -1352,7 +1281,13 @@
             if (roundData) {
                 roundData.forEach(rd => {
                     let pl = players.find(x => x.id === rd.id);
-                    if (pl) pl.chosenCard = rd.chosenCard;
+                    if (pl) {
+                        pl.chosenCard = rd.chosenCard;
+                        // ป้องกันปัญหาไพ่ในมือไม่ตรงกันกรณีที่ผู้เล่นหลุด/กลายเป็นบอท
+                        if (pl.hand && pl.hand.includes(rd.chosenCard)) {
+                            pl.hand = pl.hand.filter(v => v !== rd.chosenCard);
+                        }
+                    }
                 });
             }
 
