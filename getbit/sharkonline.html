@@ -1046,8 +1046,13 @@
             
             announce(startMsg, true);
             updateVisualBoard();
-            renderHand();
-            startTurnTimer();
+            
+            if (humanPlayer && humanPlayer.type !== 'bot') {
+                renderHand();
+                startTurnTimer();
+            } else {
+                document.getElementById('player-hand').innerHTML = '<div style="color:var(--yellow); font-size: 1.2rem; margin: 20px;">🤖 คุณอยู่ในโหมดบอท (นั่งดูเกม)</div>';
+            }
         }
 
         async function runCountdownAnimation() {
@@ -1086,8 +1091,33 @@
 
         function startTurnTimer() {
             clearInterval(turnTimer);
-            turnTimeRemaining = 24;
+            turnTimeRemaining = 24; // เปลี่ยนเป็น 24 ตามตกลง
             
+            // ระบบตรวจสอบของ Host (Fallback) สำหรับกรณีผู้เล่นหลุดหรือค้าง
+            if (isHost) {
+                clearTimeout(window.hostFallbackTimer);
+                window.hostFallbackTimer = setTimeout(() => {
+                    let missing = players.filter(p => p.type !== 'bot' && p.chosenCard === null && p.limbs > 0);
+                    if (missing.length > 0) {
+                        missing.forEach(p => {
+                            p.type = 'bot'; // แปลงเป็นบอททันที
+                            if (!p.name.includes('(Bot)')) p.name += ' (Bot)';
+                            
+                            let posIndex = lineup.indexOf(p.id);
+                            p.chosenCard = getBotCard(p, posIndex, lineup.length);
+                            p.hand = p.hand.filter(v => v !== p.chosenCard);
+                            
+                            updateGameLog(`⚠️ ${p.name} ขาดการเชื่อมต่อ/หมดเวลา ถูกเปลี่ยนสถานะเป็นบอทอัตโนมัติ`);
+                        });
+                        
+                        // บังคับเริ่มกระบวนการเช็กและเปิดไพ่
+                        let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard, type: pl.type }));
+                        broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
+                        executeResolveRound(roundData);
+                    }
+                }, 26000); // 24 วิ + 2 วิ เผื่อเวลาเน็ตหน่วง
+            }
+
             turnTimer = setInterval(() => {
                 turnTimeRemaining--;
                 if (turnTimeRemaining <= 0) {
@@ -1098,45 +1128,13 @@
         }
 
         function handleAfkTimeout() {
-            // ปิดไพ่ไม่ให้ผู้เล่นกดได้อีกเมื่อหมดเวลา
-            const cards = document.querySelectorAll('.card');
-            cards.forEach(c => c.disabled = true);
-
-            if (!isHost) {
-                if (humanPlayer && humanPlayer.chosenCard === null && humanPlayer.limbs > 0) {
-                    announce("หมดเวลา! รอระบบดำเนินการแทนคุณ...");
-                }
-                return;
-            }
-
-            // --- ส่วนของ Host จัดการคนหลุด/หมดเวลา ---
-            let missingPlayers = players.filter(pl => pl.type !== 'bot' && pl.chosenCard === null && pl.limbs > 0);
+            if (!humanPlayer || humanPlayer.limbs <= 0 || humanPlayer.type === 'bot') return;
             
-            if (missingPlayers.length > 0) {
-                missingPlayers.forEach(p => {
-                    p.type = 'bot'; // แปลงร่างเป็นบอทถาวร
-                    let autoCard = p.hand[0]; // สุ่มเลือกไพ่ใบแรกจากมือตามสั่ง
-                    p.chosenCard = autoCard;
-                    p.hand = p.hand.filter(v => v !== autoCard);
-                    announce(`ผู้เล่น ${p.name} ไม่ตอบสนอง ถูกแปลงเป็นบอทและลงไพ่ให้อัตโนมัติ`);
-                });
-            }
-            
-            // ตรวจสอบว่าทุกคน(มนุษย์ที่เหลือ) เลือกไพ่ครบแล้วหรือยัง
-            let allHumansChosen = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0).every(pl => pl.chosenCard !== null);
-            
-            if (allHumansChosen) {
-                // ให้บอทเดิมในเกมเลือกไพ่
-                players.filter(pl => pl.type === 'bot' && pl.chosenCard === null && pl.limbs > 0).forEach(bot => {
-                    let posIndex = lineup.indexOf(bot.id);
-                    bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                    bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
-                });
-
-                let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
-                broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
-                executeResolveRound(roundData);
-            }
+            // เมื่อเวลาหมด ฝั่ง Client จะสุ่มไพ่อัตโนมัติและส่งให้ Host ตามระบบเดิม
+            let hand = humanPlayer.hand;
+            let autoCard = hand[Math.floor(Math.random() * hand.length)];
+            announce(`คุณหมดเวลาในตานี้ ระบบสุ่มไพ่ ${autoCard} ให้โดยอัตโนมัติ`);
+            playTurn(autoCard);
         }
 
         function updateVisualBoard() {
@@ -1191,7 +1189,7 @@
             handDiv.innerHTML = '';
             handDiv.className = 'hand-container player-hand-grid'; 
             
-            if (!humanPlayer || humanPlayer.hand.length === 0) return;
+            if (!humanPlayer || humanPlayer.type === 'bot' || humanPlayer.hand.length === 0) return;
 
             humanPlayer.hand.forEach(val => {
                 const card = document.createElement('button');
@@ -1255,21 +1253,27 @@
         let receivedActions = {};
         function handlePlayerAction(playerId, cardVal) {
             let p = players.find(x => x.id === playerId);
-            if (p) p.chosenCard = cardVal;
-            if (p && p.hand) p.hand = p.hand.filter(v => v !== cardVal);
+            if (p) {
+                p.chosenCard = cardVal;
+                if (p.hand) p.hand = p.hand.filter(v => v !== cardVal);
+            }
 
             receivedActions[playerId] = cardVal;
 
-            let allHumansChosen = players.filter(pl => pl.type !== 'bot').every(pl => pl.chosenCard !== null);
+            let allHumansChosen = players.filter(pl => pl.type !== 'bot' && pl.limbs > 0).every(pl => pl.chosenCard !== null);
             
             if (allHumansChosen) {
-                players.filter(pl => pl.type === 'bot').forEach(bot => {
-                    let posIndex = lineup.indexOf(bot.id);
-                    bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
-                    bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
+                if (isHost) clearTimeout(window.hostFallbackTimer); // ล้างเวลาเช็กบอทของ Host เมื่อทุกคนเล่นครบ
+
+                players.filter(pl => pl.type === 'bot' && pl.limbs > 0).forEach(bot => {
+                    if (bot.chosenCard === null) {
+                        let posIndex = lineup.indexOf(bot.id);
+                        bot.chosenCard = getBotCard(bot, posIndex, lineup.length);
+                        bot.hand = bot.hand.filter(v => v !== bot.chosenCard);
+                    }
                 });
 
-                let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard }));
+                let roundData = players.map(pl => ({ id: pl.id, chosenCard: pl.chosenCard, type: pl.type }));
                 if (isHost) {
                     broadcastToAll({ type: 'RESOLVE_ROUND', roundData: roundData });
                     executeResolveRound(roundData);
@@ -1283,9 +1287,13 @@
                     let pl = players.find(x => x.id === rd.id);
                     if (pl) {
                         pl.chosenCard = rd.chosenCard;
-                        // ป้องกันปัญหาไพ่ในมือไม่ตรงกันกรณีที่ผู้เล่นหลุด/กลายเป็นบอท
-                        if (pl.hand && pl.hand.includes(rd.chosenCard)) {
-                            pl.hand = pl.hand.filter(v => v !== rd.chosenCard);
+                        // ซิงค์สถานะ Bot Conversion ของ Host กลับมายังลูกข่ายทุกคน
+                        if (rd.type === 'bot' && pl.type !== 'bot') {
+                            pl.type = 'bot';
+                            if (!pl.name.includes('(Bot)')) pl.name += ' (Bot)';
+                            if (pl.id === myPeerId) {
+                                announce("คุณขาดการเชื่อมต่อหรือหมดเวลา จึงถูกเปลี่ยนเป็นโหมดบอทอัตโนมัติ");
+                            }
                         }
                     }
                 });
@@ -1578,9 +1586,14 @@
                     </div>
                 `;
             } else {
-                scriptPhase3 += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
-                renderHand();
-                startTurnTimer(); 
+                if (humanPlayer && humanPlayer.type !== 'bot') {
+                    scriptPhase3 += `ถึงตาคุณแล้ว เลือกลงไพ่ใบต่อไปได้เลย`;
+                    renderHand();
+                    startTurnTimer(); 
+                } else if (humanPlayer && humanPlayer.type === 'bot') {
+                    scriptPhase3 += `คุณอยู่ในโหมดบอท ระบบจะเล่นให้อัตโนมัติ`;
+                    handDiv.innerHTML = '<div style="color:var(--yellow); font-size: 1.2rem; margin: 20px;">🤖 คุณอยู่ในโหมดบอท (นั่งดูเกม)</div>';
+                }
             }
 
             // ประกาศสถานะแถวเฉพาะแค่ตอนเริ่มรอบใหม่ (หลังแอนิเมชันจบแล้ว) เท่านั้น
