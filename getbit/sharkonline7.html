@@ -180,6 +180,195 @@
         .leg-left { bottom: -6px; left: 10px; transform: rotate(10deg); }
         .leg-right { bottom: -6px; right: 10px; transform: rotate(-10deg); }
         
+        .bandaid { displayได้รับทราบแผนการปรับปรุงเรียบร้อยครับ การใช้ Error View เต็มหน้า (Full Page) แทน Modal คือทางออกที่ดีที่สุดสำหรับแก้ปัญหาใน iOS และตอบโจทย์ด้าน Accessibility (SC) ได้อย่างสมบูรณ์แบบครับ
+
+ผมได้ดำเนินการปรับปรุงโค้ดตามที่คุณระบุ **โดยแก้ไขเฉพาะส่วนจัดการเมื่อ Host หลุดเท่านั้น** ส่วนอื่นๆ ยังคงโครงสร้างและการทำงานเดิมไว้ 100% ครับ
+
+นี่คือโค้ดทั้งหมดที่ปรับปรุงเสร็จสมบูรณ์ สามารถนำไปใช้งานได้ทันทีครับ:
+
+```html
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Bit! Online</title>
+    <script src="[https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js](https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js)"></script>
+    <style>
+        :root {
+            --red: #ff4d4d; --yellow: #ffd700; --green: #32cd32;
+            --blue: #1e90ff; --pink: #ff69b4; --orange: #ff8c00;
+            --bg: #1a1a2e; --text: #eaeaea;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 10px; text-align: center; overflow-x: hidden;
+            background: radial-gradient(circle at bottom, #0f3460, #1a1a2e);
+        }
+        
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0;
+            margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
+            white-space: nowrap;
+        }
+
+        /* --- เอฟเฟกต์ฟองอากาศพื้นหลัง --- */
+        .bubbles-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 0; overflow: hidden;
+        }
+        .bubble {
+            position: absolute; bottom: -20px; background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%; animation: floatUp linear infinite;
+        }
+        @keyframes floatUp {
+            to { transform: translateY(-120vh) translateX(20px); opacity: 0; }
+        }
+
+        /* --- หน้า Setup & Lobby --- */
+        #setup-screen, #waiting-room-screen {
+            position: relative; z-index: 2;
+            display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+            max-width: 500px; width: 100%; max-height: 95vh; padding: 25px 20px 20px 20px;
+            background: rgba(22, 33, 62, 0.9); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px); overflow-y: auto;
+        }
+        #waiting-room-screen { display: none; }
+
+        .home-btn-top {
+            position: absolute; top: 12px; left: 12px;
+            background: #4a4e69; color: white; border: none; border-radius: 6px;
+            padding: 8px 12px; font-size: 0.95rem; font-weight: bold; cursor: pointer; transition: 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none;
+        }
+        .home-btn-top:hover, .home-btn-top:focus { background: #9a8c98; outline: 3px solid #ffd700; }
+
+        h1 { font-size: 1.5rem; margin-bottom: 10px; margin-top: 10px; }
+        .setup-section-title { font-size: 1rem; margin: 15px 0 8px 0; color: #b8c1ec; text-align: left; width: 100%; }
+
+        /* ปุ่มสร้างห้องใหญ่ตรงกลางหน้าแรก */
+        .main-create-btn {
+            width: 100%; padding: 18px; font-size: 1.25rem; font-weight: bold;
+            background: linear-gradient(135deg, #e94560, #ff6b81); color: white;
+            border: none; border-radius: 12px; cursor: pointer; margin: 15px 0;
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4); transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .main-create-btn:hover, .main-create-btn:focus {
+            transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233, 69, 96, 0.6);
+            outline: 3px solid #ffffff;
+        }
+
+        /* โซนรายการห้องหน้าแรก */
+        .room-list-box {
+            width: 100%; background: rgba(15, 52, 96, 0.8); border-radius: 8px;
+            padding: 12px; min-height: 120px; max-height: 200px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .room-item-btn {
+            width: 100%; padding: 12px 15px; background: #1f4068; color: white;
+            border: 2px solid #4a4e69; border-radius: 8px; cursor: pointer;
+            font-size: 1rem; font-weight: bold; display: flex; justify-content: space-between;
+            align-items: center; transition: 0.2s;
+        }
+        .room-item-btn:hover, .room-item-btn:focus {
+            background: #00b4d8; border-color: #ffffff; outline: none; transform: scale(1.02);
+        }
+        .no-room-text { color: #a0a0a0; font-size: 0.9rem; margin: auto; font-style: italic; }
+
+        .color-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+            width: 100%; margin-bottom: 10px;
+        }
+
+        .color-btn {
+            padding: 12px 5px; font-size: 0.9375rem; font-weight: bold; border: 2px solid transparent;
+            border-radius: 8px; cursor: pointer; color: white; text-shadow: 1px 1px 2px black;
+            transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .color-btn:hover:not(:disabled), .color-btn:focus:not(:disabled) { outline: none; border-color: #ffffff; transform: scale(1.05); }
+        .color-btn.selected { border-color: #ffffff; box-shadow: 0 0 10px #ffffff; }
+        .color-btn.disabled-color { opacity: 0.35; filter: grayscale(70%); cursor: not-allowed; }
+
+        .bot-counter-container {
+            display: flex; align-items: center; justify-content: center; gap: 15px;
+            margin: 10px 0; background: #0f3460; padding: 10px 20px; border-radius: 8px; width: 100%;
+        }
+
+        .counter-btn {
+            width: 48px; height: 48px; font-size: 1.375rem; font-weight: bold;
+            background: #4a4e69; color: white; border: none; border-radius: 8px;
+            cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        .counter-btn:hover, .counter-btn:focus { background: #9a8c98; outline: 3px solid #f2e9e4; }
+        .counter-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .bot-count-display { font-size: 1.125rem; font-weight: bold; min-width: 80px; }
+
+        .start-btn {
+            width: 100%; padding: 14px; font-size: 1.125rem; font-weight: bold;
+            background: #32cd32; color: white; border: none; border-radius: 8px;
+            cursor: pointer; margin-top: 15px; transition: 0.2s;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .start-btn:hover:not(:disabled), .start-btn:focus:not(:disabled) { background: #3cb371; outline: 3px solid #ffffff; box-shadow: 0 0 15px #32cd32;}
+        .start-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .room-info-box {
+            background: #0f3460; padding: 12px; border-radius: 8px; width: 100%; margin-bottom: 10px;
+        }
+
+        /* --- หน้าเล่นเกม (Game Screen) --- */
+        #game-screen { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 800px; z-index: 2; position: relative;}
+        
+        .board-container {
+            display: flex; align-items: center; justify-content: flex-start;
+            background: rgba(22, 33, 62, 0.8); padding: 15px; border-radius: 10px;
+            margin: 10px 0; overflow-x: auto; width: 100%;
+            border: 2px solid transparent; transition: border-color 0.2s;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.5);
+        }
+        .board-container:focus { outline: none; border-color: #ffd700; }
+
+        /* --- Visual UI นักดำน้ำ & ฉลาม --- */
+        .swimmer {
+            width: 75px; height: 100px; margin: 0 5px; border-radius: 8px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            font-weight: bold; text-shadow: 1px 1px 2px black; font-size: 0.75rem;
+            position: relative; flex-shrink: 0;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        .chibi-diver {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative; width: 50px; height: 60px;
+        }
+        .diver-head {
+            width: 24px; height: 24px; background-color: currentColor; border-radius: 50%;
+            position: relative; z-index: 2; box-shadow: inset -3px -3px 5px rgba(0,0,0,0.3);
+        }
+        .diver-goggles {
+            width: 16px; height: 8px; background: #e0f7fa; border-radius: 4px;
+            position: absolute; top: 6px; left: 4px; border: 1px solid #333;
+        }
+        .diver-body {
+            width: 24px; height: 26px; background-color: currentColor; border-radius: 10px;
+            margin-top: -3px; z-index: 1; display: flex; justify-content: center; align-items: center;
+            box-shadow: inset -3px -3px 5px rgba(0,0,0,0.3);
+        }
+        .diver-limb {
+            width: 8px; height: 18px; background-color: currentColor; position: absolute;
+            border-radius: 4px; z-index: 0; transition: all 0.3s;
+        }
+        .arm-left { top: 22px; left: 4px; transform: rotate(25deg); }
+        .arm-right { top: 22px; right: 4px; transform: rotate(-25deg); }
+        .leg-left { bottom: -6px; left: 10px; transform: rotate(10deg); }
+        .leg-right { bottom: -6px; right: 10px; transform: rotate(-10deg); }
+        
         .bandaid { display: none; width: 10px; height: 10px; font-size: 8px; position: absolute; line-height: 10px; text-align: center; }
         
         .swim-to-front { animation: swimDash 0.8s ease-in-out forwards; }
@@ -297,27 +486,24 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; z-index: 9998; display: none;
         }
-        
-        /* --- Modal แจ้งเตือนเวลา Host หลุด --- */
-        #host-disconnect-modal {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(15, 52, 96, 0.95); z-index: 10000;
-            flex-direction: column; align-items: center; justify-content: center;
+
+        /* --- Error View (Host หลุด) --- */
+        #error-screen {
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            width: 100%; max-width: 500px; padding: 40px 20px; text-align: center;
+            background: rgba(22, 33, 62, 0.9); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px); z-index: 9999; position: relative;
         }
-        .modal-content {
-            background: rgba(22, 33, 62, 0.95); padding: 30px; border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.8); text-align: center; border: 2px solid #ff4d4d;
-            max-width: 400px; width: 90%;
+        .error-icon { font-size: 4rem; margin-bottom: 20px; }
+        .error-title { font-size: 1.75rem; color: #ff4d4d; margin-bottom: 10px; }
+        .error-description { font-size: 1rem; color: #eaeaea; margin-bottom: 30px; line-height: 1.5; }
+        .btn-home {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; padding: 14px; font-size: 1.125rem; font-weight: bold;
+            background: #1e90ff; color: white; border: none; border-radius: 8px;
+            cursor: pointer; text-decoration: none; transition: 0.2s;
         }
-        .modal-text {
-            font-size: 1.25rem; font-weight: bold; color: #ff4d4d; margin-bottom: 20px;
-        }
-        .modal-btn {
-            padding: 12px 24px; font-size: 1.1rem; font-weight: bold;
-            background: #4a4e69; color: white; border: none; border-radius: 8px;
-            cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 8px;
-        }
-        .modal-btn:hover { background: #9a8c98; outline: 3px solid #ffd700; }
+        .btn-home:hover, .btn-home:focus { background: #00b4d8; outline: 3px solid #ffffff; transform: translateY(-2px); }
     </style>
 </head>
 <body>
@@ -328,14 +514,6 @@
     <div id="countdown-overlay" aria-hidden="true">
         <div id="countdown-text" class="countdown-text"></div>
         <div id="ripple-container"></div>
-    </div>
-    
-    <!-- Modal แจ้งเตือนเมื่อ Host ขาดการเชื่อมต่อ -->
-    <div id="host-disconnect-modal" aria-hidden="true">
-        <div class="modal-content">
-            <div class="modal-text">การเชื่อมต่อกับเจ้าของห้องขาดหาย!</div>
-            <button class="modal-btn" onclick="window.location.href='../index.html'">🏠 กลับสู่ชุมชน</button>
-        </div>
     </div>
 
     <!-- หน้า Setup หลัก (หน้าแรก) -->
@@ -418,18 +596,35 @@
         </div>
     </div>
 
+    <!-- หน้า Error View เมื่อ Host หลุด -->
+    <div class="error-page-container" id="error-screen">
+        <div class="error-content">
+            <div class="error-icon" aria-hidden="true">🔌</div>
+            <h1 class="error-title">การเชื่อมต่อขาดหาย</h1>
+            <p class="error-description">
+                ไม่สามารถติดต่อกับเซิร์ฟเวอร์หลักได้ในขณะนี้<br>กรุณากลับสู่หน้าหลักเพื่อเริ่มใหม่อีกครั้ง
+            </p>
+        </div>
+        <div class="error-action">
+            <a href="../index.html" class="btn-home">
+                <span class="icon-home" aria-hidden="true">🏠</span>
+                <span>กลับสู่ชุมชน</span>
+            </a>
+        </div>
+    </div>
+
     <!-- กล่องประกาศ ARIA -->
     <div id="aria-announcer" aria-live="assertive" class="sr-only"></div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js)";
+        import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction, update } from "[https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js](https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js)";
 
         // --- ตั้งค่า Firebase ---
         const firebaseConfig = {
             apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
             authDomain: "xo-game-134ec.firebaseapp.com",
-            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+            databaseURL: "[https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app](https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app)",
             projectId: "xo-game-134ec",
             storageBucket: "xo-game-134ec.firebasestorage.app",
             messagingSenderId: "318375224157",
@@ -626,11 +821,22 @@
             updateGameLog(message, clearLog);
         }
 
-        // ฟังก์ชันจัดการแจ้งเตือนเมื่อ Host ขาดการเชื่อมต่อหรือเน็ตหลุด
+        // ฟังก์ชันจัดการแจ้งเตือนเมื่อ Host ขาดการเชื่อมต่อหรือเน็ตหลุด (ปรับปรุงใหม่ตาม Blueprint)
         function handleHostDisconnected() {
             clearTimeout(hostResponseTimer);
-            announce("การเชื่อมต่อกับเจ้าของห้องขาดหาย!");
-            document.getElementById('host-disconnect-modal').style.display = 'flex';
+            
+            // ซ่อนหน้าจอการเล่นหรือล็อบบี้ทั้งหมด
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('waiting-room-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'none';
+            
+            // แสดงหน้า Error แบบ Full Page ทันที
+            const errorScreen = document.getElementById('error-screen');
+            if (errorScreen) {
+                errorScreen.style.display = 'flex';
+                // ประกาศแจ้งเตือนสำหรับ Accessibility เพื่อให้ทราบสถานะว่าหลุดแล้ว
+                announce("การเชื่อมต่อขาดหาย ไม่สามารถติดต่อกับเซิร์ฟเวอร์หลักได้ กรุณากลับสู่หน้าหลักเพื่อเริ่มใหม่อีกครั้ง");
+            }
         }
         // ------------------------------------------------
 
