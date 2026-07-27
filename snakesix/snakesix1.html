@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnakeSix Online - บันไดงูป่วนมิติ</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --primary: #6c5ce7;
+            --secondary: #fdcb6e;
+            --bg: #f5f6fa;
+            --danger: #d63031;
+            --red: #ff4d4d; --yellow: #ffd700; --green: #32cd32;
+            --blue: #1e90ff; --pink: #ff69b4; --orange: #ff8c00;
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg); margin: 0; padding: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; white-space: nowrap; }
+        
+        .screen { width: 100vw; height: 100vh; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 10px; position: absolute; top: 0; left: 0; overflow-y: auto; overflow-x: hidden; }
+        .active-screen { display: flex; }
+
+        h2 { margin-top: 0; color: #2d3436; text-align: center; font-size: 1.5rem; }
+        h2:focus { outline: none; }
+        p { line-height: 1.6; color: #636e72; }
+        
+        .btn-main { background-color: var(--primary); color: #fff; border: none; padding: 12px 20px; font-size: 1.1rem; border-radius: 12px; cursor: pointer; font-weight: bold; transition: transform 0.2s, background-color 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 300px; text-align: center; text-decoration: none; margin-bottom: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;}
+        .btn-main:hover:not(:disabled) { background-color: #5b4cc4; transform: translateY(-2px); }
+        .btn-main:focus { outline: 4px solid var(--secondary); outline-offset: 4px; }
+        .btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .home-btn-hex { background-color: var(--primary); color: #fff; border: none; width: 50px; height: 50px; font-size: 1.5rem; cursor: pointer; transition: transform 0.2s, background-color 0.2s; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .home-btn-hex:hover { background-color: #5b4cc4; transform: scale(1.1); }
+        .pos-top-left { position: absolute; top: 15px; left: 15px; z-index: 100; }
+        .pos-top-right { position: absolute; top: 15px; right: 15px; z-index: 100; font-size: 1.1rem; font-weight: bold; }
+
+        .welcome-card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative;}
+
+        /* LOBBY UI */
+        .room-item { background-color: #dfe6e9; padding: 12px; border-radius: 8px; margin-bottom: 8px; cursor: pointer; font-weight: bold; color: #2d3436; transition: all 0.2s; border: 2px solid transparent; display: flex; justify-content: space-between; align-items: center;}
+        .room-item:hover { background-color: #b2bec3; border-color: var(--primary); }
+        
+        .color-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; margin: 10px 0; }
+        .color-btn { padding: 10px 5px; font-size: 0.9rem; font-weight: bold; border: 3px solid transparent; border-radius: 8px; cursor: pointer; color: white; text-shadow: 1px 1px 2px black; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+        .color-btn:hover:not(:disabled) { border-color: #333; transform: scale(1.05); }
+        .color-btn.selected { border-color: #333; box-shadow: 0 0 10px rgba(0,0,0,0.5); transform: scale(1.05);}
+        .color-btn:disabled { opacity: 0.3; filter: grayscale(80%); cursor: not-allowed; }
+
+        .bot-counter { display: flex; align-items: center; justify-content: center; gap: 15px; background: #dfe6e9; padding: 10px; border-radius: 8px; margin: 10px 0; }
+        .bot-counter button { width: 40px; height: 40px; font-size: 1.2rem; font-weight: bold; border-radius: 8px; border: none; background: var(--primary); color: white; cursor: pointer; }
+        .bot-counter button:hover { background: #5b4cc4; }
+
+        /* CARDS */
+        .cards-container { display: flex; gap: 10px; margin: 10px 0; justify-content: center; flex-wrap: wrap; width: 100%; min-height: 120px; }
+        .card { background: linear-gradient(135deg, #74b9ff, #0984e3); color: #fff; border-radius: 8px; padding: 10px; width: 100px; height: 130px; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 8px rgba(0,0,0,0.2); border: 2px solid #fff; text-align: center; font-size: 0.8rem; font-weight: bold; }
+        .card:hover:not(:disabled) { transform: translateY(-8px); box-shadow: 0 8px 15px rgba(0,0,0,0.3); }
+        .card:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(50%); transform: none; box-shadow: none;}
+        .card-mirror { background: linear-gradient(135deg, #a29bfe, #6c5ce7); border-color: #ffeaa7; }
+        .card-banana { background: linear-gradient(135deg, #ffeaa7, #fdcb6e); color: #2d3436; }
+        .card-swap { background: linear-gradient(135deg, #ff7675, #d63031); }
+
+        /* DICE */
+        .scene { width: 80px; height: 80px; perspective: 400px; margin: 10px auto; position: relative; }
+        .cube { width: 80px; height: 80px; position: relative; transform-style: preserve-3d; transform: rotateX(-22deg) rotateY(-45deg); transition: transform 0.5s ease-out; }
+        .cube-face { position: absolute; width: 80px; height: 80px; background: white; border: 2px solid #ccc; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: bold; color: #2d3436; box-shadow: inset 0 0 15px rgba(0,0,0,0.1); }
+        .face-1 { transform: rotateY(0deg) translateZ(40px); }
+        .face-2 { transform: rotateY(90deg) translateZ(40px); }
+        .face-3 { transform: rotateY(180deg) translateZ(40px); }
+        .face-4 { transform: rotateY(-90deg) translateZ(40px); }
+        .face-5 { transform: rotateX(90deg) translateZ(40px); }
+        .face-6 { transform: rotateX(-90deg) translateZ(40px); }
+        @keyframes rolling { 0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); } 100% { transform: rotateX(720deg) rotateY(1440deg) rotateZ(360deg); } }
+        .is-rolling { animation: rolling 0.8s linear infinite; }
+
+        /* BOARD */
+        .board-wrapper { width: 100%; max-width: 450px; aspect-ratio: 1/1; background-color: #fff; border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,0.15); display: grid; grid-template-columns: repeat(10, 10%); grid-template-rows: repeat(10, 10%); position: relative; border: 4px solid #2d3436; margin-top: 10px; }
+        .cell { border: 1px solid #dfe6e9; display: flex; flex-direction: column; justify-content: space-between; padding: 2px; font-size: 0.65rem; font-weight: bold; position: relative; color: rgba(0,0,0,0.4); }
+        .cell-light { background-color: #f7f1e3; }
+        .cell-dark { background-color: #d1ccc0; }
+        
+        .cell-special { background: linear-gradient(135deg, #ffeaa7 0%, #ffb142 100%) !important; animation: pulse 1.5s infinite; color: #cc8e00 !important; box-shadow: inset 0 0 8px rgba(211, 132, 0, 0.4); }
+        .cell-special::after { content: '😃'; font-size: 0.8rem; display: block; margin: auto; }
+        .cell-quicksand { background-color: #8c6d4f !important; box-shadow: inset 0 0 15px #4a3725, inset 0 0 5px rgba(0,0,0,0.8); color: #f5f6fa !important; animation: sink 2s infinite alternate; }
+        .cell-quicksand::after { content: '🌀'; font-size: 0.7rem; display: block; opacity: 0.5; animation: spin 4s linear infinite; margin: auto; }
+        .cell-goal { background: linear-gradient(135deg, #2d3436 0%, #1e272e 100%) !important; border: 3px solid #ffca28 !important; animation: goalGlow 1.5s infinite alternate; color: #ffca28 !important; }
+        .cell-goal::after { content: '⛩️'; font-size: 1.2rem; display: block; margin: auto; }
+
+        @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
+        @keyframes sink { 0% { transform: translateY(0); } 100% { transform: translateY(2px); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes goalGlow { 0% { box-shadow: inset 0 0 10px #ffca28; } 100% { box-shadow: inset 0 0 20px #ffca28; } }
+        
+        .pawn { width: 22px; height: 22px; border-radius: 50%; position: absolute; z-index: 5; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); box-shadow: 0 3px 5px rgba(0,0,0,0.4); border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: bold; color: white; text-shadow: 1px 1px 1px black; }
+        .pawn-active { animation: idleGlow 1.5s infinite ease-in-out; z-index: 10;}
+        @keyframes idleGlow { 0%, 100% { transform: scale(1); box-shadow: 0 0 5px white; } 50% { transform: scale(1.15); box-shadow: 0 0 15px white, 0 0 5px currentColor; } }
+        .pawn-hop { animation: hopEffect 0.25s ease-out; }
+        @keyframes hopEffect { 0%, 100% { transform: scale(1) translateY(0); } 50% { transform: scale(0.8, 1.2) translateY(-15px); } }
+
+        .banana-trap { font-size: 1.2rem; display: flex; align-items: center; justify-content: center; animation: dropIn 0.3s ease-out; z-index: 4; pointer-events: none; }
+        @keyframes dropIn { 0% { transform: translateY(-20px) scale(0); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+        .pawn-slip { animation: slipShake 0.5s ease-in-out; }
+        @keyframes slipShake { 0%, 100% { transform: rotate(0) translateX(0); } 25% { transform: rotate(-20deg) translateX(-5px); } 75% { transform: rotate(20deg) translateX(5px); } }
+        @keyframes shrinkFade { to { transform: scale(0); opacity: 0; } }
+
+        /* STATUS BAR */
+        .status-bar-top { width: 100%; max-width: 500px; font-size: 0.85rem; font-weight: bold; background: white; padding: 10px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 10px; border: 2px solid var(--primary); text-align: center; white-space: nowrap; overflow-x: auto; display: flex; gap: 8px; justify-content: center;}
+        .status-badge { padding: 4px 8px; border-radius: 15px; color: white; text-shadow: 1px 1px 1px rgba(0,0,0,0.5); }
+        .status-badge-active { outline: 3px solid #ffca28; outline-offset: 1px; transform: scale(1.05);}
+        .timer-badge { background: var(--danger); color: white; padding: 4px 10px; border-radius: 15px; font-weight: bold; animation: pulseTimer 1s infinite alternate; }
+        @keyframes pulseTimer { 0% { opacity: 0.8; } 100% { opacity: 1; transform: scale(1.05); } }
+
+        /* MODALS (TARGET & TREASURE) */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; padding: 15px; }
+        .modal-box { background: white; padding: 25px; border-radius: 15px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 4px solid var(--primary); animation: popIn 0.3s ease-out; }
+        @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+        .boxes-container { display: flex; gap: 15px; margin: 20px 0; justify-content: center;}
+        .box-treasure { width: 80px; height: 80px; background-color: #e17055; border: 3px solid #d63031; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 2rem; cursor: pointer; box-shadow: 0 6px 12px rgba(0,0,0,0.15); transition: transform 0.2s; }
+        .box-treasure:hover:not(:disabled) { transform: scale(1.1) rotate(3deg); background-color: #ff7675; border-color: #ffeaa7; }
+        .box-treasure:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(80%); }
+
+        .target-list { display: flex; flex-direction: column; gap: 10px; margin: 15px 0; max-height: 200px; overflow-y: auto;}
+        .target-btn { width: 100%; padding: 12px; font-size: 1.1rem; font-weight: bold; color: white; border: none; border-radius: 8px; cursor: pointer; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); display: flex; justify-content: space-between;}
+        .target-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+        .target-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .win-screen { background-color: #55efc4; }
+        .lose-screen { background-color: #636e72; }
+
+        #snakes-ladders-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+        #screen-countdown { background: radial-gradient(circle, #1e272e 0%, #000000 100%); z-index: 1000; }
+        .countdown-text { font-size: 8rem; font-weight: bold; color: #fdcb6e; text-shadow: 0 0 30px rgba(253, 203, 110, 0.8); animation: pulseCount 0.5s infinite alternate; margin: 0; }
+        @keyframes pulseCount { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.15); opacity: 1; } }
+
+        /* Effects */
+        .slash-anim { position: absolute; top: -10px; left: -10px; font-size: 2rem; color: #ff7675; z-index: 10; animation: slashCut 0.4s ease-out forwards; pointer-events: none; }
+        @keyframes slashCut { 0% { transform: scale(2) rotate(45deg); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(1) rotate(45deg); opacity: 0; } }
+        .floating-text { position: absolute; font-size: 2rem; font-weight: bold; z-index: 20; pointer-events: none; text-shadow: 0 4px 8px rgba(0,0,0,0.5); white-space: nowrap; }
+        .float-gold { color: #ffd700; animation: fadeOutUp 1s ease-out forwards; }
+        .float-red { color: #ff7675; animation: shrinkFadeText 1s ease-out forwards; }
+        .float-arrow { color: #a29bfe; animation: spinFade 1s ease-out forwards; }
+        @keyframes fadeOutUp { to { transform: translateY(-50px); opacity: 0; } }
+        @keyframes shrinkFadeText { to { transform: scale(0.5); opacity: 0; } }
+        @keyframes spinFade { to { transform: rotate(-180deg) translateY(30px); opacity: 0; } }
+    </style>
+</head>
+<body>
+    <button id="btn-voice-mic" class="home-btn-hex" style="position: fixed; top: 15px; right: 80px; z-index: 10000; display: none; background-color: var(--danger);" onclick="window.toggleMic()" aria-label="ปุ่มปิดเปิดไมค์" aria-pressed="false">🔇</button>
+    <div id="game-speaker" class="sr-only" aria-live="assertive"></div>
+
+    <!-- Screen: Welcome / Setup -->
+    <div id="screen-welcome" class="screen active-screen">
+        <button class="home-btn-hex pos-top-left" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
+        <button id="btn-lang" class="home-btn-hex pos-top-right" aria-label="Change to English" onclick="window.location.href='snake-enonline.html'" style="font-size:1rem;">Eng</button>
+        
+        <div class="welcome-card">
+            <h1 style="color: var(--primary); margin-bottom: 5px;">บันไดงูป่วนมิติ 🎲</h1>
+            <p style="font-weight:bold; color:var(--orange);">ออนไลน์มัลติเพลเยอร์ 2-6 คน</p>
+            <hr style="border: 0; border-top: 1px solid #dfe6e9; margin: 15px 0;">
+            
+            <div id="setup-controls">
+                <button class="btn-main" onclick="window.createRoom()">🎮 สร้างห้องออนไลน์</button>
+                <div style="margin-top:20px; text-align:left;">
+                    <h3 style="color:#2d3436; margin-bottom:10px;">ห้องที่กำลังรอผู้เล่น:</h3>
+                    <div id="room-list" style="max-height:150px; overflow-y:auto;">
+                        <div style="color:#636e72; text-align:center;">กำลังค้นหาห้อง...</div>
+                    </div>
+                </div>
+            </div>
+            <div id="setup-status" style="display:none; font-weight:bold; color:var(--primary); font-size:1.2rem; margin-top:20px;"></div>
+        </div>
+    </div>
+
+    <!-- Screen: Lobby -->
+    <div id="screen-lobby" class="screen">
+        <button class="home-btn-hex pos-top-left" aria-label="ออกห้อง" onclick="window.leaveRoom()">🚪</button>
+        <div class="welcome-card">
+            <h2 style="color: var(--primary);">ห้องรอผู้เล่น: <span id="display-room-id" style="color:var(--orange);"></span></h2>
+            
+            <div style="text-align:left; margin-top:15px;">
+                <p style="font-weight:bold; margin-bottom:5px;">🎨 เลือกสีของคุณ:</p>
+                <div class="color-grid" id="color-selection"></div>
+            </div>
+
+            <div id="host-controls" style="display:none; text-align:left; margin-top:15px; background:#f5f6fa; padding:10px; border-radius:8px; border:1px solid #ccc;">
+                <p style="font-weight:bold; margin-bottom:5px;">🤖 จัดการจำนวนบอท:</p>
+                <div class="bot-counter">
+                    <button onclick="window.adjustBot(-1)" aria-label="ลดจำนวนบอท">-</button>
+                    <span id="bot-count-display" style="font-size:1.2rem; font-weight:bold; width:30px; text-align:center;">0</span>
+                    <button onclick="window.adjustBot(1)" aria-label="เพิ่มจำนวนบอท">+</button>
+                </div>
+            </div>
+
+            <div style="text-align:left; margin-top:15px;">
+                <p style="font-weight:bold; margin-bottom:5px;">👥 รายชื่อผู้เล่น (<span id="player-count">1</span>/6):</p>
+                <ul id="player-list" style="list-style-type:none; padding:0; background:#f5f6fa; padding:10px; border-radius:8px; font-size:0.95rem; max-height:120px; overflow-y:auto; border:1px solid #ccc;"></ul>
+            </div>
+
+            <button id="btn-start-game" class="btn-main" style="display:none; background:var(--green); margin-top:20px;" onclick="window.hostStartGame()" disabled>🚀 เริ่มเกมทันที</button>
+            <p id="guest-waiting-msg" style="color:var(--orange); font-weight:bold; margin-top:20px; display:none;">รอเจ้าของห้องกดเริ่มเกม...</p>
+        </div>
+    </div>
+
+    <!-- Screen: Countdown -->
+    <div id="screen-countdown" class="screen">
+        <div id="countdown-visual" class="countdown-text" aria-hidden="true"></div>
+    </div>
+
+    <!-- Screen: Game -->
+    <div id="screen-game" class="screen">
+        <div class="status-bar-top" id="turn-order-bar">กำลังเตรียมผู้เล่น...</div>
+        
+        <h2 id="turn-title" tabindex="-1" style="margin-bottom:5px; font-size:1.3rem;">รอสักครู่...</h2>
+        
+        <div class="scene" aria-hidden="true">
+            <div id="dice-cube" class="cube">
+                <div class="cube-face face-1">1</div><div class="cube-face face-2">2</div>
+                <div class="cube-face face-3">3</div><div class="cube-face face-4">4</div>
+                <div class="cube-face face-5">5</div><div class="cube-face face-6">6</div>
+            </div>
+        </div>
+
+        <button id="btn-roll" class="btn-main" type="button" disabled onclick="window.handleRollClick()">🎲 ทอยลูกเต๋า</button>
+
+        <div id="my-cards" class="cards-container"></div>
+
+        <div id="board-grid" class="board-wrapper">
+            <svg id="snakes-ladders-svg" aria-hidden="true">
+                <defs>
+                    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="#2ecc71" /></marker>
+                    <marker id="arrow-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="#e74c3c" /></marker>
+                </defs>
+            </svg>
+            <!-- Pawns will be injected here -->
+        </div>
+    </div>
+
+    <!-- Modal: Target Selection -->
+    <div id="modal-target" class="modal-overlay">
+        <div class="modal-box">
+            <h2 id="target-title">🎯 เลือกเป้าหมาย</h2>
+            <p id="target-desc" style="color:#636e72; margin-bottom:10px;">จะใช้การ์ดนี้กับใคร?</p>
+            <div id="target-list" class="target-list"></div>
+            <button class="btn-main" style="background:#b2bec3; color:#2d3436; margin-top:10px;" onclick="window.closeTargetModal()">ยกเลิก</button>
+        </div>
+    </div>
+
+    <!-- Modal: Treasure Box -->
+    <div id="modal-treasure" class="modal-overlay">
+        <div class="modal-box">
+            <h2>💥 ตกช่องเดียวกันเป๊ะ! 💥</h2>
+            <p style="font-weight:bold; color:var(--danger); margin-bottom:15px;">สุ่มเปิดกล่องวัดดวง ทั้งกระดานรับผลกรรมร่วมกัน!</p>
+            <div class="boxes-container">
+                <button class="box-treasure" id="box-0" onclick="window.handleTreasureClick(0)">📦</button>
+                <button class="box-treasure" id="box-1" onclick="window.handleTreasureClick(1)">📦</button>
+                <button class="box-treasure" id="box-2" onclick="window.handleTreasureClick(2)">📦</button>
+            </div>
+            <p id="treasure-wait-msg" style="display:none; font-weight:bold; color:var(--primary);"></p>
+        </div>
+    </div>
+
+    <!-- Screen: GameOver -->
+    <div id="screen-gameover" class="screen">
+        <div style="font-size: 5rem; margin-bottom: 20px; animation: pulse 1s infinite alternate;" id="gameover-icon">🏆</div>
+        <h2 id="gameover-title" tabindex="-1" style="font-size: 2.2rem; margin-bottom: 15px;">จบเกม!</h2>
+        <p id="gameover-message" style="font-size: 1.2rem; font-weight: bold; margin-bottom: 30px; text-align: center; max-width: 400px;"></p>
+        <button class="btn-main" onclick="window.location.href='../index.html'">🏠 กลับสู่หน้าหลัก</button>
+    </div>
+
+    <!-- Modal: Alert/Disconnect -->
+    <div id="modal-alert" class="modal-overlay" style="z-index:10000;">
+        <div class="modal-box" style="border-color:var(--danger);">
+            <h2 style="color:var(--danger);">⚠️ แจ้งเตือน</h2>
+            <p id="alert-msg" style="margin: 20px 0; font-weight:bold;"></p>
+            <button class="btn-main" onclick="window.location.href='../index.html'">ตกลง</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, remove, onDisconnect, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
+            authDomain: "xo-game-134ec.firebaseapp.com",
+            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "xo-game-134ec",
+            storageBucket: "xo-game-134ec.firebasestorage.app",
+            messagingSenderId: "318375224157",
+            appId: "1:318375224157:web:5ed5267ed98f201db77eb4"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const GAME_ID = 'SnakeSix'; 
+
+        // --- AUDIO SYSTEM ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffers = {};
+        let bgmSource = null;
+        
+        const soundFiles = {
+            one: 'audio/1.mp3', start: 'audio/start.mp3', back: 'audio/back.mp3', dice: 'audio/dice.mp3',
+            blank: 'audio/blank.mp3', special: 'audio/special.mp3', stop: 'audio/stop.mp3',
+            up: 'audio/up.mp3', down: 'audio/down.mp3', double: 'audio/double.mp3',
+            selectcard: 'audio/selectcard.mp3', effect: 'audio/effect.mp3', best: 'audio/best.mp3',
+            bomb: 'audio/bomb.mp3', stolen: 'audio/stolen.mp3', win: 'audio/win.mp3', lost: 'audio/lost.mp3'
+        };
+
+        async function loadSounds() {
+            for (const key in soundFiles) {
+                try {
+                    const res = await fetch(soundFiles[key]);
+                    const arrayBuffer = await res.arrayBuffer();
+                    audioBuffers[key] = await audioCtx.decodeAudioData(arrayBuffer);
+                } catch (e) { console.warn('Audio load error:', key); }
+            }
+        }
+        document.addEventListener('DOMContentLoaded', loadSounds);
+
+        function playSound(bufferName, loop = false, onEndedCallback = null) {
+            if (!audioBuffers[bufferName]) return null;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffers[bufferName];
+            source.loop = loop;
+            source.connect(audioCtx.destination);
+            source.start(0);
+            if (onEndedCallback) source.onended = onEndedCallback;
+            return source;
+        }
+        function startBGM() { if (!bgmSource) bgmSource = playSound('back', true); }
+        function stopBGM() { if (bgmSource) { bgmSource.stop(); bgmSource = null; } }
+
+        // --- ARIA LOGIC (iOS safe) ---
+        let announceLock = false;
+        let currentAnnounceMessage = "";
+        let scTimeout = null;
+        const speaker = document.getElementById('game-speaker');
+
+        function speak(text) {
+            if (announceLock && currentAnnounceMessage === text) return;
+            speaker.innerText = '';
+            announceLock = true;
+            currentAnnounceMessage = text;
+            setTimeout(() => { speaker.innerText = text; announceLock = false; }, 100);
+            clearTimeout(scTimeout);
+            scTimeout = setTimeout(() => { speaker.innerText = ''; }, 10000);
+        }
+
+        // --- GAME CONSTANTS ---
+        const COLORS = [
+            { id: 'red', hex: '#ff4d4d', name: 'สีแดง' },
+            { id: 'yellow', hex: '#ffd700', name: 'สีเหลือง', textDark: true },
+            { id: 'green', hex: '#32cd32', name: 'สีเขียว' },
+            { id: 'blue', hex: '#1e90ff', name: 'สีฟ้า' },
+            { id: 'pink', hex: '#ff69b4', name: 'สีชมพู', textDark: true },
+            { id: 'orange', hex: '#ff8c00', name: 'สีส้ม', textDark: true }
+        ];
+
+        const CARD_TYPES = [
+            { id: 'tripwire', name: 'เตะตัดขา', desc: 'ตารอบหน้าเป้าหมายเดินได้แค่ครึ่งเดียว', class: 'card-swap', target: 'other' },
+            { id: 'swap', name: 'สลับมิติ', desc: 'สลับตำแหน่งกระดานกับเป้าหมาย', class: 'card-swap', target: 'other' },
+            { id: 'banana', name: 'เปลือกกล้วย', desc: 'วางกับดักตรงจุดยืนปัจจุบัน', class: 'card-banana', target: 'self' },
+            { id: 'reverse', name: 'ถอยหลัง', desc: 'บังคับเป้าหมายต้องเดินถอยหลังในตาถัดไป', class: 'card-mirror', target: 'other' },
+            { id: 'snatch', name: 'ขโมยซีน', desc: 'ขโมยการ์ดจากมือเป้าหมาย 1 ใบ', class: 'card-swap', target: 'other' },
+            { id: 'lucky', name: 'แต้มล็อก', desc: 'ล็อกผลลูกเต๋าในรอบถัดไปของคุณให้ออก 6', class: 'card-banana', target: 'self' },
+            { id: 'mult2', name: 'พลังคูณสอง', desc: 'แต้มที่ทอยได้ในตานี้จะถูกคูณ 2', class: 'card-banana', target: 'self' }
+        ];
+
+        // --- GLOBAL VARIABLES ---
+        let peer = null, myPeerId = null;
+        let isHost = false, roomId = null, hostConn = null, guestConns = [];
+        let roomPlayers = [], botCount = 0; // Lobby state
+        let myColorId = null;
+        let roomState = 'WAITING'; 
+        
+        let gameState = {
+            lineup: [],
+            turnIndex: 0,
+            board: { shortcuts: {}, specials: [], quicksands: [], traps: {} },
+            activeBuffs: {},
+            waitingForEvent: false,
+            overlapData: null 
+        };
+        
+        let turnTimerInterval = null, timeLeft = 30;
+        let uiDisabled = false;
+        let pendingCard = null; 
+        let watchdogTimer = null;
+
+        // --- HELPERS ---
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
+            document.getElementById(screenId).classList.add('active-screen');
+        }
+        function seededRandom(seedStr) {
+            let h = 0; for(let i=0;i<seedStr.length;i++) h = Math.imul(31, h) + seedStr.charCodeAt(i) | 0;
+            let t = h += 0x6D2B79F5;
+            return function() {
+                t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            }
+        }
+        let randGen = Math.random;
+
+        function showAlert(msg) {
+            document.getElementById('alert-msg').innerText = msg;
+            document.getElementById('modal-alert').style.display = 'flex';
+            speak(msg);
+        }
+        function disableUI(disabled) {
+            uiDisabled = disabled;
+            document.getElementById('btn-roll').disabled = disabled;
+            document.querySelectorAll('.card').forEach(c => c.disabled = disabled);
+            document.querySelectorAll('.target-btn').forEach(b => b.disabled = disabled);
+            document.querySelectorAll('.box-treasure').forEach(b => b.disabled = disabled);
+        }
+
+        // --- INIT & LOBBY ---
+        function initBasePeer() {
+            myPeerId = "snk-" + Math.random().toString(36).substr(2, 6);
+            peer = new Peer(myPeerId);
+            startRoomScanner();
+        }
+        window.onload = () => { initBasePeer(); };
+
+        function startRoomScanner() {
+            onValue(ref(db, GAME_ID + '/rooms'), (snap) => {
+                const list = document.getElementById('room-list');
+                list.innerHTML = '';
+                if (!snap.exists()) {
+                    list.innerHTML = '<div style="color:#636e72; text-align:center;">ไม่มีห้องว่างในขณะนี้</div>';
+                    return;
+                }
+                const rooms = snap.val();
+                for (let rId in rooms) {
+                    if (rooms[rId].state === 'WAITING' && rooms[rId].pCount < 6) {
+                        let btn = document.createElement('div'); btn.className = 'room-item';
+                        btn.innerHTML = `<span>🎮 ห้อง: ${rId} (${rooms[rId].pCount}/6)</span><span style="color:var(--primary);">เข้าร่วม ➔</span>`;
+                        btn.onclick = () => window.joinRoom(rId);
+                        list.appendChild(btn);
+                    }
+                }
+            });
+        }
+
+        // --- FIXED ROOM CREATION ---
+        window.createRoom = async function() {
+            if(audioCtx.state === 'suspended') await audioCtx.resume();
+            playSound('one');
+            isHost = true;
+            document.getElementById('setup-controls').style.display = 'none';
+            document.getElementById('setup-status').style.display = 'block';
+            document.getElementById('setup-status').innerText = 'กำลังสร้างห้อง...';
+
+            // Generate Random ID to avoid transaction locks completely
+            roomId = 'RM' + Math.floor(1000 + Math.random() * 9000);
+            
+            if (peer) peer.destroy();
+            peer = new Peer("snk-host-" + roomId);
+            
+            peer.on('open', (id) => {
+                myPeerId = id;
+                myColorId = 'red';
+                roomPlayers = [{ id: myPeerId, color: myColorId, name: 'Host' }];
+                botCount = 0;
+                
+                const roomRef = ref(db, GAME_ID + '/rooms/' + roomId);
+                set(roomRef, { state: 'WAITING', pCount: 1 });
+                onDisconnect(roomRef).remove();
+
+                setupLobbyUI();
+                listenHostConnections();
+                switchScreen('screen-lobby');
+                speak(`สร้างห้องสำเร็จ รหัสห้อง ${roomId}`);
+                window.initVoiceHost(roomId);
+            });
+            
+            peer.on('error', (err) => {
+                showAlert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ PeerJS ได้ กรุณาลองใหม่');
+                document.getElementById('setup-controls').style.display = 'block';
+                document.getElementById('setup-status').style.display = 'none';
+            });
+        };
+
+        window.joinRoom = async function(targetRoomId) {
+            if(audioCtx.state === 'suspended') await audioCtx.resume();
+            playSound('selectcard');
+            isHost = false; roomId = targetRoomId;
+            
+            document.getElementById('setup-controls').style.display = 'none';
+            document.getElementById('setup-status').style.display = 'block';
+            document.getElementById('setup-status').innerText = 'กำลังเชื่อมต่อ...';
+
+            hostConn = peer.connect("snk-host-" + roomId);
+            hostConn.on('open', () => { hostConn.send({ type: 'JOIN_REQ' }); });
+            
+            hostConn.on('data', (data) => {
+                if(data.type === 'JOIN_REJECT') { showAlert(data.reason); }
+                if(data.type === 'LOBBY_SYNC') {
+                    roomPlayers = data.players; botCount = data.botCount;
+                    let me = roomPlayers.find(p => p.id === myPeerId);
+                    if(me) myColorId = me.color;
+                    setupLobbyUI();
+                    switchScreen('screen-lobby');
+                    if (!document.getElementById('btn-voice-mic').style.display || document.getElementById('btn-voice-mic').style.display === 'none') {
+                         window.initVoiceClient(roomId);
+                    }
+                }
+                if(data.type === 'START_GAME') {
+                    randGen = seededRandom(data.seed);
+                    startClientGame(data.lineup);
+                }
+                if(data.type === 'GAME_SYNC') { handleHostSync(data); }
+            });
+            hostConn.on('close', () => { if(roomState !== 'GAMEOVER') showAlert('การเชื่อมต่อกับ Host ขาดหาย'); });
+        };
+
+        function listenHostConnections() {
+            peer.on('connection', (conn) => {
+                conn.on('data', (data) => {
+                    if (data.type === 'JOIN_REQ') {
+                        if (roomState !== 'WAITING' || (roomPlayers.length + botCount >= 6)) {
+                            conn.send({ type: 'JOIN_REJECT', reason: 'ห้องเต็มหรือเริ่มไปแล้ว' });
+                            setTimeout(() => conn.close(), 500); return;
+                        }
+                        let usedCols = roomPlayers.map(p=>p.color).concat(getBotColors());
+                        let avail = COLORS.filter(c => !usedCols.includes(c.id));
+                        let col = avail[0].id;
+                        roomPlayers.push({ id: conn.peer, color: col, name: 'Guest' });
+                        guestConns.push(conn);
+                        
+                        updateFirebaseCount();
+                        syncLobbyToAll();
+                        playSound('selectcard');
+                    }
+                    if (data.type === 'CLIENT_ACTION') { processClientAction(data.action, data.payload, conn.peer); }
+                });
+                conn.on('close', () => {
+                    roomPlayers = roomPlayers.filter(p => p.id !== conn.peer);
+                    guestConns = guestConns.filter(c => c.peer !== conn.peer);
+                    
+                    if (roomState === 'WAITING') { updateFirebaseCount(); syncLobbyToAll(); }
+                    else {
+                        // In game -> convert to bot
+                        let p = gameState.lineup.find(x => x.id === conn.peer);
+                        if (p && !p.isBot) {
+                            p.isBot = true; p.name = `บอท (${p.name})`;
+                            broadcastSync();
+                            if(gameState.lineup[gameState.turnIndex].id === p.id) {
+                                setTimeout(() => window.rollDice(true), 2000);
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        function updateFirebaseCount() {
+            if(isHost && roomId && roomState === 'WAITING') {
+                update(ref(db, GAME_ID + '/rooms/' + roomId), { pCount: roomPlayers.length + botCount });
+            }
+        }
+        function syncLobbyToAll() {
+            if(!isHost) return;
+            guestConns.forEach(c => { if(c.open) c.send({ type: 'LOBBY_SYNC', players: roomPlayers, botCount: botCount }); });
+            setupLobbyUI();
+        }
+
+        function getBotColors() {
+            let used = roomPlayers.map(p=>p.color);
+            return COLORS.filter(c => !used.includes(c.id)).slice(0, botCount).map(c=>c.id);
+        }
+
+        // --- FIXED BOT ADJUSTMENT ---
+        window.adjustBot = function(delta) {
+            if(!isHost) return;
+            let n = botCount + delta;
+            
+            if(n < 0) {
+                speak('ไม่สามารถลดจำนวนบอทได้แล้ว');
+                return;
+            }
+            if(roomPlayers.length + n > 6) {
+                speak('ผู้เล่นและบอทเต็ม 6 คนแล้ว ไม่สามารถเพิ่มได้อีก');
+                return;
+            }
+            
+            botCount = n; 
+            document.getElementById('bot-count-display').innerText = botCount;
+            speak(delta > 0 ? `เพิ่มบอทเป็น ${botCount} ตัว` : `ลดบอทเหลือ ${botCount} ตัว`);
+            
+            updateFirebaseCount(); 
+            syncLobbyToAll();
+        };
+
+        window.leaveRoom = function() {
+            if(isHost && roomState === 'WAITING') remove(ref(db, GAME_ID + '/rooms/' + roomId));
+            window.location.href='../index.html';
+        };
+
+        function setupLobbyUI() {
+            document.getElementById('display-room-id').innerText = roomId;
+            document.getElementById('player-count').innerText = roomPlayers.length + botCount;
+            document.getElementById('bot-count-display').innerText = botCount;
+            
+            if(isHost) {
+                document.getElementById('host-controls').style.display = 'block';
+                document.getElementById('btn-start-game').style.display = 'block';
+                document.getElementById('btn-start-game').disabled = (roomPlayers.length + botCount < 2);
+                document.getElementById('guest-waiting-msg').style.display = 'none';
+            } else {
+                document.getElementById('guest-waiting-msg').style.display = 'block';
+            }
+
+            // Colors
+            let usedColors = roomPlayers.map(p=>p.color).concat(getBotColors());
+            let cGrid = document.getElementById('color-selection'); cGrid.innerHTML = '';
+            COLORS.forEach(c => {
+                let btn = document.createElement('button'); btn.className = 'color-btn';
+                btn.style.backgroundColor = c.hex; btn.style.color = c.textDark ? 'black' : 'white';
+                btn.innerText = c.name;
+                if(c.id === myColorId) btn.classList.add('selected');
+                else if(usedColors.includes(c.id)) btn.disabled = true;
+                
+                btn.onclick = () => {
+                    if(usedColors.includes(c.id)) return;
+                    myColorId = c.id;
+                    if(isHost) { roomPlayers.find(p=>p.id===myPeerId).color = myColorId; syncLobbyToAll(); }
+                    else { hostConn.send({ type: 'CLIENT_ACTION', action: 'CHANGE_COLOR', payload: myColorId }); }
+                };
+                cGrid.appendChild(btn);
+            });
+
+            // Player list
+            let list = document.getElementById('player-list'); list.innerHTML = '';
+            roomPlayers.forEach(p => {
+                let cObj = COLORS.find(c=>c.id===p.color);
+                let name = p.id === myPeerId ? `คุณ (${cObj.name})` : (p.name === 'Host' ? `Host (${cObj.name})` : `เพื่อน (${cObj.name})`);
+                list.innerHTML += `<li>${name} ${p.id===myPeerId?'<span style="color:var(--green)">[คุณ]</span>':''}</li>`;
+            });
+            let bCols = getBotColors();
+            bCols.forEach((bc, i) => {
+                let cObj = COLORS.find(c=>c.id===bc);
+                list.innerHTML += `<li>🤖 บอท ${i+1} (${cObj.name})</li>`;
+            });
+        }
+
+        // --- START GAME SEQUENCE ---
+        window.hostStartGame = function() {
+            if(!isHost) return;
+            roomState = 'PLAYING';
+            remove(ref(db, GAME_ID + '/rooms/' + roomId)); // Hide room
+            
+            let seed = Math.random().toString(36).substring(2);
+            randGen = seededRandom(seed);
+            
+            let lineup = [];
+            roomPlayers.forEach(p => {
+                let cObj = COLORS.find(c=>c.id===p.color);
+                lineup.push({
+                    id: p.id, colorId: p.color, hex: cObj.hex, textDark: cObj.textDark,
+                    name: p.id === myPeerId ? 'Host' : 'เพื่อน',
+                    isBot: false, pos: 1, hand: []
+                });
+            });
+            let bCols = getBotColors();
+            bCols.forEach((bc, i) => {
+                let cObj = COLORS.find(c=>c.id===bc);
+                lineup.push({
+                    id: `bot-${i}`, colorId: bc, hex: cObj.hex, textDark: cObj.textDark,
+                    name: `บอท ${i+1}`, isBot: true, pos: 1, hand: []
+                });
+            });
+
+            lineup.sort(() => randGen() - 0.5);
+            lineup.forEach(p => {
+                p.hand.push(CARD_TYPES[Math.floor(randGen() * CARD_TYPES.length)]);
+                gameState.activeBuffs[p.id] = { skip: false, reverse: false, debuff: false, lucky: false, x2: false };
+            });
+            gameState.lineup = lineup;
+            gameState.turnIndex = 0;
+            
+            generateBoard();
+
+            guestConns.forEach(c => { if(c.open) c.send({ type: 'START_GAME', seed: seed, lineup: lineup }); });
+            startClientGame(lineup); 
+        };
+
+        function generateBoard() {
+            let used = new Set([1, 100]);
+            let getFree = () => { let s; do{ s = Math.floor(randGen()*98)+2; }while(used.has(s)); used.add(s); return s; };
+            for(let i=0;i<8;i++){ let s1=getFree(), s2=getFree(); gameState.board.shortcuts[Math.min(s1,s2)] = Math.max(s1,s2); } 
+            for(let i=0;i<8;i++){ let s1=getFree(), s2=getFree(); gameState.board.shortcuts[Math.max(s1,s2)] = Math.min(s1,s2); } 
+            for(let i=0;i<8;i++){ gameState.board.specials.push(getFree()); }
+            for(let i=0;i<7;i++){ gameState.board.quicksands.push(getFree()); }
+        }
+
+        function startClientGame(initialLineup) {
+            gameState.lineup = initialLineup;
+            gameState.lineup.forEach(p => {
+                if(p.id === myPeerId) p.localName = `คุณ (${COLORS.find(c=>c.id===p.colorId).name})`;
+                else p.localName = `${p.name} (${COLORS.find(c=>c.id===p.colorId).name})`;
+            });
+
+            playSound('start');
+            switchScreen('screen-countdown');
+            const vis = document.getElementById('countdown-visual');
+            let c = 3; vis.innerText = c; speak(c.toString());
+            let cInt = setInterval(() => {
+                c--;
+                if(c>0) { vis.innerText = c; speak(c.toString()); }
+                else if(c===0) { vis.innerText = "ลุย!"; speak("เริ่มเกม!"); }
+                else {
+                    clearInterval(cInt);
+                    startBGM();
+                    switchScreen('screen-game');
+                    renderBoardVisuals(); 
+                    updateClientUI();
+                    if(isHost) setTimeout(hostTurnLoop, 1500); 
+                }
+            }, 1200);
+            
+            if(!isHost) {
+                watchdogTimer = setInterval(() => {
+                    if(!hostConn || !hostConn.open) { clearInterval(watchdogTimer); showAlert('ขาดการเชื่อมต่อจากห้อง'); }
+                }, 5000);
+            }
+        }
+
+        // --- HOST LOGIC (AUTHORITATIVE) ---
+        function hostTurnLoop() {
+            if(roomState === 'GAMEOVER') return;
+            let cp = gameState.lineup[gameState.turnIndex];
+            
+            if(gameState.activeBuffs[cp.id].skip) {
+                gameState.activeBuffs[cp.id].skip = false;
+                broadcastEvent('MESSAGE', { msg: `${cp.localName} ติดสถานะหยุดเดิน ข้ามตานี้!`, sound: 'blank' });
+                setTimeout(() => hostNextTurn(), 2500);
+                return;
+            }
+
+            gameState.waitingForEvent = false;
+            broadcastSync();
+            
+            clearInterval(turnTimerInterval);
+            let time = 30;
+            turnTimerInterval = setInterval(() => {
+                time--;
+                if(time === 6 && cp.isBot) window.rollDice(true); 
+                else if(time === 6 && cp.id === myPeerId) window.rollDice();
+                else if(time <= 0) {
+                    clearInterval(turnTimerInterval);
+                    if(!cp.isBot) {
+                        cp.isBot = true; cp.name = `บอท (${cp.name})`; cp.localName = cp.name;
+                        broadcastEvent('MESSAGE', { msg: `${cp.localName} หมดเวลา ถูกเปลี่ยนเป็นบอท`, sound: 'blank' });
+                        setTimeout(() => window.rollDice(true), 1500);
+                    }
+                }
+            }, 1000);
+        }
+
+        function hostNextTurn() {
+            clearInterval(turnTimerInterval);
+            gameState.turnIndex = (gameState.turnIndex + 1) % gameState.lineup.length;
+            hostTurnLoop();
+        }
+
+        function processClientAction(action, payload, peerId) {
+            if(action === 'CHANGE_COLOR' && roomState === 'WAITING') {
+                let p = roomPlayers.find(x=>x.id===peerId);
+                if(p) { p.color = payload; syncLobbyToAll(); }
+            }
+            let cp = gameState.lineup[gameState.turnIndex];
+            
+            if(action === 'ROLL' && cp.id === peerId && !gameState.waitingForEvent) {
+                clearInterval(turnTimerInterval);
+                gameState.waitingForEvent = true;
+                broadcastSync();
+                executeRoll(cp);
+            }
+            if(action === 'USE_CARD' && cp.id === peerId && !gameState.waitingForEvent) {
+                executeCard(cp, payload.cardIdx, payload.targetId);
+            }
+            if(action === 'TREASURE' && gameState.overlapData && gameState.overlapData.solverId === peerId) {
+                executeTreasure(payload.boxIdx);
+            }
+        }
+
+        function executeRoll(player) {
+            let roll = Math.floor(randGen() * 6) + 1;
+            let buffs = gameState.activeBuffs[player.id];
+            
+            let isRev = buffs.reverse; buffs.reverse = false;
+            let showLucky=false, showX2=false, showDebuff=false;
+            if(buffs.lucky) { roll = 6; buffs.lucky = false; showLucky = true; }
+            if(buffs.x2) { roll *= 2; buffs.x2 = false; showX2 = true; }
+            if(buffs.debuff) { roll = Math.max(1, Math.floor(roll/2)); buffs.debuff = false; showDebuff = true; }
+            
+            let path = calcPath(player.pos, roll, isRev);
+            
+            broadcastEvent('ROLL_ANIM', { 
+                playerId: player.id, rollVal: roll, originalRoll: roll, path: path,
+                isRev, showLucky, showX2, showDebuff
+            });
+
+            let animTime = 1000 + (path.length * 350) + 500;
+            setTimeout(() => {
+                player.pos = path.length > 0 ? path[path.length-1] : player.pos;
+                evaluateLanding(player);
+            }, animTime);
+        }
+
+        function calcPath(start, steps, isRev) {
+            let path = [], cur = start, dir = isRev ? -1 : 1;
+            if(steps === 0) return path;
+            for(let i=0; i<steps; i++) {
+                cur += dir;
+                if(cur > 100) { dir = -1; cur = 99; }
+                else if(cur < 1) { dir = 1; cur = 2; }
+                path.push(cur);
+            }
+            return path;
+        }
+
+        function evaluateLanding(player) {
+            let pos = player.pos;
+            let b = gameState.board;
+            
+            if(b.shortcuts[pos]) {
+                let dest = b.shortcuts[pos];
+                player.pos = dest;
+                let isUp = dest > pos;
+                broadcastEvent('SHORTCUT', { playerId: player.id, dest: dest, isUp: isUp });
+                setTimeout(() => evaluateLanding(player), 2000); 
+                return;
+            }
+
+            if(b.traps[pos]) {
+                delete b.traps[pos];
+                gameState.activeBuffs[player.id].skip = true;
+                broadcastEvent('TRAP', { playerId: player.id, pos: pos, type: 'banana' });
+                setTimeout(checkWinOrOverlap, 2500, player);
+                return;
+            }
+
+            if(b.quicksands.includes(pos)) {
+                gameState.activeBuffs[player.id].skip = true;
+                broadcastEvent('TRAP', { playerId: player.id, pos: pos, type: 'quicksand' });
+                setTimeout(checkWinOrOverlap, 2500, player);
+                return;
+            }
+
+            if(b.specials.includes(pos)) {
+                b.specials = b.specials.filter(s=>s!==pos);
+                let newS; do{ newS = Math.floor(randGen()*98)+2; }while(newS===pos || b.shortcuts[newS] || b.quicksands.includes(newS));
+                b.specials.push(newS);
+                
+                let c = CARD_TYPES[Math.floor(randGen()*CARD_TYPES.length)];
+                if(player.hand.length < 2) player.hand.push(c);
+                broadcastEvent('SPECIAL', { playerId: player.id, newBoardSpecials: b.specials, cardGot: player.hand.length<=2 });
+                setTimeout(checkWinOrOverlap, 2500, player);
+                return;
+            }
+
+            broadcastEvent('LAND_BLANK', { playerId: player.id });
+            setTimeout(checkWinOrOverlap, 1000, player);
+        }
+
+        function checkWinOrOverlap(player) {
+            if(player.pos === 100) {
+                roomState = 'GAMEOVER';
+                broadcastEvent('GAMEOVER', { winnerId: player.id });
+                return;
+            }
+
+            let overlappers = gameState.lineup.filter(p => p.pos === player.pos);
+            if(overlappers.length > 1) {
+                gameState.overlapData = { solverId: player.id, pos: player.pos };
+                broadcastEvent('OVERLAP_START', { solverId: player.id, pos: player.pos });
+                
+                if(player.isBot) {
+                    setTimeout(() => executeTreasure(Math.floor(Math.random()*3)), 3000);
+                }
+            } else {
+                hostNextTurn();
+            }
+        }
+
+        function executeTreasure(boxIdx) {
+            let solver = gameState.lineup.find(p => p.id === gameState.overlapData.solverId);
+            const evts = ['good', 'bad', 'steal'];
+            let res = evts[Math.floor(randGen()*evts.length)];
+            
+            gameState.overlapData = null; 
+            broadcastEvent('TREASURE_OPEN', { boxIdx: boxIdx, result: res, solverId: solver.id });
+
+            setTimeout(() => {
+                if(res === 'good') {
+                    let moves = {};
+                    gameState.lineup.forEach(p => {
+                        let steps = (p.id === solver.id) ? 3 : 3;
+                        let isRev = (p.id !== solver.id);
+                        moves[p.id] = calcPath(p.pos, steps, isRev);
+                    });
+                    broadcastEvent('MULTI_MOVE', { moves: moves });
+                    
+                    let animTime = 1200 + (3 * 350) + 500;
+                    setTimeout(() => {
+                        gameState.lineup.forEach(p => { if(moves[p.id].length) p.pos = moves[p.id][moves[p.id].length-1]; });
+                        evaluateLanding(solver);
+                    }, animTime);
+                } 
+                else if(res === 'bad') {
+                    let moves = {};
+                    let maxSteps = 0;
+                    gameState.lineup.forEach(p => {
+                        let steps = Math.floor(randGen()*6)+1;
+                        if(steps > maxSteps) maxSteps = steps;
+                        moves[p.id] = calcPath(p.pos, steps, true);
+                    });
+                    broadcastEvent('MULTI_MOVE', { moves: moves });
+                    let animTime = 1200 + (maxSteps * 350) + 500;
+                    setTimeout(() => {
+                        gameState.lineup.forEach(p => { if(moves[p.id].length) p.pos = moves[p.id][moves[p.id].length-1]; });
+                        hostNextTurn();
+                    }, animTime);
+                }
+                else if(res === 'steal') {
+                    let validTargets = gameState.lineup.filter(p => p.id !== solver.id && p.hand.length > 0);
+                    if(validTargets.length === 0) {
+                        broadcastEvent('MESSAGE', { msg: 'ไม่มีใครมีการ์ดให้ขโมยเลย! ว่าวแหว๋ว~', sound: 'blank' });
+                        setTimeout(hostNextTurn, 2500);
+                    } else {
+                        if(solver.isBot) {
+                            let t = validTargets[Math.floor(randGen()*validTargets.length)];
+                            finishSteal(solver, t);
+                        } else {
+                            gameState.waitingForEvent = true;
+                            broadcastEvent('PICK_STEAL_TARGET', { solverId: solver.id, targets: validTargets.map(t=>t.id) });
+                        }
+                    }
+                }
+            }, 2500);
+        }
+
+        const originalProcessAction = processClientAction;
+        processClientAction = function(action, payload, peerId) {
+            originalProcessAction(action, payload, peerId);
+            if(action === 'STEAL_TARGET' && gameState.waitingForEvent) {
+                let solver = gameState.lineup.find(p=>p.id===peerId);
+                let t = gameState.lineup.find(p=>p.id===payload.targetId);
+                finishSteal(solver, t);
+            }
+        };
+
+        function finishSteal(solver, target) {
+            gameState.waitingForEvent = false;
+            let c = target.hand.pop();
+            solver.hand.push(c);
+            broadcastEvent('MESSAGE', { msg: `${solver.localName} ขโมยการ์ด ${c.name} จาก ${target.localName}!`, sound: 'stolen' });
+            setTimeout(hostNextTurn, 2500);
+        }
+
+        function executeCard(player, cardIdx, targetId) {
+            let card = player.hand.splice(cardIdx, 1)[0];
+            let target = targetId ? gameState.lineup.find(p=>p.id===targetId) : null;
+            
+            broadcastEvent('CARD_USED', { playerId: player.id, card: card, targetId: targetId });
+            
+            setTimeout(() => {
+                if(card.id === 'banana') {
+                    gameState.board.traps[player.pos] = true;
+                    broadcastEvent('MESSAGE', { msg: `${player.localName} วางกล้วยดักไว้!`, sound: 'effect' });
+                }
+                else if(card.id === 'lucky') {
+                    gameState.activeBuffs[player.id].lucky = true;
+                    broadcastEvent('MESSAGE', { msg: `${player.localName} ล็อกแต้มตาหน้าเป็น 6!`, sound: 'effect' });
+                }
+                else if(card.id === 'mult2') {
+                    gameState.activeBuffs[player.id].x2 = true;
+                    broadcastEvent('MESSAGE', { msg: `${player.localName} บัพคูณสอง!`, sound: 'effect' });
+                }
+                else if(card.id === 'reverse') {
+                    gameState.activeBuffs[target.id].reverse = true;
+                    broadcastEvent('MESSAGE', { msg: `${target.localName} โดนสาปให้ถอยหลังรอบหน้า!`, sound: 'effect' });
+                }
+                else if(card.id === 'tripwire') {
+                    gameState.activeBuffs[target.id].debuff = true;
+                    broadcastEvent('MESSAGE', { msg: `${target.localName} โดนเตะตัดขา เดินได้ครึ่งเดียว!`, sound: 'effect' });
+                }
+                else if(card.id === 'swap') {
+                    let temp = player.pos; player.pos = target.pos; target.pos = temp;
+                    broadcastEvent('SWAP_ANIM', { p1Id: player.id, p2Id: target.id, p1Pos: player.pos, p2Pos: target.pos });
+                }
+                else if(card.id === 'snatch') {
+                    if(target.hand.length > 0) {
+                        player.hand.push(target.hand.pop());
+                        broadcastEvent('MESSAGE', { msg: `${player.localName} ขโมยการ์ดจาก ${target.localName} สำเร็จ!`, sound: 'stolen' });
+                    } else {
+                        broadcastEvent('MESSAGE', { msg: `${target.localName} ไม่มีการ์ดให้ขโมย!`, sound: 'blank' });
+                    }
+                }
+                
+                setTimeout(() => { broadcastSync(); }, 2000);
+            }, 1500);
+        }
+
+        function broadcastSync() {
+            if(!isHost) return;
+            guestConns.forEach(c => { if(c.open) c.send({ type: 'GAME_SYNC', state: gameState }); });
+            handleHostSync({ state: gameState });
+        }
+        function broadcastEvent(evtType, payload) {
+            if(!isHost) return;
+            let data = { type: 'GAME_EVENT', event: evtType, payload: payload };
+            guestConns.forEach(c => { if(c.open) c.send(data); });
+            handleClientEvent(data);
+        }
+
+        // --- CLIENT UI & EVENT HANDLING ---
+        function handleHostSync(data) {
+            gameState = data.state;
+            updateClientUI();
+        }
+
+        if (peer) {
+            peer.on('connection', (conn) => {
+                conn.on('data', (d) => { if(d.type === 'GAME_EVENT') handleClientEvent(d); });
+            });
+        }
+        setInterval(() => {
+            if(hostConn && hostConn.open) {
+                hostConn.on('data', (d) => { if(d.type === 'GAME_EVENT') handleClientEvent(d); });
+            }
+        }, 1000);
+
+        function updateClientUI() {
+            if(roomState === 'GAMEOVER') return;
+            renderBoardVisuals();
+            renderTopBar();
+            
+            let cp = gameState.lineup[gameState.turnIndex];
+            let isMyTurn = (cp.id === myPeerId) && !gameState.waitingForEvent;
+            
+            disableUI(!isMyTurn);
+            
+            const title = document.getElementById('turn-title');
+            if(gameState.waitingForEvent) {
+                title.innerText = 'ระบบกำลังประมวลผล...';
+            } else {
+                title.innerText = isMyTurn ? 'ตาของคุณ! ทอยเต๋าเลย' : `ตาของ ${cp.localName} (รอทอยเต๋า...)`;
+                if(isMyTurn) speak('ตาของคุณ! ทอยเต๋าเลย');
+            }
+
+            let myPlayer = gameState.lineup.find(p=>p.id===myPeerId);
+            const handDiv = document.getElementById('my-cards');
+            handDiv.innerHTML = '';
+            if(myPlayer && myPlayer.hand) {
+                myPlayer.hand.forEach((card, idx) => {
+                    let btn = document.createElement('button'); btn.className = `card ${card.class}`;
+                    btn.innerHTML = `<span>${card.name}</span><span style="font-size:0.6rem; font-weight:normal;">${card.desc}</span>`;
+                    btn.disabled = (!isMyTurn || uiDisabled);
+                    btn.onclick = () => window.useCard(idx, card);
+                    handDiv.appendChild(btn);
+                });
+            }
+        }
+
+        function renderTopBar() {
+            const bar = document.getElementById('turn-order-bar'); bar.innerHTML = '';
+            gameState.lineup.forEach((p, idx) => {
+                let badge = document.createElement('span');
+                badge.className = 'status-badge';
+                if(idx === gameState.turnIndex) badge.classList.add('status-badge-active');
+                badge.style.backgroundColor = p.hex; badge.style.color = p.textDark ? 'black' : 'white';
+                badge.innerText = `${idx+1}. ${p.localName} (ช.${p.pos})`;
+                bar.appendChild(badge);
+            });
+        }
+
+        function renderBoardVisuals() {
+            const grid = document.getElementById('board-grid');
+            const svg = document.getElementById('snakes-ladders-svg');
+            grid.innerHTML = ''; grid.appendChild(svg);
+
+            for (let row = 0; row < 10; row++) {
+                let r = 9 - row; 
+                for (let c = 0; c < 10; c++) {
+                    let col = (r % 2 === 1) ? (9 - c) : c;
+                    let cellNum = r * 10 + col + 1;
+                    
+                    let cell = document.createElement('div');
+                    cell.id = `cell-${cellNum}`;
+                    cell.className = `cell ${(r+col)%2===0 ? 'cell-light' : 'cell-dark'}`;
+                    cell.innerHTML = `<span>${cellNum}</span>`;
+                    
+                    if (gameState.board.specials.includes(cellNum)) cell.className += ' cell-special';
+                    if (gameState.board.quicksands.includes(cellNum)) cell.className += ' cell-quicksand';
+                    if (cellNum === 100) cell.className += ' cell-goal'; 
+                    
+                    if(gameState.board.traps[cellNum]) {
+                        let trap = document.createElement('div'); trap.className = 'banana-trap'; trap.innerText = '🍌';
+                        cell.appendChild(trap);
+                    }
+                    
+                    cell.style.gridRowStart = row + 1; cell.style.gridColumnStart = c + 1;
+                    grid.appendChild(cell);
+                }
+            }
+
+            gameState.lineup.forEach(p => {
+                let pDiv = document.getElementById(`pawn-${p.id}`);
+                if(!pDiv) {
+                    pDiv = document.createElement('div'); pDiv.id = `pawn-${p.id}`; pDiv.className = 'pawn';
+                    pDiv.style.backgroundColor = p.hex; pDiv.style.color = p.textDark ? 'black' : 'white';
+                    pDiv.innerText = p.id === myPeerId ? 'คุณ' : p.name.substring(0,2);
+                    grid.appendChild(pDiv);
+                } else {
+                    grid.appendChild(pDiv); 
+                }
+                
+                if(gameState.lineup[gameState.turnIndex].id === p.id) pDiv.classList.add('pawn-active');
+                else pDiv.classList.remove('pawn-active');
+
+                let b = gameState.activeBuffs[p.id];
+                if(b.debuff) {
+                    let s = document.createElement('div'); s.className = 'slash-anim'; s.innerText = '💢'; pDiv.appendChild(s);
+                    setTimeout(()=>s.remove(), 500);
+                }
+
+                let cell = document.getElementById(`cell-${p.pos}`);
+                if(cell) {
+                    let sameCellCount = gameState.lineup.filter(x=>x.pos===p.pos).length;
+                    let offset = sameCellCount > 1 ? (Math.random()*15 - 7) : 0;
+                    pDiv.style.top = (cell.offsetTop + 5 + offset) + 'px';
+                    pDiv.style.left = (cell.offsetLeft + 5 + offset) + 'px';
+                }
+            });
+
+            setTimeout(() => {
+                const lines = svg.querySelectorAll('line'); lines.forEach(l => l.remove());
+                const boardRect = grid.getBoundingClientRect();
+                for (const [s, e] of Object.entries(gameState.board.shortcuts)) {
+                    const sC = document.getElementById(`cell-${s}`); const eC = document.getElementById(`cell-${e}`);
+                    if (sC && eC) {
+                        const rS = sC.getBoundingClientRect(); const rE = eC.getBoundingClientRect();
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', (rS.left + rS.width/2) - boardRect.left);
+                        line.setAttribute('y1', (rS.top + rS.height/2) - boardRect.top);
+                        line.setAttribute('x2', (rE.left + rE.width/2) - boardRect.left);
+                        line.setAttribute('y2', (rE.top + rE.height/2) - boardRect.top);
+                        line.setAttribute('stroke-width', '3'); line.setAttribute('opacity', '0.6');
+                        if (parseInt(e) > parseInt(s)) { line.setAttribute('stroke', '#2ecc71'); line.setAttribute('marker-end', 'url(#arrow-green)'); } 
+                        else { line.setAttribute('stroke', '#e74c3c'); line.setAttribute('marker-end', 'url(#arrow-red)'); }
+                        svg.appendChild(line);
+                    }
+                }
+            }, 100);
+        }
+
+        window.rollDice = function(isBotHostCall = false) {
+            if(uiDisabled && !isBotHostCall) return;
+            disableUI(true);
+            
+            if(isHost) {
+                let cp = gameState.lineup[gameState.turnIndex];
+                gameState.waitingForEvent = true; broadcastSync();
+                executeRoll(cp);
+            } else {
+                hostConn.send({ type: 'CLIENT_ACTION', action: 'ROLL' });
+            }
+        };
+
+        window.useCard = function(idx, card) {
+            if(uiDisabled) return;
+            if(card.target === 'other' && gameState.lineup.length > 2) {
+                pendingCard = idx;
+                const list = document.getElementById('target-list'); list.innerHTML = '';
+                gameState.lineup.forEach(p => {
+                    if(p.id === myPeerId) return;
+                    let b = document.createElement('button'); b.className = 'target-btn';
+                    b.style.backgroundColor = p.hex; b.style.color = p.textDark ? 'black' : 'white';
+                    b.innerText = `เป้าหมาย: ${p.localName}`;
+                    b.onclick = () => {
+                        disableUI(true); document.getElementById('modal-target').style.display = 'none';
+                        sendCardAction(idx, p.id);
+                    };
+                    list.appendChild(b);
+                });
+                document.getElementById('modal-target').style.display = 'flex';
+            } else {
+                let targetId = null;
+                if(card.target === 'other') targetId = gameState.lineup.find(p=>p.id!==myPeerId).id;
+                disableUI(true);
+                sendCardAction(idx, targetId);
+            }
+        };
+        window.closeTargetModal = function() { document.getElementById('modal-target').style.display = 'none'; pendingCard = null; };
+
+        function sendCardAction(idx, targetId) {
+            if(isHost) {
+                gameState.waitingForEvent = true; broadcastSync();
+                executeCard(gameState.lineup[gameState.turnIndex], idx, targetId);
+            } else {
+                hostConn.send({ type: 'CLIENT_ACTION', action: 'USE_CARD', payload: { cardIdx: idx, targetId: targetId } });
+            }
+        }
+
+        window.handleTreasureClick = function(idx) {
+            disableUI(true);
+            document.querySelectorAll('.box-treasure').forEach(b=>b.style.display = 'none');
+            document.getElementById('treasure-wait-msg').style.display = 'block';
+            document.getElementById('treasure-wait-msg').innerText = 'กำลังส่งกล่อง...';
+            
+            if(isHost) { executeTreasure(idx); }
+            else { hostConn.send({ type: 'CLIENT_ACTION', action: 'TREASURE', payload: { boxIdx: idx } }); }
+        };
+
+        function handleClientEvent(data) {
+            let p = data.payload;
+            if(data.event === 'MESSAGE') {
+                speak(p.msg);
+                if(p.sound) playSound(p.sound);
+            }
+            else if(data.event === 'ROLL_ANIM') {
+                playSound('dice');
+                const cube = document.getElementById('dice-cube'); cube.classList.add('is-rolling');
+                let u = gameState.lineup.find(x=>x.id===p.playerId).localName;
+                speak(`${u} กำลังทอย...`);
+                setTimeout(() => {
+                    cube.classList.remove('is-rolling');
+                    const faces = { 1: 'rotateX(0deg) rotateY(0deg)', 2: 'rotateY(-90deg)', 3: 'rotateY(-180deg)', 4: 'rotateY(90deg)', 5: 'rotateX(-90deg)', 6: 'rotateX(90deg)' };
+                    cube.style.transform = faces[p.originalRoll];
+                    
+                    if(p.showLucky) showFloat('6', 'float-gold');
+                    if(p.showX2) showFloat('x2', 'float-gold');
+                    if(p.showDebuff) showFloat('÷ 2', 'float-red');
+                    if(p.isRev) showFloat('ถอยหลัง', 'float-arrow');
+                    
+                    speak(`${u} ได้ ${p.rollVal} แต้ม`);
+                    
+                    setTimeout(() => animatePath(p.playerId, p.path), 1200);
+                }, 1000);
+            }
+            else if(data.event === 'SHORTCUT') {
+                let u = gameState.lineup.find(x=>x.id===p.playerId).localName;
+                if(p.isUp) { speak(`${u} พุ่งขึ้นทางลัด!`); playSound('up'); }
+                else { speak(`${u} โดนงูฉก ร่วงลงมา!`); playSound('down'); }
+                
+                let pawn = document.getElementById(`pawn-${p.playerId}`);
+                if(pawn) { pawn.style.transform = p.isUp ? 'scale(1.3)' : 'scale(0.7)'; setTimeout(()=>pawn.style.transform='none', 600); }
+                
+                let t = gameState.lineup.find(x=>x.id===p.playerId); if(t) t.pos = p.dest;
+                renderBoardVisuals();
+            }
+            else if(data.event === 'TRAP') {
+                let u = gameState.lineup.find(x=>x.id===p.playerId).localName;
+                playSound('stop');
+                if(p.type==='banana') speak(`${u} เหยียบกล้วยลื่นล้ม หยุด 1 ตา!`);
+                else speak(`${u} ติดโคลนดูด หยุด 1 ตา!`);
+                
+                let pawn = document.getElementById(`pawn-${p.playerId}`);
+                if(pawn) { pawn.classList.add('pawn-slip'); setTimeout(()=>pawn.classList.remove('pawn-slip'), 500); }
+            }
+            else if(data.event === 'SPECIAL') {
+                playSound('special');
+                let u = gameState.lineup.find(x=>x.id===p.playerId).localName;
+                speak(`${u} ตกช่องพิเศษ ได้รับการ์ดใหม่!`);
+            }
+            else if(data.event === 'LAND_BLANK') {
+                playSound('blank');
+            }
+            else if(data.event === 'OVERLAP_START') {
+                playSound('double');
+                speak(`ช่องเดียวกัน! ได้สิทธิ์เปิดกล่องสมบัติ`);
+                
+                document.getElementById('modal-treasure').style.display = 'flex';
+                document.querySelectorAll('.box-treasure').forEach(b=>{ b.style.display='flex'; b.disabled=false; b.classList.remove('box-good-anim','box-bomb-anim'); });
+                document.getElementById('treasure-wait-msg').style.display = 'none';
+
+                if(p.solverId !== myPeerId) {
+                    disableUI(true);
+                    document.getElementById('treasure-wait-msg').style.display = 'block';
+                    document.getElementById('treasure-wait-msg').innerText = 'รอเพื่อนเลือกกล่อง...';
+                } else {
+                    disableUI(false);
+                }
+            }
+            else if(data.event === 'TREASURE_OPEN') {
+                let box = document.getElementById(`box-${p.boxIdx}`);
+                if(p.result === 'good') { playSound('best'); if(box) box.classList.add('box-good-anim'); speak('มิติโชค!');}
+                else if(p.result === 'bad') { playSound('bomb'); if(box) box.classList.add('box-bomb-anim'); speak('ระเบิดมิติ!');}
+                else { playSound('stolen'); speak('วิชาโจร!');}
+                
+                setTimeout(() => { document.getElementById('modal-treasure').style.display = 'none'; }, 2000);
+            }
+            else if(data.event === 'MULTI_MOVE') {
+                Object.keys(p.moves).forEach(id => {
+                    animatePath(id, p.moves[id]);
+                });
+            }
+            else if(data.event === 'CARD_USED') {
+                let u = gameState.lineup.find(x=>x.id===p.playerId).localName;
+                playSound('selectcard');
+                speak(`${u} ใช้การ์ด ${p.card.name}!`);
+            }
+            else if(data.event === 'SWAP_ANIM') {
+                triggerScreenFlash();
+                playSound('effect');
+                let t1 = gameState.lineup.find(x=>x.id===p.p1Id); if(t1) t1.pos = p.p1Pos;
+                let t2 = gameState.lineup.find(x=>x.id===p.p2Id); if(t2) t2.pos = p.p2Pos;
+                renderBoardVisuals();
+            }
+            else if(data.event === 'PICK_STEAL_TARGET') {
+                if(p.solverId === myPeerId) {
+                    const list = document.getElementById('target-list'); list.innerHTML = '';
+                    p.targets.forEach(tid => {
+                        let target = gameState.lineup.find(x=>x.id===tid);
+                        let b = document.createElement('button'); b.className = 'target-btn';
+                        b.style.backgroundColor = target.hex; b.style.color = target.textDark ? 'black' : 'white';
+                        b.innerText = `ขโมยจาก: ${target.localName}`;
+                        b.onclick = () => {
+                            document.getElementById('modal-target').style.display = 'none';
+                            hostConn.send({ type: 'CLIENT_ACTION', action: 'STEAL_TARGET', payload: { targetId: tid } });
+                        };
+                        list.appendChild(b);
+                    });
+                    document.getElementById('target-title').innerText = '🥷 วิชาโจร';
+                    document.getElementById('target-desc').innerText = 'เลือกเป้าหมายที่จะขโมยการ์ด 1 ใบ';
+                    document.getElementById('modal-target').style.display = 'flex';
+                }
+            }
+            else if(data.event === 'GAMEOVER') {
+                roomState = 'GAMEOVER';
+                stopBGM();
+                switchScreen('screen-gameover');
+                let u = gameState.lineup.find(x=>x.id===p.winnerId);
+                let title = document.getElementById('gameover-title');
+                let msg = document.getElementById('gameover-message');
+                let icon = document.getElementById('gameover-icon');
+                if(p.winnerId === myPeerId) {
+                    playSound('win');
+                    title.innerText = "คุณคือผู้ชนะ!";
+                    msg.innerText = "ยินดีด้วย คุณแตะขอบเส้นชัยช่อง 100 สำเร็จ คว้าแชมป์มิติไปครอง!";
+                    icon.innerText = "🏆🎉";
+                } else {
+                    playSound('lost');
+                    title.innerText = "คุณพ่ายแพ้!";
+                    msg.innerText = `${u.localName} เข้าถึงช่อง 100 ตัดหน้าขโมยชัยชนะไปเรียบร้อย`;
+                    icon.innerText = "🌧️💔";
+                }
+                speak(msg.innerText);
+            }
+        }
+
+        function animatePath(peerId, path) {
+            if(!path || path.length === 0) return;
+            let idx = 0;
+            let pawn = document.getElementById(`pawn-${peerId}`);
+            let int = setInterval(() => {
+                let pos = path[idx];
+                let cell = document.getElementById(`cell-${pos}`);
+                if(cell && pawn) {
+                    pawn.style.top = (cell.offsetTop + 5) + 'px';
+                    pawn.style.left = (cell.offsetLeft + 5) + 'px';
+                    pawn.classList.add('pawn-hop');
+                    setTimeout(()=>pawn.classList.remove('pawn-hop'), 150);
+                }
+                speak(pos.toString());
+                idx++;
+                if(idx >= path.length) clearInterval(int);
+            }, 350);
+        }
+
+        function showFloat(text, cssClass) {
+            const container = document.querySelector('.scene');
+            const el = document.createElement('div'); el.className = `floating-text ${cssClass}`; el.innerText = text;
+            el.style.top = (Math.random()*20-10)+'px'; el.style.left = (40+Math.random()*20-10)+'px';
+            container.appendChild(el); setTimeout(()=>el.remove(), 1000);
+        }
+        function triggerScreenFlash() {
+            const f = document.createElement('div'); f.style.position='fixed'; f.style.top='0'; f.style.left='0'; f.style.width='100vw'; f.style.height='100vh'; f.style.background='white'; f.style.zIndex='9999'; f.style.opacity='0.8'; f.style.pointerEvents='none';
+            document.body.appendChild(f);
+            setTimeout(()=>f.style.opacity='0', 100); setTimeout(()=>f.remove(), 400);
+        }
+
+        let voiceStream=null, isVoiceMuted=true;
+        window.toggleMic = async function() {
+            const btn = document.getElementById('btn-voice-mic');
+            if(!voiceStream) {
+                try {
+                    voiceStream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+                    if(peer) {
+                        guestConns.forEach(c => { peer.call(c.peer, voiceStream); });
+                    } else if(hostConn) {
+                        peer.call(hostConn.peer, voiceStream);
+                    }
+                    isVoiceMuted = false;
+                } catch(e) { showAlert('ไม่สามารถเข้าถึงไมค์ได้'); return; }
+            } else {
+                voiceStream.getAudioTracks()[0].enabled = !isVoiceMuted;
+                isVoiceMuted = !isVoiceMuted;
+            }
+            btn.innerHTML = isVoiceMuted ? '🔇' : '🎤';
+            btn.style.backgroundColor = isVoiceMuted ? 'var(--danger)' : 'var(--primary)';
+        };
+
+        window.initVoiceHost = function() {
+            peer.on('call', (call) => { call.answer(voiceStream); call.on('stream', playRemoteStream); });
+            document.getElementById('btn-voice-mic').style.display = 'flex';
+        };
+        window.initVoiceClient = function() {
+            peer.on('call', (call) => { call.answer(voiceStream); call.on('stream', playRemoteStream); });
+            document.getElementById('btn-voice-mic').style.display = 'flex';
+        };
+        function playRemoteStream(s) {
+            let a = document.createElement('audio'); a.autoplay=true; a.srcObject = s; document.body.appendChild(a);
+        }
+    </script>
+</body>
+</html>
