@@ -53,9 +53,8 @@
         /* CARDS */
         .cards-container { display: flex; gap: 15px; margin: 20px 0; justify-content: center; width: 100%; max-width: 400px; min-height: 165px; }
         .card { background: linear-gradient(135deg, #74b9ff, #0984e3); color: #fff; border-radius: 10px; padding: 15px; width: 120px; height: 160px; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 8px rgba(0,0,0,0.2); border: 2px solid #fff; text-align: center; font-size: 0.9rem; font-weight: bold; }
-        .card:hover:not(:disabled):not([aria-disabled="true"]) { transform: translateY(-10px) rotate(2deg); box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
-        /* นำ pointer-events: none ออกเพื่อให้ปุ่มยังรับคลิกไปอ่านแจ้งเตือนเสียงได้ */
-        .card:disabled, .card[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; filter: grayscale(50%); }
+        .card:hover:not(:disabled) { transform: translateY(-10px) rotate(2deg); box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        .card:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(50%); pointer-events: none; }
         .card-mirror { background: linear-gradient(135deg, #a29bfe, #6c5ce7); border-color: #ffeaa7; }
         .card-banana { background: linear-gradient(135deg, #ffeaa7, #fdcb6e); color: #2d3436; }
         .card-swap { background: linear-gradient(135deg, #ff7675, #d63031); }
@@ -618,8 +617,7 @@
             if(isHost) {
                 document.getElementById('host-controls').style.display = 'block';
                 document.getElementById('btn-start-game').style.display = 'block';
-                // เริ่มเกมได้เมื่อผู้เล่น(คน+บอท) รวมกันตั้งแต่ 2 ขึ้นไป
-                document.getElementById('btn-start-game').disabled = (roomPlayers.length + botCount < 2);
+                document.getElementById('btn-start-game').disabled = (roomPlayers.length + botCount < 1);
                 document.getElementById('guest-waiting-msg').style.display = 'none';
             } else {
                 document.getElementById('guest-waiting-msg').style.display = 'block';
@@ -1126,22 +1124,10 @@
             if(myPlayer && myPlayer.hand) {
                 myPlayer.hand.forEach((card, idx) => {
                     let btn = document.createElement('button'); btn.className = `card ${card.class}`;
-                    
-                    // ปรับเพื่อความสามารถในการเข้าถึง (Accessibility) แทนที่จะใช้ .disabled
-                    if (!isMyTurn || hasRolled) {
-                        btn.setAttribute('aria-disabled', 'true');
-                    }
-                    
-                    btn.setAttribute('aria-label', `การ์ด ${card.name}. ${card.desc}${(!isMyTurn || hasRolled) ? ' (ยังใช้ไม่ได้ในตานี้)' : ''}`);
+                    if (!isMyTurn || hasRolled) btn.disabled = true;
+                    btn.setAttribute('aria-label', `ใช้การ์ด ${card.name}. รายละเอียด: ${card.desc}`);
                     btn.innerHTML = `<div>${card.name}</div><div style='font-size:0.7rem; font-weight:normal;'>${card.desc}</div>`;
-                    
-                    btn.onclick = () => {
-                        if (btn.getAttribute('aria-disabled') === 'true') {
-                            speak('ยังไม่สามารถใช้การ์ดได้ในขณะนี้');
-                            return;
-                        }
-                        window.handleCardClick(idx);
-                    };
+                    btn.onclick = () => window.handleCardClick(idx);
                     handDiv.appendChild(btn);
                 });
             }
@@ -1316,6 +1302,7 @@
         };
 
         function disableUI(disabled) {
+            uiDisabled = disabled;
             const btnRoll = document.getElementById('btn-roll');
             if(btnRoll) btnRoll.disabled = disabled;
         }
