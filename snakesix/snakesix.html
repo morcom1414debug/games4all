@@ -187,9 +187,9 @@
             <div id="host-controls" style="display:none; text-align:left; margin-top:15px; background:#f5f6fa; padding:10px; border-radius:8px; border:1px solid #ccc;">
                 <p style="font-weight:bold; margin-bottom:5px;">🤖 จัดการจำนวนบอท:</p>
                 <div class="bot-counter">
-                    <button onclick="window.adjustBot(-1)">-</button>
+                    <button onclick="window.adjustBot(-1)" aria-label="ลดจำนวนบอท">-</button>
                     <span id="bot-count-display" style="font-size:1.2rem; font-weight:bold; width:30px; text-align:center;">0</span>
-                    <button onclick="window.adjustBot(1)">+</button>
+                    <button onclick="window.adjustBot(1)" aria-label="เพิ่มจำนวนบอท">+</button>
                 </div>
             </div>
 
@@ -280,7 +280,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, remove, onDisconnect, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
@@ -377,17 +377,17 @@
         let roomState = 'WAITING'; 
         
         let gameState = {
-            lineup: [], // array of player objects
+            lineup: [],
             turnIndex: 0,
             board: { shortcuts: {}, specials: [], quicksands: [], traps: {} },
-            activeBuffs: {}, // { peerId: { skip: true, reverse: true, debuff: true, lucky: true, x2: true } }
+            activeBuffs: {},
             waitingForEvent: false,
-            overlapData: null // store who overlaps where
+            overlapData: null 
         };
         
         let turnTimerInterval = null, timeLeft = 30;
         let uiDisabled = false;
-        let pendingCard = null; // store card index before choosing target
+        let pendingCard = null; 
         let watchdogTimer = null;
 
         // --- HELPERS ---
@@ -418,7 +418,7 @@
             document.querySelectorAll('.box-treasure').forEach(b => b.disabled = disabled);
         }
 
-        // --- INIT & LOBBY (FIREBASE/PEERJS) ---
+        // --- INIT & LOBBY ---
         function initBasePeer() {
             myPeerId = "snk-" + Math.random().toString(36).substr(2, 6);
             peer = new Peer(myPeerId);
@@ -446,6 +446,7 @@
             });
         }
 
+        // --- FIXED ROOM CREATION ---
         window.createRoom = async function() {
             if(audioCtx.state === 'suspended') await audioCtx.resume();
             playSound('one');
@@ -454,28 +455,33 @@
             document.getElementById('setup-status').style.display = 'block';
             document.getElementById('setup-status').innerText = 'กำลังสร้างห้อง...';
 
-            runTransaction(ref(db, GAME_ID + '/counter'), (curr) => (curr || 0) + 1).then((res) => {
-                if(res.committed) {
-                    roomId = 'RM' + String(res.snapshot.val()).padStart(4, '0');
-                    if (peer) peer.destroy();
-                    peer = new Peer("snk-host-" + roomId);
-                    peer.on('open', (id) => {
-                        myPeerId = id;
-                        myColorId = 'red';
-                        roomPlayers = [{ id: myPeerId, color: myColorId, name: 'Host' }];
-                        botCount = 0;
-                        
-                        const roomRef = ref(db, GAME_ID + '/rooms/' + roomId);
-                        set(roomRef, { state: 'WAITING', pCount: 1 });
-                        onDisconnect(roomRef).remove();
+            // Generate Random ID to avoid transaction locks completely
+            roomId = 'RM' + Math.floor(1000 + Math.random() * 9000);
+            
+            if (peer) peer.destroy();
+            peer = new Peer("snk-host-" + roomId);
+            
+            peer.on('open', (id) => {
+                myPeerId = id;
+                myColorId = 'red';
+                roomPlayers = [{ id: myPeerId, color: myColorId, name: 'Host' }];
+                botCount = 0;
+                
+                const roomRef = ref(db, GAME_ID + '/rooms/' + roomId);
+                set(roomRef, { state: 'WAITING', pCount: 1 });
+                onDisconnect(roomRef).remove();
 
-                        setupLobbyUI();
-                        listenHostConnections();
-                        switchScreen('screen-lobby');
-                        speak(`สร้างห้องสำเร็จ รหัสห้อง ${roomId}`);
-                        window.initVoiceHost(roomId);
-                    });
-                }
+                setupLobbyUI();
+                listenHostConnections();
+                switchScreen('screen-lobby');
+                speak(`สร้างห้องสำเร็จ รหัสห้อง ${roomId}`);
+                window.initVoiceHost(roomId);
+            });
+            
+            peer.on('error', (err) => {
+                showAlert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ PeerJS ได้ กรุณาลองใหม่');
+                document.getElementById('setup-controls').style.display = 'block';
+                document.getElementById('setup-status').style.display = 'none';
             });
         };
 
@@ -544,7 +550,6 @@
                             p.isBot = true; p.name = `บอท (${p.name})`;
                             broadcastSync();
                             if(gameState.lineup[gameState.turnIndex].id === p.id) {
-                                // If it's their turn, host auto-rolls for them
                                 setTimeout(() => window.rollDice(true), 2000);
                             }
                         }
@@ -569,11 +574,26 @@
             return COLORS.filter(c => !used.includes(c.id)).slice(0, botCount).map(c=>c.id);
         }
 
+        // --- FIXED BOT ADJUSTMENT ---
         window.adjustBot = function(delta) {
             if(!isHost) return;
             let n = botCount + delta;
-            if(n < 0 || (roomPlayers.length + n > 6)) return;
-            botCount = n; updateFirebaseCount(); syncLobbyToAll();
+            
+            if(n < 0) {
+                speak('ไม่สามารถลดจำนวนบอทได้แล้ว');
+                return;
+            }
+            if(roomPlayers.length + n > 6) {
+                speak('ผู้เล่นและบอทเต็ม 6 คนแล้ว ไม่สามารถเพิ่มได้อีก');
+                return;
+            }
+            
+            botCount = n; 
+            document.getElementById('bot-count-display').innerText = botCount;
+            speak(delta > 0 ? `เพิ่มบอทเป็น ${botCount} ตัว` : `ลดบอทเหลือ ${botCount} ตัว`);
+            
+            updateFirebaseCount(); 
+            syncLobbyToAll();
         };
 
         window.leaveRoom = function() {
@@ -584,6 +604,7 @@
         function setupLobbyUI() {
             document.getElementById('display-room-id').innerText = roomId;
             document.getElementById('player-count').innerText = roomPlayers.length + botCount;
+            document.getElementById('bot-count-display').innerText = botCount;
             
             if(isHost) {
                 document.getElementById('host-controls').style.display = 'block';
@@ -654,7 +675,6 @@
                 });
             });
 
-            // Shuffle & setup initial state
             lineup.sort(() => randGen() - 0.5);
             lineup.forEach(p => {
                 p.hand.push(CARD_TYPES[Math.floor(randGen() * CARD_TYPES.length)]);
@@ -666,21 +686,20 @@
             generateBoard();
 
             guestConns.forEach(c => { if(c.open) c.send({ type: 'START_GAME', seed: seed, lineup: lineup }); });
-            startClientGame(lineup); // Host also runs client setup
+            startClientGame(lineup); 
         };
 
         function generateBoard() {
             let used = new Set([1, 100]);
             let getFree = () => { let s; do{ s = Math.floor(randGen()*98)+2; }while(used.has(s)); used.add(s); return s; };
-            for(let i=0;i<8;i++){ let s1=getFree(), s2=getFree(); gameState.board.shortcuts[Math.min(s1,s2)] = Math.max(s1,s2); } // Ladders
-            for(let i=0;i<8;i++){ let s1=getFree(), s2=getFree(); gameState.board.shortcuts[Math.max(s1,s2)] = Math.min(s1,s2); } // Snakes
+            for(let i=0;i<8;i++){ let s1=getFree(), s2=getFree(); gameState.board.shortcuts[Math.min(s1,s2)] = Math.max(s1,s2); } 
+            for(let i=0;i<8;i++){ let s1=getFree(), s2=getFree(); gameState.board.shortcuts[Math.max(s1,s2)] = Math.min(s1,s2); } 
             for(let i=0;i<8;i++){ gameState.board.specials.push(getFree()); }
             for(let i=0;i<7;i++){ gameState.board.quicksands.push(getFree()); }
         }
 
         function startClientGame(initialLineup) {
             gameState.lineup = initialLineup;
-            // Pronouns assignment for local view
             gameState.lineup.forEach(p => {
                 if(p.id === myPeerId) p.localName = `คุณ (${COLORS.find(c=>c.id===p.colorId).name})`;
                 else p.localName = `${p.name} (${COLORS.find(c=>c.id===p.colorId).name})`;
@@ -698,13 +717,12 @@
                     clearInterval(cInt);
                     startBGM();
                     switchScreen('screen-game');
-                    renderBoardVisuals(); // setup grid
+                    renderBoardVisuals(); 
                     updateClientUI();
-                    if(isHost) setTimeout(hostTurnLoop, 1500); // Kickoff logic
+                    if(isHost) setTimeout(hostTurnLoop, 1500); 
                 }
             }, 1200);
             
-            // Start Watchdog
             if(!isHost) {
                 watchdogTimer = setInterval(() => {
                     if(!hostConn || !hostConn.open) { clearInterval(watchdogTimer); showAlert('ขาดการเชื่อมต่อจากห้อง'); }
@@ -717,7 +735,6 @@
             if(roomState === 'GAMEOVER') return;
             let cp = gameState.lineup[gameState.turnIndex];
             
-            // Check Skip buff
             if(gameState.activeBuffs[cp.id].skip) {
                 gameState.activeBuffs[cp.id].skip = false;
                 broadcastEvent('MESSAGE', { msg: `${cp.localName} ติดสถานะหยุดเดิน ข้ามตานี้!`, sound: 'blank' });
@@ -728,12 +745,11 @@
             gameState.waitingForEvent = false;
             broadcastSync();
             
-            // Manage Timer for this turn
             clearInterval(turnTimerInterval);
             let time = 30;
             turnTimerInterval = setInterval(() => {
                 time--;
-                if(time === 6 && cp.isBot) window.rollDice(true); // Bot auto-rolls early
+                if(time === 6 && cp.isBot) window.rollDice(true); 
                 else if(time === 6 && cp.id === myPeerId) window.rollDice();
                 else if(time <= 0) {
                     clearInterval(turnTimerInterval);
@@ -757,7 +773,6 @@
                 let p = roomPlayers.find(x=>x.id===peerId);
                 if(p) { p.color = payload; syncLobbyToAll(); }
             }
-            // Only process if it's their turn (or they are the overlap solver)
             let cp = gameState.lineup[gameState.turnIndex];
             
             if(action === 'ROLL' && cp.id === peerId && !gameState.waitingForEvent) {
@@ -791,7 +806,6 @@
                 isRev, showLucky, showX2, showDebuff
             });
 
-            // Wait for anim on clients, then evaluate landing
             let animTime = 1000 + (path.length * 350) + 500;
             setTimeout(() => {
                 player.pos = path.length > 0 ? path[path.length-1] : player.pos;
@@ -820,7 +834,7 @@
                 player.pos = dest;
                 let isUp = dest > pos;
                 broadcastEvent('SHORTCUT', { playerId: player.id, dest: dest, isUp: isUp });
-                setTimeout(() => evaluateLanding(player), 2000); // Recursive check
+                setTimeout(() => evaluateLanding(player), 2000); 
                 return;
             }
 
@@ -862,14 +876,11 @@
                 return;
             }
 
-            // Check overlap
             let overlappers = gameState.lineup.filter(p => p.pos === player.pos);
             if(overlappers.length > 1) {
-                // Someone is here! The last arrival (player) gets the treasure choice
                 gameState.overlapData = { solverId: player.id, pos: player.pos };
                 broadcastEvent('OVERLAP_START', { solverId: player.id, pos: player.pos });
                 
-                // If it's a bot, host auto-picks after delay
                 if(player.isBot) {
                     setTimeout(() => executeTreasure(Math.floor(Math.random()*3)), 3000);
                 }
@@ -883,12 +894,11 @@
             const evts = ['good', 'bad', 'steal'];
             let res = evts[Math.floor(randGen()*evts.length)];
             
-            gameState.overlapData = null; // clear
+            gameState.overlapData = null; 
             broadcastEvent('TREASURE_OPEN', { boxIdx: boxIdx, result: res, solverId: solver.id });
 
             setTimeout(() => {
                 if(res === 'good') {
-                    // Solver +3, others -3
                     let moves = {};
                     gameState.lineup.forEach(p => {
                         let steps = (p.id === solver.id) ? 3 : 3;
@@ -897,7 +907,6 @@
                     });
                     broadcastEvent('MULTI_MOVE', { moves: moves });
                     
-                    // Host update pos & check chain reaction for solver only (for simplicity)
                     let animTime = 1200 + (3 * 350) + 500;
                     setTimeout(() => {
                         gameState.lineup.forEach(p => { if(moves[p.id].length) p.pos = moves[p.id][moves[p.id].length-1]; });
@@ -905,7 +914,6 @@
                     }, animTime);
                 } 
                 else if(res === 'bad') {
-                    // All 1-6 back randomly
                     let moves = {};
                     let maxSteps = 0;
                     gameState.lineup.forEach(p => {
@@ -921,7 +929,6 @@
                     }, animTime);
                 }
                 else if(res === 'steal') {
-                    // Modal to steal. For bot, auto pick target with cards.
                     let validTargets = gameState.lineup.filter(p => p.id !== solver.id && p.hand.length > 0);
                     if(validTargets.length === 0) {
                         broadcastEvent('MESSAGE', { msg: 'ไม่มีใครมีการ์ดให้ขโมยเลย! ว่าวแหว๋ว~', sound: 'blank' });
@@ -931,17 +938,14 @@
                             let t = validTargets[Math.floor(randGen()*validTargets.length)];
                             finishSteal(solver, t);
                         } else {
-                            // Tell client to pick steal target
                             gameState.waitingForEvent = true;
                             broadcastEvent('PICK_STEAL_TARGET', { solverId: solver.id, targets: validTargets.map(t=>t.id) });
-                            // Overlap action routing handles target response
                         }
                     }
                 }
             }, 2500);
         }
 
-        // Add handler in processClientAction for STEAL_TARGET
         const originalProcessAction = processClientAction;
         processClientAction = function(action, payload, peerId) {
             originalProcessAction(action, payload, peerId);
@@ -990,7 +994,6 @@
                 else if(card.id === 'swap') {
                     let temp = player.pos; player.pos = target.pos; target.pos = temp;
                     broadcastEvent('SWAP_ANIM', { p1Id: player.id, p2Id: target.id, p1Pos: player.pos, p2Pos: target.pos });
-                    // To keep it simple, skip re-evaluating landing after swap.
                 }
                 else if(card.id === 'snatch') {
                     if(target.hand.length > 0) {
@@ -1017,26 +1020,22 @@
             handleClientEvent(data);
         }
 
-
         // --- CLIENT UI & EVENT HANDLING ---
         function handleHostSync(data) {
             gameState = data.state;
             updateClientUI();
         }
 
-        // Use global PeerJS 'data' listener for events
         if (peer) {
             peer.on('connection', (conn) => {
                 conn.on('data', (d) => { if(d.type === 'GAME_EVENT') handleClientEvent(d); });
             });
         }
-        // Guest listener
         setInterval(() => {
             if(hostConn && hostConn.open) {
                 hostConn.on('data', (d) => { if(d.type === 'GAME_EVENT') handleClientEvent(d); });
             }
         }, 1000);
-
 
         function updateClientUI() {
             if(roomState === 'GAMEOVER') return;
@@ -1056,7 +1055,6 @@
                 if(isMyTurn) speak('ตาของคุณ! ทอยเต๋าเลย');
             }
 
-            // Render Cards
             let myPlayer = gameState.lineup.find(p=>p.id===myPeerId);
             const handDiv = document.getElementById('my-cards');
             handDiv.innerHTML = '';
@@ -1113,7 +1111,6 @@
                 }
             }
 
-            // Render Pawns
             gameState.lineup.forEach(p => {
                 let pDiv = document.getElementById(`pawn-${p.id}`);
                 if(!pDiv) {
@@ -1122,24 +1119,20 @@
                     pDiv.innerText = p.id === myPeerId ? 'คุณ' : p.name.substring(0,2);
                     grid.appendChild(pDiv);
                 } else {
-                    grid.appendChild(pDiv); // Move to end for z-index
+                    grid.appendChild(pDiv); 
                 }
                 
-                // Active Turn Effect
                 if(gameState.lineup[gameState.turnIndex].id === p.id) pDiv.classList.add('pawn-active');
                 else pDiv.classList.remove('pawn-active');
 
-                // Buff Visuals
                 let b = gameState.activeBuffs[p.id];
                 if(b.debuff) {
                     let s = document.createElement('div'); s.className = 'slash-anim'; s.innerText = '💢'; pDiv.appendChild(s);
                     setTimeout(()=>s.remove(), 500);
                 }
 
-                // Place on board
                 let cell = document.getElementById(`cell-${p.pos}`);
                 if(cell) {
-                    // Spread pawns if multiple on same cell
                     let sameCellCount = gameState.lineup.filter(x=>x.pos===p.pos).length;
                     let offset = sameCellCount > 1 ? (Math.random()*15 - 7) : 0;
                     pDiv.style.top = (cell.offsetTop + 5 + offset) + 'px';
@@ -1147,7 +1140,6 @@
                 }
             });
 
-            // Draw Lines
             setTimeout(() => {
                 const lines = svg.querySelectorAll('line'); lines.forEach(l => l.remove());
                 const boardRect = grid.getBoundingClientRect();
@@ -1169,13 +1161,11 @@
             }, 100);
         }
 
-        // --- CLIENT ACTION METHODS ---
         window.rollDice = function(isBotHostCall = false) {
             if(uiDisabled && !isBotHostCall) return;
             disableUI(true);
             
             if(isHost) {
-                // If Host clicks, process directly
                 let cp = gameState.lineup[gameState.turnIndex];
                 gameState.waitingForEvent = true; broadcastSync();
                 executeRoll(cp);
@@ -1187,7 +1177,6 @@
         window.useCard = function(idx, card) {
             if(uiDisabled) return;
             if(card.target === 'other' && gameState.lineup.length > 2) {
-                // Open Target Modal
                 pendingCard = idx;
                 const list = document.getElementById('target-list'); list.innerHTML = '';
                 gameState.lineup.forEach(p => {
@@ -1230,7 +1219,6 @@
             else { hostConn.send({ type: 'CLIENT_ACTION', action: 'TREASURE', payload: { boxIdx: idx } }); }
         };
 
-        // --- CLIENT EVENT HANDLER (Animations & Audio) ---
         function handleClientEvent(data) {
             let p = data.payload;
             if(data.event === 'MESSAGE') {
@@ -1254,7 +1242,6 @@
                     
                     speak(`${u} ได้ ${p.rollVal} แต้ม`);
                     
-                    // Animate Movement
                     setTimeout(() => animatePath(p.playerId, p.path), 1200);
                 }, 1000);
             }
@@ -1266,7 +1253,6 @@
                 let pawn = document.getElementById(`pawn-${p.playerId}`);
                 if(pawn) { pawn.style.transform = p.isUp ? 'scale(1.3)' : 'scale(0.7)'; setTimeout(()=>pawn.style.transform='none', 600); }
                 
-                // Temp update pos for visual jump before host syncs
                 let t = gameState.lineup.find(x=>x.id===p.playerId); if(t) t.pos = p.dest;
                 renderBoardVisuals();
             }
@@ -1312,7 +1298,6 @@
                 setTimeout(() => { document.getElementById('modal-treasure').style.display = 'none'; }, 2000);
             }
             else if(data.event === 'MULTI_MOVE') {
-                // p.moves = { id: path }
                 Object.keys(p.moves).forEach(id => {
                     animatePath(id, p.moves[id]);
                 });
@@ -1377,7 +1362,6 @@
             let pawn = document.getElementById(`pawn-${peerId}`);
             let int = setInterval(() => {
                 let pos = path[idx];
-                // Visual update only
                 let cell = document.getElementById(`cell-${pos}`);
                 if(cell && pawn) {
                     pawn.style.top = (cell.offsetTop + 5) + 'px';
@@ -1403,7 +1387,6 @@
             setTimeout(()=>f.style.opacity='0', 100); setTimeout(()=>f.remove(), 400);
         }
 
-        // Voice
         let voiceStream=null, isVoiceMuted=true;
         window.toggleMic = async function() {
             const btn = document.getElementById('btn-voice-mic');
