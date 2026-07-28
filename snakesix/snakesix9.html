@@ -163,7 +163,7 @@
 </head>
 <body>
 
-    <div id="game-speaker" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+    <div id="game-speaker" class="sr-only" aria-live="assertive"></div>
 
     <div id="screen-welcome" class="screen active-screen">
         <button class="home-btn-hex pos-top-left" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
@@ -697,7 +697,7 @@
             setTimeout(() => { 
                 speaker.innerText = text; 
                 speakTimeout = setTimeout(() => { speaker.innerText = ''; }, 4500);
-            }, 100);
+            }, 50);
         }
 
         function getUIName(role) { 
@@ -712,14 +712,30 @@
         function getUIPawnId(role) { return `pawn-${role}`; }
 
         function updateStatusBar() {
-            let parts = turnOrder.map(r => {
+            let partsHtml = [];
+            let partsAria = [];
+
+            turnOrder.forEach(r => {
                 let colorObj = CHAR_COLORS.find(c => c.id === players[r].color);
                 let dot = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${colorObj.hex}; margin-right:4px; vertical-align:middle;"></span>`;
-                return `${dot}${getUIName(r)}: ${pPos[r]}`;
+                
+                // ข้อมูลสำหรับแสดงผลทางตา
+                partsHtml.push(`${dot}${getUIName(r)}: ${pPos[r]}`);
+                
+                // ข้อมูลสำหรับให้ VoiceOver อ่านรวบยอดเป็นก้อนเดียว
+                partsAria.push(`${getUIName(r)} ช่อง ${pPos[r]}`);
             });
-            let txtHtml = parts.join(' , ');
-            document.getElementById('game-status-bar').innerHTML = txtHtml;
-            document.getElementById('board-status-bar').innerHTML = txtHtml;
+
+            let txtHtml = partsHtml.join(' | ');
+            let ariaTxt = partsAria.join(', ');
+
+            ['game-status-bar', 'board-status-bar'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.setAttribute('aria-label', ariaTxt);
+                    el.innerHTML = `<span aria-hidden="true">${txtHtml}</span>`;
+                }
+            });
         }
 
         function startCountdownSequence() {
@@ -1334,7 +1350,7 @@
                 pawn.id = getUIPawnId(r);
                 pawn.className = `pawn pawn-dynamic`;
                 pawn.style.backgroundColor = colorObj.hex;
-                pawn.innerText = (r === myRole) ? 'ค' : (p.type === 'bot' ? 'พ' : 'พ');
+                pawn.innerText = (r === myRole) ? 'ค' : (p.type === 'bot' ? 'บ' : 'พ');
                 if(r === myRole) pawn.style.animation = 'idleGlow 2s infinite ease-in-out';
                 grid.appendChild(pawn);
             });
