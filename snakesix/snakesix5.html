@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnakeSix - บันไดงูป่วนมิติ (2-6 Players Online & Bot)</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --primary: #6c5ce7;
+            --secondary: #fdcb6e;
+            --bg: #f5f6fa;
+            --danger: #d63031;
+            /* สีสำหรับผู้เล่น 6 สี */
+            --p1-color: #0984e3; /* น้ำเงิน */
+            --p2-color: #d63031; /* แดง */
+            --p3-color: #00b894; /* เขียว */
+            --p4-color: #fdcb6e; /* เหลือง */
+            --p5-color: #a29bfe; /* ม่วง */
+            --p6-color: #e17055; /* ส้ม */
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg); margin: 0; padding: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+        
+        .screen { width: 100vw; height: 100vh; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; position: absolute; top: 0; left: 0; }
+        .active-screen { display: flex; }
+
+        h2 { margin-top: 0; color: #2d3436; text-align: center; font-size: 1.8rem; }
+        h2:focus { outline: none; }
+        p { line-height: 1.6; color: #636e72; }
+        
+        .btn-main { background-color: var(--primary); color: #fff; border: none; padding: 12px 24px; font-size: 1.2rem; border-radius: 12px; cursor: pointer; font-weight: bold; transition: transform 0.2s, background-color 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 320px; text-align: center; text-decoration: none; margin-bottom: 10px; }
+        .btn-main:hover:not([disabled]) { background-color: #5b4cc4; transform: translateY(-2px); }
+        .btn-main:focus { outline: 4px solid var(--secondary); outline-offset: 4px; }
+        .btn-main[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-sub { background-color: #74b9ff; color: #fff; border: none; padding: 8px 16px; font-size: 1rem; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px; }
+        .btn-sub:hover:not([disabled]) { background-color: #0984e3; }
+        .btn-sub[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+        .home-btn-hex { background-color: var(--primary); color: #fff; border: none; width: 60px; height: 60px; font-size: 1.8rem; cursor: pointer; transition: transform 0.2s, background-color 0.2s; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); display: flex; align-items: center; justify-content: center; text-decoration: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 0 auto; }
+        .home-btn-hex:hover { background-color: #5b4cc4; transform: scale(1.1); }
+        .home-btn-hex:focus { outline: 4px solid var(--secondary); outline-offset: 4px; }
+        .pos-top-left { position: absolute; top: 20px; left: 20px; z-index: 100; }
+        .pos-top-right { position: absolute; top: 20px; right: 20px; z-index: 100; left: auto; font-size: 1.2rem; font-weight: bold; }
+
+        .welcome-card { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; }
+
+        .room-item { background-color: #dfe6e9; padding: 12px; border-radius: 10px; margin-bottom: 8px; cursor: pointer; font-weight: bold; color: #2d3436; transition: all 0.2s; border: 2px solid transparent; display: flex; justify-content: space-between; align-items: center; }
+        .room-item:hover { background-color: #b2bec3; border-color: var(--primary); }
+
+        .player-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; color: white; font-weight: bold; font-size: 0.85rem; margin: 4px; }
+
+        .cards-container { display: flex; gap: 10px; margin: 15px 0; justify-content: center; width: 100%; max-width: 450px; min-height: 150px; flex-wrap: wrap; }
+        .card { background: linear-gradient(135deg, #74b9ff, #0984e3); color: #fff; border-radius: 10px; padding: 12px; width: 120px; height: 150px; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 8px rgba(0,0,0,0.2); border: 2px solid #fff; text-align: center; font-size: 0.85rem; font-weight: bold; }
+        .card:hover:not([disabled]) { transform: translateY(-8px) rotate(2deg); box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        .card[disabled] { opacity: 0.5; cursor: not-allowed; filter: grayscale(50%); pointer-events: none; }
+        .card-mirror { background: linear-gradient(135deg, #a29bfe, #6c5ce7); border-color: #ffeaa7; }
+        .card-banana { background: linear-gradient(135deg, #ffeaa7, #fdcb6e); color: #2d3436; }
+        .card-swap { background: linear-gradient(135deg, #ff7675, #d63031); }
+        
+        .scene { width: 90px; height: 90px; perspective: 400px; margin: 15px auto; position: relative; }
+        .cube { width: 90px; height: 90px; position: relative; transform-style: preserve-3d; transform: rotateX(-22deg) rotateY(-45deg); transition: transform 0.5s ease-out; }
+        .cube-face { position: absolute; width: 90px; height: 90px; background: white; border: 2px solid #ccc; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: bold; color: #2d3436; box-shadow: inset 0 0 15px rgba(0,0,0,0.1); }
+        .face-1  { transform: rotateY(0deg) translateZ(45px); }
+        .face-2  { transform: rotateY(90deg) translateZ(45px); }
+        .face-3  { transform: rotateY(180deg) translateZ(45px); }
+        .face-4  { transform: rotateY(-90deg) translateZ(45px); }
+        .face-5  { transform: rotateX(90deg) translateZ(45px); }
+        .face-6  { transform: rotateX(-90deg) translateZ(45px); }
+        
+        @keyframes rolling { 0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); } 100% { transform: rotateX(720deg) rotateY(1440deg) rotateZ(360deg); } }
+        .is-rolling { animation: rolling 0.8s linear infinite; }
+
+        .board-wrapper { width: 100%; max-width: 480px; aspect-ratio: 1/1; background-color: #fff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); display: grid; grid-template-columns: repeat(10, 10%); grid-template-rows: repeat(10, 10%); position: relative; border: 5px solid #2d3436; margin-top: 10px; }
+        .cell { border: 1px solid #dfe6e9; display: flex; flex-direction: column; justify-content: space-between; padding: 2px; font-size: 0.65rem; font-weight: bold; position: relative; color: rgba(0,0,0,0.3); }
+        .cell-light { background-color: #f7f1e3; }
+        .cell-dark { background-color: #d1ccc0; }
+        
+        .cell-special { background: linear-gradient(135deg, #ffeaa7 0%, #ffb142 100%) !important; animation: pulse 1.5s infinite; color: #cc8e00 !important; }
+        .cell-special::after { content: '😃'; font-size: 0.8rem; text-align: center; display: block; margin: auto; }
+        .cell-quicksand { background-color: #8c6d4f !important; box-shadow: inset 0 0 15px #4a3725; color: #f5f6fa !important; }
+        .cell-quicksand::after { content: '🌀'; font-size: 0.7rem; text-align: center; display: block; opacity: 0.7; margin: auto; }
+        .cell-goal { background: linear-gradient(135deg, #2d3436 0%, #1e272e 100%) !important; border: 2px solid #ffca28 !important; color: #ffca28 !important; }
+        .cell-goal::after { content: '⛩️'; font-size: 1.2rem; text-align: center; display: block; margin: auto; }
+
+        @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.8; } }
+        
+        .pawn { width: 20px; height: 20px; border-radius: 50%; position: absolute; z-index: 5; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); box-shadow: 0 2px 5px rgba(0,0,0,0.4); border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: bold; color: white; }
+        
+        /* Pawns 6 สี */
+        .pawn-p1 { background-color: var(--p1-color); }
+        .pawn-p2 { background-color: var(--p2-color); }
+        .pawn-p3 { background-color: var(--p3-color); }
+        .pawn-p4 { background-color: var(--p4-color); color: #2d3436; }
+        .pawn-p5 { background-color: var(--p5-color); }
+        .pawn-p6 { background-color: var(--p6-color); }
+
+        .pawn-hop { animation: hopEffect 0.25s ease-out; }
+        @keyframes hopEffect { 0%, 100% { transform: scale(1) translateY(0); } 50% { transform: scale(0.8, 1.2) translateY(-12px); } }
+
+        .banana-trap { font-size: 1.2rem; display: flex; align-items: center; justify-content: center; z-index: 4; pointer-events: none; position: absolute; }
+        .pawn-slip { animation: slipShake 0.5s ease-in-out; }
+        @keyframes slipShake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-20deg); } 75% { transform: rotate(20deg); } }
+        
+        .aura-active::before { content: ''; position: absolute; top: -4px; left: -4px; right: -4px; bottom: -4px; border-radius: 50%; box-shadow: 0 0 10px 3px gold; animation: pulseAura 1.5s infinite alternate; pointer-events: none; }
+        @keyframes pulseAura { 0% { opacity: 0.5; } 100% { opacity: 1; transform: scale(1.2); } }
+        
+        .debuff-active::after { content: '💢'; position: absolute; top: -16px; font-size: 1rem; pointer-events: none; }
+        
+        .flash-screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255, 255, 255, 0.8); z-index: 9999; pointer-events: none; animation: flashFade 0.4s ease-out forwards; }
+        @keyframes flashFade { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }
+
+        .boxes-container { display: flex; gap: 15px; margin: 20px 0; justify-content: center; }
+        .box-treasure { width: 90px; height: 90px; background-color: #e17055; border: 4px solid #d63031; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; cursor: pointer; box-shadow: 0 6px 12px rgba(0,0,0,0.15); transition: transform 0.2s; }
+        .box-treasure:hover:not([disabled]), .box-treasure:focus:not([disabled]) { transform: scale(1.1) rotate(3deg); background-color: #ff7675; border-color: #ffeaa7; }
+        .box-treasure[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+        .win-screen { background-color: #55efc4; color: #00b894; }
+        .lose-screen { background-color: #636e72; color: #2d3436; }
+        .game-over-art { font-size: 5rem; margin-bottom: 15px; animation: bounce 1s infinite alternate; }
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-15px); } }
+        
+        .status-bar { font-size: 0.95rem; font-weight: bold; color: var(--primary); background: #fff; padding: 8px 16px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 8px; border: 2px solid var(--primary); text-align: center; max-width: 480px; width: 100%; word-break: break-word; }
+        
+        #snakes-ladders-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+        #screen-countdown { background: radial-gradient(circle, #1e272e 0%, #000000 100%); }
+        .countdown-text { font-size: 8rem; font-weight: bold; color: #fdcb6e; text-shadow: 0 0 30px rgba(253, 203, 110, 0.8); margin: 0; }
+    </style>
+</head>
+<body>
+
+    <button id="btn-voice-mic" class="home-btn-hex" style="position: fixed; top: 20px; right: 90px; z-index: 10000; display: none; background-color: var(--danger);" onclick="window.toggleMic()" aria-label="ปุ่มปิดเปิดไมค์ กด Alt บวก M เพื่อสลับ" aria-pressed="false">🔇</button>
+
+    <div id="game-speaker" class="sr-only" aria-live="assertive"></div>
+    <div id="lobby-announcer" class="sr-only" aria-live="polite"></div>
+
+    <!-- WELCOME / LOBBY SCREEN -->
+    <div id="screen-welcome" class="screen active-screen">
+        <button class="home-btn-hex pos-top-left" aria-label="กลับสู่หน้าหลัก" onclick="window.location.href='../index.html'">🏠</button>
+        
+        <div class="welcome-card">
+            <h1 style="color: var(--primary); margin-bottom: 5px;">SnakeSix 🎲</h1>
+            <p style="font-weight: bold; margin-bottom: 15px;">บันไดงูป่วนมิติ 2-6 คน (Online & Bot)</p>
+            <hr style="border: 0; border-top: 1px solid #dfe6e9; margin: 10px 0;">
+            
+            <div id="lobby-content">
+                <ul style="text-align: left; font-size: 0.9rem; padding-left: 20px; line-height: 1.5; color: #636e72;">
+                    <li>รองรับผู้เล่น 2 ถึง 6 คน (ผสมคนและบอทได้)</li>
+                    <li>เจ้าของห้องเพิ่ม/ลด บอทได้ตามใจชอบ</li>
+                    <li>ทอยเต๋า ใช้การ์ดแกล้งกัน และสุ่มเปิดกล่องมินิเกม!</li>
+                </ul>
+                
+                <button id="btn-create-room" class="btn-main" type="button" style="margin-top: 10px;" onclick="window.createRoom()"><span aria-hidden="true">🎮</span> สร้างห้องใหม่ (Host)</button>
+
+                <div id="room-list-container">
+                    <h3 style="margin-top:15px; color:#2d3436; text-align:left;">ห้องที่เปิดรอเพื่อน:</h3>
+                    <div id="room-list" style="display: flex; flex-direction: column; text-align:left; max-height:140px; overflow-y:auto;"></div>
+                </div>
+            </div>
+
+            <!-- ROOM LOBBY (WAITING ROOM) -->
+            <div id="room-lobby" style="display:none; text-align:center;">
+                <h2 id="room-title-text" style="color:var(--primary); margin-bottom: 5px;">ห้อง: -</h2>
+                <p id="room-status-subtitle" style="color:#636e72; font-weight:bold;">กำลังรอผู้เล่นอื่น...</p>
+                
+                <div style="margin: 15px 0;">
+                    <h4 style="margin-bottom: 8px;">รายชื่อผู้เล่นในห้อง (<span id="player-count-num">1</span>/6 คน):</h4>
+                    <div id="player-list-container" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 50px;"></div>
+                </div>
+
+                <div id="host-controls" style="display:none; background: #f1f2f6; padding: 12px; border-radius: 12px; margin-top: 10px;">
+                    <p style="font-weight:bold; margin-top:0; margin-bottom:8px; color:#2d3436;">เมนูจัดการสำหรับเจ้าของห้อง:</p>
+                    <button id="btn-add-bot" class="btn-sub" type="button" onclick="window.addBot()"><span aria-hidden="true">🤖</span> เพิ่มบอท</button>
+                    <button id="btn-remove-bot" class="btn-sub" type="button" style="background-color: var(--danger);" onclick="window.removeBot()"><span aria-hidden="true">❌</span> ลดบอท</button>
+                    <br>
+                    <button id="btn-start-game" class="btn-main" type="button" style="margin-top:12px; background-color: #00b894;" disabled onclick="window.hostStartGame()"><span aria-hidden="true">🚀</span> เริ่มเกมทันที</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- COUNTDOWN SCREEN -->
+    <div id="screen-countdown" class="screen">
+        <div id="countdown-visual" class="countdown-text" aria-hidden="true"></div>
+    </div>
+
+    <!-- TURN SCREEN -->
+    <div id="screen-turn" class="screen">
+        <div id="game-status-bar" class="status-bar" aria-live="polite">กำลังโหลดสถานะ...</div>
+        <h2 id="turn-title" tabindex="-1">ระบบกำลังเตรียมกระดาน...</h2>
+        
+        <div class="scene" aria-hidden="true">
+            <div id="dice-cube" class="cube">
+                <div class="cube-face face-1">1</div>
+                <div class="cube-face face-2">2</div>
+                <div class="cube-face face-3">3</div>
+                <div class="cube-face face-4">4</div>
+                <div class="cube-face face-5">5</div>
+                <div class="cube-face face-6">6</div>
+            </div>
+        </div>
+
+        <button id="btn-roll" class="btn-main" type="button" disabled onclick="window.handleRollClick()"><span aria-hidden="true">🎲</span> ทอยลูกเต๋า</button>
+
+        <h3 style="margin-top:15px; margin-bottom:5px;">การ์ดในมือคุณ (สูงสุด 2 ใบ)</h3>
+        <div id="my-cards" class="cards-container"></div>
+    </div>
+
+    <!-- BOARD SCREEN -->
+    <div id="screen-board" class="screen" aria-hidden="true">
+        <div id="board-status-bar" class="status-bar">กำลังอัปเดต...</div>
+        <h2 id="board-status">หมากกำลังขยับ...</h2>
+        <div id="board-grid" class="board-wrapper">
+            <svg id="snakes-ladders-svg" aria-hidden="true">
+                <defs>
+                    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                        <path d="M 0 1 L 10 5 L 0 9 z" fill="#2ecc71" />
+                    </marker>
+                    <marker id="arrow-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                        <path d="M 0 1 L 10 5 L 0 9 z" fill="#e74c3c" />
+                    </marker>
+                </defs>
+            </svg>
+            <!-- หมากของผู้เล่น 1-6 จะถูกสร้างไดนามิก -->
+        </div>
+    </div>
+
+    <!-- MINIGAME SCREEN -->
+    <div id="screen-mini" class="screen">
+        <div class="welcome-card" style="position:relative; max-width:450px;">
+            <h2 id="mini-title" tabindex="-1">💥 ตกช่องเดียวกัน! 💥</h2>
+            <p id="mini-subtitle" style="font-weight: bold; text-align: center; color: #2d3436;">เลือกกล่องสมบัติมิติ 1 ใบเพื่อส่งผลกระทบต่อทุกคนในช่องนั้น!</p>
+            
+            <div class="boxes-container">
+                <button id="mini-box-1" class="box-treasure" type="button" aria-label="กล่องสมบัติใบที่ 1" onclick="window.handleTreasureClick(0)"><span aria-hidden="true">📦</span></button>
+                <button class="box-treasure" type="button" aria-label="กล่องสมบัติใบที่ 2" onclick="window.handleTreasureClick(1)"><span aria-hidden="true">📦</span></button>
+                <button class="box-treasure" type="button" aria-label="กล่องสมบัติใบที่ 3" onclick="window.handleTreasureClick(2)"><span aria-hidden="true">📦</span></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div id="screen-gameover" class="screen">
+        <div id="gameover-art-container" aria-hidden="true">
+            <div id="gameover-art" class="game-over-art">🏆</div>
+        </div>
+        <h2 id="gameover-title" tabindex="-1" style="font-size: 2.2rem;">จบเกมแล้ว!</h2>
+        <p id="gameover-message" style="font-size: 1.2rem; margin-bottom: 25px; font-weight: bold; text-align: center;"></p>
+        <button class="home-btn-hex" aria-label="กลับสู่หน้าหลัก" onclick="window.location.href='../index.html'">🏠</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update, runTransaction, push, onChildAdded, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
+            authDomain: "xo-game-134ec.firebaseapp.com",
+            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "xo-game-134ec",
+            storageBucket: "xo-game-134ec.firebasestorage.app",
+            messagingSenderId: "318375224157",
+            appId: "1:318375224157:web:5ed5267ed98f201db77eb4"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // --- GAME CONSTANTS & CONFIG ---
+        const GAME_PATH = 'games/SnakeSix'; // Path ใหม่กันชน
+        const IDLE_TIMEOUT_MS = 3 * 60 * 1000; 
+        let idleTimeoutTimer = null;
+
+        const COLOR_PRESETS = [
+            { key: 'p1', name: 'สีน้ำเงิน', hex: '#0984e3', pawnClass: 'pawn-p1' },
+            { key: 'p2', name: 'สีแดง', hex: '#d63031', pawnClass: 'pawn-p2' },
+            { key: 'p3', name: 'สีเขียว', hex: '#00b894', pawnClass: 'pawn-p3' },
+            { key: 'p4', name: 'สีเหลือง', hex: '#fdcb6e', pawnClass: 'pawn-p4' },
+            { key: 'p5', name: 'สีม่วง', hex: '#6c5ce7', pawnClass: 'pawn-p5' },
+            { key: 'p6', name: 'สีส้ม', hex: '#e17055', pawnClass: 'pawn-p6' }
+        ];
+
+        // --- ONLINE & MULTIPLAYER STATE ---
+        let myRole = null; 
+        let currentRoomId = null;
+        let prngSeed = 0; 
+        let hasRolled = false;
+        
+        let players = {};      // Key-Value Object ผู้เล่นทั้งหมด
+        let turnOrder = [];    // Array ลำดับการเล่น e.g. ['p1', 'p2', 'p3']
+        let currentTurnIndex = 0;
+        let activeBuffs = {};  // Dynamic Per-Player Buffs Object
+        let botCount = 0;
+
+        // PRNG (Seeded Random)
+        function seededRandom() {
+            var t = prngSeed += 0x6D2B79F5;
+            t = Math.imul(t ^ t >>> 15, t | 1);
+            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        }
+
+        // --- LOBBY LOGIC ---
+        const roomsRef = ref(db, `${GAME_PATH}/rooms`);
+        
+        onValue(roomsRef, (snapshot) => {
+            const rooms = snapshot.val() || {};
+            const listDiv = document.getElementById('room-list');
+            listDiv.innerHTML = '';
+            let hasWaiting = false;
+
+            for (const [rId, roomData] of Object.entries(rooms)) {
+                if (roomData.status === 'waiting') {
+                    hasWaiting = true;
+                    const count = Object.keys(roomData.players || {}).length;
+                    const btn = document.createElement('div');
+                    btn.className = 'room-item';
+                    btn.innerHTML = `<span>ห้อง: ${rId}</span> <span style="font-size:0.85rem; color:var(--primary);">(${count}/6 คน) จอยเล้ย ➔</span>`;
+                    btn.onclick = () => window.joinRoom(rId);
+                    listDiv.appendChild(btn);
+                }
+            }
+            if (!hasWaiting) listDiv.innerHTML = '<div style="color:#636e72; padding:5px;">ยังไม่มีห้องที่เปิดรอ...</div>';
+        });
+
+        function announceLobby(text) {
+            const el = document.getElementById('lobby-announcer');
+            if (el) el.innerText = text;
+        }
+
+        window.createRoom = function() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            playSound('one');
+            
+            document.getElementById('lobby-content').style.display = 'none';
+            document.getElementById('room-lobby').style.display = 'block';
+            document.getElementById('host-controls').style.display = 'block';
+
+            const counterRef = ref(db, `${GAME_PATH}/room_counter`);
+            runTransaction(counterRef, (currentData) => {
+                return (currentData || 0) + 1;
+            }).then((result) => {
+                if (result.committed) {
+                    let count = result.snapshot.val();
+                    currentRoomId = 'snake6_' + String(count).padStart(4, '0');
+                    myRole = 'p1';
+                    
+                    document.getElementById('room-title-text').innerText = `ห้อง: ${currentRoomId}`;
+                    window.initVoiceHost(currentRoomId);
+                    
+                    let newSeed = Math.floor(Math.random() * 1000000);
+                    
+                    // Host สล็อตแรก (p1)
+                    players = {
+                        p1: { name: "คุณ ( host )", colorName: COLOR_PRESETS[0].name, hex: COLOR_PRESETS[0].hex, pawnClass: COLOR_PRESETS[0].pawnClass, isBot: false, pos: 1, hand: [] }
+                    };
+                    turnOrder = ['p1'];
+
+                    set(ref(db, `${GAME_PATH}/rooms/${currentRoomId}`), {
+                        status: 'waiting',
+                        seed: newSeed,
+                        players: players,
+                        turnOrder: turnOrder
+                    });
+
+                    listenToLobbyUpdates(currentRoomId);
+                    listenToGameStart(currentRoomId);
+                }
+            });
+        };
+
+        window.joinRoom = function(rId) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            currentRoomId = rId;
+
+            runTransaction(ref(db, `${GAME_PATH}/rooms/${rId}`), (roomData) => {
+                if (!roomData || roomData.status !== 'waiting') return roomData;
+                
+                let pKeys = Object.keys(roomData.players || {});
+                if (pKeys.length >= 6) return roomData; // เต็ม 6 คน
+
+                let nextIdx = pKeys.length;
+                let nextPKey = `p${nextIdx + 1}`;
+                myRole = nextPKey;
+
+                let preset = COLOR_PRESETS[nextIdx];
+                roomData.players[nextPKey] = {
+                    name: `ผู้เล่น ${nextIdx + 1}`,
+                    colorName: preset.name,
+                    hex: preset.hex,
+                    pawnClass: preset.pawnClass,
+                    isBot: false,
+                    pos: 1,
+                    hand: []
+                };
+                roomData.turnOrder.push(nextPKey);
+                return roomData;
+            }).then((res) => {
+                if (res.committed) {
+                    document.getElementById('lobby-content').style.display = 'none';
+                    document.getElementById('room-lobby').style.display = 'block';
+                    document.getElementById('room-title-text').innerText = `ห้อง: ${currentRoomId}`;
+                    
+                    window.initVoiceClient(currentRoomId);
+                    listenToLobbyUpdates(currentRoomId);
+                    listenToGameStart(currentRoomId);
+                }
+            });
+        };
+
+        function listenToLobbyUpdates(rId) {
+            onValue(ref(db, `${GAME_PATH}/rooms/${rId}`), (snap) => {
+                const data = snap.val();
+                if (!data) return;
+
+                players = data.players || {};
+                turnOrder = data.turnOrder || [];
+
+                // Render Player Badges
+                const container = document.getElementById('player-list-container');
+                container.innerHTML = '';
+                
+                turnOrder.forEach(pKey => {
+                    const p = players[pKey];
+                    if (!p) return;
+                    const badge = document.createElement('span');
+                    badge.className = 'player-badge';
+                    badge.style.backgroundColor = p.hex;
+                    badge.innerText = `${p.isBot ? '🤖 ' : '👤 '}${p.name} (${p.colorName})`;
+                    container.appendChild(badge);
+                });
+
+                document.getElementById('player-count-num').innerText = turnOrder.length;
+
+                // Host button state validation
+                if (myRole === 'p1') {
+                    const btnStart = document.getElementById('btn-start-game');
+                    const btnAddBot = document.getElementById('btn-add-bot');
+                    const btnRemoveBot = document.getElementById('btn-remove-bot');
+
+                    btnStart.disabled = turnOrder.length < 2 || turnOrder.length > 6;
+                    btnAddBot.disabled = turnOrder.length >= 6;
+                    
+                    let hasBot = turnOrder.some(k => players[k].isBot);
+                    btnRemoveBot.disabled = !hasBot;
+                }
+            });
+        }
+
+        window.addBot = function() {
+            if (myRole !== 'p1' || turnOrder.length >= 6) return;
+            
+            let nextIdx = turnOrder.length;
+            let nextPKey = `p${nextIdx + 1}`;
+            let preset = COLOR_PRESETS[nextIdx];
+
+            players[nextPKey] = {
+                name: `บอท ${preset.name}`,
+                colorName: preset.name,
+                hex: preset.hex,
+                pawnClass: preset.pawnClass,
+                isBot: true,
+                pos: 1,
+                hand: []
+            };
+            turnOrder.push(nextPKey);
+            botCount++;
+
+            update(ref(db, `${GAME_PATH}/rooms/${currentRoomId}`), {
+                players: players,
+                turnOrder: turnOrder
+            });
+
+            const msg = `เพิ่ม ${players[nextPKey].name} เข้าสู่ห้องแล้ว จำนวนผู้เล่นรวม ${turnOrder.length} คน`;
+            announceLobby(msg);
+            speak(msg);
+        };
+
+        window.removeBot = function() {
+            if (myRole !== 'p1' || turnOrder.length <= 1) return;
+
+            // ลบบอทตัวล่าสุด
+            for (let i = turnOrder.length - 1; i >= 0; i--) {
+                let pKey = turnOrder[i];
+                if (players[pKey] && players[pKey].isBot) {
+                    let removedName = players[pKey].name;
+                    delete players[pKey];
+                    turnOrder.splice(i, 1);
+                    botCount = Math.max(0, botCount - 1);
+
+                    update(ref(db, `${GAME_PATH}/rooms/${currentRoomId}`), {
+                        players: players,
+                        turnOrder: turnOrder
+                    });
+
+                    const msg = `ลด ${removedName} ออกจากห้องแล้ว จำนวนผู้เล่นรวม ${turnOrder.length} คน`;
+                    announceLobby(msg);
+                    speak(msg);
+                    break;
+                }
+            }
+        };
+
+        window.hostStartGame = function() {
+            if (myRole !== 'p1' || turnOrder.length < 2) return;
+            update(ref(db, `${GAME_PATH}/rooms/${currentRoomId}`), { status: 'playing' });
+        };
+
+        function listenToGameStart(rId) {
+            onValue(ref(db, `${GAME_PATH}/rooms/${rId}/status`), (snap) => {
+                if (snap.val() === 'playing') {
+                    onValue(ref(db, `${GAME_PATH}/rooms/${rId}/seed`), (seedSnap) => {
+                        prngSeed = seedSnap.val();
+                        document.querySelector('.welcome-card').style.display = 'none';
+                        startEventSync();
+                        if (myRole === 'p1') {
+                            pushEvent({ type: 'START_GAME' }); 
+                        }
+                    }, { onlyOnce: true });
+                }
+            });
+        }
+
+        // --- IDLE TIMEOUT ---
+        function resetIdleTimer() {
+            if (idleTimeoutTimer) clearTimeout(idleTimeoutTimer);
+            idleTimeoutTimer = setTimeout(triggerIdleTimeout, IDLE_TIMEOUT_MS);
+        }
+
+        function triggerIdleTimeout() {
+            stopBGM();
+            switchScreen('screen-gameover');
+            const title = document.getElementById('gameover-title'); 
+            const art = document.getElementById('gameover-art');
+            const screen = document.getElementById('screen-gameover'); 
+            const messageEl = document.getElementById('gameover-message');
+
+            playSound('lost'); 
+            screen.className = "screen lose-screen active-screen"; 
+            art.innerText = "🔌💔";
+            title.innerText = "การเชื่อมต่อขัดข้อง"; 
+            messageEl.innerText = "ขออภัย เกมหยุดชั่วคราวเนื่องจากไม่มีการเคลื่อนไหว";
+            speak("การเชื่อมต่อขัดข้อง ขออภัย โปรดลองใหม่อีกครั้ง");
+            setTimeout(() => title.focus(), 100);
+        }
+
+        // --- EVENT SYNC ---
+        function pushEvent(cmdObj) {
+            push(ref(db, `${GAME_PATH}/rooms/${currentRoomId}/events`), cmdObj);
+        }
+
+        function startEventSync() {
+            const eventsRef = ref(db, `${GAME_PATH}/rooms/${currentRoomId}/events`);
+            onChildAdded(eventsRef, (snap) => {
+                resetIdleTimer();
+                const cmd = snap.val();
+                if (cmd.type === 'START_GAME') {
+                    startCountdownSequence();
+                } else if (cmd.type === 'ROLL') {
+                    executeRollEvent(cmd.actor); 
+                } else if (cmd.type === 'USE_CARD') {
+                    executeCardEvent(cmd.idx, cmd.actor, cmd.target);
+                } else if (cmd.type === 'MINIGAME') {
+                    executeTreasureEvent(cmd.idx, cmd.actor);
+                }
+            });
+        }
+
+        // --- AUDIO ENGINE ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffers = {};
+        let bgmSource = null;
+        
+        const soundFiles = {
+            one: 'audio/1.mp3', start: 'audio/start.mp3', back: 'audio/back.mp3', dice: 'audio/dice.mp3',
+            blank: 'audio/blank.mp3', special: 'audio/special.mp3', stop: 'audio/stop.mp3',
+            up: 'audio/up.mp3', down: 'audio/down.mp3', double: 'audio/double.mp3',
+            selectcard: 'audio/selectcard.mp3', effect: 'audio/effect.mp3', best: 'audio/best.mp3',
+            bomb: 'audio/bomb.mp3', stolen: 'audio/stolen.mp3', win: 'audio/win.mp3', lost: 'audio/lost.mp3'
+        };
+
+        const CARD_TYPES = [
+            { id: 'tripwire', name: 'เตะตัดขา', desc: 'ตารอบหน้าเป้าหมายเดินได้แค่ครึ่งเดียว', class: 'card-swap' },
+            { id: 'swap', name: 'สลับมิติ', desc: 'สลับตำแหน่งบนกระดานของคุณกับเป้าหมาย', class: 'card-swap' },
+            { id: 'banana', name: 'เปลือกกล้วย', desc: 'วางกับดักตรงจุดยืนปัจจุบัน ใครเหยียบหยุด 1 ตา', class: 'card-banana' },
+            { id: 'reverse', name: 'ถอยหลัง', desc: 'บังคับเป้าหมายเดินถอยหลังในตาถัดไป', class: 'card-mirror' },
+            { id: 'snatch', name: 'ขโมยซีน', desc: 'สุ่มขโมยการ์ดจากมือคู่แข่ง 1 ใบ', class: 'card-swap' },
+            { id: 'lucky', name: 'แต้มล็อก', desc: 'ล็อกผลลูกเต๋ารอบถัดไปของคุณให้ออก 6 แต้ม', class: 'card-banana' },
+            { id: 'mult2', name: 'พลังคูณสอง', desc: 'แต้มที่ทอยได้ในตานี้จะถูกคูณ 2 ทันที', class: 'card-banana' }
+        ];
+
+        let shortcuts = {}; let specialSquares = []; let quicksandSquares = [];
+        let isMiniGameProcessing = false;
+        let speakTimeout;
+        const speaker = document.getElementById('game-speaker');
+
+        async function loadSounds() {
+            for (const key in soundFiles) {
+                try {
+                    const response = await fetch(soundFiles[key]);
+                    const arrayBuffer = await response.arrayBuffer();
+                    audioBuffers[key] = await audioCtx.decodeAudioData(arrayBuffer);
+                } catch (e) {}
+            }
+        }
+        document.addEventListener('DOMContentLoaded', loadSounds);
+
+        function playSound(bufferName, loop = false, onEndedCallback = null) {
+            if (!audioBuffers[bufferName]) return null;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffers[bufferName];
+            source.loop = loop;
+            source.connect(audioCtx.destination);
+            source.start(0);
+            if (onEndedCallback) source.onended = onEndedCallback;
+            return source;
+        }
+
+        function startBGM() { if (!bgmSource) { bgmSource = playSound('back', true); } }
+        function stopBGM() { if (bgmSource) { bgmSource.stop(); bgmSource = null; } }
+
+        function switchScreen(screenId) {
+            speaker.innerText = ''; clearTimeout(speakTimeout);
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
+            document.getElementById(screenId).classList.add('active-screen');
+            if (screenId === 'screen-board') setTimeout(drawSnakesAndLaddersLines, 50);
+        }
+
+        function speak(text) {
+            speaker.innerText = '';
+            clearTimeout(speakTimeout);
+            setTimeout(() => { 
+                speaker.innerText = text; 
+                speakTimeout = setTimeout(() => { speaker.innerText = ''; }, 4500);
+            }, 50);
+        }
+
+        function getPlayerPronoun(pKey) {
+            if (!players[pKey]) return pKey;
+            if (pKey === myRole) return `คุณ (${players[pKey].colorName})`;
+            if (players[pKey].isBot) return `บอท${players[pKey].colorName}`;
+            return `เพื่อน${players[pKey].colorName}`;
+        }
+
+        function updateStatusBar() {
+            let parts = turnOrder.map(k => {
+                let p = players[k];
+                return `${pKeyNameShort(k)}: ช่อง ${p.pos}`;
+            });
+            const txt = parts.join(' | ');
+            document.getElementById('game-status-bar').innerText = txt;
+            document.getElementById('board-status-bar').innerText = txt;
+        }
+
+        function pKeyNameShort(k) {
+            if (k === myRole) return "คุณ";
+            return players[k].isBot ? `บอท${players[k].colorName}` : players[k].colorName;
+        }
+
+        function startCountdownSequence() {
+            playSound('start'); 
+            switchScreen('screen-countdown');
+            const visualElement = document.getElementById('countdown-visual');
+            let count = 3; visualElement.innerText = count; speak(count.toString());
+
+            const countInterval = setInterval(() => {
+                count--;
+                if (count > 0) { visualElement.innerText = count; speak(count.toString()); }
+                else if (count === 0) { visualElement.innerText = "ลุย!"; speak("SnakeSix เริ่มเปิดฉากการประลอง!"); }
+                else { clearInterval(countInterval); initGameLogic(); }
+            }, 1500); 
+        }
+
+        function generateRandomBoard() {
+            shortcuts = {}; specialSquares = []; quicksandSquares = [];
+            let used = new Set([1, 100]); 
+            function getFreeSquare() {
+                let sq; let guard = 0;
+                do { sq = Math.floor(seededRandom() * 98) + 2; guard++; if(guard > 1000) break; } while (used.has(sq));
+                used.add(sq); return sq;
+            }
+            for(let i=0; i<8; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.min(s1, s2)] = Math.max(s1, s2); }
+            for(let i=0; i<8; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.max(s1, s2)] = Math.min(s1, s2); }
+            for(let i=0; i<8; i++) { specialSquares.push(getFreeSquare()); }
+            for(let i=0; i<7; i++) { quicksandSquares.push(getFreeSquare()); }
+        }
+
+        function initGameLogic() {
+            startBGM(); switchScreen('screen-turn'); generateRandomBoard(); 
+            
+            // กำหนดสถานะและแจกการ์ดเริ่มต้นให้ทุกคน
+            activeBuffs = { traps: {} };
+            turnOrder.forEach(pKey => {
+                players[pKey].pos = 1;
+                players[pKey].hand = [CARD_TYPES[Math.floor(seededRandom() * CARD_TYPES.length)]];
+                activeBuffs[pKey] = { isDebuff: false, isReverse: false, skipTurn: false, isLucky: false, isX2: false };
+            });
+
+            currentTurnIndex = 0;
+            initBoardVisual(); renderPlayerCards();
+
+            setTimeout(() => {
+                speak(`เริ่มเกมแล้ว! คุณได้รับสุ่มการ์ด ${players[myRole].hand[0].name}`);
+                document.getElementById('turn-title').innerText = `สุ่มแจกการ์ดผู้เล่นทุกคนเรียบร้อย!`;
+                setTimeout(startTurnCycle, 2000);
+            }, 1200);
+        }
+
+        function startTurnCycle() {
+            updateStatusBar(); 
+            document.getElementById('dice-cube').style.transform = 'rotateX(-22deg) rotateY(-45deg)';
+            hasRolled = false; 
+
+            const activePKey = turnOrder[currentTurnIndex];
+            const activePlayer = players[activePKey];
+            const pronoun = getPlayerPronoun(activePKey);
+
+            // เช็คสถานะหยุดเดิน
+            if (activeBuffs[activePKey].skipTurn) {
+                activeBuffs[activePKey].skipTurn = false; 
+                speak(`${pronoun} ติดสถานะหยุดเดิน ข้ามตานี้!`);
+                advanceNextTurn();
+                return;
+            }
+
+            const btnRoll = document.getElementById('btn-roll');
+            
+            if (activePKey === myRole) {
+                document.getElementById('turn-title').innerText = `ตาของคุณ (${activePlayer.colorName})! กดทอยลูกเต๋า`;
+                btnRoll.disabled = false;
+                renderPlayerCards(); 
+                speak(`ตาของคุณสี${activePlayer.colorName}! กดทอยลูกเต๋า`); 
+                setTimeout(() => btnRoll.focus(), 100); 
+            } else if (activePlayer.isBot) {
+                document.getElementById('turn-title').innerText = `ตาของ ${pronoun} (กำลังตัดสินใจ...)`;
+                btnRoll.disabled = true;
+                btnRoll.blur(); 
+                renderPlayerCards(); 
+                speak(`ตาของ${pronoun} กำลังทอยลูกเต๋า...`);
+
+                // Host มีหน้าที่ประมวลผลแทนบอท
+                if (myRole === 'p1') {
+                    setTimeout(() => handleBotTurn(activePKey), 1500);
+                }
+            } else {
+                document.getElementById('turn-title').innerText = `ตาของ ${pronoun} (รอทอยเต๋า...)`;
+                btnRoll.disabled = true;
+                btnRoll.blur(); 
+                renderPlayerCards(); 
+                speak(`ตาของ${pronoun} รอเพื่อนนิด...`);
+            }
+        }
+
+        function advanceNextTurn() {
+            currentTurnIndex = (currentTurnIndex + 1) % turnOrder.length;
+            setTimeout(startTurnCycle, 1800);
+        }
+
+        function handleBotTurn(botPKey) {
+            if (hasRolled) return;
+            
+            // บอทลองใช้การ์ด (สุ่มโอกาส 30%)
+            let botHand = players[botPKey].hand;
+            if (botHand.length > 0 && seededRandom() < 0.3) {
+                let cardIdx = Math.floor(seededRandom() * botHand.length);
+                let opponents = turnOrder.filter(k => k !== botPKey);
+                let targetKey = opponents[Math.floor(seededRandom() * opponents.length)];
+                
+                pushEvent({ type: 'USE_CARD', idx: cardIdx, actor: botPKey, target: targetKey });
+                setTimeout(() => {
+                    if (!hasRolled) pushEvent({ type: 'ROLL', actor: botPKey });
+                }, 1500);
+            } else {
+                pushEvent({ type: 'ROLL', actor: botPKey });
+            }
+        }
+
+        function renderPlayerCards() {
+            const container = document.getElementById('my-cards'); container.innerHTML = '';
+            const activePKey = turnOrder[currentTurnIndex];
+            let myH = players[myRole].hand;
+
+            myH.forEach((card, index) => {
+                let div = document.createElement('button'); div.type = 'button'; div.className = `card ${card.class}`;
+                if (activePKey !== myRole || hasRolled) div.disabled = true; 
+                div.setAttribute('aria-label', `ใช้การ์ด ${card.name}. รายละเอียด: ${card.desc}`);
+                div.innerHTML = `<div>${card.name}</div><div style='font-size:0.7rem; font-weight:normal;'>${card.desc}</div>`;
+                div.onclick = () => window.handleCardClick(index); 
+                container.appendChild(div);
+            });
+        }
+
+        window.handleRollClick = function() {
+            const activePKey = turnOrder[currentTurnIndex];
+            if (activePKey !== myRole || hasRolled) return;
+            hasRolled = true; 
+            
+            document.getElementById('btn-roll').disabled = true;
+            renderPlayerCards(); 
+            pushEvent({ type: 'ROLL', actor: myRole }); 
+        };
+
+        window.handleCardClick = function(index) {
+            const activePKey = turnOrder[currentTurnIndex];
+            if (activePKey !== myRole || hasRolled) return; 
+
+            let opponents = turnOrder.filter(k => k !== myRole);
+            let targetKey = opponents[Math.floor(seededRandom() * opponents.length)];
+            
+            pushEvent({ type: 'USE_CARD', idx: index, actor: myRole, target: targetKey });
+        };
+
+        window.handleTreasureClick = function(index) {
+            const activePKey = turnOrder[currentTurnIndex];
+            if (activePKey !== myRole || isMiniGameProcessing) return;
+            isMiniGameProcessing = true;
+            pushEvent({ type: 'MINIGAME', idx: index, actor: myRole });
+        };
+
+        // --- EXECUTORS ---
+        function executeCardEvent(index, actorKey, targetKey) {
+            let actorHand = players[actorKey].hand;
+            let card = actorHand[index]; 
+            if (!card) return;
+            actorHand.splice(index, 1); 
+            renderPlayerCards();
+
+            let actorName = getPlayerPronoun(actorKey);
+            let targetName = targetKey ? getPlayerPronoun(targetKey) : "";
+            let txt = `${actorName} ใช้การ์ด ${card.name}! `;
+            
+            playSound('selectcard', false, () => { playSound('effect'); });
+
+            if (card.id === 'swap' && targetKey) {
+                triggerScreenFlash();
+                let temp = players[actorKey].pos;
+                players[actorKey].pos = players[targetKey].pos;
+                players[targetKey].pos = temp;
+                txt += `สลับตำแหน่งกับ ${targetName} ทันที! `;
+                initBoardVisual();
+            } else if (card.id === 'tripwire' && targetKey) {
+                activeBuffs[targetKey].isDebuff = true; txt += `บังคับให้ ${targetName} เดินได้ครึ่งเดียว!`;
+                document.getElementById(`pawn-${targetKey}`)?.classList.add('debuff-active');
+            } else if (card.id === 'banana') {
+                let pos = players[actorKey].pos;
+                activeBuffs.traps[pos] = actorKey; txt += `วางเปลือกกล้วยดักไว้ที่ช่อง ${pos}!`;
+                spawnBanana(pos);
+            } else if (card.id === 'reverse' && targetKey) {
+                activeBuffs[targetKey].isReverse = true; txt += `บังคับให้ ${targetName} เดินถอยหลัง!`;
+                document.getElementById(`pawn-${targetKey}`)?.classList.add('debuff-active');
+            } else if (card.id === 'snatch' && targetKey) {
+                let victimHand = players[targetKey].hand;
+                if (victimHand.length > 0) {
+                    let stolen = victimHand.pop(); 
+                    actorHand.push(stolen); 
+                    txt += `ขโมยการ์ด ${stolen.name} จาก ${targetName} สำเร็จ!`; 
+                    renderPlayerCards();
+                } else { txt += `พยายามขโมยการ์ดจาก ${targetName} แต่การ์ดหมดมือ!`; }
+            } else if (card.id === 'lucky') {
+                activeBuffs[actorKey].isLucky = true; txt += `ล็อกผลให้ลูกเต๋าลูกถัดไปออก 6 แต้มแน่นอน!`;
+                document.getElementById(`pawn-${actorKey}`)?.classList.add('aura-active');
+            } else if (card.id === 'mult2') {
+                activeBuffs[actorKey].isX2 = true; txt += `แต้มเต๋ารอบนี้จะถูกคูณสอง!`;
+                document.getElementById(`pawn-${actorKey}`)?.classList.add('aura-active');
+            }
+            speak(txt);
+        }
+
+        function executeRollEvent(actorKey) {
+            let rolledValue = Math.floor(seededRandom() * 6) + 1; 
+            
+            document.getElementById('btn-roll').disabled = true;
+            if (actorKey === myRole) hasRolled = true; 
+            renderPlayerCards(); 
+            
+            playSound('dice');
+            const diceCube = document.getElementById('dice-cube');
+            diceCube.classList.add('is-rolling'); 
+            
+            let actorName = getPlayerPronoun(actorKey);
+            speak(`${actorName} กำลังทอยเต๋า...`);
+
+            setTimeout(() => {
+                diceCube.classList.remove('is-rolling');
+                let originalRoll = rolledValue; let isModified = false;
+                let isRev = activeBuffs[actorKey].isReverse;
+
+                if (activeBuffs[actorKey].isLucky) { rolledValue = 6; activeBuffs[actorKey].isLucky = false; }
+                
+                const faceRotations = { 1: 'rotateX(0deg) rotateY(0deg)', 2: 'rotateY(-90deg)', 3: 'rotateY(-180deg)', 4: 'rotateY(90deg)', 5: 'rotateX(-90deg)', 6: 'rotateX(90deg)' };
+                diceCube.style.transform = faceRotations[rolledValue];
+
+                if (activeBuffs[actorKey].isX2) { rolledValue = rolledValue * 2; activeBuffs[actorKey].isX2 = false; isModified = true; }
+                if (activeBuffs[actorKey].isDebuff) { rolledValue = Math.max(1, Math.floor(rolledValue / 2)); activeBuffs[actorKey].isDebuff = false; isModified = true; }
+
+                document.getElementById(`pawn-${actorKey}`)?.classList.remove('aura-active', 'debuff-active');
+
+                if (isModified) speak(`${actorName} ทอยได้ ${originalRoll} แต้ม แต่ผลการ์ดทำให้ขยับ ${rolledValue} ช่อง`);
+                else speak(`${actorName} ทอยได้ ${rolledValue} แต้ม`);
+
+                setTimeout(() => {
+                    switchScreen('screen-board'); 
+                    activeBuffs[actorKey].isReverse = false;
+                    let startPos = players[actorKey].pos;
+                    let path = calculateMovementPath(startPos, rolledValue, isRev);
+                    executePathMovement(actorKey, path);
+                }, 1200);
+
+            }, 1000);
+        }
+
+        function calculateMovementPath(startPos, steps, isReverse = false) {
+            let path = []; let current = startPos; let direction = isReverse ? -1 : 1;
+            if (steps === 0) return path;
+            for (let i = 0; i < steps; i++) {
+                current += direction;
+                if (current > 100) { direction = -1; current = 99; } 
+                else if (current < 1) { direction = 1; current = 2; }
+                path.push(current);
+            }
+            return path;
+        }
+
+        function executePathMovement(actorKey, path, onFinished) {
+            if (path.length === 0) { if (onFinished) onFinished(); else evaluateLanding(actorKey); return; }
+            let idx = 0;
+            let interval = setInterval(() => {
+                let nextPos = path[idx];
+                players[actorKey].pos = nextPos;
+                
+                let pawnEl = document.getElementById(`pawn-${actorKey}`);
+                if (pawnEl) {
+                    pawnEl.classList.add('pawn-hop');
+                    setTimeout(() => pawnEl.classList.remove('pawn-hop'), 150);
+                }
+
+                updatePawnVisuals(); 
+                speak(nextPos.toString()); 
+                
+                idx++;
+                if (idx >= path.length) {
+                    clearInterval(interval);
+                    setTimeout(() => { updateStatusBar(); if (onFinished) onFinished(); else evaluateLanding(actorKey); }, 400);
+                }
+            }, 350);
+        }
+
+        function evaluateLanding(actorKey) {
+            let pos = players[actorKey].pos;
+            let msg = ""; let finalPos = pos; let actorName = getPlayerPronoun(actorKey);
+            let isShortcut = false;
+
+            if (shortcuts[pos]) {
+                isShortcut = true; let dest = shortcuts[pos];
+                if (dest > pos) { msg += `${actorName} เจอทางขึ้น พุ่งไปช่อง ${dest}! `; playSound('up'); } 
+                else { msg += `${actorName} โดนงูฉก ร่วงลงมาช่อง ${dest}! `; playSound('down'); }
+                
+                players[actorKey].pos = dest;
+                finalPos = dest; updatePawnVisuals(); updateStatusBar();
+            } else { msg += `${actorName} หยุดที่ช่อง ${pos}. `; }
+
+            let landedOnSpecial = false; let landedOnQuicksand = false;
+
+            if (activeBuffs.traps[finalPos]) {
+                triggerBananaVisual(finalPos, `pawn-${actorKey}`);
+                delete activeBuffs.traps[finalPos];
+                activeBuffs[actorKey].skipTurn = true;
+                msg += `${actorName} เหยียบเปลือกกล้วย หยุดพักตารอบหน้า! `; landedOnQuicksand = true; playSound('stop');
+            } else if (quicksandSquares.includes(finalPos)) {
+                activeBuffs[actorKey].skipTurn = true;
+                msg += `${actorName} ตกโคลนดูด หยุดพักตารอบหน้า! `; landedOnQuicksand = true; playSound('stop');
+            } else if (specialSquares.includes(finalPos)) {
+                landedOnSpecial = true; 
+                let newCard = CARD_TYPES[Math.floor(seededRandom() * CARD_TYPES.length)];
+                let actorHand = players[actorKey].hand;
+                
+                if (actorHand.length < 2) { actorHand.push(newCard); msg += `${actorName} ได้รับการ์ด ${newCard.name}!`; } 
+                else { msg += `กระเป๋าเต็ม ได้การ์ดเพิ่มไม่ได้!`; }
+                renderPlayerCards();
+                
+                specialSquares = specialSquares.filter(s => s !== finalPos);
+                let usedPositions = new Set([1, 100, ...Object.keys(shortcuts), ...Object.values(shortcuts), ...quicksandSquares, ...specialSquares]);
+                let newRand; do { newRand = Math.floor(seededRandom() * 98) + 2; } while(usedPositions.has(newRand));
+                specialSquares.push(newRand); initBoardVisual(); playSound('special');
+            }
+
+            if (!isShortcut && !landedOnSpecial && !landedOnQuicksand && finalPos !== 100) playSound('blank');
+            speak(msg);
+
+            // เช็คชัยชนะ
+            if (players[actorKey].pos === 100) { 
+                setTimeout(() => showGameOver(actorKey), 1500); 
+                return; 
+            }
+
+            // เช็คการตกช่องเดียวกัน (มินิเกม)
+            let sameSquarePlayers = turnOrder.filter(k => players[k].pos === finalPos);
+            if (sameSquarePlayers.length > 1) {
+                playSound('double');
+                setTimeout(() => {
+                    speak(`ตกช่องเดียวกัน! ${actorName} ได้สิทธิ์เปิดกล่องสุ่มมิติ`);
+                    setTimeout(() => triggerMinigameUI(actorKey), 1800); 
+                }, 1200); 
+                return;
+            }
+            
+            setTimeout(() => { 
+                switchScreen('screen-turn'); 
+                advanceNextTurn();
+            }, 1400); 
+        }
+
+        function triggerMinigameUI(initiatorKey) {
+            switchScreen('screen-mini'); 
+            document.querySelectorAll('.box-treasure').forEach(b => { b.className = 'box-treasure'; });
+            isMiniGameProcessing = false;
+            
+            const boxes = document.querySelectorAll('.box-treasure');
+            let initiatorName = getPlayerPronoun(initiatorKey);
+
+            if (initiatorKey === myRole) {
+                document.getElementById('mini-title').innerText = "💥 เลือกกล่องสุ่มมิติ 💥";
+                document.getElementById('mini-subtitle').innerText = "คุณได้สิทธิ์เลือกกล่องเพื่อส่งผลต่อคนในช่องนี้!";
+                boxes.forEach(b => b.disabled = false);
+                setTimeout(() => { const firstBox = document.getElementById('mini-box-1'); if(firstBox) firstBox.focus(); }, 100);
+            } else if (players[initiatorKey].isBot && myRole === 'p1') {
+                // บอทสุ่มกล่องโดย Host
+                document.getElementById('mini-title').innerText = `💥 ${initiatorName} กำลังเลือกกล่อง... 💥`;
+                boxes.forEach(b => b.disabled = true);
+                setTimeout(() => {
+                    let botBoxChoice = Math.floor(seededRandom() * 3);
+                    pushEvent({ type: 'MINIGAME', idx: botBoxChoice, actor: initiatorKey });
+                }, 1500);
+            } else {
+                document.getElementById('mini-title').innerText = `💥 ${initiatorName} กำลังเลือกกล่อง... 💥`;
+                boxes.forEach(b => b.disabled = true);
+            }
+        }
+
+        function executeTreasureEvent(boxIdx, initiatorKey) {
+            isMiniGameProcessing = true;
+            const boxes = document.querySelectorAll('.box-treasure');
+            boxes.forEach(b => { b.disabled = true; });
+
+            const outcomes = [
+                { type: 'good', text: 'มิติโชคดี! ผู้เปิดเดินหน้า 3 ช่อง คนอื่นตกถอยหลัง 3 ช่อง!' },
+                { type: 'bad', text: 'ระเบิดมิติ! ทุกคนในช่องนี้ระเบิดถอยหลัง 4 ช่อง!' },
+                { type: 'steal', text: 'โจรข้ามมิติ! ผู้เปิดขโมยการ์ดจากเพื่อนในช่องนี้ 1 ใบ!' }
+            ];
+            let finalOutcome = outcomes[Math.floor(seededRandom() * outcomes.length)];
+            
+            if (finalOutcome.type === 'good') { playSound('best'); boxes[boxIdx].classList.add('box-good-anim'); }
+            else if (finalOutcome.type === 'bad') { playSound('bomb'); boxes[boxIdx].classList.add('box-bomb-anim'); }
+            else { playSound('stolen'); }
+
+            let initiatorName = getPlayerPronoun(initiatorKey);
+            let pos = players[initiatorKey].pos;
+            let occupants = turnOrder.filter(k => players[k].pos === pos);
+
+            if (finalOutcome.type === 'steal') {
+                let victims = occupants.filter(k => k !== initiatorKey && players[k].hand.length > 0);
+                if (victims.length > 0) {
+                    let victimKey = victims[Math.floor(seededRandom() * victims.length)];
+                    let stolenCard = players[victimKey].hand.pop();
+                    players[initiatorKey].hand.push(stolenCard);
+                    speak(`${initiatorName} ขโมยการ์ด ${stolenCard.name} จาก ${getPlayerPronoun(victimKey)} สำเร็จ!`);
+                } else {
+                    speak(`${initiatorName} เปิดกล่องขโมย แต่ไม่มีเพื่อนคนไหนมีการ์ดเลย!`);
+                }
+                setTimeout(() => exitMiniGameNormal(), 2000);
+                return;
+            }
+
+            // คำนวณการเคลื่อนที่จากมินิเกม
+            setTimeout(() => {
+                switchScreen('screen-board');
+                speak(`ผลลัพธ์มินิเกม: ${finalOutcome.text}`);
+
+                occupants.forEach(pKey => {
+                    let steps = 0; let isRev = false;
+                    if (finalOutcome.type === 'good') {
+                        if (pKey === initiatorKey) { steps = 3; isRev = false; }
+                        else { steps = 3; isRev = true; }
+                    } else if (finalOutcome.type === 'bad') {
+                        steps = 4; isRev = true;
+                    }
+
+                    let path = calculateMovementPath(players[pKey].pos, steps, isRev);
+                    if (path.length > 0) {
+                        executePathMovement(pKey, path, () => {
+                            updatePawnVisuals();
+                        });
+                    }
+                });
+
+                setTimeout(() => exitMiniGameNormal(), 2500);
+            }, 1000);
+        }
+
+        function exitMiniGameNormal() {
+            isMiniGameProcessing = false;
+            
+            // เช็คว่ามีคนชนะไหม
+            let winner = turnOrder.find(k => players[k].pos === 100);
+            if (winner) {
+                showGameOver(winner);
+                return;
+            }
+
+            switchScreen('screen-turn'); 
+            advanceNextTurn();
+        }
+
+        function showGameOver(winnerKey) {
+            if (idleTimeoutTimer) clearTimeout(idleTimeoutTimer);
+            stopBGM(); switchScreen('screen-gameover');
+            
+            const title = document.getElementById('gameover-title'); 
+            const art = document.getElementById('gameover-art');
+            const screen = document.getElementById('screen-gameover'); 
+            const messageEl = document.getElementById('gameover-message');
+
+            let winnerName = getPlayerPronoun(winnerKey);
+
+            if (winnerKey === myRole) {
+                playSound('win'); screen.className = "screen win-screen active-screen"; art.innerText = "🏆🎉✨";
+                title.innerText = "คุณคือผู้ชนะ!"; 
+                messageEl.innerText = "ทักษะและดวงของคุณเหนือชั้น ไร้พ่ายในมิตินี้!";
+                speak("วิกตอรี่! คุณ แตะขอบเส้นชัยช่อง 100 สำเร็จ คว้าแชมป์มิติไปครอง!");
+            } else {
+                playSound('lost'); screen.className = "screen lose-screen active-screen"; art.innerText = "🌧️💔👾";
+                title.innerText = `${winnerName} ชนะ!`; 
+                messageEl.innerText = "ครั้งนี้พ่ายแพ้ ครั้งหน้าเอาใหม่นะ!";
+                speak(`จบเกม! ${winnerName} เข้าถึงช่อง 100 คว้าชัยชนะไปเรียบร้อย`);
+            }
+            setTimeout(() => title.focus(), 100);
+        }
+
+        // --- VISUAL UI HELPERS ---
+        function initBoardVisual() {
+            const grid = document.getElementById('board-grid');
+            const svg = document.getElementById('snakes-ladders-svg');
+            grid.innerHTML = ''; grid.appendChild(svg);
+
+            // สร้าง Pawn ไดนามิกสำหรับผู้เล่นในห้อง
+            turnOrder.forEach(pKey => {
+                let p = players[pKey];
+                let pawn = document.createElement('div');
+                pawn.id = `pawn-${pKey}`;
+                pawn.className = `pawn ${p.pawnClass}`;
+                pawn.innerText = pKeyNameShort(pKey)[0]; // อักษรแรก
+                grid.appendChild(pawn);
+            });
+
+            for (let row = 0; row < 10; row++) {
+                let r = 9 - row; 
+                for (let c = 0; c < 10; c++) {
+                    let col = (r % 2 === 1) ? (9 - c) : c;
+                    let cellNum = r * 10 + col + 1;
+                    
+                    let cell = document.createElement('div');
+                    cell.id = `cell-${cellNum}`;
+                    cell.className = `cell ${(r+col)%2===0 ? 'cell-light' : 'cell-dark'}`;
+                    cell.innerHTML = `<span>${cellNum}</span>`;
+                    
+                    if (specialSquares.includes(cellNum)) cell.className += ' cell-special';
+                    if (quicksandSquares.includes(cellNum)) cell.className += ' cell-quicksand';
+                    if (cellNum === 100) cell.className += ' cell-goal'; 
+                    
+                    cell.style.gridRowStart = row + 1; cell.style.gridColumnStart = c + 1;
+                    grid.appendChild(cell);
+                }
+            }
+            updatePawnVisuals(); updateStatusBar();
+            setTimeout(drawSnakesAndLaddersLines, 50);
+        }
+        
+        function updatePawnVisuals() {
+            // กระจายตำแหน่งหมากไม่ให้บังกันเองกรณีตกช่องเดียวกัน 3–6 คน
+            const cellOccupants = {};
+            turnOrder.forEach(pKey => {
+                let pos = players[pKey].pos;
+                if (!cellOccupants[pos]) cellOccupants[pos] = [];
+                cellOccupants[pos].push(pKey);
+            });
+
+            const offsets = [
+                { x: 2, y: 2 },   { x: 20, y: 2 },
+                { x: 2, y: 20 },  { x: 20, y: 20 },
+                { x: 11, y: 11 }, { x: 11, y: 2 }
+            ];
+
+            turnOrder.forEach(pKey => {
+                let pawn = document.getElementById(`pawn-${pKey}`);
+                if (!pawn) return;
+                let pos = players[pKey].pos;
+                let cell = document.getElementById(`cell-${pos}`);
+                if (cell) {
+                    let occIndex = cellOccupants[pos].indexOf(pKey);
+                    let offset = offsets[occIndex % offsets.length];
+                    pawn.style.top = (cell.offsetTop + offset.y) + 'px';
+                    pawn.style.left = (cell.offsetLeft + offset.x) + 'px';
+                }
+            });
+        }
+
+        function drawSnakesAndLaddersLines() {
+            const svg = document.getElementById('snakes-ladders-svg');
+            if (!svg) return;
+            const lines = svg.querySelectorAll('line'); lines.forEach(l => l.remove());
+            const boardRect = document.getElementById('board-grid').getBoundingClientRect();
+
+            for (const [startStr, endStr] of Object.entries(shortcuts)) {
+                const startCell = document.getElementById(`cell-${startStr}`);
+                const endCell = document.getElementById(`cell-${endStr}`);
+                if (startCell && endCell) {
+                    const rectStart = startCell.getBoundingClientRect(); const rectEnd = endCell.getBoundingClientRect();
+                    const x1 = (rectStart.left + rectStart.width / 2) - boardRect.left;
+                    const y1 = (rectStart.top + rectStart.height / 2) - boardRect.top;
+                    const x2 = (rectEnd.left + rectEnd.width / 2) - boardRect.left;
+                    const y2 = (rectEnd.top + rectEnd.height / 2) - boardRect.top;
+                    
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', x1); line.setAttribute('y1', y1); line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+                    line.setAttribute('stroke-width', '4'); line.setAttribute('stroke-linecap', 'round'); line.setAttribute('opacity', '0.75');
+                    
+                    if (parseInt(endStr) > parseInt(startStr)) { line.setAttribute('stroke', '#2ecc71'); line.setAttribute('marker-end', 'url(#arrow-green)'); } 
+                    else { line.setAttribute('stroke', '#e74c3c'); line.setAttribute('marker-end', 'url(#arrow-red)'); }
+                    svg.appendChild(line);
+                }
+            }
+        }
+        window.addEventListener('resize', drawSnakesAndLaddersLines);
+
+        function spawnBanana(pos) {
+            const grid = document.getElementById('board-grid');
+            const banana = document.createElement('div');
+            banana.className = 'banana-trap'; banana.id = `visual-banana-${pos}`;
+            banana.innerText = '🍌';
+            let r = 9 - Math.floor((pos - 1) / 10); let c = (pos - 1) % 10;
+            let col = (r % 2 === 1) ? (9 - c) : c;
+            banana.style.gridRowStart = r + 1; banana.style.gridColumnStart = col + 1;
+            grid.appendChild(banana);
+        }
+
+        function triggerBananaVisual(pos, targetPawnId) {
+            const pawn = document.getElementById(targetPawnId);
+            pawn?.classList.add('pawn-slip'); setTimeout(() => pawn?.classList.remove('pawn-slip'), 500);
+            const banana = document.getElementById(`visual-banana-${pos}`);
+            if (banana) { banana.style.animation = 'shrinkFade 0.3s forwards'; setTimeout(() => banana.remove(), 300); }
+        }
+
+        function triggerScreenFlash() {
+            const flash = document.createElement('div'); flash.className = 'flash-screen'; flash.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(flash); setTimeout(() => flash.remove(), 400);
+        }
+    </script>
+
+    <!-- VOICE PEERJS SCRIPT -->
+    <script>
+        let voicePeer = null;
+        let voiceStream = null;
+        let isVoiceMuted = true;
+        let remotePeerId = null;
+
+        function announceMicSR(message) {
+            const old = document.getElementById('sr-mic-announcer');
+            if (old) old.remove();
+            const el = document.createElement('div');
+            el.id = 'sr-mic-announcer';
+            el.className = 'sr-only';
+            el.setAttribute('aria-live', 'assertive');
+            document.body.appendChild(el);
+            setTimeout(() => { el.textContent = message; }, 50);
+            setTimeout(() => { el.remove(); }, 3000);
+        }
+
+        window.toggleMic = async function() {
+            const btn = document.getElementById('btn-voice-mic');
+            
+            if (!voiceStream) {
+                announceMicSR('กำลังขออนุญาตเข้าถึงไมโครโฟน โปรดยืนยันบนหน้าจอ');
+                try {
+                    voiceStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { echoCancellation: true, noiseSuppression: true }, 
+                        video: false 
+                    });
+                    
+                    if (voicePeer && remotePeerId) {
+                        const call = voicePeer.call(remotePeerId, voiceStream);
+                        if (call) {
+                            call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
+                        }
+                    }
+                    isVoiceMuted = false;
+                } catch (err) { 
+                    announceMicSR('ไม่สามารถเข้าถึงไมโครโฟนได้');
+                    return; 
+                }
+            } else {
+                const track = voiceStream.getAudioTracks()[0];
+                track.enabled = !track.enabled;
+                isVoiceMuted = !track.enabled;
+            }
+
+            btn.innerHTML = isVoiceMuted ? '🔇' : '🎤';
+            btn.style.backgroundColor = isVoiceMuted ? 'var(--danger)' : 'var(--primary)';
+            btn.setAttribute('aria-pressed', !isVoiceMuted);
+            announceMicSR(isVoiceMuted ? 'ปิดไมค์แล้ว' : 'เปิดไมค์แล้ว');
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if (e.altKey && e.code === 'KeyM') {
+                e.preventDefault();
+                if (document.getElementById('btn-voice-mic').style.display !== 'none') {
+                    window.toggleMic();
+                }
+            }
+        });
+
+        window.initVoiceHost = function(roomId) {
+            remotePeerId = roomId + '-client';
+            voicePeer = new Peer(roomId + '-host');
+            voicePeer.on('call', (call) => {
+                call.answer(); 
+                call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
+            });
+            document.getElementById('btn-voice-mic').style.display = 'flex';
+        };
+
+        window.initVoiceClient = function(roomId) {
+            remotePeerId = roomId + '-host';
+            voicePeer = new Peer(roomId + '-client');
+            voicePeer.on('call', (call) => {
+                call.answer(); 
+                call.on('stream', (remoteStream) => playRemoteStream(remoteStream, call.peer));
+            });
+            document.getElementById('btn-voice-mic').style.display = 'flex';
+        };
+
+        function playRemoteStream(stream, peerId) {
+            let audioEl = document.getElementById('audio-' + peerId);
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.id = 'audio-' + peerId;
+                audioEl.autoplay = true;
+                audioEl.setAttribute('playsinline', 'true');
+                document.body.appendChild(audioEl);
+            }
+            audioEl.srcObject = stream;
+        }
+    </script>
+</body>
+</html>
