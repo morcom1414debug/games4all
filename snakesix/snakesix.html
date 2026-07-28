@@ -152,9 +152,11 @@
         @keyframes pulseCount { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.15); opacity: 1; } }
 
         /* Custom styles for new Lobby */
-        .color-radio { display: none; }
+        /* แก้ไข Bug ที่ 1: ทำให้ Radio รองรับ Screen Reader และคีย์บอร์ด */
+        .color-radio { position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; pointer-events: none; }
         .color-label { width: 35px; height: 35px; border-radius: 50%; display: inline-block; cursor: pointer; border: 3px solid transparent; transition: transform 0.2s; }
         .color-radio:checked + .color-label { border-color: #2d3436; transform: scale(1.2); box-shadow: 0 0 10px rgba(0,0,0,0.3); }
+        .color-radio:focus + .color-label { outline: 3px solid var(--primary); outline-offset: 2px; }
         .participant-item { display: flex; align-items: center; background: #dfe6e9; margin-bottom: 5px; padding: 8px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; }
         .participant-color-dot { width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; border: 1px solid rgba(0,0,0,0.2); }
     </style>
@@ -194,7 +196,7 @@
                 <!-- Color Selector for Host -->
                 <div id="host-controls" style="display:none;">
                     <p style="font-weight:bold; margin-bottom:10px;">เลือกสีของคุณ:</p>
-                    <div id="color-selectors" style="display:flex; justify-content:center; gap:10px; margin-bottom:20px;"></div>
+                    <div id="color-selectors" style="display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;"></div>
                     
                     <p style="font-weight:bold; margin-bottom:10px;">จัดการบอท (สูงสุด 5 ตัว):</p>
                     <div style="display:flex; justify-content:center; align-items:center; gap:15px; margin-bottom:20px;">
@@ -323,6 +325,7 @@
         let players = {}; 
         let prevPlayersKeys = [];
         let roomStatusListener = null;
+        let isGameStarted = false; // <-- แก้ไข Bug ที่ 2: ป้องกัน loop เปิดเกมซ้อน
 
         const IDLE_TIMEOUT_MS = 2 * 60 * 1000; 
         let idleTimeoutTimer = null;
@@ -340,7 +343,7 @@
         onValue(roomsRef, (snapshot) => {
             const allRooms = snapshot.val() || {};
             const listDiv = document.getElementById('room-list');
-            if (myRole) return; // if already inside a room, ignore lobby update
+            if (myRole) return; 
             listDiv.innerHTML = '';
             let hasWaiting = false;
 
@@ -371,6 +374,7 @@
         window.createRoom = function() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             playSound('one');
+            isGameStarted = false; // Reset start game state
             
             document.getElementById('lobby-content').style.display = 'none';
             document.getElementById('lobby-host-panel').style.display = 'block';
@@ -400,7 +404,7 @@
 
                     renderColorSelectors();
                     listenToRoom(currentRoomId);
-                    speak("สร้างห้องสำเร็จ คุณคือเจ้าของห้อง เลือกสีตัวละครและรอเพื่อนได้เลย");
+                    speak("สร้างห้องสำเร็จ คุณคือเจ้าของห้อง เลื่อนอ่านและเลือกสีตัวละครที่ต้องการได้เลย");
                 }
             });
         };
@@ -408,6 +412,7 @@
         window.joinRoom = function(rId, currentPlayersData) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             currentRoomId = rId;
+            isGameStarted = false;
             
             let keys = Object.keys(currentPlayersData || {});
             let nextSlot = 'p2';
@@ -440,11 +445,12 @@
                 let id = `color-${color.id}`;
                 let isChecked = players.p1 && players.p1.color === color.id;
                 
+                // แก้ไข Bug 1: ใช้ Label ที่อ่านได้ผ่าน class sr-only และให้ Radio กดและโฟกัสได้
                 let html = `
-                    <div>
+                    <div style="display:inline-block;">
                         <input type="radio" id="${id}" name="host_color" value="${color.id}" class="color-radio" ${isChecked ? 'checked' : ''} onchange="window.changeHostColor('${color.id}')">
-                        <label for="${id}" class="color-label" style="background-color: ${color.hex};" aria-label="สี${color.name}">
-                            <span class="sr-only">${color.name}</span>
+                        <label for="${id}" class="color-label" style="background-color: ${color.hex};" title="สี${color.name}">
+                            <span class="sr-only">สี${color.name}</span>
                         </label>
                     </div>
                 `;
@@ -520,11 +526,13 @@
                 
                 updateLobbyUI();
 
-                if (data.status === 'playing') {
+                // แก้ไข Bug 2: เช็ค Flag isGameStarted ป้องกันการทำงานทับซ้อนและวนลูป
+                if (data.status === 'playing' && !isGameStarted) {
+                    isGameStarted = true; // ล็อกทันที
                     prngSeed = data.seed;
                     document.querySelector('.welcome-card').style.display = 'none';
-                    if (roomStatusListener) { /* off(roomRef, 'value', roomStatusListener); */ }
                     startEventSync();
+                    
                     if(myRole === 'p1') {
                         pushEvent({ type: 'START_GAME' }); 
                     }
@@ -891,14 +899,10 @@
             if (btnRoll) btnRoll.focus();
         };
 
-        // Added dynamic targets for minigames
         window.handleTreasureClick = function(index) {
             if (currentTurnRole !== myRole || isMiniGameProcessing) return;
             isMiniGameProcessing = true;
             
-            // To find the opponent on the same block. Since we saved hitRole in a global previously,
-            // let's pass it via pushEvent. But wait, click event doesn't know hitRole unless we store it.
-            // Let's deduce hitRole here:
             let hitRole = turnOrder.find(p => p !== myRole && pPos[p] === pPos[myRole]);
             pushEvent({ type: 'MINIGAME', idx: index, actor: myRole, target: hitRole });
         };
@@ -1109,13 +1113,11 @@
             if (!isShortcut && !landedOnSpecial && !landedOnQuicksand && finalPos !== 100) playSound('blank');
             speak(msg);
 
-            // Win condition check
             if (pPos[actorRole] === 100) { 
                 setTimeout(() => showGameOver(actorRole), 1500); 
                 return; 
             }
 
-            // Minigame condition
             let hitRole = turnOrder.find(p => p !== actorRole && pPos[p] === finalPos && finalPos !== 1 && finalPos !== 100);
             if (hitRole) {
                 playSound('double');
@@ -1150,7 +1152,6 @@
                 document.getElementById('mini-subtitle').innerText = "โปรดรอให้ฝ่ายนั้นตัดสินใจ";
                 boxes.forEach(b => b.disabled = true);
                 
-                // if bot is playing minigame, auto trigger
                 if (players[initiatorRole].type === 'bot' && myRole === 'p1') {
                     setTimeout(() => {
                         let randBox = Math.floor(Math.random() * 3);
@@ -1321,7 +1322,6 @@
             const visualTraps = Array.from(grid.querySelectorAll('.banana-trap'));
             grid.innerHTML = ''; grid.appendChild(svg);
             
-            // Render pawns dynamically
             turnOrder.forEach(r => {
                 let p = players[r];
                 let colorObj = CHAR_COLORS.find(c => c.id === p.color);
@@ -1329,7 +1329,6 @@
                 pawn.id = getUIPawnId(r);
                 pawn.className = `pawn pawn-dynamic`;
                 pawn.style.backgroundColor = colorObj.hex;
-                // Add first letter or initial to pawn face
                 pawn.innerText = (r === myRole) ? 'ค' : (p.type === 'bot' ? 'บ' : 'พ');
                 if(r === myRole) pawn.style.animation = 'idleGlow 2s infinite ease-in-out';
                 grid.appendChild(pawn);
@@ -1389,12 +1388,10 @@
         window.addEventListener('resize', drawSnakesAndLaddersLines);
 
         function updatePawnVisuals() {
-            // Adjust offsets slightly so pawns don't entirely block each other
             turnOrder.forEach((r, idx) => {
                 let cell = document.getElementById(`cell-${pPos[r]}`);
                 let pawn = document.getElementById(getUIPawnId(r));
                 if (cell && pawn) { 
-                    // basic staggering for multiple pawns in one cell
                     let offsetX = 5 + (idx % 3) * 8;
                     let offsetY = 5 + Math.floor(idx / 3) * 8;
                     pawn.style.top = cell.offsetTop + offsetY + 'px'; 
