@@ -152,6 +152,7 @@
         @keyframes pulseCount { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.15); opacity: 1; } }
 
         /* Custom styles for new Lobby */
+        /* แก้ไข Bug ที่ 1: ทำให้ Radio รองรับ Screen Reader และคีย์บอร์ด */
         .color-radio { position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; pointer-events: none; }
         .color-label { width: 35px; height: 35px; border-radius: 50%; display: inline-block; cursor: pointer; border: 3px solid transparent; transition: transform 0.2s; }
         .color-radio:checked + .color-label { border-color: #2d3436; transform: scale(1.2); box-shadow: 0 0 10px rgba(0,0,0,0.3); }
@@ -188,9 +189,11 @@
                 </div>
             </div>
 
+            <!-- Host / Waiting Lobby UI -->
             <div id="lobby-host-panel" style="display:none; width:100%; text-align:center;">
                 <h3 id="room-id-display" style="color:var(--primary); margin-top:0;"></h3>
                 
+                <!-- Color Selector for Host -->
                 <div id="host-controls" style="display:none;">
                     <p style="font-weight:bold; margin-bottom:10px;">เลือกสีของคุณ:</p>
                     <div id="color-selectors" style="display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;"></div>
@@ -203,8 +206,8 @@
                     </div>
                 </div>
 
-                <div id="joiner-controls" style="display:none; font-weight:bold; color:var(--primary); margin-bottom:15px; line-height:1.5;">
-                    <!-- Content will be injected dynamically -->
+                <div id="joiner-controls" style="display:none; font-weight:bold; color:var(--primary); margin-bottom:15px;">
+                    รอเจ้าของห้องเริ่มเกม...
                 </div>
                 
                 <p style="font-weight:bold; text-align:left; margin-bottom:5px;">รายชื่อในห้อง <span id="room-count-display">[1/6]</span>:</p>
@@ -262,6 +265,7 @@
                     </marker>
                 </defs>
             </svg>
+            <!-- Pawns will be dynamically generated here -->
         </div>
     </div>
 
@@ -277,13 +281,6 @@
                 <button class="box-treasure" type="button" aria-label="กล่องสมบัติใบที่ 3" onclick="window.handleTreasureClick(2)"><span aria-hidden="true">📦</span></button>
             </div>
         </div>
-    </div>
-
-    <!-- หน้าต่างแจ้งเตือน Host หลุดการเชื่อมต่อ -->
-    <div id="screen-host-disconnect" class="screen">
-        <h2 id="host-disconnect-title" tabindex="-1" style="color: var(--danger);">ขออภัย การเชื่อมต่อกับเจ้าของห้องขาดหาย</h2>
-        <p style="font-size: 1.2rem; font-weight: bold; text-align: center;">อาจเกิดจากเจ้าของห้องออกจากเกมโดยไม่ทราบสาเหตุ</p>
-        <button class="home-btn-hex" style="margin-top: 20px;" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
     </div>
 
     <div id="screen-gameover" class="screen">
@@ -311,6 +308,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
+        // --- NEW DATA STRUCTURES ---
         const CHAR_COLORS = [
             { id: 'red', hex: '#d63031', name: 'แดง' },
             { id: 'pink', hex: '#fd79a8', name: 'ชมพู' },
@@ -326,16 +324,11 @@
         let hasRolled = false; 
         let players = {}; 
         let prevPlayersKeys = [];
-        let prevPlayersTypes = {};
         let roomStatusListener = null;
-        let isGameStarted = false; 
+        let isGameStarted = false; // <-- แก้ไข Bug ที่ 2: ป้องกัน loop เปิดเกมซ้อน
 
-        // Timers ใหม่สำหรับจัดการการเชื่อมต่อและ Turn
-        let lastHostPingTime = Date.now();
-        let hostPingInterval = null;
-        let hostCheckInterval = null;
-        let turnTimeoutTimer = null;
-        let clientTurnTimer = null;
+        const IDLE_TIMEOUT_MS = 2 * 60 * 1000; 
+        let idleTimeoutTimer = null;
 
         // PRNG
         function seededRandom() {
@@ -381,7 +374,7 @@
         window.createRoom = function() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             playSound('one');
-            isGameStarted = false; 
+            isGameStarted = false; // Reset start game state
             
             document.getElementById('lobby-content').style.display = 'none';
             document.getElementById('lobby-host-panel').style.display = 'block';
@@ -430,22 +423,13 @@
 
             document.getElementById('lobby-content').style.display = 'none';
             document.getElementById('lobby-host-panel').style.display = 'block';
+            document.getElementById('joiner-controls').style.display = 'block';
             document.getElementById('room-id-display').innerText = `เข้าร่วมห้อง: ${currentRoomId}`;
             if(document.getElementById('btn-lang')) document.getElementById('btn-lang').style.display = 'none';
 
             let usedColors = Object.values(currentPlayersData || {}).map(p => p.color);
             let avail = CHAR_COLORS.filter(c => !usedColors.includes(c.id));
             let myColor = avail[Math.floor(Math.random() * avail.length)].id;
-            let myColorName = CHAR_COLORS.find(c => c.id === myColor).name;
-
-            // Point 1: ปรับ UI หน้า Lobby Client แจ้งเตือน + เสียง
-            document.getElementById('joiner-controls').style.display = 'block';
-            document.getElementById('joiner-controls').innerHTML = `
-                <div style="margin-bottom: 5px;">เข้าร่วมห้องสำเร็จ</div>
-                <div style="margin-bottom: 5px;">คุณได้รับสี ${myColorName}</div>
-                <div>รอเจ้าของห้องกดเริ่มเกม...</div>
-            `;
-            speak(`เข้าร่วมห้องสำเร็จ คุณได้รับสี${myColorName} รอเจ้าของห้องกดเริ่มเกม`);
 
             update(ref(db, `games/SnakeSix/rooms/${currentRoomId}/players/${myRole}`), { 
                 type: 'human', color: myColor, name: `ผู้เล่น ${myRole.replace('p','')}`
@@ -461,6 +445,7 @@
                 let id = `color-${color.id}`;
                 let isChecked = players.p1 && players.p1.color === color.id;
                 
+                // แก้ไข Bug 1: ใช้ Label ที่อ่านได้ผ่าน class sr-only และให้ Radio กดและโฟกัสได้
                 let html = `
                     <div style="display:inline-block;">
                         <input type="radio" id="${id}" name="host_color" value="${color.id}" class="color-radio" ${isChecked ? 'checked' : ''} onchange="window.changeHostColor('${color.id}')">
@@ -505,7 +490,7 @@
         };
 
         window.removeBot = function() {
-            let botKeys = Object.keys(players).filter(k => players[k].type === 'bot' && (!players[k].name || !players[k].name.includes('(บอท)')));
+            let botKeys = Object.keys(players).filter(k => players[k].type === 'bot');
             if(botKeys.length === 0) { speak("กดลดไม่ได้แล้ว ไม่มีบอทในห้อง"); return; }
             let lastBotKey = botKeys[botKeys.length - 1];
             let roomRef = ref(db, `games/SnakeSix/rooms/${currentRoomId}/players/${lastBotKey}`);
@@ -525,44 +510,25 @@
                 const data = snap.val();
                 if (!data) return;
                 
-                // อัปเดต Ping ล่าสุดจาก Host
-                if (data.hostPing) {
-                    lastHostPingTime = Date.now();
-                }
-
                 players = data.players || {};
                 let currentKeys = Object.keys(players);
                 
-                if (prevPlayersKeys.length > 0) {
+                // Announcements for new human joins
+                if (myRole === 'p1' && prevPlayersKeys.length > 0) {
                     currentKeys.forEach(k => {
-                        // แจ้งเตือนผู้เล่นมนุษย์เข้าร่วม
-                        if(myRole === 'p1' && !prevPlayersKeys.includes(k) && players[k].type === 'human') {
+                        if(!prevPlayersKeys.includes(k) && players[k].type === 'human') {
                             let cName = CHAR_COLORS.find(c => c.id === players[k].color).name;
                             speak(`ผู้เล่นสี${cName} เข้าร่วมห้องแล้ว`);
                         }
-                        
-                        // Point 4: Monitor Type เปลี่ยนแปลงเพื่อแจ้งเตือนหลุด
-                        if (prevPlayersTypes[k] === 'human' && players[k].type === 'bot') {
-                            let cName = CHAR_COLORS.find(c => c.id === players[k].color).name;
-                            speak(`เพื่อนสี${cName} หลุดการเชื่อมต่อ และแปลงร่างเป็นบอทแล้ว`);
-                            
-                            // ฝั่ง Host เทคโอเวอร์บอททันทีถ้าเป็นตาของคนที่หลุดพอดี
-                            if (myRole === 'p1' && currentTurnRole === k && isGameStarted && !hasRolled) {
-                                setTimeout(() => {
-                                    pushEvent({ type: 'ROLL', actor: k });
-                                }, 2000);
-                            }
-                        }
                     });
                 }
-                
                 prevPlayersKeys = currentKeys;
-                currentKeys.forEach(k => prevPlayersTypes[k] = players[k].type);
                 
                 updateLobbyUI();
 
+                // แก้ไข Bug 2: เช็ค Flag isGameStarted ป้องกันการทำงานทับซ้อนและวนลูป
                 if (data.status === 'playing' && !isGameStarted) {
-                    isGameStarted = true; 
+                    isGameStarted = true; // ล็อกทันที
                     prngSeed = data.seed;
                     document.querySelector('.welcome-card').style.display = 'none';
                     startEventSync();
@@ -581,7 +547,7 @@
             let pCount = Object.keys(players).length;
             document.getElementById('room-count-display').innerText = `[${pCount}/6]`;
             
-            let botsCount = Object.values(players).filter(p => p.type === 'bot' && (!p.name || !p.name.includes('(บอท)'))).length;
+            let botsCount = Object.values(players).filter(p => p.type === 'bot').length;
             document.getElementById('bot-count-display').innerText = botsCount;
 
             Object.keys(players).sort().forEach(k => {
@@ -591,6 +557,7 @@
                 
                 let item = document.createElement('div');
                 item.className = 'participant-item';
+                // นำ aria-label มาครอบให้เป็น Object ชิ้นเดียว และซ่อนจุดสีเพื่อกัน VoiceOver แตกคำ
                 item.setAttribute('aria-label', displayName);
                 item.innerHTML = `<div class="participant-color-dot" aria-hidden="true" style="background-color:${colorObj.hex};"></div> 
                                   <span aria-hidden="true">${displayName}</span>`;
@@ -608,29 +575,37 @@
             }
         }
 
+        // --- IDLE TIMEOUT FUNCTIONS ---
+        function resetIdleTimer() {
+            if (idleTimeoutTimer) clearTimeout(idleTimeoutTimer);
+            idleTimeoutTimer = setTimeout(triggerIdleTimeout, IDLE_TIMEOUT_MS);
+        }
+
+        function triggerIdleTimeout() {
+            stopBGM();
+            switchScreen('screen-gameover');
+            const title = document.getElementById('gameover-title'); 
+            const art = document.getElementById('gameover-art');
+            const screen = document.getElementById('screen-gameover'); 
+            const messageEl = document.getElementById('gameover-message');
+            playSound('lost'); 
+            screen.className = "screen lose-screen active-screen"; 
+            art.innerText = "🔌💔";
+            title.innerText = "การเล่นสะดุดจากสาเหตุใดสาเหตุหนึ่ง"; 
+            messageEl.innerText = "ขออภัย โปรดลองใหม่อีกครั้ง";
+            speak("การเล่นสะดุดจากสาเหตุใดสาเหตุหนึ่ง ขออภัย โปรดลองใหม่อีกครั้ง");
+            setTimeout(() => title.focus(), 100);
+        }
+
         // --- EVENT SYNC ---
         function pushEvent(cmdObj) {
             push(ref(db, `games/SnakeSix/rooms/${currentRoomId}/events`), cmdObj);
         }
 
         function startEventSync() {
-            // ระบบตรวจจับ Ping สำหรับ Point 3 (Host Disconnect)
-            if (myRole === 'p1') {
-                hostPingInterval = setInterval(() => {
-                    update(ref(db, `games/SnakeSix/rooms/${currentRoomId}`), { hostPing: Date.now() });
-                }, 5000);
-            } else {
-                lastHostPingTime = Date.now();
-                hostCheckInterval = setInterval(() => {
-                    if (isGameStarted && (Date.now() - lastHostPingTime > 35000)) {
-                        clearInterval(hostCheckInterval);
-                        triggerHostDisconnectUI();
-                    }
-                }, 5000);
-            }
-
             const eventsRef = ref(db, `games/SnakeSix/rooms/${currentRoomId}/events`);
             onChildAdded(eventsRef, (snap) => {
+                resetIdleTimer();
                 const cmd = snap.val();
                 if (cmd.type === 'START_GAME') {
                     startCountdownSequence();
@@ -642,15 +617,6 @@
                     executeTreasureEvent(cmd.idx, cmd.actor, cmd.target);
                 }
             });
-        }
-
-        // Point 3 UI ตัดการเชื่อมต่อ Host
-        function triggerHostDisconnectUI() {
-            stopBGM();
-            switchScreen('screen-host-disconnect');
-            const title = document.getElementById('host-disconnect-title');
-            speak("ขออภัย การเชื่อมต่อกับเจ้าของห้องขาดหาย อาจเกิดจากเจ้าของห้องออกจากเกมโดยไม่ทราบสาเหตุ");
-            setTimeout(() => title.focus(), 100);
         }
 
         // --- Audio Variables ---
@@ -679,6 +645,7 @@
 
         let shortcuts = {}; let specialSquares = []; let quicksandSquares = [];
         
+        // Multi-player state
         let turnOrder = [];
         let pPos = {};
         let pHand = {};
@@ -741,10 +708,7 @@
             let colorObj = CHAR_COLORS.find(c => c.id === p.color);
             let colorName = colorObj ? colorObj.name : '';
             if (role === myRole) return `คุณสี${colorName}`;
-            if (p.type === 'bot') {
-                if (p.name && p.name.includes('(บอท)')) return p.name;
-                return `บอทสี${colorName}`;
-            }
+            if (p.type === 'bot') return `บอทสี${colorName}`;
             return `เพื่อนสี${colorName}`;
         }
         function getUIPawnId(role) { return `pawn-${role}`; }
@@ -756,6 +720,7 @@
                 let dot = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${colorObj.hex}; margin-right:4px; vertical-align:middle;"></span>`;
                 let name = getUIName(r);
                 
+                // ส่วนนี้เก็บไว้ให้อ่านต่อกันยาวๆ เป็น Object เดียว
                 srTextArr.push(`${name} ช่อง ${pPos[r]}`);
                 return `${dot}${name}: ${pPos[r]}`;
             });
@@ -763,6 +728,7 @@
             let txtHtml = parts.join(' , ');
             let combinedSrText = srTextArr.join(' , ');
             
+            // แยกส่วนซ่อนเพื่อการอ่านรวดเดียวผ่าน class .sr-only และส่วนหน้าตาที่ซ่อนจาก VoiceOver ด้วย aria-hidden
             let finalHtml = `
                 <div class="sr-only">${combinedSrText}</div>
                 <div aria-hidden="true">${txtHtml}</div>
@@ -839,10 +805,6 @@
             updateStatusBar(); 
             document.getElementById('dice-cube').style.transform = 'rotateX(-22deg) rotateY(-45deg)';
             hasRolled = false; 
-
-            // เคลียร์ Timeout ของเก่า
-            if (turnTimeoutTimer) clearTimeout(turnTimeoutTimer);
-            if (clientTurnTimer) clearTimeout(clientTurnTimer);
             
             if (pBuffs[currentTurnRole].skip) {
                 pBuffs[currentTurnRole].skip = false; 
@@ -858,14 +820,6 @@
                 btnRoll.disabled = false;
                 renderPlayerCards(); 
                 speak(`ตา${getUIName(myRole)}! กดทอยเลย`); setTimeout(() => btnRoll.focus(), 100); 
-
-                // Point 2: 30s Timeout ถ้ามนุษย์ AFK จะสุ่มทอยเต๋าให้ทันที
-                turnTimeoutTimer = setTimeout(() => {
-                    if (!hasRolled && currentTurnRole === myRole) {
-                        window.handleRollClick();
-                    }
-                }, 30000);
-                
             } else {
                 let cName = getUIName(currentTurnRole);
                 document.getElementById('turn-title').innerText = `ตา ${cName} (รอทอยเต๋า...)`;
@@ -878,17 +832,6 @@
                     setTimeout(() => {
                         pushEvent({ type: 'ROLL', actor: currentTurnRole });
                     }, 2000);
-                }
-
-                // Point 4: ระบบรอและเตะ Client ที่ AFK/หลุด แปลงเป็น Bot 
-                if (myRole === 'p1' && players[currentTurnRole].type === 'human') {
-                    clientTurnTimer = setTimeout(() => {
-                        let colorObj = CHAR_COLORS.find(c => c.id === players[currentTurnRole].color);
-                        update(ref(db, `games/SnakeSix/rooms/${currentRoomId}/players/${currentTurnRole}`), { 
-                            type: 'bot', 
-                            name: `เพื่อนสี${colorObj.name}(บอท)`
-                        });
-                    }, 35000); // รอ 35 วิ (30s action + 5s buffer)
                 }
             }
         }
@@ -913,8 +856,6 @@
         window.handleRollClick = function() {
             if (currentTurnRole !== myRole || hasRolled) return;
             hasRolled = true; 
-            if (turnTimeoutTimer) clearTimeout(turnTimeoutTimer); // เคลียร์ Timer ทิ้งเมื่อกดแล้ว
-
             const btnRoll = document.getElementById('btn-roll');
             btnRoll.disabled = true;
             btnRoll.blur(); 
@@ -1377,12 +1318,7 @@
         }
 
         function showGameOver(winnerRole) {
-            // เคลียร์ Timers ป้องกันการลูปทำงานหลังจบเกม
-            if (hostPingInterval) clearInterval(hostPingInterval);
-            if (hostCheckInterval) clearInterval(hostCheckInterval);
-            if (turnTimeoutTimer) clearTimeout(turnTimeoutTimer);
-            if (clientTurnTimer) clearTimeout(clientTurnTimer);
-
+            if (idleTimeoutTimer) clearTimeout(idleTimeoutTimer);
             stopBGM(); switchScreen('screen-gameover');
             const title = document.getElementById('gameover-title'); const art = document.getElementById('gameover-art');
             const screen = document.getElementById('screen-gameover'); const messageEl = document.getElementById('gameover-message');
