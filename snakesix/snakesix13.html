@@ -359,10 +359,7 @@
             for (const [rId, roomData] of Object.entries(allRooms)) {
                 if (roomData.status === 'waiting') {
                     // กำหนดระยะเวลาการเคลียร์ห้องร้าง (Stale Room Timeout) - 150 วินาที
-                    let roomTime = roomData.lastActive || roomData.createdAt || 0;
-                    if (!roomTime || (now - roomTime > 150000)) {
-                        // สั่งลบห้องทิ้งจาก Database ทันทีเพื่อไม่ให้ค้างในระบบ
-                        remove(ref(db, `games/SnakeSix/rooms/${rId}`));
+                    if (roomData.lastActive && (now - roomData.lastActive > 150000)) {
                         continue;
                     }
 
@@ -428,15 +425,6 @@
                         createdAt: Date.now(),
                         lastActive: Date.now()
                     });
-
-                    // เพิ่มระบบ Heartbeat สำหรับ Host ในหน้า Lobby
-                    let lobbyHeartbeat = setInterval(() => {
-                        if (currentRoomId && !isGameStarted) {
-                            update(ref(db, `games/SnakeSix/rooms/${currentRoomId}`), { lastActive: Date.now() });
-                        } else {
-                            clearInterval(lobbyHeartbeat);
-                        }
-                    }, 20000); // อัปเดตสถานะทุกๆ 20 วินาที
 
                     renderColorSelectors();
                     listenToRoom(currentRoomId);
