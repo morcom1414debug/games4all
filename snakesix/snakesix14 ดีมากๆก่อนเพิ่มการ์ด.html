@@ -725,11 +725,7 @@
             { id: 'reverse', name: 'ถอยหลัง', desc: 'บังคับเพื่อนต้องเดินถอยหลังในตาถัดไป', class: 'card-mirror', type: 'opponent' },
             { id: 'snatch', name: 'ขโมยซีน', desc: 'สุ่มขโมยการ์ดจากมือเพื่อน 1 ใบมาเป็นของคุณทันที', class: 'card-swap', type: 'opponent' },
             { id: 'lucky', name: 'แต้มล็อก', desc: 'ล็อกผลลูกเต๋าในรอบถัดไปของคุณให้ออก 6 แต้มเสมอ', class: 'card-banana', type: 'self' },
-            { id: 'mult2', name: 'พลังคูณสอง', desc: 'แต้มที่ทอยได้ในตานี้จะถูกคูณ 2 ทันที', class: 'card-banana', type: 'self' },
-            { id: 'redlight', name: 'ไฟแดง', desc: 'ตัวละครที่โดนการ์ดนี้จะถูกพักการเล่น 1 ตา', class: 'card-swap', type: 'opponent' },
-            { id: 'rabbit', name: 'การ์ดกระต่าย', desc: 'สลับตำแหน่งตัวละครของคุณ วาร์ปไปที่ตำแหน่งช่อง 50 ทันที', class: 'card-banana', type: 'self' },
-            { id: 'turtle', name: 'การ์ดเต่า', desc: 'ส่งตัวละครของเพื่อนที่คุณเลือก วาร์ปไปอยู่ที่ตำแหน่งช่อง 50 ทันที', class: 'card-swap', type: 'opponent' },
-            { id: 'doubleroll', name: 'การ์ดเบิ้ลๆ', desc: 'ได้สิทธิ์ทอยลูกเต๋าและเดินติดต่อกัน 2 ครั้งในเทิร์นนี้', class: 'card-banana', type: 'self' }
+            { id: 'mult2', name: 'พลังคูณสอง', desc: 'แต้มที่ทอยได้ในตานี้จะถูกคูณ 2 ทันที', class: 'card-banana', type: 'self' }
         ];
 
         let shortcuts = {}; let specialSquares = []; let quicksandSquares = [];
@@ -851,7 +847,7 @@
             }
             for(let i=0; i<8; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.min(s1, s2)] = Math.max(s1, s2); }
             for(let i=0; i<8; i++) { let s1 = getFreeSquare(); let s2 = getFreeSquare(); shortcuts[Math.max(s1, s2)] = Math.min(s1, s2); }
-            for(let i=0; i<12; i++) { specialSquares.push(getFreeSquare()); }
+            for(let i=0; i<8; i++) { specialSquares.push(getFreeSquare()); }
             for(let i=0; i<7; i++) { quicksandSquares.push(getFreeSquare()); }
         }
 
@@ -862,7 +858,7 @@
             turnOrder.forEach(r => {
                 pPos[r] = 1;
                 pHand[r] = [CARD_TYPES[Math.floor(seededRandom() * CARD_TYPES.length)]];
-                pBuffs[r] = { debuff: false, reverse: false, skip: false, lucky: false, x2: false, doubleRoll: false };
+                pBuffs[r] = { debuff: false, reverse: false, skip: false, lucky: false, x2: false };
             });
             
             initBoardVisual(); renderPlayerCards();
@@ -885,12 +881,6 @@
         }
 
         function nextTurn() {
-            if (currentTurnRole && pBuffs[currentTurnRole] && pBuffs[currentTurnRole].doubleRoll) {
-                pBuffs[currentTurnRole].doubleRoll = false;
-                speak(`การ์ดเบิ้ลๆ ทำงาน! ${getUIName(currentTurnRole)} ได้ทอยอีกครั้งในเทิร์นนี้!`);
-                startTurnCycle();
-                return;
-            }
             currentTurnIndex = (currentTurnIndex + 1) % turnOrder.length;
             currentTurnRole = turnOrder[currentTurnIndex];
             startTurnCycle();
@@ -1100,53 +1090,6 @@
                 document.getElementById(actorPawnId).classList.add('aura-active');
             } else if (card.id === 'mult2') {
                 pBuffs[actorRole].x2 = true; txt += `แต้มทอยจะคูณสอง!`;
-                document.getElementById(actorPawnId).classList.add('aura-active');
-            } else if (card.id === 'redlight') {
-                pBuffs[oppRole].skip = true; 
-                txt += `หยุด! ${getUIName(oppRole)} โดนพักการเล่น 1 ตา!`;
-                document.getElementById(oppPawnId).classList.add('debuff-active');
-            } else if (card.id === 'rabbit') {
-                triggerScreenFlash();
-                let pos = 50;
-                pPos[actorRole] = pos;
-                txt += `วาร์ปตัวเองไปช่อง 50 ทันที! `;
-                if (shortcuts[pos]) {
-                    let dest = shortcuts[pos];
-                    if (dest > pos) { txt += `เจอทางขึ้นไปช่อง ${dest}! `; playSound('up'); }
-                    else { txt += `โดนงูฉกร่วงไปช่อง ${dest}! `; playSound('down'); }
-                    pPos[actorRole] = dest;
-                }
-                initBoardVisual();
-                let aMsg = checkSquareAfterSwap(actorRole);
-                if (aMsg !== "") txt += aMsg + " ";
-                let hitRole = turnOrder.find(p => p !== actorRole && pPos[p] === pPos[actorRole] && pPos[actorRole] !== 1 && pPos[actorRole] !== 100);
-                if (hitRole) {
-                    txt += `ทับช่องเดียวกับ ${getUIName(hitRole)}!`;
-                    setTimeout(() => triggerMinigameUI(actorRole, hitRole), 2000);
-                    hasRolled = true; 
-                }
-            } else if (card.id === 'turtle') {
-                triggerScreenFlash();
-                let pos = 50;
-                pPos[oppRole] = pos;
-                txt += `ส่ง ${getUIName(oppRole)} วาร์ปไปช่อง 50 ทันที! `;
-                if (shortcuts[pos]) {
-                    let dest = shortcuts[pos];
-                    if (dest > pos) { txt += `เจอทางขึ้นไปช่อง ${dest}! `; playSound('up'); }
-                    else { txt += `โดนงูฉกร่วงไปช่อง ${dest}! `; playSound('down'); }
-                    pPos[oppRole] = dest;
-                }
-                initBoardVisual();
-                let oMsg = checkSquareAfterSwap(oppRole);
-                if (oMsg !== "") txt += oMsg + " ";
-                let hitRole = turnOrder.find(p => p !== oppRole && pPos[p] === pPos[oppRole] && pPos[oppRole] !== 1 && pPos[oppRole] !== 100);
-                if (hitRole) {
-                    txt += `ทับช่องเดียวกับ ${getUIName(hitRole)}!`;
-                    setTimeout(() => triggerMinigameUI(oppRole, hitRole), 2000);
-                }
-            } else if (card.id === 'doubleroll') {
-                pBuffs[actorRole].doubleRoll = true; 
-                txt += `ได้สิทธิ์ทอยเบิ้ล 2 ครั้งในเทิร์นนี้!`;
                 document.getElementById(actorPawnId).classList.add('aura-active');
             }
             speak(txt);
