@@ -296,9 +296,8 @@
     </div>
 
     <script type="module">
-        // เพิ่ม onDisconnect จาก Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update, runTransaction, push, onChildAdded, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue, update, runTransaction, push, onChildAdded, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
@@ -354,15 +353,9 @@
             if (myRole) return; 
             listDiv.innerHTML = '';
             let hasWaiting = false;
-            let now = Date.now();
 
             for (const [rId, roomData] of Object.entries(allRooms)) {
                 if (roomData.status === 'waiting') {
-                    // กำหนดระยะเวลาการเคลียร์ห้องร้าง (Stale Room Timeout) - 150 วินาที
-                    if (roomData.lastActive && (now - roomData.lastActive > 150000)) {
-                        continue;
-                    }
-
                     hasWaiting = true;
                     const btn = document.createElement('div');
                     const pCount = roomData.players ? Object.keys(roomData.players).length : 0;
@@ -412,18 +405,8 @@
                         p1: { type: 'human', color: 'red', name: 'เจ้าของห้อง' }
                     };
                     
-                    let roomDbRef = ref(db, `games/SnakeSix/rooms/${currentRoomId}`);
-                    
-                    // 1. ใช้ Firebase onDisconnect() ลบห้องทิ้งทันทีหาก Host หลุดการเชื่อมต่อ
-                    onDisconnect(roomDbRef).remove();
-
-                    // กำหนด createdAt และ lastActive
-                    set(roomDbRef, {
-                        status: 'waiting', 
-                        seed: newSeed, 
-                        players: initialPlayers,
-                        createdAt: Date.now(),
-                        lastActive: Date.now()
+                    set(ref(db, `games/SnakeSix/rooms/${currentRoomId}`), {
+                        status: 'waiting', seed: newSeed, players: initialPlayers
                     });
 
                     renderColorSelectors();
@@ -478,20 +461,11 @@
                 let id = `color-${color.id}`;
                 let isChecked = players.p1 && players.p1.color === color.id;
                 
-                // ตรวจสอบว่าสีถูกใช้งานแล้วหรือไม่ (โดยผู้อื่นหรือบอท)
-                let isUsed = Object.keys(players).some(k => k !== 'p1' && players[k].color === color.id);
-                
-                let disabledAttr = isUsed ? 'disabled' : '';
-                let opacityStyle = isUsed ? 'opacity: 0.4; cursor: not-allowed;' : '';
-                let lockIcon = isUsed ? '<span style="font-size:14px; line-height:35px; display:block; text-align:center;">🔒</span>' : '';
-                let clickAction = isUsed ? `onclick="speak('สีนี้ถูกใช้งานแล้ว กรุณาเลือกสีอื่น'); return false;"` : '';
-
                 let html = `
                     <div style="display:inline-block;">
-                        <input type="radio" id="${id}" name="host_color" value="${color.id}" class="color-radio" ${isChecked ? 'checked' : ''} ${disabledAttr} onchange="window.changeHostColor('${color.id}')">
-                        <label for="${id}" class="color-label" style="background-color: ${color.hex}; ${opacityStyle}" title="${isUsed ? 'ล็อก ' : ''}สี${color.name}" ${clickAction}>
-                            ${lockIcon}
-                            <span class="sr-only">${isUsed ? 'ล็อก ' : ''}สี${color.name}</span>
+                        <input type="radio" id="${id}" name="host_color" value="${color.id}" class="color-radio" ${isChecked ? 'checked' : ''} onchange="window.changeHostColor('${color.id}')">
+                        <label for="${id}" class="color-label" style="background-color: ${color.hex};" title="สี${color.name}">
+                            <span class="sr-only">สี${color.name}</span>
                         </label>
                     </div>
                 `;
@@ -501,15 +475,6 @@
 
         window.changeHostColor = function(newColorId) {
             if(!players.p1) return;
-
-            // ตรวจสอบสีฝั่ง Server/Database ว่าว่างจริงไหมป้องกันการกดพร้อมกัน
-            let availColors = getAvailableColors();
-            if (!availColors.find(c => c.id === newColorId) && players.p1.color !== newColorId) {
-                speak("สีนี้ถูกใช้งานแล้ว กรุณาเลือกสีอื่น");
-                renderColorSelectors();
-                return;
-            }
-
             let currentOwnerKey = Object.keys(players).find(k => players[k].color === newColorId);
             let updates = {};
             
@@ -517,7 +482,6 @@
                 updates[`games/SnakeSix/rooms/${currentRoomId}/players/${currentOwnerKey}/color`] = players['p1'].color;
             }
             updates[`games/SnakeSix/rooms/${currentRoomId}/players/p1/color`] = newColorId;
-            updates[`games/SnakeSix/rooms/${currentRoomId}/lastActive`] = Date.now(); // อัปเดตความเคลื่อนไหวห้อง
             update(ref(db), updates);
         };
 
@@ -536,7 +500,6 @@
             update(ref(db, `games/SnakeSix/rooms/${currentRoomId}/players/${nextSlot}`), { 
                 type: 'bot', color: botColor.id, name: `บอท ${botsCount + 1}`
             }).then(() => {
-                update(ref(db, `games/SnakeSix/rooms/${currentRoomId}`), { lastActive: Date.now() }); // อัปเดตความเคลื่อนไหวห้อง
                 speak(`เพิ่มบอทสี${botColor.name}แล้ว`);
             });
         };
@@ -547,14 +510,13 @@
             let lastBotKey = botKeys[botKeys.length - 1];
             let roomRef = ref(db, `games/SnakeSix/rooms/${currentRoomId}/players/${lastBotKey}`);
             remove(roomRef).then(() => {
-                update(ref(db, `games/SnakeSix/rooms/${currentRoomId}`), { lastActive: Date.now() }); // อัปเดตความเคลื่อนไหวห้อง
                 speak("ลดบอท 1 ตัว");
             });
         };
 
         window.startOnlineGame = function() {
             if (Object.keys(players).length < 2) return;
-            update(ref(db, `games/SnakeSix/rooms/${currentRoomId}`), { status: 'playing', lastActive: Date.now() });
+            update(ref(db, `games/SnakeSix/rooms/${currentRoomId}`), { status: 'playing' });
         };
 
         function listenToRoom(rId) {
@@ -624,8 +586,7 @@
 
             Object.keys(players).sort().forEach(k => {
                 let p = players[k];
-                // เพิ่ม Null Safety / Fallback Checks ป้องกัน undefined object ค้างระบบ
-                let colorObj = CHAR_COLORS.find(c => c.id === p.color) || { hex: '#b2bec3', name: 'ไม่ระบุ' };
+                let colorObj = CHAR_COLORS.find(c => c.id === p.color);
                 let displayName = getUIName(k);
                 
                 let item = document.createElement('div');
@@ -777,8 +738,8 @@
         function getUIName(role) { 
             let p = players[role];
             if (!p) return '';
-            let colorObj = CHAR_COLORS.find(c => c.id === p.color) || { name: 'ไม่ระบุ' };
-            let colorName = colorObj.name;
+            let colorObj = CHAR_COLORS.find(c => c.id === p.color);
+            let colorName = colorObj ? colorObj.name : '';
             if (role === myRole) return `คุณสี${colorName}`;
             if (p.type === 'bot') {
                 if (p.name && p.name.includes('(บอท)')) return p.name;
@@ -791,7 +752,7 @@
         function updateStatusBar() {
             let srTextArr = [];
             let parts = turnOrder.map(r => {
-                let colorObj = CHAR_COLORS.find(c => c.id === players[r].color) || { hex: '#b2bec3' };
+                let colorObj = CHAR_COLORS.find(c => c.id === players[r].color);
                 let dot = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${colorObj.hex}; margin-right:4px; vertical-align:middle;"></span>`;
                 let name = getUIName(r);
                 
@@ -986,7 +947,7 @@
             turnOrder.forEach(r => {
                 if(r !== myRole) {
                     let btn = document.createElement('button');
-                    let colorObj = CHAR_COLORS.find(c => c.id === players[r].color) || { hex: '#b2bec3' };
+                    let colorObj = CHAR_COLORS.find(c => c.id === players[r].color);
                     btn.type = 'button';
                     btn.className = 'btn-main btn-target';
                     btn.style.maxWidth = '150px';
@@ -1448,7 +1409,7 @@
             
             turnOrder.forEach(r => {
                 let p = players[r];
-                let colorObj = CHAR_COLORS.find(c => c.id === p.color) || { hex: '#b2bec3' };
+                let colorObj = CHAR_COLORS.find(c => c.id === p.color);
                 let pawn = document.createElement('div');
                 pawn.id = getUIPawnId(r);
                 pawn.className = `pawn pawn-dynamic`;
