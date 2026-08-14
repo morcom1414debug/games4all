@@ -225,12 +225,32 @@
         .manual-content ul { padding-left: 20px; }
         
         .close-manual-btn { background: linear-gradient(135deg, #ff4d4d 0%, #e94560 100%); margin-bottom: 15px; }
+
+        /* Countdown Screen */
+        #countdown-screen {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 1000; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .countdown-number {
+            font-size: 10rem; color: #fff; font-weight: bold; text-shadow: 0 0 30px #fff;
+            animation: zoomInOut 1.63s infinite;
+        }
+        @keyframes zoomInOut {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.5); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
+        }
     </style>
 </head>
 <body>
 
     <div class="bubbles-container" aria-hidden="true" id="bg-bubbles"></div>
     <div id="sr-only-announcer" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
+
+    <div id="countdown-screen" role="alert" aria-live="assertive">
+        <div class="countdown-number" id="cd-number" aria-hidden="true">3</div>
+        <div class="sr-only" id="sr-countdown"></div>
+    </div>
 
     <div id="setup-screen" role="main">
         <h1>ไพ่แคงออนไลน์ 🎴</h1>
@@ -359,6 +379,72 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+        // === Audio Setup ===
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffers = {};
+        let bgmSource = null;
+
+        const soundFiles = {
+            '1': 'audio/1.mp3',
+            'select': 'audio/select.mp3',
+            'start': 'audio/start.mp3',
+            'bgm': 'audio/bgm.mp3',
+            'jua': 'audio/jua.mp3',
+            'turn': 'audio/turn.mp3',
+            'follow': 'audio/follow.mp3',
+            'cang': 'audio/cang.mp3',
+            'cang25': 'audio/cang25.mp3',
+            'win': 'audio/win.mp3',
+            'lost': 'audio/lost.mp3'
+        };
+
+        async function loadSounds() {
+            for (let key in soundFiles) {
+                try {
+                    const response = await fetch(soundFiles[key]);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    audioBuffers[key] = audioBuffer;
+                } catch (e) {
+                    console.warn("Could not load sound", key, e);
+                }
+            }
+        }
+        loadSounds();
+
+        function playSound(key, loop = false) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            if(!audioBuffers[key]) return null;
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffers[key];
+            source.connect(audioCtx.destination);
+            source.loop = loop;
+            source.start(0);
+            return source;
+        }
+
+        function stopBGM() {
+            if (bgmSource) {
+                try { bgmSource.stop(); } catch(e) {}
+                bgmSource = null;
+            }
+        }
+
+        function playBGM() {
+            stopBGM();
+            bgmSource = playSound('bgm', true);
+        }
+
+        document.body.addEventListener('click', () => {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+        }, { once: false });
+
+        function triggerSound(soundKey) {
+            if(myPeerId) playSound(soundKey);
+            guestConnections.forEach(c => c.send({ type: 'PLAY_SOUND', sound: soundKey }));
+        }
+        // === End Audio Setup ===
 
         const firebaseConfig = {
             apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
@@ -510,6 +596,7 @@
                         document.getElementById('setup-screen').style.display = 'none';
                         document.getElementById('waiting-room-screen').style.display = 'flex';
                         announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${roomId}`, false);
+                        playSound('1'); // Play sound when room created successfully
                         updateLobbyUI(); listenHostConnections();
                     });
                 }
@@ -527,16 +614,13 @@
             hostConnection.on('open', () => { hostConnection.send({ type: 'JOIN_ROOM' }); announce(`เข้าร่วมห้องสำเร็จ รอแจกไพ่`, false); });
             hostConnection.on('data', (data) => {
                 if (data.type === 'LOBBY_UPDATE') { roomPlayers = data.roomPlayers; currentBotCount = data.botCount; botColors = data.botColors; updateLobbyUI(); }
-                if (data.type === 'START_GAME') { 
-                    document.getElementById('waiting-room-screen').style.display = 'none'; 
-                    document.getElementById('game-screen').style.display = 'flex'; 
-                    announce("มีใครจะแคง 25 ไหม?"); 
-                }
+                if (data.type === 'START_COUNTDOWN') { doCountdownAndStart(); }
                 if (data.type === 'SYNC_STATE') renderClientGame(data.publicState, data.privateState);
                 if (data.type === 'ANIM_SC_FLOAT') showFloatingScore(data.targetId, data.amt);
-                if (data.type === 'SHOW_RESULT') showResultModal(data.title, data.detail, data.isEnd);
+                if (data.type === 'SHOW_RESULT') showResultModal(data.title, data.detail, data.isEnd, data.winners, data.losers);
                 if (data.type === 'ANNOUNCE') announce(data.msg);
                 if (data.type === 'TIMER_UPDATE') updateTimerUI(data.timeLeft);
+                if (data.type === 'PLAY_SOUND') playSound(data.sound);
             });
         };
 
@@ -549,11 +633,16 @@
                         roomPlayers.push({ id: conn.peer, color: avail.length > 0 ? avail[0].id : 'red' });
                         guestConnections.push(conn); broadcastLobby();
                         broadcastAnnounce(`มีผู้เล่นเข้าร่วมห้องใหม่ รวม ${roomPlayers.length} คน`);
+                        triggerSound('select'); // Play sound when a new player joins and gets a color
                     }
                     if (data.type === 'CHANGE_COLOR') {
                         let p = roomPlayers.find(x => x.id === data.playerId);
                         let taken = roomPlayers.map(x=>x.color).concat(botColors);
-                        if(p && !taken.includes(data.colorId)) { p.color = data.colorId; broadcastLobby(); }
+                        if(p && !taken.includes(data.colorId)) { 
+                            p.color = data.colorId; 
+                            broadcastLobby(); 
+                            triggerSound('select');
+                        }
                     }
                     if (data.type === 'PLAYER_ACTION') processPlayerAction(data.playerId, data.action, data.cardIndex);
                 });
@@ -575,6 +664,7 @@
             let avail = COLORS.filter(c => !used.includes(c.id));
             botColors = avail.slice(0, currentBotCount).map(c => c.id);
             broadcastLobby();
+            triggerSound('select'); // Play sound on adjusting bot
         };
 
         function updateLobbyUI() {
@@ -593,7 +683,10 @@
             let myP = roomPlayers.find(p=>p.id===myPeerId);
             if (myP && taken.filter(c => c === myP.color).length > 1) {
                 let avail = COLORS.find(c => !taken.includes(c.id));
-                if(avail) { selectedColorId = avail.id; myP.color = selectedColorId; if(isHost) broadcastLobby(); }
+                if(avail) { 
+                    selectedColorId = avail.id; myP.color = selectedColorId; 
+                    if(isHost) { broadcastLobby(); triggerSound('select'); } 
+                }
             }
 
             const colDiv = document.getElementById('color-selection'); colDiv.innerHTML = '';
@@ -614,7 +707,7 @@
                         selectedColorId = c.id; announce(`คุณเลือกเปลี่ยนสีเป็นสี${c.name}`, false);
                         if(isHost) { 
                             let p = roomPlayers.find(x=>x.id===myPeerId); 
-                            if(p) { p.color = c.id; broadcastLobby(); }
+                            if(p) { p.color = c.id; broadcastLobby(); triggerSound('select'); }
                         } else { 
                             hostConnection.send({ type: 'CHANGE_COLOR', playerId: myPeerId, colorId: c.id }); 
                         }
@@ -634,16 +727,44 @@
 
         window.hostStartGame = () => {
             remove(ref(db, GAME_DB_ID + '/rooms/' + roomId)); 
-            guestConnections.forEach(c => c.send({ type: 'START_GAME' }));
-            document.getElementById('waiting-room-screen').style.display = 'none';
-            document.getElementById('game-screen').style.display = 'flex';
-
-            gameState.players = [];
-            roomPlayers.forEach(p => { gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false }); });
-            botColors.forEach((b, i) => { gameState.players.push({ id: 'bot_'+i, name: 'บอท '+COLORS.find(c=>c.id===b).name, colorInfo: COLORS.find(c=>c.id===b), isBot: true, points: 300, hand: [], isOut: false }); });
-            startNewRound();
-            broadcastAnnounce("มีใครจะแคง 25 ไหม?");
+            guestConnections.forEach(c => c.send({ type: 'START_COUNTDOWN' }));
+            doCountdownAndStart();
         };
+
+        function doCountdownAndStart() {
+            document.getElementById('waiting-room-screen').style.display = 'none';
+            const countdownScreen = document.getElementById('countdown-screen');
+            countdownScreen.style.display = 'flex';
+            const cdNum = document.getElementById('cd-number');
+            const srCD = document.getElementById('sr-countdown');
+            
+            playSound('start'); 
+            
+            let count = 3;
+            cdNum.innerText = count;
+            srCD.innerText = count;
+            
+            let cdInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    cdNum.innerText = count;
+                    srCD.innerText = count;
+                } else {
+                    clearInterval(cdInterval);
+                    countdownScreen.style.display = 'none';
+                    document.getElementById('game-screen').style.display = 'flex';
+                    playBGM();
+
+                    if (isHost) {
+                        gameState.players = [];
+                        roomPlayers.forEach(p => { gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false }); });
+                        botColors.forEach((b, i) => { gameState.players.push({ id: 'bot_'+i, name: 'บอท '+COLORS.find(c=>c.id===b).name, colorInfo: COLORS.find(c=>c.id===b), isBot: true, points: 300, hand: [], isOut: false }); });
+                        startNewRound();
+                        broadcastAnnounce("มีใครจะแคง 25 ไหม?");
+                    }
+                }
+            }, 1630); // ~4.89s total for 3 counts
+        }
 
         function startNewRound() {
             deck = buildDeck(); discardPile = [];
@@ -816,9 +937,11 @@
                 let isHostPlayer = (pId === gameState.players[0].id);
                 // Host กดได้เสมอโดยไม่ติด lock, ส่วน Client ต้องแต้ม >= 25
                 if (action === 'KANG_25' && (handSum >= 25 || isHostPlayer)) {
+                    triggerSound('cang25');
                     broadcastAnnounce(`📢 ประกาศด่วน! [PID:${p.id}] ตัดสินใจกด "แคง25!" ท้าดวลตั้งแต่รอบดูไพ่!`);
                     resolveKang(p.id, false, false, true); 
                 } else if (action === 'KANG' && isHostPlayer) {
+                    triggerSound('cang');
                     broadcastAnnounce(`📢 ประกาศ! เจ้าของห้อง [PID:${p.id}] ชิง "แคง!" ตัดจบตั้งแต่ยังไม่เริ่มเกม!`);
                     resolveKang(p.id, false, false, false);
                 }
@@ -830,6 +953,7 @@
 
             if(action === 'DRAW' && !cp.hasDrawnTurn) {
                 if(deck.length > 0) {
+                    triggerSound('jua');
                     let drawnCard = deck.pop();
                     cp.hand.push(drawnCard); cp.hasDrawnTurn = true;
                     
@@ -855,6 +979,7 @@
                 if (!card) return;
                 
                 if (!cp.hasDiscardedTurn && cp.hasDrawnTurn) {
+                    triggerSound('select');
                     let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
                     cp.hasDiscardedTurn = true; cp.discardedRankThisTurn = dropped.rank;
                     gameState.topCardOwnerId = cp.id; 
@@ -864,6 +989,7 @@
                     else syncStateToAll();
                 } 
                 else if (cp.hasDiscardedTurn && card.rank === cp.discardedRankThisTurn) {
+                    triggerSound('select');
                     let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
                     broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]} เพิ่มเติม (เลขเดียวกัน)`);
                     if(cp.hand.length === 0) resolveKang(cp.id, false, true);
@@ -873,6 +999,7 @@
             else if(action === 'FLOW' && !cp.hasDrawnTurn) {
                 let topCard = discardPile[discardPile.length - 1]; let card = cp.hand[cardIndex];
                 if (topCard && card.rank === topCard.rank) {
+                    triggerSound('follow');
                     let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
                     cp.hasDiscardedTurn = true; cp.discardedRankThisTurn = dropped.rank; cp.hasDrawnTurn = true;
 
@@ -901,10 +1028,12 @@
                 }
             }
             else if(action === 'END_TURN' && cp.hasDiscardedTurn) {
+                triggerSound('turn');
                 broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา (บนกองคือ ${getTopCardText()})`);
                 nextTurn();
             }
             else if(action === 'KANG' && !cp.hasDrawnTurn && discardPile.length > 0) {
+                triggerSound('cang');
                 broadcastAnnounce(`[PID:${cp.id}] ประกาศ แคง!`);
                 resolveKang(cp.id);
             }
@@ -915,6 +1044,10 @@
             let active = gameState.players.filter(p => !p.isOut);
             let totalPlayersInRoom = active.length;
             
+            // Track points before resolve
+            let beforePoints = {};
+            active.forEach(p => beforePoints[p.id] = p.points);
+
             active.forEach(p => { 
                 p.handSum = p.hand.reduce((s, c) => s + c.val, 0); 
                 p.aceCount = p.hand.filter(c => c.rank === 'A').length;
@@ -996,6 +1129,15 @@
                 }
             }
 
+            // Determine winners and losers
+            let winners = [];
+            let losers = [];
+            active.forEach(p => {
+                let diff = p.points - beforePoints[p.id];
+                if (diff > 0) winners.push(p.id);
+                else if (diff < 0) losers.push(p.id);
+            });
+
             // จัดรูปแบบข้อความสรุปเป็นประโยคเดียว
             let summaryArr = active.map(p => `[PID:${p.id}] ${p.handSum} แต้ม`);
             let summaryStr = "";
@@ -1011,8 +1153,8 @@
             resultDetail += handSummary;
 
             syncStateToAll();
-            let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false };
-            if(myPeerId) showResultModal(title, resultDetail, false);
+            let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false, winners, losers };
+            if(myPeerId) showResultModal(title, resultDetail, false, winners, losers);
             guestConnections.forEach(c => c.send(modalData));
             
             // เคลียร์โค้ด HTML Tag ออกจากการส่งค่าประกาศ เพื่อไม่ให้ตาดีหรือ SC เห็น/อ่าน โค้ดหลุด
@@ -1029,6 +1171,7 @@
         window.closeResultModal = () => {
             document.getElementById('result-modal').style.display = 'none';
             if(isHost) startNewRound();
+            else playBGM(); // Resume BGM if next round starts but client just closes modal early (though BGM usually stays off until next start)
         };
 
         function renderClientGame(publicState, privateState) {
@@ -1106,7 +1249,8 @@
                 } else { btnDraw.disabled = true; btnKang.disabled = true; btnEnd.disabled = true; }
             }
 
-            document.getElementById('deck-pile').innerText = `🎴\n${publicState.deckCount}`;
+            document.getElementById('deck-pile').innerText = `🎴
+${publicState.deckCount}`;
             document.getElementById('deck-pile').setAttribute('aria-label', `กองไพ่จั่วเหลือ ${publicState.deckCount} ใบ`);
             
             let dp = document.getElementById('discard-pile');
@@ -1187,7 +1331,14 @@
             target.appendChild(floatEl); setTimeout(() => floatEl.remove(), 2000);
         };
 
-        window.showResultModal = (title, detail, isEnd) => {
+        window.showResultModal = (title, detail, isEnd, winners, losers) => {
+            stopBGM();
+            if (winners && winners.includes(myPeerId)) {
+                playSound('win');
+            } else if (losers && losers.includes(myPeerId)) {
+                playSound('lost');
+            }
+
             let fTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
             let fDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
             document.getElementById('result-title').innerText = fTitle;
