@@ -922,7 +922,11 @@
             if(cp.isBot && gameState.status === 'PLAYING') setTimeout(() => playBotSequence(cp), 1000);
         }
 
+        // ========================== ส่วนที่ถูกปรับแก้ ==========================
         async function playBotSequence(cp) {
+            // --- เพิ่มหน่วงเวลา 3 วินาที เพื่อให้บอท "คิด" ก่อนตัดสินใจ (จั่ว/ไหล/แคง) ---
+            await delay(3000);
+
             let handVal = cp.hand.reduce((sum, c) => sum + c.val, 0);
             if (handVal <= 5 && discardPile.length > 0 && !cp.hasDrawnTurn) {
                 processPlayerAction(cp.id, 'KANG'); return;
@@ -940,12 +944,16 @@
                         if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1500); }
                         else break;
                     }
+                    
+                    // --- เพิ่มหน่วงเวลา 3 วินาที ก่อนที่บอทจะกดจบตา ---
+                    await delay(3000);
                     if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
                     return;
                 }
             }
 
-            if (!cp.hasDrawnTurn) { processPlayerAction(cp.id, 'DRAW'); await delay(1500); }
+            // --- ปรับเวลาหน่วงหลังจั่วจาก 1.5 วินาที เป็น 3 วินาที ---
+            if (!cp.hasDrawnTurn) { processPlayerAction(cp.id, 'DRAW'); await delay(3000); }
 
             let rankCounts = {}; cp.hand.forEach(c => rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1);
             let bestRank = null, maxCount = 0, maxVal = -1;
@@ -959,8 +967,12 @@
                 if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1500); }
                 else break;
             }
+            
+            // --- เพิ่มหน่วงเวลา 3 วินาที ก่อนที่บอทจะกดจบตา ---
+            await delay(3000);
             if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
         }
+        // ====================================================================
 
         function processPlayerAction(pId, action, cardIndex) {
             let p = gameState.players.find(x => x.id === pId);
@@ -1297,8 +1309,7 @@
                 } else { btnDraw.disabled = true; btnKang.disabled = true; btnEnd.disabled = true; }
             }
 
-            document.getElementById('deck-pile').innerText = `🎴
-${publicState.deckCount}`;
+            document.getElementById('deck-pile').innerText = `🎴\n${publicState.deckCount}`;
             document.getElementById('deck-pile').setAttribute('aria-label', `กองไพ่จั่วเหลือ ${publicState.deckCount} ใบ`);
             
             let dp = document.getElementById('discard-pile');

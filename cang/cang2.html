@@ -252,6 +252,11 @@
         <div class="sr-only" id="sr-countdown"></div>
     </div>
 
+    <!-- UI Overlay หน่วงเวลารอ (ไม่ต้องมี aria-live ตามที่แจ้ง) -->
+    <div id="transition-overlay" aria-hidden="true" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:900; flex-direction:column; align-items:center; justify-content:center; backdrop-filter: blur(3px);">
+        <div id="transition-text" style="color:#ffd700; font-size:1.5rem; font-weight:bold; background:rgba(22,33,62,0.95); padding:20px 40px; border-radius:12px; border: 2px solid #ffd700; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">กำลังเปลี่ยนตาถัดไป...</div>
+    </div>
+
     <div id="setup-screen" role="main">
         <h1>ไพ่แคงออนไลน์ 🎴</h1>
         <p id="setup-desc" style="color:#b8c1ec; font-size:0.9rem;">สร้างห้อง หรือเลือกเข้าร่วมห้องเพื่อดวลแต้ม (SC)</p>
@@ -380,6 +385,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+        // Global Utility
+        const delay = ms => new Promise(res => setTimeout(res, ms));
+
         // === Audio Setup ===
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const audioBuffers = {};
@@ -500,6 +508,29 @@
             return `${THAI_RANKS[top.rank]} ${THAI_SUITS[top.suit]}`;
         }
 
+        // ================= Transition UI Functions =================
+        window.showTransition = (msg, duration) => {
+            const overlay = document.getElementById('transition-overlay');
+            const text = document.getElementById('transition-text');
+            text.innerText = msg;
+            overlay.style.display = 'flex';
+            if (duration) {
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                }, duration);
+            }
+        };
+
+        window.hideTransition = () => {
+            document.getElementById('transition-overlay').style.display = 'none';
+        };
+
+        function broadcastTransition(msg, duration) {
+            if(myPeerId) showTransition(msg, duration);
+            guestConnections.forEach(c => c.send({ type: 'SHOW_TRANSITION', msg, duration }));
+        }
+        // ==========================================================
+
         function announce(rawMsg, showOnBanner = true) {
             let formattedMsg = rawMsg.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
             const srOnly = document.getElementById('sr-only-announcer');
@@ -596,7 +627,7 @@
                         document.getElementById('setup-screen').style.display = 'none';
                         document.getElementById('waiting-room-screen').style.display = 'flex';
                         announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${roomId}`, false);
-                        playSound('1'); // Play sound when room created successfully
+                        playSound('1');
                         updateLobbyUI(); listenHostConnections();
                     });
                 }
@@ -621,6 +652,8 @@
                 if (data.type === 'ANNOUNCE') announce(data.msg);
                 if (data.type === 'TIMER_UPDATE') updateTimerUI(data.timeLeft);
                 if (data.type === 'PLAY_SOUND') playSound(data.sound);
+                if (data.type === 'SHOW_TRANSITION') showTransition(data.msg, data.duration);
+                if (data.type === 'HIDE_TRANSITION') hideTransition();
             });
         };
 
@@ -633,7 +666,7 @@
                         roomPlayers.push({ id: conn.peer, color: avail.length > 0 ? avail[0].id : 'red' });
                         guestConnections.push(conn); broadcastLobby();
                         broadcastAnnounce(`มีผู้เล่นเข้าร่วมห้องใหม่ รวม ${roomPlayers.length} คน`);
-                        triggerSound('select'); // Play sound when a new player joins and gets a color
+                        triggerSound('select');
                     }
                     if (data.type === 'CHANGE_COLOR') {
                         let p = roomPlayers.find(x => x.id === data.playerId);
@@ -664,7 +697,7 @@
             let avail = COLORS.filter(c => !used.includes(c.id));
             botColors = avail.slice(0, currentBotCount).map(c => c.id);
             broadcastLobby();
-            triggerSound('select'); // Play sound on adjusting bot
+            triggerSound('select');
         };
 
         function updateLobbyUI() {
@@ -720,7 +753,6 @@
 
             if(isHost) {
                 document.getElementById('btn-host-start').style.display = 'block';
-                // เช็คเงื่อนไขคนและบอทรวมกันอย่างน้อย 3 ตัวละคร
                 document.getElementById('btn-host-start').disabled = (roomPlayers.length + currentBotCount < 3);
             } else { document.getElementById('guest-waiting-text').style.display = 'block'; }
         }
@@ -763,7 +795,7 @@
                         broadcastAnnounce("มีใครจะแคง 25 ไหม?");
                     }
                 }
-            }, 1630); // ~4.89s total for 3 counts
+            }, 1630);
         }
 
         function startNewRound() {
@@ -880,6 +912,8 @@
             do { gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
             } while (gameState.players[gameState.turnIndex].isOut || gameState.players[gameState.turnIndex].hand.length === 0);
             
+            // เล่นเสียงแจ้งเตือนตาใหม่ หลังจากจบลูปข้ามตา
+            triggerSound('turn');
             syncStateToAll(); startTurnTimer(); checkBotTurn();
         }
 
@@ -889,8 +923,6 @@
         }
 
         async function playBotSequence(cp) {
-            const delay = ms => new Promise(res => setTimeout(res, ms));
-
             let handVal = cp.hand.reduce((sum, c) => sum + c.val, 0);
             if (handVal <= 5 && discardPile.length > 0 && !cp.hasDrawnTurn) {
                 processPlayerAction(cp.id, 'KANG'); return;
@@ -900,10 +932,12 @@
             if (topCard && !cp.hasDrawnTurn) {
                 let flowIndex = cp.hand.findIndex(c => c.rank === topCard.rank);
                 if (flowIndex !== -1) {
-                    processPlayerAction(cp.id, 'FLOW', flowIndex); await delay(1000);
+                    processPlayerAction(cp.id, 'FLOW', flowIndex); 
+                    await delay(3500); // พักรอให้ Transition Flow ไหลไพ่ที่ตั้งไว้ 3 วินาทีทำงานจนจบก่อน
+
                     while(true) {
                         let matchIdx = cp.hand.findIndex(c => c.rank === topCard.rank);
-                        if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1000); }
+                        if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1500); }
                         else break;
                     }
                     if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
@@ -911,7 +945,7 @@
                 }
             }
 
-            if (!cp.hasDrawnTurn) { processPlayerAction(cp.id, 'DRAW'); await delay(1000); }
+            if (!cp.hasDrawnTurn) { processPlayerAction(cp.id, 'DRAW'); await delay(1500); }
 
             let rankCounts = {}; cp.hand.forEach(c => rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1);
             let bestRank = null, maxCount = 0, maxVal = -1;
@@ -922,7 +956,7 @@
 
             while(true) {
                 let matchIdx = cp.hand.findIndex(c => c.rank === bestRank);
-                if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1000); }
+                if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1500); }
                 else break;
             }
             if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
@@ -935,7 +969,6 @@
             if (gameState.status === 'PRE_GAME') {
                 let handSum = p.hand.reduce((sum, c) => sum + c.val, 0);
                 let isHostPlayer = (pId === gameState.players[0].id);
-                // Host กดได้เสมอโดยไม่ติด lock, ส่วน Client ต้องแต้ม >= 25
                 if (action === 'KANG_25' && (handSum >= 25 || isHostPlayer)) {
                     triggerSound('cang25');
                     broadcastAnnounce(`📢 ประกาศด่วน! [PID:${p.id}] ตัดสินใจกด "แคง25!" ท้าดวลตั้งแต่รอบดูไพ่!`);
@@ -1012,25 +1045,47 @@
                         victim = gameState.players[victimIndex];
                     }
 
-                    // ไหลไพ่ ใช้อัตรา base 10 และคูณเด้งถ้าไพ่ไหลคือ A
                     let flowMult = dropped.rank === 'A' ? 2 : 1;
                     let penalty = 10 * flowMult;
 
                     victim.points -= penalty; 
-                    if(victim.points < 0) victim.points = 0; // ไม่มีติดลบ
+                    if(victim.points < 0) victim.points = 0; 
                     cp.points += penalty;
                     
                     broadcastAnnounce(`[PID:${cp.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}! ได้รับ ${penalty} SC จาก [PID:${victim.id}]`);
                     broadcastFloatSC(victim.id, -penalty); broadcastFloatSC(cp.id, penalty);
 
-                    if(cp.hand.length === 0) resolveKang(cp.id, false, true);
-                    else syncStateToAll();
+                    if(cp.hand.length === 0) {
+                        resolveKang(cp.id, false, true);
+                    } else {
+                        // ปรับให้มี Transition หน่วง 3 วินาทีสำหรับจังหวะไหลไพ่
+                        gameState.status = 'TRANSITION';
+                        clearInterval(turnTimerInterval);
+                        syncStateToAll();
+                        broadcastTransition('ไหลไพ่สำเร็จ! รอสักครู่...', 3000);
+                        
+                        setTimeout(() => {
+                            gameState.status = 'PLAYING';
+                            syncStateToAll();
+                            startTurnTimer(); // Reset จับเวลาให้ตาปัจจุบัน
+                        }, 3000);
+                    }
                 }
             }
             else if(action === 'END_TURN' && cp.hasDiscardedTurn) {
-                triggerSound('turn');
+                triggerSound('select'); // เล่นแค่เสียงปุ่มกดยืนยันตอนคลิกจบตา (เสียง Turn ใหม่จะไปดังตอนเริ่มตาใหม่)
                 broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา (บนกองคือ ${getTopCardText()})`);
-                nextTurn();
+                
+                // --- เพิ่ม Transition Delay 3 วินาทีก่อนเปลี่ยนตา ---
+                gameState.status = 'TRANSITION';
+                clearInterval(turnTimerInterval);
+                syncStateToAll();
+                broadcastTransition('กำลังเปลี่ยนตาถัดไป...', 3000);
+                
+                setTimeout(() => {
+                    gameState.status = 'PLAYING';
+                    nextTurn();
+                }, 3000);
             }
             else if(action === 'KANG' && !cp.hasDrawnTurn && discardPile.length > 0) {
                 triggerSound('cang');
@@ -1040,11 +1095,11 @@
         }
 
         function resolveKang(callerId, isDeckEmpty = false, isHandEmpty = false, isKang25 = false) {
-            gameState.status = 'END'; clearInterval(turnTimerInterval);
+            gameState.status = 'TRANSITION'; // ล็อค UI ชั่วคราว 5 วิ ก่อนจะสลับเป็นแบบ END
+            clearInterval(turnTimerInterval);
             let active = gameState.players.filter(p => !p.isOut);
             let totalPlayersInRoom = active.length;
             
-            // Track points before resolve
             let beforePoints = {};
             active.forEach(p => beforePoints[p.id] = p.points);
 
@@ -1056,11 +1111,9 @@
             let caller = active.find(p => p.id === callerId); 
             let resultDetail = "", title = "", winnerColorName = "";
 
-            // สูตรการคำนวณฐานเหรียญ (10 + (จำนวนไพ่เอซของคนนั้น * 10))
             const getBasePay = (player) => 10 + (player.aceCount * 10);
 
             if (isHandEmpty) {
-                // ชนะน็อค (ไพ่หมดมือ) ให้จ่ายเหมือนแคงปกติสำเร็จ
                 let basePay = getBasePay(caller);
                 winnerColorName = caller.colorInfo.name;
                 title = `🎉 [PID:${caller.id}] น็อค! (สี${winnerColorName} ชนะ)`;
@@ -1074,7 +1127,6 @@
                 });
                 broadcastFloatSC(caller.id, (totalPlayersInRoom - 1) * basePay);
             } else if (isDeckEmpty) {
-                // กองไพ่หมด ให้คนที่แต้มน้อยสุดชนะ
                 let lowest = active.reduce((min, p) => p.handSum < min.handSum ? p : min, active[0]);
                 let basePay = getBasePay(lowest);
                 winnerColorName = lowest.colorInfo.name;
@@ -1093,13 +1145,9 @@
                 let lowestOther = others.reduce((min, p) => p.handSum < min.handSum ? p : min, others[0]);
 
                 if (caller.handSum < lowestOther.handSum && (!isKang25 || caller.handSum < lowestOther.handSum)) {
-                    // แคงสำเร็จ (แคงปกติ หรือ แคง25)
                     winnerColorName = caller.colorInfo.name;
-                    let payAmount = getBasePay(caller); // ฐาน 10 + เอซ*10
-                    
-                    if (isKang25) {
-                        payAmount = payAmount * 2; // ถ้าแคง 25 คูณ 2 เข้าไป
-                    }
+                    let payAmount = getBasePay(caller); 
+                    if (isKang25) payAmount = payAmount * 2; 
 
                     title = `🏆 [PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} สำเร็จ แต้ม ${caller.handSum} (สี${winnerColorName} ชนะ)`;
                     others.forEach(p => { 
@@ -1111,14 +1159,11 @@
                     });
                     broadcastFloatSC(caller.id, payAmount * others.length);
                 } else {
-                    // แคงแหก (แคงปกติแหก หรือ แคง25แหก)
                     winnerColorName = lowestOther.colorInfo.name;
-                    // คิดเงินโดยอิงจากเอซของคนชนะ(แต้มน้อยสุด) แล้วคูณด้วยจำนวนตัวละครในห้อง
                     let payAmount = getBasePay(lowestOther) * totalPlayersInRoom; 
                     
                     title = `💥 [PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} แหก! (สี${winnerColorName} ชนะรับ ${payAmount} SC)`;
                     
-                    // คนกดแคงจ่ายเพียงคนเดียว ให้คนชนะ
                     caller.points -= payAmount; 
                     if(caller.points < 0) caller.points = 0;
                     lowestOther.points += payAmount;
@@ -1129,7 +1174,6 @@
                 }
             }
 
-            // Determine winners and losers
             let winners = [];
             let losers = [];
             active.forEach(p => {
@@ -1138,7 +1182,6 @@
                 else if (diff < 0) losers.push(p.id);
             });
 
-            // จัดรูปแบบข้อความสรุปเป็นประโยคเดียว
             let summaryArr = active.map(p => `[PID:${p.id}] ${p.handSum} แต้ม`);
             let summaryStr = "";
             if (summaryArr.length > 1) {
@@ -1148,30 +1191,36 @@
                 summaryStr = summaryArr[0];
             }
             
-            // เปลี่ยนจาก <b> เป็น span style เพื่อความปลอดภัยในการแสดงผล HTML
             let handSummary = `<br><span style="font-weight:bold;">📊 สรุปแต้ม:</span><br>${summaryStr}`;
             resultDetail += handSummary;
 
-            syncStateToAll();
-            let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false, winners, losers };
-            if(myPeerId) showResultModal(title, resultDetail, false, winners, losers);
-            guestConnections.forEach(c => c.send(modalData));
-            
-            // เคลียร์โค้ด HTML Tag ออกจากการส่งค่าประกาศ เพื่อไม่ให้ตาดีหรือ SC เห็น/อ่าน โค้ดหลุด
             let rawDetailForAnnounce = resultDetail ? ". " + resultDetail.replace(/<br>/g, ', ') : '';
-            let cleanTitle = title.replace(/<\/?[^>]+(>|$)/g, ""); // ลบแท็ก HTML 
-            let cleanDetail = rawDetailForAnnounce.replace(/<\/?[^>]+(>|$)/g, ""); // ลบแท็ก HTML
+            let cleanTitle = title.replace(/<\/?[^>]+(>|$)/g, ""); 
+            let cleanDetail = rawDetailForAnnounce.replace(/<\/?[^>]+(>|$)/g, ""); 
 
             let announceTitle = cleanTitle.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
             let announceDetailStr = cleanDetail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
             
+            // สั่งประกาศข้อความสรุปผลทั้งหมดทันทีก่อนโชว์ UI หน่วงเวลา
             broadcastAnnounce(announceTitle + announceDetailStr);
+
+            // --- เพิ่ม Transition Delay 5 วินาทีรอสรุปผล ---
+            syncStateToAll(); // โชว์สถานะไพ่และคะแนนที่เปลี่ยนแปลงด้านหลังหน้าจอ
+            broadcastTransition('จบเกม! กำลังสรุปผล...', 5000);
+
+            setTimeout(() => {
+                gameState.status = 'END';
+                syncStateToAll();
+                let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false, winners, losers };
+                if(myPeerId) showResultModal(title, resultDetail, false, winners, losers);
+                guestConnections.forEach(c => c.send(modalData));
+            }, 5000);
         }
 
         window.closeResultModal = () => {
             document.getElementById('result-modal').style.display = 'none';
             if(isHost) startNewRound();
-            else playBGM(); // Resume BGM if next round starts but client just closes modal early (though BGM usually stays off until next start)
+            else playBGM(); 
         };
 
         function renderClientGame(publicState, privateState) {
@@ -1202,7 +1251,7 @@
                 } else {
                     let oldTurnTxt = turnInd.innerText;
                     let newTurnTxt = isMyTurn ? "🔥 ตาของคุณแล้ว!" : `ตาของ ${currPlayerDisp}`;
-                    if (oldTurnTxt !== newTurnTxt) {
+                    if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
                         turnInd.innerText = newTurnTxt;
                         let topTxt = getTopCardText();
                         if(isMyTurn) announce(`ตาของคุณแล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
@@ -1228,21 +1277,20 @@
                 btnKang.style.display = 'inline-block';
 
                 if (isHostPlayer) {
-                    // Host ปลดล็อคปุ่มไว้ให้กดได้เลย
                     btnKang25.disabled = false;
                     btnKang.disabled = false;
                 } else {
-                    // Client ต้องแต้ม >= 25 ถึงจะกดแคง 25 ได้ ส่วนแคงปกติจะล็อค
                     btnKang25.disabled = (myHandSum < 25);
                     btnKang.disabled = true; 
                 }
-            } else if (publicState.status === 'PLAYING') {
+            } else if (publicState.status === 'PLAYING' || publicState.status === 'TRANSITION') {
                 btnKang25.style.display = 'none';
                 btnDraw.style.display = 'inline-block';
                 btnEnd.style.display = 'inline-block';
                 btnKang.style.display = 'inline-block';
 
-                if(isMyTurn) {
+                // หากอยู่ในโหมดรอ (TRANSITION) ล็อคปุ่มทุกอย่างไว้
+                if(isMyTurn && publicState.status === 'PLAYING') {
                     btnDraw.disabled = localPlayerState.hasDrawn;
                     btnKang.disabled = localPlayerState.hasDrawn || publicState.discardPileCount === 0;
                     btnEnd.disabled = !localPlayerState.hasDiscarded;
@@ -1264,7 +1312,7 @@ ${publicState.deckCount}`;
             }
 
             const handUi = document.getElementById('my-hand-ui'); handUi.innerHTML = '';
-            if (publicState.status === 'PLAYING' || publicState.status === 'PRE_GAME') {
+            if (publicState.status !== 'END') {
                 localPlayerState.hand.forEach((c, index) => {
                     let cardEl = document.createElement('button');
                     cardEl.className = `card ${['♥','♦'].includes(c.suit)?'red':'black'}`;
