@@ -502,6 +502,12 @@
             return `เพื่อนสี${p.colorName}`;
         }
 
+        function getTopCardText() {
+            if (discardPile.length === 0) return 'ยังไม่มีไพ่บนกอง';
+            let top = discardPile[discardPile.length - 1];
+            return `${THAI_RANKS[top.rank]} ${THAI_SUITS[top.suit]}`;
+        }
+
         // ================= Transition UI Functions =================
         window.showTransition = (msg, duration) => {
             const overlay = document.getElementById('transition-overlay');
@@ -793,15 +799,6 @@
         }
 
         function startNewRound() {
-            // ปรับลำดับผู้เล่น (ตั้งคนที่เป็น Host / แคงสำเร็จ / แคงแหก ให้อยู่คนแรก)
-            if (window.nextRoundHostId) {
-                let idx = gameState.players.findIndex(p => p.id === window.nextRoundHostId);
-                if (idx > 0) {
-                    let newHost = gameState.players.splice(idx, 1)[0];
-                    gameState.players.unshift(newHost);
-                }
-            }
-
             deck = buildDeck(); discardPile = [];
             gameState.status = 'PRE_GAME'; 
             gameState.turnIndex = 0; 
@@ -915,6 +912,7 @@
             do { gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
             } while (gameState.players[gameState.turnIndex].isOut || gameState.players[gameState.turnIndex].hand.length === 0);
             
+            // เล่นเสียงแจ้งเตือนตาใหม่ หลังจากจบลูปข้ามตา
             triggerSound('turn');
             syncStateToAll(); startTurnTimer(); checkBotTurn();
         }
@@ -924,7 +922,9 @@
             if(cp.isBot && gameState.status === 'PLAYING') setTimeout(() => playBotSequence(cp), 1000);
         }
 
+        // ========================== ส่วนที่ถูกปรับแก้ ==========================
         async function playBotSequence(cp) {
+            // --- เพิ่มหน่วงเวลา 3 วินาที เพื่อให้บอท "คิด" ก่อนตัดสินใจ (จั่ว/ไหล/แคง) ---
             await delay(3000);
 
             let handVal = cp.hand.reduce((sum, c) => sum + c.val, 0);
@@ -937,7 +937,7 @@
                 let flowIndex = cp.hand.findIndex(c => c.rank === topCard.rank);
                 if (flowIndex !== -1) {
                     processPlayerAction(cp.id, 'FLOW', flowIndex); 
-                    await delay(3500); 
+                    await delay(3500); // พักรอให้ Transition Flow ไหลไพ่ที่ตั้งไว้ 3 วินาทีทำงานจนจบก่อน
 
                     while(true) {
                         let matchIdx = cp.hand.findIndex(c => c.rank === topCard.rank);
@@ -945,12 +945,14 @@
                         else break;
                     }
                     
+                    // --- เพิ่มหน่วงเวลา 3 วินาที ก่อนที่บอทจะกดจบตา ---
                     await delay(3000);
                     if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
                     return;
                 }
             }
 
+            // --- ปรับเวลาหน่วงหลังจั่วจาก 1.5 วินาที เป็น 3 วินาที ---
             if (!cp.hasDrawnTurn) { processPlayerAction(cp.id, 'DRAW'); await delay(3000); }
 
             let rankCounts = {}; cp.hand.forEach(c => rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1);
@@ -966,9 +968,11 @@
                 else break;
             }
             
+            // --- เพิ่มหน่วงเวลา 3 วินาที ก่อนที่บอทจะกดจบตา ---
             await delay(3000);
             if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
         }
+        // ====================================================================
 
         function processPlayerAction(pId, action, cardIndex) {
             let p = gameState.players.find(x => x.id === pId);
@@ -1026,14 +1030,14 @@
                     gameState.topCardOwnerId = cp.id; 
                     
                     broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}`);
-                    if(cp.hand.length === 0) resolveKang(cp.id, false, 'DRAW_KNOCK'); 
+                    if(cp.hand.length === 0) resolveKang(cp.id, false, true); 
                     else syncStateToAll();
                 } 
                 else if (cp.hasDiscardedTurn && card.rank === cp.discardedRankThisTurn) {
                     triggerSound('select');
                     let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
                     broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]} เพิ่มเติม (เลขเดียวกัน)`);
-                    if(cp.hand.length === 0) resolveKang(cp.id, false, 'DRAW_KNOCK');
+                    if(cp.hand.length === 0) resolveKang(cp.id, false, true);
                     else syncStateToAll();
                 }
             }
@@ -1064,8 +1068,9 @@
                     broadcastFloatSC(victim.id, -penalty); broadcastFloatSC(cp.id, penalty);
 
                     if(cp.hand.length === 0) {
-                        resolveKang(cp.id, false, 'FLOW_KNOCK');
+                        resolveKang(cp.id, false, true);
                     } else {
+                        // ปรับให้มี Transition หน่วง 3 วินาทีสำหรับจังหวะไหลไพ่
                         gameState.status = 'TRANSITION';
                         clearInterval(turnTimerInterval);
                         syncStateToAll();
@@ -1074,15 +1079,16 @@
                         setTimeout(() => {
                             gameState.status = 'PLAYING';
                             syncStateToAll();
-                            startTurnTimer(); 
+                            startTurnTimer(); // Reset จับเวลาให้ตาปัจจุบัน
                         }, 3000);
                     }
                 }
             }
             else if(action === 'END_TURN' && cp.hasDiscardedTurn) {
-                triggerSound('select'); 
-                broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา`); // เครื่องจะไปต่อข้อความเองใน renderClientGame ให้ตรงกับสิ่งที่เห็นบนกองจริงๆ
+                triggerSound('select'); // เล่นแค่เสียงปุ่มกดยืนยันตอนคลิกจบตา (เสียง Turn ใหม่จะไปดังตอนเริ่มตาใหม่)
+                broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา (บนกองคือ ${getTopCardText()})`);
                 
+                // --- เพิ่ม Transition Delay 3 วินาทีก่อนเปลี่ยนตา ---
                 gameState.status = 'TRANSITION';
                 clearInterval(turnTimerInterval);
                 syncStateToAll();
@@ -1100,10 +1106,8 @@
             }
         }
 
-        function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 = false) {
-            window.nextRoundHostId = callerId; // ตั้งผู้เล่นที่กดให้เป็นเจ้ามือรอบหน้า (ครอบคลุมทั้ง แคงสำเร็จ แคงแหก และน็อค)
-            
-            gameState.status = 'TRANSITION'; 
+        function resolveKang(callerId, isDeckEmpty = false, isHandEmpty = false, isKang25 = false) {
+            gameState.status = 'TRANSITION'; // ล็อค UI ชั่วคราว 5 วิ ก่อนจะสลับเป็นแบบ END
             clearInterval(turnTimerInterval);
             let active = gameState.players.filter(p => !p.isOut);
             let totalPlayersInRoom = active.length;
@@ -1121,13 +1125,10 @@
 
             const getBasePay = (player) => 10 + (player.aceCount * 10);
 
-            if (winReason === 'FLOW_KNOCK' || winReason === 'DRAW_KNOCK' || winReason === true) {
-                let basePay = (winReason === 'DRAW_KNOCK') ? 20 : 10;
-                let reasonStr = (winReason === 'DRAW_KNOCK') ? 'จั่วแล้วทิ้งไพ่หมดมือ' : 'ไหลไพ่หมดมือน็อก';
-                if (winReason === true) reasonStr = 'น็อค!'; // Fallback
-                
+            if (isHandEmpty) {
+                let basePay = getBasePay(caller);
                 winnerColorName = caller.colorInfo.name;
-                title = `🎉 [PID:${caller.id}] ${reasonStr}! (สี${winnerColorName} ชนะรับ ${basePay} SC จากทุกคน)`;
+                title = `🎉 [PID:${caller.id}] น็อค! (สี${winnerColorName} ชนะ)`;
                 active.forEach(p => { 
                     if(p.id !== caller.id) { 
                         p.points -= basePay; 
@@ -1209,10 +1210,14 @@
             let cleanTitle = title.replace(/<\/?[^>]+(>|$)/g, ""); 
             let cleanDetail = rawDetailForAnnounce.replace(/<\/?[^>]+(>|$)/g, ""); 
 
-            // สั่งประกาศข้อความสรุปผลทั้งหมดทันทีก่อนโชว์ UI หน่วงเวลา (ส่ง raw message ออกไปให้ client แปลงสรรพนามเอง)
-            broadcastAnnounce(cleanTitle + cleanDetail);
+            let announceTitle = cleanTitle.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+            let announceDetailStr = cleanDetail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+            
+            // สั่งประกาศข้อความสรุปผลทั้งหมดทันทีก่อนโชว์ UI หน่วงเวลา
+            broadcastAnnounce(announceTitle + announceDetailStr);
 
-            syncStateToAll(); 
+            // --- เพิ่ม Transition Delay 5 วินาทีรอสรุปผล ---
+            syncStateToAll(); // โชว์สถานะไพ่และคะแนนที่เปลี่ยนแปลงด้านหลังหน้าจอ
             broadcastTransition('จบเกม! กำลังสรุปผล...', 5000);
 
             setTimeout(() => {
@@ -1231,11 +1236,6 @@
         };
 
         function renderClientGame(publicState, privateState) {
-            // เมื่อเริ่มรอบใหม่ ให้ปิด modal หน้ารอสรุปผลอัตโนมัติหากยังค้างอยู่
-            if (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING') {
-                document.getElementById('result-modal').style.display = 'none';
-            }
-
             localPlayerState = privateState;
             const turnId = publicState.turnId;
             const isMyTurn = (turnId === myPeerId);
@@ -1265,9 +1265,7 @@
                     let newTurnTxt = isMyTurn ? "🔥 ตาของคุณแล้ว!" : `ตาของ ${currPlayerDisp}`;
                     if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
                         turnInd.innerText = newTurnTxt;
-                        // ดึงข้อมูลการ์ดบนสุดจาก State ตรงๆ เพื่อให้ client และ Host เห็นตรงกัน (แก้ bug)
-                        let topC = publicState.topDiscard;
-                        let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
+                        let topTxt = getTopCardText();
                         if(isMyTurn) announce(`ตาของคุณแล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
                         else announce(`เปลี่ยนตาไปที่ ${currPlayerDisp} (ไพ่บนกองคือ ${topTxt})`, false);
                     }
@@ -1303,6 +1301,7 @@
                 btnEnd.style.display = 'inline-block';
                 btnKang.style.display = 'inline-block';
 
+                // หากอยู่ในโหมดรอ (TRANSITION) ล็อคปุ่มทุกอย่างไว้
                 if(isMyTurn && publicState.status === 'PLAYING') {
                     btnDraw.disabled = localPlayerState.hasDrawn;
                     btnKang.disabled = localPlayerState.hasDrawn || publicState.discardPileCount === 0;
@@ -1395,8 +1394,7 @@
             stopBGM();
             if (winners && winners.includes(myPeerId)) {
                 playSound('win');
-            } else {
-                // เล่น lost.mp3 ทันทีถ้าไม่ได้รับเหรียญเป็นผู้ชนะ 
+            } else if (losers && losers.includes(myPeerId)) {
                 playSound('lost');
             }
 
