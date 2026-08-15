@@ -139,10 +139,6 @@
             border-radius: 12px; border: 2px solid #ffd700; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
             flex-wrap: nowrap; overflow-x: auto;
         }
-        .players-status-group:focus-visible {
-            outline: 3px solid #ffd700;
-            outline-offset: 2px;
-        }
         .status-avatar-item {
             display: flex; flex-direction: column; align-items: center; position: relative;
             min-width: 65px; padding: 4px; border-radius: 8px; background: rgba(0,0,0,0.3);
@@ -162,20 +158,6 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.5); border: 2px solid #fff;
         }
         .status-player-label { font-size: 0.75rem; margin-top: 2px; white-space: nowrap; font-weight: bold; }
-
-        /* Status Animations */
-        @keyframes happyJump {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-15px); }
-        }
-        .anim-happy { animation: happyJump 0.5s infinite; border-color: #32cd32 !important; box-shadow: 0 0 15px #32cd32; }
-
-        @keyframes sadShake {
-            0%, 100% { transform: translateX(0) rotate(0deg); }
-            25% { transform: translateX(-5px) rotate(-5deg); }
-            75% { transform: translateX(5px) rotate(5deg); }
-        }
-        .anim-sad { animation: sadShake 0.4s infinite; border-color: #ff4d4d !important; box-shadow: 0 0 15px #ff4d4d; filter: grayscale(50%); }
 
         .game-info-row {
             display: flex; justify-content: space-between; align-items: center;
@@ -295,19 +277,6 @@
             50% { transform: scale(1.5); opacity: 1; }
             100% { transform: scale(1); opacity: 0; }
         }
-
-        /* Kang Animation Full Screen */
-        @keyframes kangJumpSlide {
-            0% { transform: translate(0, 0) scale(1); }
-            25% { transform: translate(-40px, -30px) scale(1.4); }
-            50% { transform: translate(40px, 10px) scale(1.7); }
-            75% { transform: translate(-25px, -15px) scale(1.5); }
-            100% { transform: translate(0, 0) scale(2); }
-        }
-        .kang-anim-active {
-            animation: kangJumpSlide 0.6s infinite alternate ease-in-out;
-            text-shadow: 0 0 30px rgba(255,255,255,0.5);
-        }
     </style>
 </head>
 <body>
@@ -326,13 +295,6 @@
     <!-- UI Overlay หน่วงเวลารอ -->
     <div id="transition-overlay" aria-hidden="true" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:900; flex-direction:column; align-items:center; justify-content:center; backdrop-filter: blur(3px);">
         <div id="transition-text" style="color:#ffd700; font-size:1.3rem; font-weight:bold; background:rgba(22,33,62,0.95); padding:18px 30px; border-radius:12px; border: 2px solid #ffd700; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">กำลังเปลี่ยนตาถัดไป...</div>
-    </div>
-
-    <!-- Kang Animation Screen -->
-    <div id="kang-animation-screen" aria-hidden="true" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:black; z-index:9999; flex-direction:column; align-items:center; justify-content:center; overflow:hidden;">
-        <div id="kang-anim-avatar" style="font-size: 8rem; transition: transform 0.2s;">👤</div>
-        <div id="kang-anim-text1" style="color:white; font-size: 1.8rem; font-weight:bold; margin-top:30px; opacity:0; transition: opacity 0.5s; text-shadow: 2px 2px 4px #000;"></div>
-        <div id="kang-anim-text2" style="color:#ffd700; font-size: 1.5rem; font-weight:bold; margin-top:15px; opacity:0; transition: opacity 0.5s; text-shadow: 2px 2px 4px #000;"></div>
     </div>
 
     <!-- Setup Screen -->
@@ -433,7 +395,7 @@
     <!-- Game Screen -->
     <div id="game-screen" role="main" aria-label="โต๊ะเล่นไพ่แคง">
         <!-- 1. ด้านบนสุด: Group Status ตัวละครทุกตัวเรียงจากซ้ายไปขวา (อัปเดตแบบ realtime) -->
-        <div class="players-status-group" id="players-status-bar" role="group"></div>
+        <div class="players-status-group" id="players-status-bar" role="group" aria-live="polite"></div>
 
         <div class="game-info-row">
             <h2 id="turn-indicator" style="font-size:1.05rem; color: #ffd700;" aria-live="polite">กำลังโหลด...</h2>
@@ -470,7 +432,7 @@
     <div id="result-modal" role="dialog" aria-labelledby="result-title">
         <div class="result-content">
             <!-- ด้านบนสุดของหน้าจอสรุปผลแสดง Status -->
-            <div class="players-status-group" id="result-status-bar" style="width:100%; margin-bottom:5px;" role="group"></div>
+            <div class="players-status-group" id="result-status-bar" style="width:100%; margin-bottom:5px;" role="group" aria-live="polite"></div>
             
             <h2 id="result-title" aria-live="assertive">ผลการแคง!</h2>
             <div id="result-details" style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 15px;" aria-live="polite"></div>
@@ -801,7 +763,6 @@
                 if (data.type === 'PLAY_SOUND') playSound(data.sound);
                 if (data.type === 'SHOW_TRANSITION') showTransition(data.msg, data.duration);
                 if (data.type === 'HIDE_TRANSITION') hideTransition();
-                if (data.type === 'KANG_ANIMATION') window.playKangAnimation(data.callerId, data.isKang25);
             });
         };
 
@@ -853,8 +814,8 @@
             document.getElementById('bot-count-text').innerText = `${currentBotCount} ตัว`;
             
             globalPlayersMap = {};
-            roomPlayers.forEach(p => { let c = COLORS.find(x => x.id === p.color); globalPlayersMap[p.id] = { isBot: false, colorName: c ? c.name : '?', colorHex: c ? c.hex : '#ffffff' }; });
-            botColors.forEach((b, i) => { let c = COLORS.find(x => x.id === b); globalPlayersMap['bot_'+i] = { isBot: true, colorName: c ? c.name : '?', colorHex: c ? c.hex : '#ffffff' }; });
+            roomPlayers.forEach(p => { let c = COLORS.find(x => x.id === p.color); globalPlayersMap[p.id] = { isBot: false, colorName: c ? c.name : '?' }; });
+            botColors.forEach((b, i) => { let c = COLORS.find(x => x.id === b); globalPlayersMap['bot_'+i] = { isBot: true, colorName: c ? c.name : '?' }; });
 
             const listEl = document.getElementById('waiting-players-list'); listEl.innerHTML = '';
             roomPlayers.forEach(p => { let li = document.createElement('li'); li.innerText = resolveName(p.id); listEl.appendChild(li); });
@@ -1064,57 +1025,6 @@
             guestConnections.forEach(c => c.send(data));
         }
 
-        window.playKangAnimation = (callerId, isKang25) => {
-            const animScreen = document.getElementById('kang-animation-screen');
-            const text1 = document.getElementById('kang-anim-text1');
-            const text2 = document.getElementById('kang-anim-text2');
-            const avatar = document.getElementById('kang-anim-avatar');
-
-            animScreen.style.display = 'flex';
-            text1.style.opacity = '0';
-            text2.style.opacity = '0';
-            
-            let pInfo = globalPlayersMap[callerId];
-            let pColorName = pInfo ? pInfo.colorName : '';
-            let pColorHex = pInfo ? pInfo.colorHex : 'white';
-            
-            avatar.style.color = pColorHex;
-            avatar.className = 'kang-anim-active';
-
-            playSound(isKang25 ? 'cang25' : 'cang');
-
-            let callerName = resolveName(callerId);
-            let word = isKang25 ? 'แคง25' : 'แคง';
-
-            setTimeout(() => {
-                let t1 = `โอ้ ${callerName} เอ่ยคำว่า ${word}`;
-                text1.innerText = t1;
-                text1.style.opacity = '1';
-                announce(t1, false);
-            }, 1000);
-
-            setTimeout(() => {
-                let t2 = `เปิดไพ่ทุกคนเพื่อวัดดวงกัน`;
-                text2.innerText = t2;
-                text2.style.opacity = '1';
-                announce(t2, false);
-            }, 4000);
-
-            setTimeout(() => {
-                animScreen.style.display = 'none';
-                avatar.className = '';
-            }, 7000);
-        };
-
-        function broadcastKangAnimation(callerId, isKang25) {
-            gameState.status = 'TRANSITION';
-            clearInterval(turnTimerInterval);
-            syncStateToAll();
-            let data = { type: 'KANG_ANIMATION', callerId, isKang25 };
-            if (myPeerId) window.playKangAnimation(callerId, isKang25);
-            guestConnections.forEach(c => c.send(data));
-        }
-
         function nextTurn() {
             let prevPlayer = gameState.players[gameState.turnIndex];
             prevPlayer.hasDrawnTurn = false; prevPlayer.hasDiscardedTurn = false; prevPlayer.discardedRankThisTurn = null;
@@ -1186,11 +1096,13 @@
                 let isFirstPlayer = (pId === gameState.players[0].id);
 
                 if (action === 'KANG_25' && handSum >= 25) {
-                    broadcastKangAnimation(p.id, true);
-                    setTimeout(() => resolveKang(p.id, false, false, true), 7000);
+                    triggerSound('cang25');
+                    broadcastAnnounce(`📢 ประกาศด่วน! [PID:${p.id}] ตัดสินใจกด "แคง25!" ท้าดวลตั้งแต่รอบดูไพ่!`);
+                    resolveKang(p.id, false, false, true); 
                 } else if (action === 'KANG' && isFirstPlayer) {
-                    broadcastKangAnimation(p.id, false);
-                    setTimeout(() => resolveKang(p.id, false, false, false), 7000);
+                    triggerSound('cang');
+                    broadcastAnnounce(`📢 ประกาศ! ผู้เล่นแรก [PID:${p.id}] ชิง "แคง!" ตัดจบตั้งแต่ยังไม่เริ่มเกม!`);
+                    resolveKang(p.id, false, false, false);
                 }
                 return;
             }
@@ -1259,9 +1171,6 @@
                         victim = gameState.players[victimIndex];
                     }
 
-                    // อัปเดตเจ้าของไพ่ใบบนสุดให้เป็นผู้ที่ไหลไพ่ปัจจุบัน เพื่อให้คนถัดไปดึงเหรียญจากคนนี้ได้อย่างถูกต้องตามลำดับ
-                    gameState.topCardOwnerId = cp.id;
-
                     let flowMult = dropped.rank === 'A' ? 2 : 1;
                     let penalty = 10 * flowMult;
 
@@ -1303,8 +1212,9 @@
                 }, 2500);
             }
             else if(action === 'KANG' && !cp.hasDrawnTurn && discardPile.length > 0) {
-                broadcastKangAnimation(cp.id, false);
-                setTimeout(() => resolveKang(cp.id), 7000);
+                triggerSound('cang');
+                broadcastAnnounce(`[PID:${cp.id}] ประกาศ แคง!`);
+                resolveKang(cp.id);
             }
         }
 
@@ -1445,7 +1355,7 @@
             const isFirstPlayer = (myPeerId === publicState.playersInfo[0].id);
             const isMyTurn = (turnId === myPeerId);
             
-            publicState.playersInfo.forEach(p => { globalPlayersMap[p.id] = { isBot: p.isBot, colorName: p.colorName, colorHex: p.colorHex }; });
+            publicState.playersInfo.forEach(p => { globalPlayersMap[p.id] = { isBot: p.isBot, colorName: p.colorName }; });
             let currPlayerDisp = resolveName(turnId);
             
             const turnInd = document.getElementById('turn-indicator');
@@ -1473,40 +1383,34 @@
                 }
             }
 
-            // ปรับปรุงฟังก์ชัน renderStatusBar สำหรับ Screen Reader ให้รวมเป็นกลุ่มเดียว
+            // ปรับปรุงฟังก์ชัน renderStatusBar สำหรับ Screen Reader
             const renderStatusBar = (containerId) => {
                 const container = document.getElementById(containerId);
                 if (!container) return;
-                
-                // ถอดคลาส animation ออกก่อนจะสร้างใหม่ (จะมีการเพิ่มกลับตอนจบเกม)
                 container.innerHTML = '';
                 
-                let groupAriaLabel = "";
-
                 publicState.playersInfo.forEach((p) => {
                     if (!p.isOut) {
                         let dispName = resolveName(p.id);
-                        groupAriaLabel += `${dispName} มี ${p.points} เหรียญ. `;
-
                         let item = document.createElement('div');
                         item.className = `status-avatar-item ${p.id === turnId && publicState.status === 'PLAYING' ? 'active-turn' : ''}`;
                         item.id = `avatar-${containerId}-${p.id}`;
                         item.style.borderColor = p.colorHex;
 
-                        // เอา aria-label, role="region" และ tabindex ออกจากแต่ละไอเทม
+                        // เพิ่ม tabIndex และ role="region" เพื่อให้ VoiceOver/NVDA แวะอ่านได้
+                        item.setAttribute('tabindex', '0');
+                        item.setAttribute('role', 'region');
+                        item.setAttribute('aria-label', `${dispName} มี ${p.points} เหรียญ ${p.id === turnId && publicState.status === 'PLAYING' ? '(กำลังเล่นอยู่)' : ''}`);
+
+                        // เอา aria-hidden="true" ออกจากส่วนแสดงผล SC และชื่อ
                         item.innerHTML = `
-                            <div class="status-coin-header" aria-hidden="true">${p.points} SC</div>
+                            <div class="status-coin-header">${p.points} SC</div>
                             <div class="status-avatar-icon" style="background-color:${p.colorHex}; color:#fff;" aria-hidden="true">👤</div>
-                            <div class="status-player-label" style="color:${p.colorHex};" aria-hidden="true">${dispName}</div>
+                            <div class="status-player-label" style="color:${p.colorHex};">${dispName}</div>
                         `;
                         container.appendChild(item);
                     }
                 });
-
-                // กำหนดให้ container เป็น group ที่รวมข้อมูลทั้งหมดให้อ่านทีเดียวเมื่อโฟกัส
-                container.setAttribute('tabindex', '0');
-                container.setAttribute('role', 'group');
-                container.setAttribute('aria-label', `สถานะผู้เล่นทั้งหมด: ${groupAriaLabel}`);
             };
 
             renderStatusBar('players-status-bar');
@@ -1637,24 +1541,6 @@
                 playSound('win');
             } else {
                 playSound('lost');
-            }
-
-            // นำคลาส animation ไปใส่ใน avatar
-            if(winners) {
-                winners.forEach(id => {
-                    let el1 = document.getElementById(`avatar-players-status-bar-${id}`);
-                    if(el1) el1.classList.add('anim-happy');
-                    let el2 = document.getElementById(`avatar-result-status-bar-${id}`);
-                    if(el2) el2.classList.add('anim-happy');
-                });
-            }
-            if(losers) {
-                losers.forEach(id => {
-                    let el1 = document.getElementById(`avatar-players-status-bar-${id}`);
-                    if(el1) el1.classList.add('anim-sad');
-                    let el2 = document.getElementById(`avatar-result-status-bar-${id}`);
-                    if(el2) el2.classList.add('anim-sad');
-                });
             }
 
             let fTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
