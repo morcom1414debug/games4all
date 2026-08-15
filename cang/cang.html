@@ -181,7 +181,6 @@
             display: flex; justify-content: space-between; align-items: center;
             width: 100%; max-width: 600px; margin: 3px 0; padding: 0 10px;
         }
-        .timer-display { color: var(--orange); font-size: 1.1rem; font-weight: bold; text-shadow: 1px 1px 2px black; }
 
         /* Middle Table Deck Area */
         .table-area {
@@ -435,21 +434,20 @@
         <!-- 1. ด้านบนสุด: Group Status ตัวละครทุกตัวเรียงจากซ้ายไปขวา (อัปเดตแบบ realtime) -->
         <div class="players-status-group" id="players-status-bar" role="group"></div>
 
-        <!-- REQ 3: แถบเวลาแนวนอนใต้สถานะตัวละคร -->
-        <div id="timer-progress-container" style="width: 100%; max-width: 600px; height: 5px; background: rgba(0,0,0,0.5); margin: 3px auto 2px auto; border-radius: 3px; overflow: hidden; display: none;" aria-hidden="true">
-            <div id="timer-progress-bar" style="height: 100%; width: 100%; background: var(--orange); transition: width 1s linear;"></div>
+        <!-- แถบเวลาแสดงสำหรับผู้มองเห็นโดยซ่อนจาก SC อย่างสมบูรณ์ -->
+        <div id="timer-bar-container" aria-hidden="true" style="width: 100%; max-width: 600px; height: 4px; background: rgba(0,0,0,0.5); margin-top: 4px; border-radius: 2px;">
+            <div id="timer-bar-fill" style="width: 100%; height: 100%; background: var(--orange); transition: width 1s linear; border-radius: 2px;"></div>
         </div>
 
         <div class="game-info-row">
             <h2 id="turn-indicator" style="font-size:1.05rem; color: #ffd700;" aria-live="polite">กำลังโหลด...</h2>
-            <!-- REQ 3: ซ่อนตัวแสดงเวลาไม่ให้ SC เห็น แต่คงโค้ดไว้ให้สคริปต์ทำงาน -->
-            <div id="turn-timer" class="timer-display" aria-hidden="true" style="display:none;">เวลาเหลือ: 60 วินาที</div>
+            <!-- ซ่อนตัวแสดงเวลาไม่ให้เห็นบนหน้าจอและซ่อนจาก sc แต่คงการทำงาน JavaScript ไว้รับข้อมูล -->
+            <div id="turn-timer" aria-hidden="true" style="display:none;"></div>
         </div>
 
         <!-- 2. ลำดับต่อมา: กองไพ่กลาง (จะถูกซ่อนเมื่อเกมจบ) -->
         <div class="table-area" id="main-table-area">
             <div class="deck-area">
-                <!-- REQ 4: ปรับ aria-label ของกองไพ่ -->
                 <div class="deck-group-box" id="deck-group-box" role="group" aria-label="31 ใบที่จั่วได้">
                     <span class="deck-flower-icon" aria-hidden="true">🌸</span>
                     <span class="deck-count-num" id="deck-count-text">31</span>
@@ -799,12 +797,7 @@
             hostConnection.on('data', (data) => {
                 if (data.type === 'LOBBY_UPDATE') { roomPlayers = data.roomPlayers; currentBotCount = data.botCount; botColors = data.botColors; updateLobbyUI(); }
                 if (data.type === 'START_COUNTDOWN') { doCountdownAndStart(); }
-                if (data.type === 'SYNC_STATE') {
-                    // REQ 4: อัปเดต aria-label สำหรับฝั่ง Guest เมื่อได้รับ SYNC_STATE
-                    const deckBox = document.getElementById('deck-group-box');
-                    if (deckBox) deckBox.setAttribute('aria-label', `${data.publicState.deckCount} ใบที่จั่วได้`);
-                    renderClientGame(data.publicState, data.privateState);
-                }
+                if (data.type === 'SYNC_STATE') renderClientGame(data.publicState, data.privateState);
                 if (data.type === 'ANIM_SC_FLOAT') showFloatingScore(data.targetId, data.amt);
                 if (data.type === 'SHOW_RESULT') showResultModal(data.title, data.detail, data.isEnd, data.winners, data.losers);
                 if (data.type === 'ANNOUNCE') announce(data.msg);
@@ -962,10 +955,6 @@
         }
 
         function startNewRound() {
-            // REQ 1: แสดงปุ่ม action คืนเมื่อเริ่มเกมใหม่ (ในกรณีที่ถูกซ่อนไปในหน้าจบเกม)
-            const actionBar = document.getElementById('action-bar-container');
-            if(actionBar) actionBar.style.display = 'flex';
-
             if (window.nextRoundHostId) {
                 let idx = gameState.players.findIndex(p => p.id === window.nextRoundHostId);
                 if (idx > 0) {
@@ -1027,25 +1016,14 @@
             guestConnections.forEach(c => c.send({ type: 'TIMER_UPDATE', timeLeft: t }));
         }
 
+        // อัปเดตแถบสี Progress bar แบบแสดงเวลาลดลงเรื่อยๆ
         window.updateTimerUI = (timeLeft) => {
-            const timerEl = document.getElementById('turn-timer');
-            if(timerEl) timerEl.innerText = `เวลาเหลือ: ${timeLeft} วินาที`;
-
-            // REQ 3: อัปเดตแถบเวลา
-            const progContainer = document.getElementById('timer-progress-container');
-            const progBar = document.getElementById('timer-progress-bar');
-            if (progContainer && progBar) {
-                progContainer.style.display = 'block';
-                progBar.style.width = (timeLeft / 60 * 100) + '%';
-                
-                // เปลี่ยนสีเมื่อเวลาใกล้มด
-                if (timeLeft <= 10) {
-                    progBar.style.background = 'var(--red)';
-                } else if (timeLeft <= 30) {
-                    progBar.style.background = 'var(--yellow)';
-                } else {
-                    progBar.style.background = 'var(--orange)';
-                }
+            const timerBar = document.getElementById('timer-bar-fill');
+            if(timerBar) {
+                let maxTime = 60;
+                let pct = Math.max(0, (timeLeft / maxTime) * 100);
+                timerBar.style.width = pct + '%';
+                timerBar.style.background = timeLeft <= 10 ? 'var(--red)' : 'var(--orange)';
             }
         };
 
@@ -1077,10 +1055,6 @@
                     id: p.id, colorHex: p.colorInfo.hex, colorName: p.colorInfo.name, isBot: p.isBot, points: p.points, cardCount: p.hand.length, isOut: p.isOut
                 }))
             };
-
-            // REQ 4: อัปเดต aria-label สำหรับฝั่ง Host
-            const deckBox = document.getElementById('deck-group-box');
-            if (deckBox) deckBox.setAttribute('aria-label', `${publicState.deckCount} ใบที่จั่วได้`);
 
             gameState.players.forEach(p => {
                 if(!p.isBot) {
@@ -1347,10 +1321,6 @@
         function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 = false) {
             window.nextRoundHostId = callerId;
             
-            // REQ 3: ซ่อนแถบเวลาเมื่อมีคนแคง / จบตา
-            const progContainer = document.getElementById('timer-progress-container');
-            if(progContainer) progContainer.style.display = 'none';
-            
             gameState.status = 'TRANSITION'; 
             clearInterval(turnTimerInterval);
             let active = gameState.players.filter(p => !p.isOut);
@@ -1457,15 +1427,6 @@
 
             setTimeout(() => {
                 gameState.status = 'END';
-                
-                // REQ 1: ซ่อนปุ่มจั่วไพ่ แคง จบตา ในหน้าจบเกม
-                const actionBar = document.getElementById('action-bar-container');
-                if(actionBar) actionBar.style.display = 'none';
-
-                // REQ 2: clear การประกาศ aria-live ไม่ให้มีข้อความซ้ำซ้อน
-                const srAnnouncer = document.getElementById('sr-only-announcer');
-                if (srAnnouncer) srAnnouncer.innerText = '';
-
                 syncStateToAll();
                 let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false, winners, losers };
                 if(myPeerId) showResultModal(title, resultDetail, false, winners, losers);
@@ -1475,11 +1436,6 @@
 
         window.closeResultModal = () => {
             document.getElementById('result-modal').style.display = 'none';
-            
-            // REQ 2: Clear aria-live อีกรอบตอนปิดหน้าต่างจบเกมเพื่อความแน่ใจ
-            const srAnnouncer = document.getElementById('sr-only-announcer');
-            if (srAnnouncer) srAnnouncer.innerText = '';
-            
             updateHomeBtnVisibility();
             if(isHost) {
                 guestConnections.forEach(c => c.send({ type: 'START_COUNTDOWN' }));
@@ -1497,3 +1453,240 @@
             localPlayerState = privateState;
             const turnId = publicState.turnId;
             const isFirstPlayer = (myPeerId === publicState.playersInfo[0].id);
+            const isMyTurn = (turnId === myPeerId);
+            
+            publicState.playersInfo.forEach(p => { globalPlayersMap[p.id] = { isBot: p.isBot, colorName: p.colorName, colorHex: p.colorHex }; });
+            let currPlayerDisp = resolveName(turnId);
+            
+            const turnInd = document.getElementById('turn-indicator');
+            const timerBarContainer = document.getElementById('timer-bar-container');
+            
+            if (publicState.status === 'END') {
+                if(timerBarContainer) timerBarContainer.style.display = 'none';
+                turnInd.innerText = "สิ้นสุดรอบ!";
+                document.getElementById('main-table-area').style.display = 'none';
+                document.getElementById('action-bar-container').style.display = 'none';
+            } else {
+                if(timerBarContainer) timerBarContainer.style.display = 'block';
+                document.getElementById('main-table-area').style.display = 'flex';
+                document.getElementById('action-bar-container').style.display = 'flex';
+                if (publicState.status === 'PRE_GAME') {
+                    turnInd.innerText = "เตรียมตัว! เช็คไพ่ในมือ (60 วินาที)";
+                } else {
+                    let oldTurnTxt = turnInd.innerText;
+                    let newTurnTxt = isMyTurn ? "🔥 ตาของคุณแล้ว!" : `ตาของ ${currPlayerDisp}`;
+                    if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
+                        turnInd.innerText = newTurnTxt;
+                        let topC = publicState.topDiscard;
+                        let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
+                        if(isMyTurn) announce(`ตาของคุณแล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
+                        else announce(`เปลี่ยนตาไปที่ ${currPlayerDisp} (ไพ่บนกองคือ ${topTxt})`, false);
+                    }
+                }
+            }
+
+            // ปรับปรุงฟังก์ชัน renderStatusBar สำหรับ Screen Reader ให้รวมเป็นกลุ่มเดียว
+            const renderStatusBar = (containerId) => {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                
+                // ถอดคลาส animation ออกก่อนจะสร้างใหม่ (จะมีการเพิ่มกลับตอนจบเกม)
+                container.innerHTML = '';
+                
+                let groupAriaLabel = "";
+
+                publicState.playersInfo.forEach((p) => {
+                    if (!p.isOut) {
+                        let dispName = resolveName(p.id);
+                        groupAriaLabel += `${dispName} มี ${p.points} เหรียญ. `;
+
+                        let item = document.createElement('div');
+                        item.className = `status-avatar-item ${p.id === turnId && publicState.status === 'PLAYING' ? 'active-turn' : ''}`;
+                        item.id = `avatar-${containerId}-${p.id}`;
+                        item.style.borderColor = p.colorHex;
+
+                        // เอา aria-label, role="region" และ tabindex ออกจากแต่ละไอเทม
+                        item.innerHTML = `
+                            <div class="status-coin-header" aria-hidden="true">${p.points} SC</div>
+                            <div class="status-avatar-icon" style="background-color:${p.colorHex}; color:#fff;" aria-hidden="true">👤</div>
+                            <div class="status-player-label" style="color:${p.colorHex};" aria-hidden="true">${dispName}</div>
+                        `;
+                        container.appendChild(item);
+                    }
+                });
+
+                // กำหนดให้ container เป็น group ที่รวมข้อมูลทั้งหมดให้อ่านทีเดียวเมื่อโฟกัส
+                container.setAttribute('tabindex', '0');
+                container.setAttribute('role', 'group');
+                container.setAttribute('aria-label', `สถานะผู้เล่นทั้งหมด: ${groupAriaLabel}`);
+            };
+
+            renderStatusBar('players-status-bar');
+            renderStatusBar('result-status-bar');
+
+            const btnDraw = document.getElementById('btn-draw');
+            const btnKang = document.getElementById('btn-kang');
+            const btnKang25 = document.getElementById('btn-kang25');
+            const btnEnd = document.getElementById('btn-end-turn');
+            let topC = publicState.topDiscard;
+
+            // บันทึกข้อความไพ่บนกองปัจจุบันเพื่อให้ Keyboard Shortcut (Alt+c) อ่านได้
+            if (topC) {
+                currentTopCardText = `ไพ่บนกองทิ้งปัจจุบันคือ ${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}`;
+            } else {
+                currentTopCardText = `ยังไม่มีไพ่บนกองทิ้ง`;
+            }
+
+            if (publicState.status === 'PRE_GAME') {
+                let myHandSum = (localPlayerState.hand || []).reduce((s, c) => s + (c.val || getCardValue(c.rank)), 0);
+
+                btnDraw.style.display = 'none';
+                btnEnd.style.display = 'none';
+                
+                btnKang25.style.display = 'inline-block';
+                btnKang25.disabled = (myHandSum < 25);
+
+                if (isFirstPlayer) {
+                    btnKang.style.display = 'inline-block';
+                    btnKang.disabled = false;
+                } else {
+                    btnKang.style.display = 'none';
+                    btnKang.disabled = true;
+                }
+            } else if (publicState.status === 'PLAYING' || publicState.status === 'TRANSITION') {
+                btnKang25.style.display = 'none';
+                btnDraw.style.display = 'inline-block';
+                btnEnd.style.display = 'inline-block';
+                btnKang.style.display = 'inline-block';
+
+                if(isMyTurn && publicState.status === 'PLAYING') {
+                    btnDraw.disabled = localPlayerState.hasDrawn;
+                    btnKang.disabled = localPlayerState.hasDrawn || publicState.discardPileCount === 0;
+                    btnEnd.disabled = !localPlayerState.hasDiscarded;
+                } else { btnDraw.disabled = true; btnKang.disabled = true; btnEnd.disabled = true; }
+            }
+
+            const deckCountTxt = document.getElementById('deck-count-text');
+            if(deckCountTxt) deckCountTxt.innerText = publicState.deckCount;
+            
+            const deckBox = document.getElementById('deck-group-box');
+            if(deckBox) deckBox.setAttribute('aria-label', `${publicState.deckCount} ใบที่จั่วได้`);
+            
+            let dp = document.getElementById('discard-pile');
+            if(topC) {
+                let tRank = THAI_RANKS[topC.rank]; let tSuit = THAI_SUITS[topC.suit];
+                dp.innerHTML = `<div class="card ${['♥','♦'].includes(topC.suit)?'red':'black'}" aria-label="ไพ่กองทิ้งใบบนสุดคือ ${tRank} ${tSuit}" role="img">
+                                   <div aria-hidden="true">${topC.rank}</div><div class="card-suit" aria-hidden="true">${topC.suit}</div>
+                                </div>`;
+            } else {
+                dp.innerHTML = '<div style="color:#a0a0a0; font-size:0.85rem;">กองทิ้งว่างเปล่า</div>'; 
+                dp.setAttribute('aria-label', 'กองไพ่ทิ้งยังว่างเปล่า');
+            }
+
+            const handUi = document.getElementById('my-hand-ui'); handUi.innerHTML = '';
+            if (publicState.status !== 'END') {
+                (localPlayerState.hand || []).forEach((c, index) => {
+                    let cardEl = document.createElement('button');
+                    cardEl.className = `card ${['♥','♦'].includes(c.suit)?'red':'black'}`;
+                    let tRank = THAI_RANKS[c.rank]; let tSuit = THAI_SUITS[c.suit];
+                    let actionHint = ""; cardEl.disabled = true;
+
+                    if (isMyTurn && publicState.status === 'PLAYING') {
+                        if (!localPlayerState.hasDiscarded) {
+                            if (localPlayerState.hasDrawn) {
+                                cardEl.disabled = false; actionHint = " กดเพื่อทิ้งไพ่ใบนี้";
+                                cardEl.onclick = () => clientAction('DISCARD', index);
+                            } else if (topC && c.rank === topC.rank) {
+                                cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
+                                cardEl.style.boxShadow = "0 0 12px var(--blue)"; 
+                                cardEl.onclick = () => clientAction('FLOW', index);
+                            }
+                        } else if (c.rank === localPlayerState.discardedRank) {
+                            cardEl.disabled = false; actionHint = " กดเพื่อทิ้งเพิ่มเติม (เลขเดียวกัน)";
+                            cardEl.style.boxShadow = "0 0 12px var(--green)";
+                            cardEl.onclick = () => clientAction('DISCARD', index);
+                        }
+                    }
+                    
+                    cardEl.setAttribute('aria-label', `ไพ่ ${tRank} ${tSuit}${actionHint}`);
+                    cardEl.innerHTML = `<div aria-hidden="true">${c.rank}</div><div class="card-suit" aria-hidden="true">${c.suit}</div>`;
+                    handUi.appendChild(cardEl);
+                });
+            }
+        }
+
+        window.clientAction = (action, index = 0) => {
+            if(isHost) processPlayerAction(myPeerId, action, index);
+            else hostConnection.send({ type: 'PLAYER_ACTION', playerId: myPeerId, action, cardIndex: index });
+        };
+
+        // ปรับปรุงฟังก์ชัน showFloatingScore ให้แจ้งเตือนผ่าน เสียงอ่าน ด้วย
+        window.showFloatingScore = (targetId, amt) => {
+            let target = document.getElementById(`avatar-players-status-bar-${targetId}`);
+            
+            // 1. แสดงผล Visual Animation ตามเดิม
+            if (target) {
+                let floatEl = document.createElement('div'); 
+                floatEl.className = 'floating-sc';
+                floatEl.style.color = amt > 0 ? '#32cd32' : '#ff4d4d';
+                floatEl.innerText = amt > 0 ? `+${amt}` : amt; 
+                floatEl.setAttribute('aria-hidden', 'true'); 
+                target.appendChild(floatEl); 
+                setTimeout(() => floatEl.remove(), 2000);
+            }
+
+            // 2. ประกาศเสียงให้ NVDA / VoiceOver อ่านเมื่อมีการเปลี่ยนแปลงเหรียญ
+            let playerDispName = resolveName(targetId);
+            let changeText = amt > 0 ? `ได้รับ ${amt} เหรียญ` : `เสีย ${Math.abs(amt)} เหรียญ`;
+            
+            // เรียกใช้ฟังก์ชัน announce เพื่อให้ Screen Reader อ่านออกเสียง
+            announce(`${playerDispName} ${changeText}`, false);
+        };
+
+        window.showResultModal = (title, detail, isEnd, winners, losers) => {
+            // เคลียร์ Aria Live เมื่อเข้าสู่หน้าจบเกม ป้องกันการอ่านซ้อนกัน
+            const srOnlyAnnouncer = document.getElementById('sr-only-announcer');
+            const visAnnouncer = document.getElementById('visible-game-announcer');
+            if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
+            if (visAnnouncer) visAnnouncer.innerText = '';
+
+            stopBGM();
+            if (winners && winners.includes(myPeerId)) {
+                playSound('win');
+            } else {
+                playSound('lost');
+            }
+
+            // นำคลาส animation ไปใส่ใน avatar
+            if(winners) {
+                winners.forEach(id => {
+                    let el1 = document.getElementById(`avatar-players-status-bar-${id}`);
+                    if(el1) el1.classList.add('anim-happy');
+                    let el2 = document.getElementById(`avatar-result-status-bar-${id}`);
+                    if(el2) el2.classList.add('anim-happy');
+                });
+            }
+            if(losers) {
+                losers.forEach(id => {
+                    let el1 = document.getElementById(`avatar-players-status-bar-${id}`);
+                    if(el1) el1.classList.add('anim-sad');
+                    let el2 = document.getElementById(`avatar-result-status-bar-${id}`);
+                    if(el2) el2.classList.add('anim-sad');
+                });
+            }
+
+            let fTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+            let fDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+            document.getElementById('result-title').innerText = fTitle;
+            document.getElementById('result-details').innerHTML = fDetail;
+            document.getElementById('result-modal').style.display = 'flex';
+            updateHomeBtnVisibility();
+
+            document.getElementById('result-title').focus();
+            document.getElementById('btn-next-round').style.display = (isHost && !isEnd) ? 'block' : 'none';
+            if(!isHost) document.getElementById('btn-next-round').innerText = "รอเจ้าของห้องเริ่มรอบใหม่...";
+        };
+
+    </script>
+</body>
+</html>
