@@ -1660,53 +1660,50 @@
         window.showResultModal = (title, detail, isEnd, winners, losers) => {
             // 1. Clean Clear aria-live ออก ป้องกัน Safari iOS และ Screen Reader อ่านซ้อนค้าง
             const srOnlyAnnouncer = document.getElementById('sr-only-announcer');
-            if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
-            
             const visAnnouncer = document.getElementById('visible-game-announcer');
+            if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
             if (visAnnouncer) visAnnouncer.innerText = '';
 
-            document.getElementById('result-title').innerText = title;
-            document.getElementById('result-details').innerHTML = detail;
+            stopBGM();
+            if (winners && winners.includes(myPeerId)) {
+                playSound('win');
+            } else {
+                playSound('lost');
+            }
+
+            // 2. ใส่ Class Animation แสดงท่าทาง แพ้/ชนะ/ไม่ได้อะไรเลย
+            if(winners) {
+                winners.forEach(id => {
+                    let el = document.getElementById(`avatar-result-status-bar-${id}`);
+                    if(el) el.classList.add('anim-happy');
+                });
+            }
+            if(losers) {
+                losers.forEach(id => {
+                    let el = document.getElementById(`avatar-result-status-bar-${id}`);
+                    if(el) el.classList.add('anim-sad');
+                });
+            }
+
+            // 3. แปลง [PID:...] ให้เป็นชื่อตัวละครสีต่าง ๆ
+            let fTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+            let fDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+
+            document.getElementById('result-title').innerText = fTitle;
+            document.getElementById('result-details').innerHTML = fDetail;
             document.getElementById('result-modal').style.display = 'flex';
             
             updateHomeBtnVisibility();
 
-            if (winners && losers) {
-                winners.forEach(id => {
-                    let el = document.getElementById(`avatar-result-status-bar-${id}`);
-                    if (el) el.classList.add('anim-happy');
-                });
-                losers.forEach(id => {
-                    let el = document.getElementById(`avatar-result-status-bar-${id}`);
-                    if (el) el.classList.add('anim-sad');
-                });
-            }
-
-            if(isEnd) {
-                let btn = document.getElementById('btn-next-round');
-                if(btn) {
-                    btn.innerText = "กลับหน้าหลัก";
-                    btn.onclick = () => window.location.reload();
-                }
-            } else {
-                let btn = document.getElementById('btn-next-round');
-                if(btn) {
-                    btn.innerText = "เริ่มรอบใหม่";
-                    btn.onclick = closeResultModal;
-                }
-            }
-
-            if(myPeerId) {
-                if (winners && winners.includes(myPeerId)) playSound('win');
-                else if (losers && losers.includes(myPeerId)) playSound('lost');
-            }
-
-            // 2. ใช้ setTimeout หน่วงเวลาการสั่ง focus() ไปที่ #result-title เพื่อแยกจังหวะการอ่านของ Live Region กับ Focus ออกจากกัน
+            // Focus ไปที่ Heading เพื่อเปิดการอ่านอย่างเป็นระเบียบตามลำดับ DOM
             setTimeout(() => {
-                const resultTitle = document.getElementById('result-title');
-                if (resultTitle) resultTitle.focus();
-            }, 150);
+                document.getElementById('result-title').focus();
+            }, 100);
+
+            document.getElementById('btn-next-round').style.display = (isHost && !isEnd) ? 'block' : 'none';
+            if(!isHost) document.getElementById('btn-next-round').innerText = "รอเจ้าของห้องเริ่มรอบใหม่...";
         };
+
     </script>
 </body>
 </html>
