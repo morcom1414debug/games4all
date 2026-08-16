@@ -52,7 +52,7 @@
             position: absolute; top: 12px; left: 12px;
             background: #4a4e69; color: white; border: none; border-radius: 6px;
             padding: 8px 12px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.2s;
-            z-index: 1000; display: none;
+            z-index: 10; display: none;
         }
         .home-btn-top:hover, .home-btn-top:focus { background: #9a8c98; outline: 3px solid #ffd700; }
 
@@ -473,17 +473,12 @@
     <!-- Result Modal -->
     <div id="result-modal" role="dialog" aria-labelledby="result-title">
         <div class="result-content">
-            <!-- 1. status ด้านบนสุด พร้อมจำนวนเหรียญ และอนิเมชัน -->
-            <div class="players-status-group" id="result-status-bar" style="width:100%; margin-bottom:10px;" role="group"></div>
+            <!-- ด้านบนสุดของหน้าจอสรุปผลแสดง Status -->
+            <div class="players-status-group" id="result-status-bar" style="width:100%; margin-bottom:5px;" role="group"></div>
             
-            <!-- 2. Heading สรุปผล -->
-            <h2 id="result-title" tabindex="-1">ผลการแคง!</h2>
-            
-            <!-- ข้อความแจ้งแต้มรวมและสรุปการได้/เสียเหรียญ -->
-            <div id="result-details" style="font-size: 0.95rem; line-height: 1.6; margin-bottom: 15px;"></div>
-            
-            <!-- 3. ปิดท้ายล่างสุดคือปุ่ม เริ่มรอบใหม่ -->
-            <button class="start-btn" onclick="closeResultModal()" id="btn-next-round">เริ่มรอบใหม่</button>
+            <h2 id="result-title" aria-live="assertive">ผลการแคง!</h2>
+            <div id="result-details" style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 15px;" aria-live="polite"></div>
+            <button class="start-btn" onclick="closeResultModal()" id="btn-next-round">รอบถัดไป</button>
         </div>
     </div>
 
@@ -1334,7 +1329,6 @@
             let beforePoints = {};
             active.forEach(p => beforePoints[p.id] = p.points);
 
-            // คำนวณแต้มรวมของตัวละครทุกคน
             active.forEach(p => { 
                 p.handSum = p.hand.reduce((s, c) => s + c.val, 0); 
                 p.aceCount = p.hand.filter(c => c.rank === 'A').length;
@@ -1351,26 +1345,30 @@
                 if (winReason === true) reasonStr = 'น็อค!';
                 
                 winnerColorName = caller.colorInfo.name;
-                title = `[PID:${caller.id}] ${reasonStr}! (ชนะรับ ${basePay} SC จากทุกคน)`;
+                title = `🎉 [PID:${caller.id}] ${reasonStr}! (สี${winnerColorName} ชนะรับ ${basePay} SC จากทุกคน)`;
                 active.forEach(p => { 
                     if(p.id !== caller.id) { 
                         p.points -= basePay; 
                         if(p.points < 0) p.points = 0;
                         caller.points += basePay; 
+                        broadcastFloatSC(p.id, -basePay); 
                     } 
                 });
+                broadcastFloatSC(caller.id, (totalPlayersInRoom - 1) * basePay);
             } else if (isDeckEmpty) {
                 let lowest = active.reduce((min, p) => p.handSum < min.handSum ? p : min, active[0]);
                 let basePay = getBasePay(lowest);
                 winnerColorName = lowest.colorInfo.name;
-                title = `กองไพ่หมด! [PID:${lowest.id}] แต้มต่ำสุด ${lowest.handSum} แต้ม (ชนะ)`;
+                title = `กองไพ่หมด! [PID:${lowest.id}] แต้มต่ำสุด ${lowest.handSum} ชนะ!`;
                 active.forEach(p => { 
                     if(p.id !== lowest.id) { 
                         p.points -= basePay; 
                         if(p.points < 0) p.points = 0;
                         lowest.points += basePay; 
+                        broadcastFloatSC(p.id, -basePay); 
                     } 
                 });
+                broadcastFloatSC(lowest.id, (totalPlayersInRoom - 1) * basePay);
             } else { 
                 let others = active.filter(p => p.id !== caller.id);
                 let lowestOther = others.reduce((min, p) => p.handSum < min.handSum ? p : min, others[0]);
@@ -1380,46 +1378,49 @@
                     let payAmount = getBasePay(caller); 
                     if (isKang25) payAmount = payAmount * 2; 
 
-                    title = `[PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} สำเร็จ!`;
+                    title = `🏆 [PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} สำเร็จ แต้ม ${caller.handSum} (สี${winnerColorName} ชนะ)`;
                     others.forEach(p => { 
                         p.points -= payAmount; 
                         if(p.points < 0) p.points = 0;
                         caller.points += payAmount; 
+                        broadcastFloatSC(p.id, -payAmount); 
+                        resultDetail += `[PID:${p.id}] เสีย ${payAmount} SC<br>`; 
                     });
+                    broadcastFloatSC(caller.id, payAmount * others.length);
                 } else {
                     winnerColorName = lowestOther.colorInfo.name;
                     let payAmount = getBasePay(lowestOther) * totalPlayersInRoom; 
                     
-                    title = `[PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} แหก! ([PID:${lowestOther.id}] ชนะ)`;
+                    title = `💥 [PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} แหก! (สี${winnerColorName} ชนะรับ ${payAmount} SC)`;
                     
                     caller.points -= payAmount; 
                     if(caller.points < 0) caller.points = 0;
                     lowestOther.points += payAmount;
+                    
+                    broadcastFloatSC(caller.id, -payAmount); 
+                    broadcastFloatSC(lowestOther.id, payAmount);
+                    resultDetail = `[PID:${caller.id}] โดนปรับ ${payAmount} SC จ่ายให้ [PID:${lowestOther.id}]<br>`;
                 }
             }
 
             let winners = [];
             let losers = [];
-
-            // สร้างรายละเอียดแต้มรวมและการเปลี่ยนถ่ายเหรียญ SC ของผู้เล่นทุกคน
-            let cardDetailLines = [];
-            let coinDetailLines = [];
-
             active.forEach(p => {
                 let diff = p.points - beforePoints[p.id];
-                if (diff > 0) {
-                    winners.push(p.id);
-                    coinDetailLines.push(`[PID:${p.id}] ได้รับ ${diff} SC`);
-                } else if (diff < 0) {
-                    losers.push(p.id);
-                    coinDetailLines.push(`[PID:${p.id}] เสีย ${Math.abs(diff)} SC`);
-                } else {
-                    coinDetailLines.push(`[PID:${p.id}] ไม่ได้ไม่เสียเหรียญ`);
-                }
-                cardDetailLines.push(`[PID:${p.id}] เปิดไพ่มาแล้วได้แต้มรวม ${p.handSum} แต้ม`);
+                if (diff > 0) winners.push(p.id);
+                else if (diff < 0) losers.push(p.id);
             });
 
-            resultDetail = cardDetailLines.join('<br>') + '<br><br>' + coinDetailLines.join('<br>');
+            let summaryArr = active.map(p => `[PID:${p.id}] ${p.handSum} แต้ม`);
+            let summaryStr = summaryArr.join(', ');
+            let handSummary = `<br><span style="font-weight:bold;">📊 สรุปแต้ม:</span><br>${summaryStr}`;
+            resultDetail += handSummary;
+
+            let rawDetailForAnnounce = resultDetail ? ". " + resultDetail.replace(/<br>/g, ', ') : '';
+            let cleanTitle = title.replace(/<\/?[^>]+(>|$)/g, ""); 
+            let cleanDetail = rawDetailForAnnounce.replace(/<\/?[^>]+(>|$)/g, ""); 
+
+            broadcastAnnounce(cleanTitle + cleanDetail);
 
             syncStateToAll(); 
             broadcastTransition('จบเกม! กำลังสรุปผล...', 4000);
@@ -1643,7 +1644,7 @@
         };
 
         window.showResultModal = (title, detail, isEnd, winners, losers) => {
-            // 1. Clean Clear aria-live ออก ป้องกัน Safari iOS และ Screen Reader อ่านซ้อนค้าง
+            // เคลียร์ Aria Live เมื่อเข้าสู่หน้าจบเกม ป้องกันการอ่านซ้อนกัน
             const srOnlyAnnouncer = document.getElementById('sr-only-announcer');
             const visAnnouncer = document.getElementById('visible-game-announcer');
             if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
@@ -1656,35 +1657,32 @@
                 playSound('lost');
             }
 
-            // 2. ใส่ Class Animation แสดงท่าทาง แพ้/ชนะ/ไม่ได้อะไรเลย
+            // นำคลาส animation ไปใส่ใน avatar
             if(winners) {
                 winners.forEach(id => {
-                    let el = document.getElementById(`avatar-result-status-bar-${id}`);
-                    if(el) el.classList.add('anim-happy');
+                    let el1 = document.getElementById(`avatar-players-status-bar-${id}`);
+                    if(el1) el1.classList.add('anim-happy');
+                    let el2 = document.getElementById(`avatar-result-status-bar-${id}`);
+                    if(el2) el2.classList.add('anim-happy');
                 });
             }
             if(losers) {
                 losers.forEach(id => {
-                    let el = document.getElementById(`avatar-result-status-bar-${id}`);
-                    if(el) el.classList.add('anim-sad');
+                    let el1 = document.getElementById(`avatar-players-status-bar-${id}`);
+                    if(el1) el1.classList.add('anim-sad');
+                    let el2 = document.getElementById(`avatar-result-status-bar-${id}`);
+                    if(el2) el2.classList.add('anim-sad');
                 });
             }
 
-            // 3. แปลง [PID:...] ให้เป็นชื่อตัวละครสีต่าง ๆ
             let fTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
             let fDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
-
             document.getElementById('result-title').innerText = fTitle;
             document.getElementById('result-details').innerHTML = fDetail;
             document.getElementById('result-modal').style.display = 'flex';
-            
             updateHomeBtnVisibility();
 
-            // Focus ไปที่ Heading เพื่อเปิดการอ่านอย่างเป็นระเบียบตามลำดับ DOM
-            setTimeout(() => {
-                document.getElementById('result-title').focus();
-            }, 100);
-
+            document.getElementById('result-title').focus();
             document.getElementById('btn-next-round').style.display = (isHost && !isEnd) ? 'block' : 'none';
             if(!isHost) document.getElementById('btn-next-round').innerText = "รอเจ้าของห้องเริ่มรอบใหม่...";
         };
