@@ -114,8 +114,7 @@
             background: #4a4e69; color: white; border: none; border-radius: 8px;
             cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center;
         }
-        .counter-btn:hover:not(:disabled), .counter-btn:focus:not(:disabled) { background: #9a8c98; outline: 3px solid #ffd700; }
-        .counter-btn:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(100%); }
+        .counter-btn:hover, .counter-btn:focus { background: #9a8c98; outline: 3px solid #ffd700; }
         #bot-count-text { flex-grow: 1; font-size: 1.1rem; font-weight: bold; text-align: center; }
 
         .start-btn {
@@ -415,9 +414,9 @@
         <div id="host-bot-section" style="width:100%; display:flex; flex-direction:column; align-items:center;">
             <p class="setup-section-title">เลือกจำนวนบอทในห้อง:</p>
             <div class="bot-counter-container">
-                <button class="counter-btn" id="btn-bot-dec" aria-label="ลดจำนวนบอท" onclick="adjustBot(-1)">-</button>
+                <button class="counter-btn" aria-label="ลดจำนวนบอท" onclick="adjustBot(-1)">-</button>
                 <div id="bot-count-text" aria-live="polite">0 ตัว</div>
-                <button class="counter-btn" id="btn-bot-inc" aria-label="เพิ่มจำนวนบอท" onclick="adjustBot(1)">+</button>
+                <button class="counter-btn" aria-label="เพิ่มจำนวนบอท" onclick="adjustBot(1)">+</button>
             </div>
         </div>
 
@@ -472,6 +471,7 @@
     </div>
 
 <!-- Result Modal -->
+<!-- 1. เปลี่ยน aria-hidden="true" เป็น aria-modal="true" สำหรับสถานะตอนเปิด -->
 <div id="result-modal" role="dialog" aria-labelledby="result-title" aria-modal="true">
     
     <!-- 1. status ด้านบนสุด พร้อมจำนวนเหรียญ และอนิเมชัน -->
@@ -496,11 +496,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getDatabase, ref, set, onValue, remove, onDisconnect, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-        // Global Utility & Guard States
-        window.joinOrder = []; // สำหรับรักษาลำดับผู้เล่นตามเวลา
-        window.isStartingRound = false; // Guard ป้องกันปุ่มเริ่มรอบและแจกไพ่ถูกกดซ้ำ
-        window.hasAnnouncedMyColor = false; // ป้องกันการประกาศสีตัวละครซ้ำ
-
+        // Global Utility
         const delay = ms => new Promise(res => setTimeout(res, ms));
 
         // Audio Setup
@@ -784,7 +780,6 @@
                     peer = new Peer("cang-host-" + roomId);
                     peer.on('open', (id) => {
                         myPeerId = id; selectedColorId = 'red';
-                        window.joinOrder = [myPeerId]; // Host จัดลำดับตัวเองเป็นคนแรกเสมอ
                         roomPlayers = [{ id: myPeerId, color: selectedColorId }];
                         const myRoomRef = ref(db, GAME_DB_ID + '/rooms/' + roomId);
                         set(myRoomRef, { roomId: roomId, playerCount: 1, state: 'WAITING' });
@@ -811,29 +806,8 @@
             hostConnection = peer.connect("cang-host-" + roomId);
             hostConnection.on('open', () => { hostConnection.send({ type: 'JOIN_ROOM' }); announce(`เข้าร่วมห้องสำเร็จ รอแจกไพ่`, false); });
             hostConnection.on('data', (data) => {
-                if (data.type === 'LOBBY_UPDATE') { 
-                    roomPlayers = data.roomPlayers; 
-                    currentBotCount = data.botCount; 
-                    botColors = data.botColors; 
-                    if (data.joinOrder) window.joinOrder = data.joinOrder; // ซิงค์การเรียงลำดับจาก Host
-                    updateLobbyUI(); 
-
-                    // สุ่มสีแจ้งเตือนครั้งเดียวเมื่อเพิ่งได้เข้าร่วมห้องสำเร็จและยังไม่เคยได้รับสี
-                    if (!isHost && !window.hasAnnouncedMyColor) {
-                        let myP = roomPlayers.find(p => p.id === myPeerId);
-                        if (myP) {
-                            window.hasAnnouncedMyColor = true;
-                            let c = COLORS.find(x => x.id === myP.color);
-                            if (c) announce(`คุณได้รับสี${c.name}`, false);
-                        }
-                    }
-                }
-                if (data.type === 'START_COUNTDOWN') { 
-                    if (!window.isStartingRound) { // ป้องกันฝั่ง Guest เผลอทำงานซ้อนเช่นกัน
-                        window.isStartingRound = true;
-                        doCountdownAndStart(); 
-                    }
-                }
+                if (data.type === 'LOBBY_UPDATE') { roomPlayers = data.roomPlayers; currentBotCount = data.botCount; botColors = data.botColors; updateLobbyUI(); }
+                if (data.type === 'START_COUNTDOWN') { doCountdownAndStart(); }
                 if (data.type === 'SYNC_STATE') renderClientGame(data.publicState, data.privateState);
                 if (data.type === 'ANIM_SC_FLOAT') showFloatingScore(data.targetId, data.amt);
                 if (data.type === 'SHOW_RESULT') showResultModal(data.title, data.detail, data.isEnd, data.winners, data.losers);
@@ -850,18 +824,11 @@
             peer.on('connection', (conn) => {
                 conn.on('data', (data) => {
                     if (data.type === 'JOIN_ROOM') {
-                        // Edge case limit max entities checking for connection
-                        if (roomPlayers.length + currentBotCount >= 6) return;
-
                         let usedColors = roomPlayers.map(p => p.color).concat(botColors);
                         let avail = COLORS.filter(c => !usedColors.includes(c.id));
-                        let randomColor = avail.length > 0 ? avail[Math.floor(Math.random() * avail.length)].id : 'red';
-                        
-                        roomPlayers.push({ id: conn.peer, color: randomColor });
-                        window.joinOrder.push(conn.peer); // เข้าร่วมแบบเรียงตามไทม์ไลน์
-                        guestConnections.push(conn); 
-                        broadcastLobby();
-                        broadcastAnnounce(`มีผู้เล่นเข้าร่วมห้องใหม่ รวม ${roomPlayers.length + currentBotCount} ตัว`);
+                        roomPlayers.push({ id: conn.peer, color: avail.length > 0 ? avail[0].id : 'red' });
+                        guestConnections.push(conn); broadcastLobby();
+                        broadcastAnnounce(`มีผู้เล่นเข้าร่วมห้องใหม่ รวม ${roomPlayers.length} คน`);
                         triggerSound('select');
                     }
                     if (data.type === 'CHANGE_COLOR') {
@@ -879,7 +846,7 @@
         }
 
         function broadcastLobby() {
-            let data = { type: 'LOBBY_UPDATE', roomPlayers, botCount: currentBotCount, botColors, joinOrder: window.joinOrder };
+            let data = { type: 'LOBBY_UPDATE', roomPlayers, botCount: currentBotCount, botColors };
             guestConnections.forEach(c => c.send(data)); updateLobbyUI();
             if(isHost) set(ref(db, GAME_DB_ID + '/rooms/' + roomId + '/playerCount'), roomPlayers.length + currentBotCount);
         }
@@ -887,25 +854,11 @@
         window.adjustBot = (delta) => {
             if(!isHost) return;
             let currentTotal = roomPlayers.length + currentBotCount;
-            if (delta > 0 && currentTotal < 6) {
-                let used = roomPlayers.map(p => p.color).concat(botColors);
-                let avail = COLORS.filter(c => !used.includes(c.id));
-                let randomColorId = avail.length > 0 ? avail[Math.floor(Math.random() * avail.length)].id : 'red';
-                
-                botColors.push(randomColorId); // เก็บสีบอทแบบเรียงลำดับเวลา
-                window.joinOrder.push('bot_' + currentBotCount);
-                currentBotCount++;
-            } else if (delta < 0 && currentBotCount > 0) {
-                currentBotCount--;
-                botColors.pop(); // ลบบอทตัวล่าสุด
-                // ลบตัว bot_ ออกจากลำดับ joinOrder ตัวท้ายสุด
-                for (let i = window.joinOrder.length - 1; i >= 0; i--) {
-                    if (window.joinOrder[i].startsWith('bot_')) {
-                        window.joinOrder.splice(i, 1);
-                        break;
-                    }
-                }
-            }
+            if (delta > 0 && currentTotal < 6) currentBotCount++;
+            else if (delta < 0 && currentBotCount > 0) currentBotCount--;
+            let used = roomPlayers.map(p => p.color);
+            let avail = COLORS.filter(c => !used.includes(c.id));
+            botColors = avail.slice(0, currentBotCount).map(c => c.id);
             broadcastLobby();
             triggerSound('select');
         };
@@ -919,19 +872,8 @@
             botColors.forEach((b, i) => { let c = COLORS.find(x => x.id === b); globalPlayersMap['bot_'+i] = { isBot: true, colorName: c ? c.name : '?', colorHex: c ? c.hex : '#ffffff' }; });
 
             const listEl = document.getElementById('waiting-players-list'); listEl.innerHTML = '';
-            
-            // เรียงแสดงผลตาม Timeline ของ window.joinOrder แยกขาดจาก ID ของสี
-            let currentOrder = window.joinOrder && window.joinOrder.length > 0 ? window.joinOrder : roomPlayers.map(p => p.id).concat(botColors.map((_, i) => 'bot_'+i));
-            currentOrder.forEach(id => {
-                if (id.startsWith('bot_')) {
-                    let li = document.createElement('li'); li.innerText = resolveName(id); listEl.appendChild(li);
-                } else {
-                    let p = roomPlayers.find(x => x.id === id);
-                    if (p) {
-                        let li = document.createElement('li'); li.innerText = resolveName(p.id); listEl.appendChild(li);
-                    }
-                }
-            });
+            roomPlayers.forEach(p => { let li = document.createElement('li'); li.innerText = resolveName(p.id); listEl.appendChild(li); });
+            botColors.forEach((b, i) => { let li = document.createElement('li'); li.innerText = resolveName('bot_'+i); listEl.appendChild(li); });
 
             let taken = roomPlayers.map(p=>p.color).concat(botColors);
             let myP = roomPlayers.find(p=>p.id===myPeerId);
@@ -973,31 +915,12 @@
             });
 
             if(isHost) {
-                let currentTotal = roomPlayers.length + currentBotCount;
-                let btnDec = document.getElementById('btn-bot-dec');
-                let btnInc = document.getElementById('btn-bot-inc');
-                
-                // อัปเดต state disable ของปุ่ม Bot แบบทันที (Realtime Toggle Guard)
-                if (btnDec) btnDec.disabled = (currentBotCount === 0);
-                if (btnInc) btnInc.disabled = (currentTotal >= 6);
-
                 document.getElementById('btn-host-start').style.display = 'block';
                 document.getElementById('btn-host-start').disabled = (roomPlayers.length + currentBotCount < 3);
             } else { document.getElementById('guest-waiting-text').style.display = 'block'; }
         }
 
         window.hostStartGame = () => {
-            // ป้องกันการกดซ้ำจากการ Double-Tap โดยฉับพลันด้วย Guard Boolean
-            if (window.isStartingRound) return;
-            window.isStartingRound = true;
-
-            // ล็อกและซ่อนปุ่มทันทีใน JS Logic 
-            let startBtn = document.getElementById('btn-host-start');
-            if (startBtn) {
-                startBtn.disabled = true;
-                startBtn.style.display = 'none';
-            }
-
             remove(ref(db, GAME_DB_ID + '/rooms/' + roomId)); 
             guestConnections.forEach(c => c.send({ type: 'START_COUNTDOWN' }));
             doCountdownAndStart();
@@ -1033,21 +956,8 @@
                     if (isHost) {
                         if (gameState.status === 'WAITING') {
                             gameState.players = [];
-                            // นำเข้าตัวละครสู่เกมตามลำดับที่เข้าร่วมห้อง (Timeline Order)
-                            window.joinOrder.forEach(id => {
-                                if (id.startsWith('bot_')) {
-                                    let botIdx = parseInt(id.split('_')[1]);
-                                    let bColor = botColors[botIdx];
-                                    if (bColor) {
-                                        gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 300, hand: [], isOut: false });
-                                    }
-                                } else {
-                                    let p = roomPlayers.find(x => x.id === id);
-                                    if (p) {
-                                        gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false });
-                                    }
-                                }
-                            });
+                            roomPlayers.forEach(p => { gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false }); });
+                            botColors.forEach((b, i) => { gameState.players.push({ id: 'bot_'+i, name: 'บอท '+COLORS.find(c=>c.id===b).name, colorInfo: COLORS.find(c=>c.id===b), isBot: true, points: 300, hand: [], isOut: false }); });
                         }
                         startNewRound();
                     }
@@ -1533,17 +1443,6 @@
         }
 
         window.closeResultModal = () => {
-            // ป้องกันการกดซ้ำจากการ Double-Tap โดยฉับพลันด้วย Guard Boolean (เริ่มรอบใหม่)
-            if (window.isStartingRound) return;
-            window.isStartingRound = true;
-
-            // ล็อกและซ่อนปุ่มทันทีใน JS Logic 
-            let btn = document.getElementById('btn-next-round');
-            if (btn) {
-                btn.disabled = true;
-                btn.style.display = 'none';
-            }
-
             document.getElementById('result-modal').style.display = 'none';
             updateHomeBtnVisibility();
             if(isHost) {
@@ -1758,6 +1657,8 @@
                 target.appendChild(floatEl); 
                 setTimeout(() => floatEl.remove(), 2000);
             }
+
+            // ยกเลิกการเรียก announce() ในส่วนนี้แล้ว เพื่อให้ไม่เกิดการทับซ้อนกับประกาศหลักเรื่องการไหลไพ่
         };
 
         window.showResultModal = (title, detail, isEnd, winners, losers) => {
@@ -1767,9 +1668,6 @@
             
             const visAnnouncer = document.getElementById('visible-game-announcer');
             if (visAnnouncer) visAnnouncer.innerText = '';
-
-            // รีเซ็ต Guard กลับคืนเมื่อขึ้นหน้า Modal ทำให้สามารถเริ่มรอบใหม่ได้อีกครั้ง
-            window.isStartingRound = false;
 
             // แปลงชื่อ [PID:...] เป็นชื่อปกติ
             let resolvedTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
@@ -1801,7 +1699,6 @@
             if(isEnd) {
                 if(btn) {
                     btn.style.display = 'block';
-                    btn.disabled = false; // คืนสถานะปุ่ม
                     btn.innerText = "กลับหน้าหลัก";
                     btn.onclick = () => window.location.reload();
                 }
@@ -1810,7 +1707,6 @@
                 if(btn) {
                     if (isHost) {
                         btn.style.display = 'block';
-                        btn.disabled = false; // คืนสถานะปุ่มสำหรับ Host
                         btn.innerText = "เริ่มรอบใหม่";
                         btn.onclick = closeResultModal;
                         if(waitTxt) waitTxt.style.display = 'none';
