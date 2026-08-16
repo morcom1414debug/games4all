@@ -1659,26 +1659,23 @@
         };
 
         window.showResultModal = (title, detail, isEnd, winners, losers) => {
-            // 1. [จุดสำคัญ] ล้างค่า Live Region และ Announcer ทันทีเพื่อไม่ให้ค้างใน Safari iOS
+            // 1. Clean Clear aria-live ออก ป้องกัน Safari iOS และ Screen Reader อ่านซ้อนค้าง
             const srOnlyAnnouncer = document.getElementById('sr-only-announcer');
             if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
             
             const visAnnouncer = document.getElementById('visible-game-announcer');
             if (visAnnouncer) visAnnouncer.innerText = '';
 
-            // แปลงชื่อ [PID:...] เป็นชื่อปกติ
+            // แปลงชื่อ [PID:...] เป็นชื่อ/สรรพนามที่ถูกต้องตามระบบสี
             let resolvedTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
             let resolvedDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
 
-            // กำหนดข้อความลงใน Modal
             document.getElementById('result-title').innerText = resolvedTitle;
             document.getElementById('result-details').innerHTML = resolvedDetail;
-            
-            // 2. แสดงผล Modal
             document.getElementById('result-modal').style.display = 'flex';
+            
             updateHomeBtnVisibility();
 
-            // จัดการอนิเมชันผู้ชนะ/ผู้แพ้
             if (winners && losers) {
                 winners.forEach(id => {
                     let el = document.getElementById(`avatar-result-status-bar-${id}`);
@@ -1719,14 +1716,11 @@
                 else if (losers && losers.includes(myPeerId)) playSound('lost');
             }
 
-            // 3. [จุดสำคัญ] หน่วงเวลาเล็กน้อย (ประมาณ 200ms) แล้วค่อยสั่ง Focus ไปที่หัวข้อ
-            // เพื่อให้ Safari iOS เรนเดอร์หน้าต่าง Modal เสร็จสิ้นก่อน แล้ว VoiceOver จะอ่านหัวข้อเพียงครั้งเดียวโดยไม่ตีกับเสียงอื่น
+            // 2. ใช้ setTimeout หน่วงเวลาการสั่ง focus() ไปที่ #result-title เพื่อแยกจังหวะการอ่านของ Live Region กับ Focus ออกจากกัน
             setTimeout(() => {
                 const resultTitle = document.getElementById('result-title');
-                if (resultTitle) {
-                    resultTitle.focus();
-                }
-            }, 200);
+                if (resultTitle) resultTitle.focus();
+            }, 150);
         };
     </script>
 </body>
