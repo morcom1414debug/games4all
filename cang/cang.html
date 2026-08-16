@@ -491,7 +491,6 @@
     <p id="guest-waiting-next-round" style="color:var(--yellow); font-weight:bold; margin-top:10px; display:none;" aria-live="polite">รอเจ้าของห้องเริ่มรอบใหม่...</p>
 
 </div>
-    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -592,7 +591,7 @@
         let hostConnection = null, guestConnections = []; 
         let roomPlayers = [], botColors = [], currentBotCount = 0, selectedColorId = 'red';
         let deck = [], discardPile = [];
-        let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null };
+        let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null, flowSourceId: null };
         let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 300 };
         let globalPlayersMap = {}; 
         let turnTimerInterval = null;
@@ -979,6 +978,7 @@
             gameState.status = 'PRE_GAME'; 
             gameState.turnIndex = 0; 
             gameState.topCardOwnerId = null;
+            gameState.flowSourceId = null; // เริ่มต้นตาใหม่ ต้องเคลียร์ source การไหล
             
             gameState.players.forEach((p) => {
                 if(p.points > 0) { 
@@ -1252,6 +1252,7 @@
                     let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
                     cp.hasDiscardedTurn = true; cp.discardedRankThisTurn = dropped.rank;
                     gameState.topCardOwnerId = cp.id; 
+                    gameState.flowSourceId = cp.id; // อัปเดตเจ้าของต้นทางสายไหลให้เป็นผู้ทิ้งไพ่ใบใหม่
                     
                     broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}`);
                     if(cp.hand.length === 0) resolveKang(cp.id, false, 'DRAW_KNOCK'); 
@@ -1272,7 +1273,8 @@
                     let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
                     cp.hasDiscardedTurn = true; cp.discardedRankThisTurn = dropped.rank; cp.hasDrawnTurn = true;
 
-                    let victimId = gameState.topCardOwnerId;
+                    // ดึงเหรียญจากเจ้าของต้นทางของสายไหลเสมอ (ไม่เปลี่ยนผู้จ่ายกลางคัน)
+                    let victimId = gameState.flowSourceId;
                     let victim = gameState.players.find(v => v.id === victimId);
                     
                     if(!victim || victim.isOut) {
@@ -1281,8 +1283,8 @@
                         victim = gameState.players[victimIndex];
                     }
 
-                    // ลบการกำหนดค่า gameState.topCardOwnerId = cp.id; ออก
-                    // เพื่อให้ผู้เล่นคนถัดไปที่ไหลไพ่แบบต่อเนื่อง ดึงเหรียญจากคนแรกสุดที่วางไพ่ได้ถูกต้อง
+                    // อัปเดตเจ้าของไพ่ใบบนสุดให้เป็นผู้ที่ไหลไพ่ปัจจุบัน (แต่ยังคง flowSourceId ไว้ที่คนเดิม)
+                    gameState.topCardOwnerId = cp.id;
 
                     let flowMult = dropped.rank === 'A' ? 2 : 1;
                     let penalty = 10 * flowMult;
@@ -1291,7 +1293,8 @@
                     if(victim.points < 0) victim.points = 0; 
                     cp.points += penalty;
                     
-broadcastAnnounce(`[PID:${cp.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]}${THAI_SUITS[dropped.suit]} ไหลไพ่เลขเดียวกันได้รับ ${penalty} เหรียญ จาก [PID:${victim.id}]`);                    broadcastFloatSC(victim.id, -penalty); broadcastFloatSC(cp.id, penalty);
+                    broadcastAnnounce(`[PID:${cp.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}! ได้รับ ${penalty} เหรียญ จาก [PID:${victim.id}]`);
+                    broadcastFloatSC(victim.id, -penalty); broadcastFloatSC(cp.id, penalty);
 
                     if(cp.hand.length === 0) {
                         resolveKang(cp.id, false, 'FLOW_KNOCK');
@@ -1407,7 +1410,7 @@ broadcastAnnounce(`[PID:${cp.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]}
             let winners = [];
             let losers = [];
 
-            // สร้างรายละเอียดแต้มรวมและการเปลี่ยนถ่ายเหรียญ ของผู้เล่นทุกคน
+            // สร้างรายละเอียดแต้มรวมและการเปลี่ยนถ่ายเหรียญของผู้เล่นทุกคน
             let cardDetailLines = [];
             let coinDetailLines = [];
 
@@ -1640,7 +1643,7 @@ broadcastAnnounce(`[PID:${cp.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]}
             else hostConnection.send({ type: 'PLAYER_ACTION', playerId: myPeerId, action, cardIndex: index });
         };
 
-        // ปรับปรุงฟังก์ชัน showFloatingScore ให้แจ้งเตือนผ่าน เสียงอ่าน ด้วย
+        // ปรับปรุงฟังก์ชัน showFloatingScore ไม่ให้ไปรบกวนข้อความเสียงการไหลไพ่
         window.showFloatingScore = (targetId, amt) => {
             let target = document.getElementById(`avatar-players-status-bar-${targetId}`);
             
@@ -1655,12 +1658,7 @@ broadcastAnnounce(`[PID:${cp.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]}
                 setTimeout(() => floatEl.remove(), 2000);
             }
 
-            // 2. ประกาศเสียงให้ NVDA / VoiceOver อ่านเมื่อมีการเปลี่ยนแปลงเหรียญ
-            let playerDispName = resolveName(targetId);
-            let changeText = amt > 0 ? `ได้รับ ${amt} เหรียญ` : `เสีย ${Math.abs(amt)} เหรียญ`;
-            
-            // เรียกใช้ฟังก์ชัน announce เพื่อให้ Screen Reader อ่านออกเสียง
-            announce(`${playerDispName} ${changeText}`, false);
+            // ยกเลิกการเรียก announce() ในส่วนนี้แล้ว เพื่อให้ไม่เกิดการทับซ้อนกับประกาศหลักเรื่องการไหลไพ่
         };
 
         window.showResultModal = (title, detail, isEnd, winners, losers) => {
