@@ -243,8 +243,6 @@
         .btn-kang25:hover:not(:disabled), .btn-kang25:focus:not(:disabled) { box-shadow: 0 0 12px #8a2be2; outline: 2px solid #ffffff; }
         .btn-end { background: linear-gradient(135deg, #ff8c00, #ffb347); }
         .btn-end:hover:not(:disabled), .btn-end:focus:not(:disabled) { box-shadow: 0 0 12px #ff8c00; outline: 2px solid #ffffff; }
-        .btn-pass { background: linear-gradient(135deg, #7f8c8d, #34495e); }
-        .btn-pass:hover:not(:disabled), .btn-pass:focus:not(:disabled) { box-shadow: 0 0 12px #7f8c8d; outline: 2px solid #ffffff; }
         .action-btn:disabled { opacity: 0.35; cursor: not-allowed; filter: grayscale(100%); }
 
         .announcer-banner {
@@ -335,12 +333,6 @@
         <div id="kang-anim-avatar" style="font-size: 8rem; transition: transform 0.2s;">👤</div>
         <div id="kang-anim-text1" style="color:white; font-size: 1.8rem; font-weight:bold; margin-top:30px; opacity:0; transition: opacity 0.5s; text-shadow: 2px 2px 4px #000;"></div>
         <div id="kang-anim-text2" style="color:#ffd700; font-size: 1.5rem; font-weight:bold; margin-top:15px; opacity:0; transition: opacity 0.5s; text-shadow: 2px 2px 4px #000;"></div>
-    </div>
-
-    <!-- เรื่องที่ 1: Host Disconnect Screen -->
-    <div id="host-disconnect-screen" aria-hidden="true" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:99999; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
-        <h1 style="color:var(--red); font-size: 2rem;">การเชื่อมต่อกับเจ้าของห้องขาดหาย</h1>
-        <button onclick="window.location.href='../index.html'" aria-label="กลับสู่ชุมชน" style="margin-top:30px; font-size:4rem; background:transparent; border:none; cursor:pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">🏠</button>
     </div>
 
     <!-- Setup Screen -->
@@ -470,13 +462,12 @@
         <!-- 3. ลำดับต่อมา: ชุดไพ่ในมือ 5-6 ใบ -->
         <div class="my-hand-container" id="my-hand-ui" role="group" aria-label="ไพ่ในมือของคุณ"></div>
 
-        <!-- 4. ด้านล่างสุด: ปุ่ม จั่วไพ่ แคง แคง25 จบตา และปุ่ม ไม่จ้า (เรื่องที่ 3) -->
+        <!-- 4. ด้านล่างสุด: ปุ่ม จั่วไพ่ แคง แคง25 จบตา -->
         <div class="action-bar" id="action-bar-container">
             <button class="action-btn btn-draw" id="btn-draw" onclick="clientAction('DRAW')" disabled>จั่วไพ่</button>
             <button class="action-btn btn-end" id="btn-end-turn" onclick="clientAction('END_TURN')" disabled>จบตา</button>
             <button class="action-btn btn-kang" id="btn-kang" onclick="clientAction('KANG')" disabled>แคง!</button>
             <button class="action-btn btn-kang25" id="btn-kang25" onclick="clientAction('KANG_25')" style="display:none;">แคง 25!</button>
-            <button class="action-btn btn-pass" id="btn-pass" onclick="clientAction('PASS')" style="display:none;">ไม่จ้า</button>
         </div>
     </div>
 
@@ -605,27 +596,10 @@
         let roomPlayers = [], botColors = [], currentBotCount = 0, selectedColorId = 'red';
         let deck = [], discardPile = [];
         let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null, flowSourceId: null };
-        let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 300, hasPassed: false };
+        let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 300 };
         let globalPlayersMap = {}; 
         let turnTimerInterval = null;
         let announcerTimeout = null;
-
-        // เรื่องที่ 1: ระบบจัดการ Host Disconnect (ตรวจสอบ Heartbeat)
-        let hostDisconnectTimer = null;
-        function resetHostHeartbeat() {
-            if (isHost) return; // Host ไม่ต้องเช็คตัวเอง
-            if (hostDisconnectTimer) clearTimeout(hostDisconnectTimer);
-            hostDisconnectTimer = setTimeout(() => {
-                // ซ่อนหน้าจอเกมทั้งหมดทันที
-                ['setup-screen', 'waiting-room-screen', 'game-screen', 'result-modal', 'countdown-screen'].forEach(id => {
-                    let el = document.getElementById(id);
-                    if (el) el.style.display = 'none';
-                });
-                // แสดงหน้าจอแจ้งเตือน
-                const hds = document.getElementById('host-disconnect-screen');
-                if (hds) hds.style.display = 'flex';
-            }, 50000); // 50 วินาที
-        }
 
         // ตัวแปรสำหรับอ่านไพ่บนกองล่าสุดผ่าน Shortcut (Alt+c)
         let currentTopCardText = "ยังไม่มีไพ่บนกอง";
@@ -821,13 +795,6 @@
                         announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${roomId}`, false);
                         playSound('1');
                         updateLobbyUI(); listenHostConnections();
-
-                        // เรื่องที่ 1: ระบบจัดการ Host Disconnect (ส่ง Heartbeat)
-                        setInterval(() => {
-                            guestConnections.forEach(c => {
-                                if (c.open) c.send({ type: 'PING' });
-                            });
-                        }, 10000); // 10 วินาที
                     });
                 }
             });
@@ -842,15 +809,8 @@
             updateHomeBtnVisibility();
             
             hostConnection = peer.connect("cang-host-" + roomId);
-            hostConnection.on('open', () => { 
-                hostConnection.send({ type: 'JOIN_ROOM' }); 
-                announce(`เข้าร่วมห้องสำเร็จ รอแจกไพ่`, false); 
-                resetHostHeartbeat(); // เริ่มจับเวลา Heartbeat แรก
-            });
+            hostConnection.on('open', () => { hostConnection.send({ type: 'JOIN_ROOM' }); announce(`เข้าร่วมห้องสำเร็จ รอแจกไพ่`, false); });
             hostConnection.on('data', (data) => {
-                resetHostHeartbeat(); // ทุกครั้งที่รับ data ถือเป็นการรีเซ็ต Heartbeat
-                if (data.type === 'PING') return; // สัญญาณ Heartbeat ปกติ ไม่ต้องทำอะไรเพิ่ม
-
                 if (data.type === 'LOBBY_UPDATE') { 
                     roomPlayers = data.roomPlayers; 
                     currentBotCount = data.botCount; 
@@ -878,7 +838,7 @@
                 if (data.type === 'ANIM_SC_FLOAT') showFloatingScore(data.targetId, data.amt);
                 if (data.type === 'SHOW_RESULT') showResultModal(data.title, data.detail, data.isEnd, data.winners, data.losers);
                 if (data.type === 'ANNOUNCE') announce(data.msg);
-                if (data.type === 'TIMER_UPDATE') updateTimerUI(data.timeLeft, data.maxTime);
+                if (data.type === 'TIMER_UPDATE') updateTimerUI(data.timeLeft);
                 if (data.type === 'PLAY_SOUND') playSound(data.sound);
                 if (data.type === 'SHOW_TRANSITION') showTransition(data.msg, data.duration);
                 if (data.type === 'HIDE_TRANSITION') hideTransition();
@@ -1079,12 +1039,12 @@
                                     let botIdx = parseInt(id.split('_')[1]);
                                     let bColor = botColors[botIdx];
                                     if (bColor) {
-                                        gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 300, hand: [], isOut: false, hasPassed: false });
+                                        gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 300, hand: [], isOut: false });
                                     }
                                 } else {
                                     let p = roomPlayers.find(x => x.id === id);
                                     if (p) {
-                                        gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false, hasPassed: false });
+                                        gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false });
                                     }
                                 }
                             });
@@ -1117,7 +1077,6 @@
                     p.hasDrawnTurn = false; 
                     p.hasDiscardedTurn = false;
                     p.discardedRankThisTurn = null;
-                    p.hasPassed = false; // เรื่องที่ 3: รีเซ็ตสถานะโหวตไม่จ้า
                 } else { p.isOut = true; } 
             });
             
@@ -1147,8 +1106,7 @@
 
         function startTurnTimer() {
             clearInterval(turnTimerInterval);
-            let timeLeft = 50; // เรื่องที่ 2: ปรับเวลาตาเดินปกติเป็น 50 วินาที
-            broadcastTimer(timeLeft);
+            let timeLeft = 40; broadcastTimer(timeLeft);
             turnTimerInterval = setInterval(() => {
                 timeLeft--; broadcastTimer(timeLeft);
                 if(timeLeft <= 0) { clearInterval(turnTimerInterval); handleTurnTimeout(); }
@@ -1156,15 +1114,15 @@
         }
 
         function broadcastTimer(t) {
-            let maxT = gameState.status === 'PRE_GAME' ? 40 : 50;
-            if(myPeerId) window.updateTimerUI(t, maxT);
-            guestConnections.forEach(c => c.send({ type: 'TIMER_UPDATE', timeLeft: t, maxTime: maxT }));
+            if(myPeerId) window.updateTimerUI(t);
+            guestConnections.forEach(c => c.send({ type: 'TIMER_UPDATE', timeLeft: t }));
         }
 
         // อัปเดตแถบสี Progress bar แบบแสดงเวลาลดลงเรื่อยๆ
-        window.updateTimerUI = (timeLeft, maxTime = 40) => {
+        window.updateTimerUI = (timeLeft) => {
             const timerBar = document.getElementById('timer-bar-fill');
             if(timerBar) {
+                let maxTime = 40;
                 let pct = Math.max(0, (timeLeft / maxTime) * 100);
                 timerBar.style.width = pct + '%';
                 timerBar.style.background = timeLeft <= 10 ? 'var(--red)' : 'var(--orange)';
@@ -1175,15 +1133,14 @@
             let cp = gameState.players[gameState.turnIndex];
             if(cp.isBot || gameState.status !== 'PLAYING') return;
             
-            // เรื่องที่ 2: แปลงร่างเป็นบอทอัตโนมัติเมื่อครบ 50 วินาที (AFK / Disconnect)
-            cp.isBot = true;
-            let colorName = cp.colorInfo.name;
-            broadcastAnnounce(`📢 ประกาศ: ผู้เล่นสี${colorName} หลุดไปแปลงร่างเป็นบอทสี${colorName} แล้ว`);
-            
-            syncStateToAll();
-            
-            // ให้บอทเดินเกมต่ออัตโนมัติทันที
-            setTimeout(() => playBotSequence(cp), 1000);
+            if (discardPile.length === 0 && !cp.hasDiscardedTurn) {
+                if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW');
+                if (cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0);
+            } else {
+                if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW');
+                if (!cp.hasDiscardedTurn && cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0);
+            }
+            if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
         }
 
         function syncStateToAll() {
@@ -1203,7 +1160,7 @@
 
             gameState.players.forEach(p => {
                 if(!p.isBot) {
-                    let privateState = { hand: p.hand, hasDrawn: p.hasDrawnTurn, hasDiscarded: p.hasDiscardedTurn, discardedRank: p.discardedRankThisTurn, points: p.points, hasPassed: p.hasPassed };
+                    let privateState = { hand: p.hand, hasDrawn: p.hasDrawnTurn, hasDiscarded: p.hasDiscardedTurn, discardedRank: p.discardedRankThisTurn, points: p.points };
                     if (p.id === myPeerId) renderClientGame(publicState, privateState);
                     else {
                         let conn = guestConnections.find(c => c.peer === p.id);
@@ -1339,33 +1296,6 @@
             if (gameState.status === 'PRE_GAME') {
                 let handSum = p.hand.reduce((sum, c) => sum + c.val, 0);
                 let isFirstPlayer = (pId === gameState.players[0].id);
-
-                // เรื่องที่ 3: ระบบโหวตปุ่ม ไม่จ้า
-                if (action === 'PASS') {
-                    if (!p.hasPassed) {
-                        p.hasPassed = true;
-                        syncStateToAll();
-                        
-                        // ตรวจสอบว่าผู้เล่นจริงทุกคน (ที่ไม่ใช่บอท) โหวตครบแล้วหรือไม่
-                        let allPassed = true;
-                        gameState.players.forEach(player => {
-                            if (!player.isOut && !player.isBot && !player.hasPassed) {
-                                allPassed = false;
-                            }
-                        });
-
-                        if (allPassed && gameState.status === 'PRE_GAME') {
-                            clearInterval(turnTimerInterval);
-                            triggerSound('60'); 
-                            gameState.status = 'PLAYING';
-                            broadcastAnnounce("📢 ผู้เล่นทุกคนกดไม่จ้า! เข้าสู่รอบการเล่นทันที");
-                            syncStateToAll();
-                            startTurnTimer(); 
-                            checkBotTurn();
-                        }
-                    }
-                    return;
-                }
 
                 if (action === 'KANG_25' && handSum >= 25) {
                     broadcastKangAnimation(p.id, true);
@@ -1708,7 +1638,6 @@
             const btnKang = document.getElementById('btn-kang');
             const btnKang25 = document.getElementById('btn-kang25');
             const btnEnd = document.getElementById('btn-end-turn');
-            const btnPass = document.getElementById('btn-pass'); // ปุ่มเรื่องที่ 3
             let topC = publicState.topDiscard;
 
             // บันทึกข้อความไพ่บนกองปัจจุบันเพื่อให้ Keyboard Shortcut (Alt+c) อ่านได้
@@ -1724,40 +1653,32 @@
                 btnDraw.style.display = 'none';
                 btnEnd.style.display = 'none';
                 
-                // เรื่องที่ 3: แสดงปุ่ม ไม่จ้า และจัดการ Dim ปุ่ม
-                if (btnPass) {
-                    btnPass.style.display = 'inline-block';
-                    btnPass.disabled = localPlayerState.hasPassed;
-                }
-                
-                // ปรับแต่ง Logic แคง และ แคง 25 ของ PRE_GAME
+                // ปรับแต่ง Logic แคง และ แคง 25 ของ PRE_GAME ตามที่ร้องขอ
                 if (isFirstPlayer) {
                     if (myHandSum < 25) {
                         btnKang.style.display = 'inline-block';
-                        btnKang.disabled = localPlayerState.hasPassed; // Dim ถ้ากดผ่านไปแล้ว
-                        btnKang25.style.display = 'none';
+                        btnKang.disabled = false;
+                        btnKang25.style.display = 'none'; // ซ่อนปุ่มแคง 25
                         btnKang25.disabled = true;
                     } else {
-                        btnKang.style.display = 'none'; 
+                        btnKang.style.display = 'none'; // ซ่อนปุ่มแคงปกติ
                         btnKang.disabled = true;
                         btnKang25.style.display = 'inline-block';
-                        btnKang25.disabled = localPlayerState.hasPassed; // Dim ถ้ากดผ่านไปแล้ว
+                        btnKang25.disabled = false;
                     }
                 } else {
-                    btnKang.style.display = 'none'; 
+                    btnKang.style.display = 'none'; // ผู้เล่นอื่นไม่มีสิทธิ์แคงปกติอยู่แล้ว
                     btnKang.disabled = true;
                     if (myHandSum >= 25) {
                         btnKang25.style.display = 'inline-block';
-                        btnKang25.disabled = localPlayerState.hasPassed; // Dim ถ้ากดผ่านไปแล้ว
+                        btnKang25.disabled = false;
                     } else {
-                        btnKang25.style.display = 'none'; 
+                        btnKang25.style.display = 'none'; // แต้มไม่ถึง 25 ให้ซ่อนปุ่มแคง 25
                         btnKang25.disabled = true;
                     }
                 }
             } else if (publicState.status === 'PLAYING' || publicState.status === 'TRANSITION') {
                 btnKang25.style.display = 'none';
-                if(btnPass) btnPass.style.display = 'none'; // ซ่อนเมื่อเริ่มเกม
-
                 btnDraw.style.display = 'inline-block';
                 btnEnd.style.display = 'inline-block';
                 btnKang.style.display = 'inline-block';
