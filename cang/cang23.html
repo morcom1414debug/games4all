@@ -470,14 +470,13 @@
         <!-- 3. ลำดับต่อมา: ชุดไพ่ในมือ 5-6 ใบ -->
         <div class="my-hand-container" id="my-hand-ui" role="group" aria-label="ไพ่ในมือของคุณ"></div>
 
-        <!-- 4. ด้านล่างสุด: ปุ่ม จั่วไพ่ แคง แคง25 จบตา รวมถึงปุ่มชนะกติกาพิเศษ -->
+        <!-- 4. ด้านล่างสุด: ปุ่ม จั่วไพ่ แคง แคง25 จบตา -->
         <div class="action-bar" id="action-bar-container">
             <button class="action-btn btn-draw" id="btn-draw" onclick="clientAction('DRAW')" disabled>จั่วไพ่</button>
             <button class="action-btn btn-end" id="btn-end-turn" onclick="clientAction('END_TURN')" disabled>จบตา</button>
             <button class="action-btn btn-kang" id="btn-kang" onclick="clientAction('KANG')" disabled>แคง!</button>
             <button class="action-btn btn-kang25" id="btn-kang25" onclick="clientAction('KANG_25')" style="display:none;">แคง 25!</button>
             <button class="action-btn btn-skip" id="btn-skip-pre" onclick="clientAction('SKIP_PRE')" style="display:none;">ไม่จ้า</button>
-            <button class="action-btn" id="btn-special" onclick="submitSpecialWin()" style="display:none; background: linear-gradient(135deg, #ffd700, #ff8c00); color: #1a1a2e; text-shadow: none;"></button>
         </div>
     </div>
 
@@ -510,67 +509,6 @@
         window.joinOrder = []; // สำหรับรักษาลำดับผู้เล่นตามเวลา
         window.isStartingRound = false; // Guard ป้องกันปุ่มเริ่มรอบและแจกไพ่ถูกกดซ้ำ
         window.hasAnnouncedMyColor = false; // ป้องกันการประกาศสีตัวละครซ้ำ
-
-        let currentSpecialWinType = null;
-        window.submitSpecialWin = () => {
-            if (currentSpecialWinType) clientAction('SPECIAL_WIN', currentSpecialWinType);
-        };
-
-        function getSpecialWinType(hand, status, isFirstTurn, isMyTurn, topDiscard, hasDrawn) {
-            if (!hand || hand.length === 0) return null;
-            
-            // หมวด 1: กติกา 3A ใช้ได้ตลอดทั้งเกม
-            if (hand.filter(c => c.rank === 'A').length >= 3) return '3A';
-
-            // หมวด 2: เฉพาะช่วง Pre-game
-            if (status === 'PRE_GAME' && hand.length === 5) {
-                let rankCounts = {};
-                let suitCounts = {};
-                let sum = 0;
-                hand.forEach(c => {
-                    rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1;
-                    suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1;
-                    sum += c.val;
-                });
-                
-                if (Object.values(rankCounts).some(v => v >= 3)) return 'ตอง';
-                if (sum === 50) return '50';
-                if (Object.values(suitCounts).some(v => v === 5)) return 'ดอกเดียวกัน';
-            }
-
-            // หมวด 3: เฉพาะ Turn ที่ 1 ของผู้เล่นแต่ละคนเท่านั้น
-            if (status === 'PLAYING' && isFirstTurn && isMyTurn) {
-                let sixCards = [...hand];
-                if (!hasDrawn && topDiscard) {
-                    sixCards.push(topDiscard);
-                }
-                
-                if (sixCards.length === 6) {
-                    let rankCounts = {};
-                    sixCards.forEach(c => {
-                        rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1;
-                    });
-                    
-                    let pairCount = 0;
-                    for (let r in rankCounts) {
-                        pairCount += Math.floor(rankCounts[r] / 2);
-                    }
-                    if (pairCount === 3) return '3คู่';
-
-                    const rankVals = {'A':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13};
-                    let sortedVals = sixCards.map(c => rankVals[c.rank]).sort((a,b) => a-b);
-                    let isStraight = true;
-                    for(let i=0; i<5; i++) {
-                        if (sortedVals[i] + 1 !== sortedVals[i+1]) {
-                            isStraight = false;
-                            break;
-                        }
-                    }
-                    if (isStraight) return 'เรียง';
-                }
-            }
-            return null;
-        }
 
         const delay = ms => new Promise(res => setTimeout(res, ms));
 
@@ -668,7 +606,7 @@
         let roomPlayers = [], botColors = [], currentBotCount = 0, selectedColorId = 'red';
         let deck = [], discardPile = [];
         let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null, flowSourceId: null, skipPreVotes: [] };
-        let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 300, turnCount: 0 };
+        let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 300 };
         let globalPlayersMap = {}; 
         let turnTimerInterval = null;
         let announcerTimeout = null;
@@ -1150,12 +1088,12 @@
                                     let botIdx = parseInt(id.split('_')[1]);
                                     let bColor = botColors[botIdx];
                                     if (bColor) {
-                                        gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 300, hand: [], isOut: false, turnCount: 0 });
+                                        gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 300, hand: [], isOut: false });
                                     }
                                 } else {
                                     let p = roomPlayers.find(x => x.id === id);
                                     if (p) {
-                                        gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false, turnCount: 0 });
+                                        gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false });
                                     }
                                 }
                             });
@@ -1189,7 +1127,6 @@
                     p.hasDrawnTurn = false; 
                     p.hasDiscardedTurn = false;
                     p.discardedRankThisTurn = null;
-                    p.turnCount = 0;
                 } else { p.isOut = true; } 
             });
             
@@ -1274,7 +1211,7 @@
 
             gameState.players.forEach(p => {
                 if(!p.isBot) {
-                    let privateState = { hand: p.hand, hasDrawn: p.hasDrawnTurn, hasDiscarded: p.hasDiscardedTurn, discardedRank: p.discardedRankThisTurn, points: p.points, turnCount: p.turnCount };
+                    let privateState = { hand: p.hand, hasDrawn: p.hasDrawnTurn, hasDiscarded: p.hasDiscardedTurn, discardedRank: p.discardedRankThisTurn, points: p.points };
                     if (p.id === myPeerId) renderClientGame(publicState, privateState);
                     else {
                         let conn = guestConnections.find(c => c.peer === p.id);
@@ -1403,74 +1340,9 @@
             if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
         }
 
-        function resolveSpecialWin(callerId, winType) {
-            window.nextRoundHostId = callerId;
-            gameState.status = 'TRANSITION'; 
-            clearInterval(turnTimerInterval);
-            
-            let active = gameState.players.filter(p => !p.isOut);
-            let beforePoints = {};
-            active.forEach(p => beforePoints[p.id] = p.points);
-            
-            let caller = active.find(p => p.id === callerId);
-            let others = active.filter(p => p.id !== callerId);
-            
-            let aceCount = caller.hand.filter(c => c.rank === 'A').length;
-            let payPerPerson = 0;
-            
-            if (winType === '3A') {
-                payPerPerson = 40;
-            } else {
-                payPerPerson = 20 + (aceCount * 10);
-            }
-            
-            others.forEach(p => {
-                p.points -= payPerPerson;
-                if(p.points < 0) p.points = 0;
-                caller.points += payPerPerson;
-            });
-            
-            let title = `[PID:${caller.id}] ชนะพิเศษกติกา: ${winType}!`;
-            let winners = [caller.id];
-            let losers = [];
-            let cardDetailLines = [`[PID:${caller.id}] เปิดไพ่ชนะกติกา ${winType}`];
-            let coinDetailLines = [];
-            
-            active.forEach(p => {
-                let diff = p.points - beforePoints[p.id];
-                if (diff > 0) {
-                    coinDetailLines.push(`[PID:${p.id}] ได้รับ ${diff} เหรียญ`);
-                } else if (diff < 0) {
-                    losers.push(p.id);
-                    coinDetailLines.push(`[PID:${p.id}] เสีย ${Math.abs(diff)} เหรียญ`);
-                } else {
-                    coinDetailLines.push(`[PID:${p.id}] ไม่ได้ไม่เสียเหรียญ`);
-                }
-            });
-            
-            let resultDetail = cardDetailLines.join('<br>') + '<br><br>' + coinDetailLines.join('<br>');
-            
-            syncStateToAll(); 
-            broadcastTransition('จบเกมด้วยกติกาพิเศษ! กำลังสรุปผล...', 4000);
-            
-            setTimeout(() => {
-                gameState.status = 'END';
-                syncStateToAll();
-                let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false, winners, losers };
-                if(myPeerId) showResultModal(title, resultDetail, false, winners, losers);
-                guestConnections.forEach(c => c.send(modalData));
-            }, 4000);
-        }
-
         function processPlayerAction(pId, action, cardIndex) {
             let p = gameState.players.find(x => x.id === pId);
             if (!p || p.isOut) return;
-
-            if (action === 'SPECIAL_WIN') {
-                let winType = cardIndex;
-                resolveSpecialWin(p.id, winType);
-                return;
-            }
 
             if (gameState.status === 'PRE_GAME') {
                 if (action === 'SKIP_PRE' && !p.isBot) {
@@ -1602,7 +1474,6 @@
                 }
             }
             else if(action === 'END_TURN' && cp.hasDiscardedTurn) {
-                cp.turnCount = (cp.turnCount || 0) + 1;
                 triggerSound('select'); 
                 broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา`);
                 
@@ -1839,7 +1710,6 @@
             const btnKang25 = document.getElementById('btn-kang25');
             const btnEnd = document.getElementById('btn-end-turn');
             const btnSkip = document.getElementById('btn-skip-pre');
-            const btnSpecial = document.getElementById('btn-special');
             let topC = publicState.topDiscard;
 
             // บันทึกข้อความไพ่บนกองปัจจุบันเพื่อให้ Keyboard Shortcut (Alt+c) อ่านได้
@@ -1849,39 +1719,40 @@
                 currentTopCardText = `ยังไม่มีไพ่บนกองทิ้ง`;
             }
 
-            let hasVoted = publicState.skipVotes && publicState.skipVotes.includes(myPeerId);
-
             if (publicState.status === 'PRE_GAME') {
                 let myHandSum = (localPlayerState.hand || []).reduce((s, c) => s + (c.val || getCardValue(c.rank)), 0);
 
                 btnDraw.style.display = 'none';
                 btnEnd.style.display = 'none';
                 
+                // ปรับแต่ง Logic แคง และ แคง 25 ของ PRE_GAME ตามที่ร้องขอ
                 if (isFirstPlayer) {
                     if (myHandSum < 25) {
                         btnKang.style.display = 'inline-block';
-                        btnKang.disabled = hasVoted; // Dimming KANG
-                        btnKang25.style.display = 'none';
+                        btnKang.disabled = false;
+                        btnKang25.style.display = 'none'; // ซ่อนปุ่มแคง 25
                         btnKang25.disabled = true;
                     } else {
-                        btnKang.style.display = 'none'; 
+                        btnKang.style.display = 'none'; // ซ่อนปุ่มแคงปกติ
                         btnKang.disabled = true;
                         btnKang25.style.display = 'inline-block';
-                        btnKang25.disabled = hasVoted; // Dimming KANG_25
+                        btnKang25.disabled = false;
                     }
                 } else {
-                    btnKang.style.display = 'none';
+                    btnKang.style.display = 'none'; // ผู้เล่นอื่นไม่มีสิทธิ์แคงปกติอยู่แล้ว
                     btnKang.disabled = true;
                     if (myHandSum >= 25) {
                         btnKang25.style.display = 'inline-block';
-                        btnKang25.disabled = hasVoted; // Dimming KANG_25
+                        btnKang25.disabled = false;
                     } else {
-                        btnKang25.style.display = 'none';
+                        btnKang25.style.display = 'none'; // แต้มไม่ถึง 25 ให้ซ่อนปุ่มแคง 25
                         btnKang25.disabled = true;
                     }
                 }
 
+                // แสดงปุ่ม "ไม่จ้า" ให้กดได้ และ dim ไว้ถ้าผู้เล่นกดไปแล้ว
                 btnSkip.style.display = 'inline-block';
+                let hasVoted = publicState.skipVotes && publicState.skipVotes.includes(myPeerId);
                 btnSkip.disabled = hasVoted;
 
             } else if (publicState.status === 'PLAYING' || publicState.status === 'TRANSITION') {
@@ -1896,24 +1767,6 @@
                     btnKang.disabled = localPlayerState.hasDrawn || publicState.discardPileCount === 0;
                     btnEnd.disabled = !localPlayerState.hasDiscarded;
                 } else { btnDraw.disabled = true; btnKang.disabled = true; btnEnd.disabled = true; }
-            }
-
-            // ตรวจสอบเงื่อนไขกติกาชนะพิเศษ
-            let isFirstTurn = (localPlayerState.turnCount === 0);
-            currentSpecialWinType = getSpecialWinType(
-                localPlayerState.hand, 
-                publicState.status, 
-                isFirstTurn, 
-                isMyTurn, 
-                publicState.topDiscard, 
-                localPlayerState.hasDrawn
-            );
-
-            if (currentSpecialWinType && (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING')) {
-                btnSpecial.style.display = 'inline-block';
-                btnSpecial.innerText = currentSpecialWinType;
-            } else {
-                btnSpecial.style.display = 'none';
             }
 
             const deckCountTxt = document.getElementById('deck-count-text');
