@@ -878,12 +878,6 @@ function processPlayerAction(pId, action, cardIndex) {
         let flowPlayer = gameState.players.find(x => x.id === pId);
         if (!flowPlayer || flowPlayer.isOut) return;
         
-        // --- การตั้งค่าป้องกันที่ 1 ---
-        // ป้องกันการไหลถ้าผู้เล่นคนนั้นทำการจั่วไพ่แล้ว หรือทิ้งไพ่ปกติไปแล้วในเทิร์นตัวเอง
-        if (flowPlayer.hasDrawnTurn || flowPlayer.hasDiscardedTurn) {
-            return;
-        }
-
         let topCard = discardPile[discardPile.length - 1]; let card = flowPlayer.hand[cardIndex];
         if (topCard && card.rank === topCard.rank) {
             triggerSound('follow'); let dropped = flowPlayer.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
@@ -1191,16 +1185,13 @@ function renderClientGame(publicState, privateState) {
 
     const handUi = document.getElementById('my-hand-ui'); handUi.innerHTML = '';
     if (publicState.status !== 'END') {
-        
-        // --- การตั้งค่าป้องกันที่ 2 ---
-        // ปรับเงื่อนไข canFlowCard ไม่ให้เกิดสถานะการไหลได้ ถ้าตัวผู้เล่นจั่วไพ่แล้ว หรือทิ้งไพ่รอบนี้ไปแล้ว
         (localPlayerState.hand || []).forEach((c, index) => {
             let cardEl = document.createElement('button');
             cardEl.className = `card ${['♥','♦'].includes(c.suit)?'red':'black'}`;
             let tRank = THAI_RANKS[c.rank]; let tSuit = THAI_SUITS[c.suit];
             let actionHint = ""; cardEl.disabled = true;
             
-            let canFlowCard = (topC && c.rank === topC.rank && !localPlayerState.hasDrawn && !localPlayerState.hasDiscarded);
+            let canFlowCard = (topC && c.rank === topC.rank);
 
             if (publicState.status === 'PLAYING') {
                 if (canFlowCard) {
