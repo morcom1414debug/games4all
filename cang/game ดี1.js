@@ -193,29 +193,8 @@ function resetHeartbeat() {
 
 let currentTopCardText = "ยังไม่มีไพ่บนกอง";
 
-// --- CHEAT MODE BUFFERS ---
-let cheatBuffer = "";
-let cheatTimeout = null;
-
-// Shortcut Keys & Cheat Code Event Listener
+// Shortcut Keys
 document.addEventListener('keydown', (e) => {
-    // 1. Cheat Mode Logic
-    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-        if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
-            cheatBuffer += e.key;
-            clearTimeout(cheatTimeout);
-            cheatTimeout = setTimeout(() => { cheatBuffer = ""; }, 2000);
-
-            const cmd = cheatBuffer.toLowerCase();
-            if (cmd.includes("ตอง")) { setCheatHand("ตอง"); cheatBuffer = ""; }
-            else if (cmd.includes("ดอก") || cmd.includes("สี")) { setCheatHand("ดอก"); cheatBuffer = ""; }
-            else if (cmd.includes("เรียง")) { setCheatHand("เรียง"); cheatBuffer = ""; }
-            else if (cmd.includes("50")) { setCheatHand("50"); cheatBuffer = ""; }
-            else if (cmd.includes("3a")) { setCheatHand("3a"); cheatBuffer = ""; }
-        }
-    }
-
-    // 2. Shortcut Keys Logic
     if (e.altKey) {
         const key = e.key.toLowerCase();
         if (key === 'e') {
@@ -1079,8 +1058,6 @@ window.closeResultModal = () => {
 // Client Rendering Logic
 // =========================================================
 function renderClientGame(publicState, privateState) {
-    window.currentPublicState = publicState; // [แคช state ล่าสุดไว้ใช้ดึงเวลาเสกไพ่ใน Client]
-
     if (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING') { document.getElementById('result-modal').style.display = 'none'; }
     updateHomeBtnVisibility();
 
@@ -1308,76 +1285,3 @@ window.showResultModal = (title, detail, isEnd, winners, losers) => {
 
     setTimeout(() => { const resultTitle = document.getElementById('result-title'); if (resultTitle) resultTitle.focus(); }, 200);
 };
-
-// =========================================================
-// --- CHEAT MODE LOGIC (รวมฟังก์ชันไว้ล่างสุด) ---
-// =========================================================
-function setCheatHand(type) {
-    let newHand = [];
-    if (type === "ตอง") {
-        newHand = [
-            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
-            { suit: '♥', rank: '7', value: 5, val: 5, id: '7♥' },
-            { suit: '♦', rank: '7', value: 5, val: 5, id: '7♦' },
-            { suit: '♣', rank: '7', value: 5, val: 5, id: '7♣' },
-            { suit: '♠', rank: 'K', value: 10, val: 10, id: 'K♠' },
-            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' },
-            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' }
-        ];
-    } else if (type === "ดอก" || type === "สี") {
-        newHand = [
-            { suit: '♠', rank: '2', value: 5, val: 5, id: '2♠' },
-            { suit: '♠', rank: '3', value: 5, val: 5, id: '3♠' },
-            { suit: '♠', rank: '4', value: 5, val: 5, id: '4♠' },
-            { suit: '♠', rank: '5', value: 5, val: 5, id: '5♠' },
-            { suit: '♠', rank: '6', value: 5, val: 5, id: '6♠' },
-            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
-            { suit: '♠', rank: '8', value: 5, val: 5, id: '8♠' }
-        ];
-    } else if (type === "เรียง") {
-        newHand = [
-            { suit: '♥', rank: '4', value: 5, val: 5, id: '4♥' },
-            { suit: '♥', rank: '5', value: 5, val: 5, id: '5♥' },
-            { suit: '♥', rank: '6', value: 5, val: 5, id: '6♥' },
-            { suit: '♣', rank: '8', value: 5, val: 5, id: '8♣' },
-            { suit: '♣', rank: '9', value: 5, val: 5, id: '9♣' },
-            { suit: '♣', rank: '10', value: 10, val: 10, id: '10♣' },
-            { suit: '♣', rank: 'J', value: 10, val: 10, id: 'J♣' }
-        ];
-    } else if (type === "50") {
-        newHand = [
-            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
-            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
-            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
-            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
-            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
-            { suit: '♦', rank: '10', value: 10, val: 10, id: '10♦' },
-            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' }
-        ];
-    } else if (type === "3a") {
-        newHand = [
-            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
-            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
-            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
-            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
-            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
-            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' },
-            { suit: '♣', rank: 'K', value: 10, val: 10, id: 'K♣' }
-        ];
-    }
-
-    if (isHost) {
-        let p = gameState.players.find(x => x.id === myPeerId);
-        if (p) {
-            p.hand = newHand;
-            syncStateToAll();
-            announce("เสกไพ่สำเร็จ (Host)", false);
-        }
-    } else {
-        localPlayerState.hand = newHand;
-        if (window.currentPublicState) {
-            renderClientGame(window.currentPublicState, localPlayerState);
-        }
-        announce("เสกไพ่สำเร็จ (Client)", false);
-    }
-}
