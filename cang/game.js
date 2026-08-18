@@ -78,6 +78,9 @@ function getSpecialWinType(hand, player) {
 
     return null; // ไม่มีกฎพิเศษที่ตรงเงื่อนไข
 }
+// =========================================================
+
+const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // =========================================================
 // Audio Setup (คงไว้ 100%)
@@ -190,8 +193,29 @@ function resetHeartbeat() {
 
 let currentTopCardText = "ยังไม่มีไพ่บนกอง";
 
-// Shortcut Keys
+// --- CHEAT MODE BUFFERS ---
+let cheatBuffer = "";
+let cheatTimeout = null;
+
+// Shortcut Keys & Cheat Code Event Listener
 document.addEventListener('keydown', (e) => {
+    // 1. Cheat Mode Logic
+    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
+            cheatBuffer += e.key;
+            clearTimeout(cheatTimeout);
+            cheatTimeout = setTimeout(() => { cheatBuffer = ""; }, 2000);
+
+            const cmd = cheatBuffer.toLowerCase();
+            if (cmd.includes("ตอง")) { setCheatHand("ตอง"); cheatBuffer = ""; }
+            else if (cmd.includes("ดอก") || cmd.includes("สี")) { setCheatHand("ดอก"); cheatBuffer = ""; }
+            else if (cmd.includes("เรียง")) { setCheatHand("เรียง"); cheatBuffer = ""; }
+            else if (cmd.includes("50")) { setCheatHand("50"); cheatBuffer = ""; }
+            else if (cmd.includes("3a")) { setCheatHand("3a"); cheatBuffer = ""; }
+        }
+    }
+
+    // 2. Shortcut Keys Logic
     if (e.altKey) {
         const key = e.key.toLowerCase();
         if (key === 'e') {
@@ -695,64 +719,8 @@ function broadcastFloatSC(targetId, amt) {
 }
 
 // =========================================================
-// [พื้นที่สำหรับพัฒนาต่อ #2] ระบบ Animation และ Visual Layer
+// [พื้นที่สำหรับพัฒนาต่อ #2] ระบบ Animation
 // =========================================================
-
-// สร้าง Particle สวยงามแบบไม่ต้องพึ่งพา Library เพิ่มเติม
-window.createParticles = (type, x, y) => {
-    const container = document.createElement('div');
-    container.style.position = 'fixed'; container.style.left = x + 'px'; container.style.top = y + 'px';
-    container.style.pointerEvents = 'none'; container.style.zIndex = '9999';
-    container.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(container);
-
-    let colors = ['#ffd700', '#ffea00', '#fff'];
-    if (type === 'coin') colors = ['#00ff00', '#a8ff78'];
-    if (type === 'impact') colors = ['#ff4d4d', '#ff7675'];
-
-    for(let i=0; i < (type === 'gold' ? 15 : 8); i++) {
-        let p = document.createElement('div');
-        p.className = `particle p-${type}`;
-        p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-        
-        let angle = Math.random() * Math.PI * 2;
-        let dist = Math.random() * 60 + 20;
-        p.style.setProperty('--dx', Math.cos(angle)*dist + 'px');
-        p.style.setProperty('--dy', Math.sin(angle)*dist + 'px');
-        
-        container.appendChild(p);
-    }
-    setTimeout(() => container.remove(), 1200);
-}
-
-// Floating Score Animation (เหรียญเด้ง)
-window.showFloatingScore = (targetId, amt) => {
-    let isPositive = amt > 0;
-    let text = (isPositive ? '+' : '') + amt;
-    let color = isPositive ? 'var(--green)' : 'var(--red)';
-
-    let avatar = document.getElementById(`avatar-players-status-bar-${targetId}`);
-    if(!avatar) avatar = document.getElementById(`avatar-result-status-bar-${targetId}`);
-
-    let x = window.innerWidth / 2; let y = window.innerHeight / 2;
-    if(avatar) {
-        let rect = avatar.getBoundingClientRect();
-        x = rect.left + rect.width / 2; y = rect.top;
-    }
-
-    let floatEl = document.createElement('div');
-    floatEl.className = `floating-score ${isPositive ? 'score-gain' : 'score-loss'}`;
-    floatEl.innerText = text;
-    floatEl.style.left = x + 'px'; floatEl.style.top = (y - 20) + 'px';
-    floatEl.style.color = color;
-    floatEl.setAttribute('aria-hidden', 'true'); 
-    document.body.appendChild(floatEl);
-
-    window.createParticles(isPositive ? 'coin' : 'impact', x, y);
-    setTimeout(() => floatEl.remove(), 2000);
-};
-
-// KANG Boss Moment Cinematic
 window.playKangAnimation = (callerId, isKang25) => {
     const animScreen = document.getElementById('kang-animation-screen');
     const text1 = document.getElementById('kang-anim-text1');
@@ -764,6 +732,7 @@ window.playKangAnimation = (callerId, isKang25) => {
     text2.style.opacity = '0';
     
     let pInfo = globalPlayersMap[callerId];
+    let pColorName = pInfo ? pInfo.colorName : '';
     let pColorHex = pInfo ? pInfo.colorHex : 'white';
     
     avatar.style.color = pColorHex;
@@ -772,418 +741,643 @@ window.playKangAnimation = (callerId, isKang25) => {
     playSound(isKang25 ? 'cang25' : 'cang');
 
     let callerName = resolveName(callerId);
-    let word = isKang25 ? 'แคง 25' : 'แคง';
+    let word = isKang25 ? 'แคง25' : 'แคง';
 
     setTimeout(() => {
-        let t1 = `💥 ${callerName} ประกาศ ${word}!`;
+        let t1 = `โอ้ ${callerName} เอ่ยคำว่า ${word}`;
         text1.innerText = t1; text1.style.opacity = '1'; announce(t1, false);
-        window.createParticles('gold', window.innerWidth/2, window.innerHeight/2);
     }, 1200);
 
     setTimeout(() => {
-        let t2 = `เปิดไพ่เพื่อวัดดวงกัน!`;
+        let t2 = `เปิดไพ่ทุกคนเพื่อวัดดวงกัน`;
         text2.innerText = t2; text2.style.opacity = '1'; announce(t2, false);
     }, 3000);
 
     setTimeout(() => {
-        animScreen.style.display = 'none'; avatar.className = 'kang-avatar-epic';
+        animScreen.style.display = 'none'; avatar.className = '';
     }, 4500);
 };
 
 function broadcastKangAnimation(callerId, isKang25) {
     gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
     let data = { type: 'KANG_ANIMATION', callerId, isKang25 };
-    if(myPeerId) window.playKangAnimation(callerId, isKang25);
+    if (myPeerId) window.playKangAnimation(callerId, isKang25);
     guestConnections.forEach(c => c.send(data));
 }
-
-// Client UI Renderer
-function renderClientGame(publicState, privateState) {
-    // 1. จัดการ Status Bar ผู้เล่น
-    const statusGroup = document.getElementById('players-status-bar');
-    statusGroup.innerHTML = '';
-    
-    publicState.playersInfo.forEach((p, idx) => {
-        if(p.isOut) return;
-        let pDiv = document.createElement('div');
-        pDiv.className = 'player-status-card glass-panel ' + (publicState.turnId === p.id && publicState.status === 'PLAYING' ? 'active-turn' : '');
-        pDiv.id = `players-status-bar-${p.id}`;
-        
-        let pAvatar = document.createElement('div');
-        pAvatar.className = 'player-avatar';
-        pAvatar.id = `avatar-players-status-bar-${p.id}`;
-        pAvatar.style.color = p.colorHex;
-        pAvatar.innerHTML = '👤';
-        pAvatar.setAttribute('aria-hidden', 'true');
-
-        let nameEl = document.createElement('div'); nameEl.className = 'player-name'; nameEl.innerText = resolveName(p.id);
-        let coinEl = document.createElement('div'); coinEl.className = 'player-coins'; coinEl.innerText = p.points + ' 💰';
-        let cCount = document.createElement('div'); cCount.className = 'player-card-count'; cCount.innerText = '🎴 ' + p.cardCount;
-        
-        let contentDiv = document.createElement('div');
-        contentDiv.appendChild(nameEl); contentDiv.appendChild(coinEl); contentDiv.appendChild(cCount);
-        
-        pDiv.appendChild(pAvatar);
-        pDiv.appendChild(contentDiv);
-        statusGroup.appendChild(pDiv);
-    });
-
-    let topC = publicState.topDiscard;
-    currentTopCardText = topC ? `ไพ่บนกองคือ ${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกองทิ้ง';
-
-    // 2. จัดการ Turn Indicator 
-    const turnEl = document.getElementById('turn-indicator');
-    if (publicState.status === 'PRE_GAME') {
-        turnEl.innerText = "ช่วงดูไพ่: รอคนแคง (40 วิ)";
-        turnEl.className = "turn-indicator-text highlight-pregame";
-    } else {
-        if(publicState.turnId === myPeerId) { turnEl.innerText = "🔥 ตาของคุณแล้ว!"; turnEl.className = "turn-indicator-text my-turn-glow"; }
-        else { turnEl.innerText = `ตาของ ${resolveName(publicState.turnId)}`; turnEl.className = "turn-indicator-text"; }
-    }
-
-    // 3. จัดการ Action Buttons
-    let isMyTurn = (publicState.turnId === myPeerId);
-    let btnDraw = document.getElementById('btn-draw'); let btnEnd = document.getElementById('btn-end-turn');
-    let btnKang = document.getElementById('btn-kang'); let btnKang25 = document.getElementById('btn-kang25');
-    let btnSkip = document.getElementById('btn-skip-pre'); let btnSpecial = document.getElementById('btn-special');
-
-    if (publicState.status === 'PRE_GAME') {
-        btnDraw.style.display = 'none'; btnEnd.style.display = 'none';
-        btnKang.style.display = 'inline-block'; btnKang25.style.display = 'inline-block'; btnSkip.style.display = 'inline-block';
-        
-        let isFirstPlayer = (publicState.playersInfo[0].id === myPeerId);
-        let handSum = privateState.hand.reduce((s, c) => s + c.val, 0);
-        let hasKang25Cond = (handSum >= 25);
-        let hasVoted = publicState.skipVotes.includes(myPeerId);
-        
-        btnKang.disabled = !isFirstPlayer || hasKang25Cond;
-        btnKang25.disabled = !hasKang25Cond;
-        btnSkip.disabled = hasVoted;
-        
-    } else if (publicState.status === 'PLAYING') {
-        btnKang25.style.display = 'none'; btnSkip.style.display = 'none';
-        btnDraw.style.display = 'inline-block'; btnEnd.style.display = 'inline-block'; btnKang.style.display = 'inline-block';
-        
-        btnDraw.disabled = !(isMyTurn && !privateState.hasDrawn && !privateState.hasFlowedThisTurn && publicState.deckCount > 0);
-        btnEnd.disabled = !(isMyTurn && (privateState.hasDiscarded || privateState.hasFlowedThisTurn));
-        
-        let canKang = isMyTurn && !privateState.hasDrawn && !privateState.hasFlowedThisTurn && publicState.discardPileCount > 0;
-        btnKang.disabled = !canKang;
-    }
-
-    // Special Win Rule Check
-    let swType = getSpecialWinType(privateState.hand, publicState.playersInfo.find(p=>p.id===myPeerId));
-    if (swType && (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING')) {
-        currentSpecialWinType = swType;
-        btnSpecial.innerText = `ชนะพิเศษ: ${swType}!`;
-        btnSpecial.style.display = 'inline-block';
-    } else {
-        currentSpecialWinType = null;
-        btnSpecial.style.display = 'none';
-    }
-
-    // 4. แสดงผลจำนวนไพ่กองจั่ว (Visual Real Card Back)
-    document.getElementById('deck-count-text').innerText = publicState.deckCount;
-    if(publicState.deckCount > 0) {
-        document.getElementById('deck-group-box').style.opacity = '1';
-    } else {
-        document.getElementById('deck-group-box').style.opacity = '0.5';
-    }
-
-    // 5. แสดงผลกองทิ้ง (Visual Real Card)
-    const discardContainer = document.getElementById('discard-pile');
-    discardContainer.innerHTML = '';
-    if (topC) {
-        let cardDiv = document.createElement('div');
-        cardDiv.className = 'playing-card card-on-table anim-discard'; 
-        let isRed = (topC.suit === '♥' || topC.suit === '♦');
-        let suitColor = isRed ? 'var(--red)' : '#1a1a2e';
-        
-        cardDiv.innerHTML = `
-            <div class="card-visual" style="color: ${suitColor};" aria-hidden="true">
-                <div class="card-top">${topC.rank} <br> ${topC.suit}</div>
-                <div class="card-center">${topC.suit}</div>
-                <div class="card-bottom">${topC.rank} <br> ${topC.suit}</div>
-            </div>
-            <span class="sr-only">ไพ่บนกองทิ้งคือ ${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}</span>
-        `;
-        discardContainer.appendChild(cardDiv);
-    } else {
-        discardContainer.innerHTML = '<span class="sr-only">ยังไม่มีไพ่บนกองทิ้ง</span>';
-    }
-
-    // 6. แสดงผลไพ่บนมือ (Visual Real Card)
-    const handContainer = document.getElementById('my-hand-ui');
-    handContainer.innerHTML = '';
-    privateState.hand.forEach((c, idx) => {
-        let cardBtn = document.createElement('button');
-        cardBtn.className = 'playing-card card-in-hand hand-card-btn';
-        
-        let isRed = (c.suit === '♥' || c.suit === '♦');
-        let suitColor = isRed ? 'var(--red)' : '#1a1a2e'; 
-        
-        cardBtn.innerHTML = `
-            <div class="card-visual" style="color: ${suitColor};" aria-hidden="true">
-                <div class="card-top">${c.rank} <br> ${c.suit}</div>
-                <div class="card-center" style="font-size:2rem;">${c.suit}</div>
-                <div class="card-bottom">${c.rank} <br> ${c.suit}</div>
-            </div>
-            <span class="sr-only">ไพ่ใบที่ ${idx+1}: ${THAI_RANKS[c.rank]} ${THAI_SUITS[c.suit]}</span>
-        `;
-        
-        let canDiscard = isMyTurn && privateState.hasDrawn && (!privateState.hasDiscarded || privateState.discardedRank === c.rank);
-        let canFlow = false;
-        
-        if (isMyTurn && !privateState.hasDrawn && !privateState.hasDiscarded && publicState.status === 'PLAYING' && topC && c.rank === topC.rank) {
-            canFlow = true;
-        }
-
-        if (canDiscard) {
-            cardBtn.onclick = () => window.clientAction('DISCARD', idx);
-            cardBtn.classList.add('can-discard-glow');
-        } else if (canFlow) {
-            cardBtn.onclick = () => window.clientAction('FLOW', idx);
-            cardBtn.classList.add('can-flow-glow');
-        } else {
-            cardBtn.disabled = true;
-        }
-        
-        handContainer.appendChild(cardBtn);
-    });
-}
-
-window.clientAction = (action, cardIndex = null) => {
-    if(isHost) processPlayerAction(myPeerId, action, cardIndex);
-    else hostConnection.send({ type: 'PLAYER_ACTION', playerId: myPeerId, action, cardIndex });
-};
-
 // =========================================================
-// Result Modal & End Ceremony
-// =========================================================
-window.showResultModal = (title, detail, isEnd, winners, losers) => {
-    document.getElementById('result-title').innerText = title;
-    document.getElementById('result-details').innerHTML = detail;
+
+function nextTurn() {
+    let prevPlayer = gameState.players[gameState.turnIndex];
+    prevPlayer.hasDrawnTurn = false; prevPlayer.hasDiscardedTurn = false; prevPlayer.hasFlowedThisTurn = false; prevPlayer.discardedRankThisTurn = null;
+
+    do { gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
+    } while (gameState.players[gameState.turnIndex].isOut || gameState.players[gameState.turnIndex].hand.length === 0);
     
-    let modal = document.getElementById('result-modal');
-    modal.style.display = 'flex';
-    
-    // Ceremony Effect
-    if (winners && winners.length > 0) {
-        playSound('win');
-        window.createParticles('gold', window.innerWidth/2, window.innerHeight/3);
-    } else {
-        playSound('lost');
-    }
-    
-    if (isHost) {
-        document.getElementById('btn-next-round').style.display = 'block';
-        document.getElementById('btn-next-round').disabled = false;
-        document.getElementById('guest-waiting-next-round').style.display = 'none';
-    } else {
-        document.getElementById('btn-next-round').style.display = 'none';
-        document.getElementById('guest-waiting-next-round').style.display = 'block';
-    }
-    
-    setTimeout(() => { document.getElementById('result-title').focus(); }, 100);
-};
-
-window.closeResultModal = () => {
-    document.getElementById('result-modal').style.display = 'none';
-    if(isHost) startNewRound();
-};
-
-// =========================================================
-// Server Logic (Bot AI & Validation Placeholder)
-// (ระบบ Logic เดิมทั้งหมดของ Server-side จะถูกรันต่อไปตามนี้)
-// =========================================================
-function processPlayerAction(playerId, action, cardIndex) {
-    if(gameState.status === 'TRANSITION') return;
-
-    let p = gameState.players.find(x => x.id === playerId);
-    if(!p) return;
-
-    if (action === 'DRAW') {
-        if (deck.length > 0) {
-            p.hand.push(deck.pop());
-            p.hasDrawnTurn = true;
-            triggerSound('jua');
-            broadcastAnnounce(`[PID:${playerId}] จั่วไพ่ 1 ใบ`);
-            syncStateToAll();
-        }
-    } 
-    else if (action === 'DISCARD') {
-        let discardedCard = p.hand.splice(cardIndex, 1)[0];
-        discardPile.push(discardedCard);
-        gameState.topCardOwnerId = playerId;
-        p.hasDiscardedTurn = true;
-        p.discardedRankThisTurn = discardedCard.rank;
-        triggerSound('follow');
-        broadcastAnnounce(`[PID:${playerId}] ทิ้งไพ่ ${THAI_RANKS[discardedCard.rank]} ${THAI_SUITS[discardedCard.suit]}`);
-        syncStateToAll();
-    }
-    else if (action === 'FLOW') {
-        let discardedCard = p.hand.splice(cardIndex, 1)[0];
-        discardPile.push(discardedCard);
-        
-        let reward = (discardedCard.rank === 'A') ? 20 : 10;
-        let sourceP = gameState.players.find(x => x.id === gameState.topCardOwnerId);
-        
-        p.hasFlowedThisTurn = true;
-        triggerSound('follow');
-        
-        if (sourceP && sourceP.id !== p.id) {
-            sourceP.points -= reward;
-            p.points += reward;
-            broadcastFloatSC(sourceP.id, -reward);
-            broadcastFloatSC(p.id, reward);
-        }
-        gameState.topCardOwnerId = playerId;
-        broadcastAnnounce(`[PID:${playerId}] ไหลไพ่ ${THAI_RANKS[discardedCard.rank]} ${THAI_SUITS[discardedCard.suit]} รับ ${reward} เหรียญ!`);
-        syncStateToAll();
-    }
-    else if (action === 'END_TURN') {
-        p.hasDrawnTurn = false;
-        p.hasDiscardedTurn = false;
-        p.hasFlowedThisTurn = false;
-        p.discardedRankThisTurn = null;
-        p.turnCount++;
-        if (p.turnCount >= 1) p.hasFinishedFirstTurn = true;
-
-        if (p.hand.length === 0) {
-            handleRoundEndByCards(p); 
-        } else {
-            advanceTurn();
-        }
-    }
-    else if (action === 'KANG' || action === 'KANG_25') {
-        broadcastKangAnimation(playerId, action === 'KANG_25');
-        setTimeout(() => { handleKangEnd(p, action === 'KANG_25'); }, 4600);
-    }
-    else if (action === 'SKIP_PRE') {
-        if (!gameState.skipPreVotes.includes(playerId)) {
-            gameState.skipPreVotes.push(playerId);
-            let activeCount = gameState.players.filter(x=>!x.isOut).length;
-            if (gameState.skipPreVotes.length >= activeCount) {
-                gameState.status = 'PLAYING';
-                broadcastAnnounce("ทุกคนพร้อมแล้ว เริ่มเกมได้!");
-                startTurnTimer();
-            }
-            syncStateToAll();
-        }
-    }
-    else if (action === 'SPECIAL_WIN') {
-        // Logic ชนะพิเศษ แจกเหรียญ (คง logic เดิมไว้)
-        broadcastKangAnimation(playerId, false);
-        setTimeout(() => {
-            let winAmt = 40;
-            let winners = [playerId];
-            let losers = [];
-            gameState.players.forEach(op => {
-                if(!op.isOut && op.id !== playerId) {
-                    op.points -= winAmt;
-                    p.points += winAmt;
-                    losers.push(op.id);
-                }
-            });
-            let det = `[PID:${playerId}] ชนะพิเศษ! รับคนละ ${winAmt} เหรียญ`;
-            let isEnd = gameState.players.filter(x => x.points > 0).length <= 1;
-            syncStateToAll();
-            showResultModal("🏆 ชนะพิเศษ!", det, isEnd, winners, losers);
-            let data = { type: 'SHOW_RESULT', title: "🏆 ชนะพิเศษ!", detail: det, isEnd: isEnd, winners, losers };
-            guestConnections.forEach(c => c.send(data));
-        }, 4600);
-    }
-}
-
-function advanceTurn() {
-    let activeP = gameState.players.filter(p => !p.isOut);
-    let currIdx = activeP.findIndex(p => p.id === gameState.players[gameState.turnIndex].id);
-    currIdx = (currIdx + 1) % activeP.length;
-    gameState.turnIndex = gameState.players.findIndex(p => p.id === activeP[currIdx].id);
-    
-    syncStateToAll();
-    startTurnTimer();
-    checkBotTurn();
+    triggerSound('turn'); syncStateToAll(); startTurnTimer(); checkBotTurn();
 }
 
 function checkBotTurn() {
     let cp = gameState.players[gameState.turnIndex];
-    if (cp.isBot && gameState.status === 'PLAYING') {
-        setTimeout(() => {
-            let topC = discardPile[discardPile.length - 1];
-            let matchIdx = cp.hand.findIndex(c => topC && c.rank === topC.rank);
-            
-            if (matchIdx !== -1) {
-                processPlayerAction(cp.id, 'FLOW', matchIdx);
-                setTimeout(() => processPlayerAction(cp.id, 'END_TURN'), 1500);
-            } else {
-                processPlayerAction(cp.id, 'DRAW');
-                setTimeout(() => {
-                    let hSum = cp.hand.reduce((s,c)=>s+c.val,0);
-                    if (hSum < 15 && discardPile.length > 0) {
-                        processPlayerAction(cp.id, 'KANG');
-                    } else {
-                        // Bot ทิ้งไพ่แต้มสูงสุด
-                        let maxVal = -1; let maxIdx = 0;
-                        cp.hand.forEach((c, i) => { if(c.val > maxVal) { maxVal = c.val; maxIdx = i; } });
-                        processPlayerAction(cp.id, 'DISCARD', maxIdx);
-                        setTimeout(() => processPlayerAction(cp.id, 'END_TURN'), 1500);
-                    }
-                }, 1500);
+    if(cp.isBot && gameState.status === 'PLAYING') setTimeout(() => playBotSequence(cp), 1000);
+}
+
+async function playBotSequence(cp) {
+    await delay(2000);
+    let handVal = cp.hand.reduce((sum, c) => sum + c.val, 0);
+    if (handVal <= 5 && discardPile.length > 0 && !cp.hasDrawnTurn) { processPlayerAction(cp.id, 'KANG'); return; }
+
+    let topCard = discardPile[discardPile.length - 1];
+    if (topCard && !cp.hasDrawnTurn) {
+        let flowIndex = cp.hand.findIndex(c => c.rank === topCard.rank);
+        if (flowIndex !== -1) {
+            processPlayerAction(cp.id, 'FLOW', flowIndex); await delay(2500); 
+            while(true) {
+                let matchIdx = cp.hand.findIndex(c => c.rank === topCard.rank);
+                if (matchIdx !== -1) { processPlayerAction(cp.id, 'FLOW', matchIdx); await delay(1500); }
+                else break;
             }
-        }, 2000);
-    }
-}
-
-// Handler สิ้นสุดเกม
-function handleRoundEndByCards(winner) {
-    gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval);
-    let winAmt = 40; let winners = [winner.id]; let losers = [];
-    gameState.players.forEach(p => {
-        if (!p.isOut && p.id !== winner.id) { p.points -= winAmt; winner.points += winAmt; losers.push(p.id); }
-    });
-    
-    let det = `[PID:${winner.id}] ไพ่หมดมือ ชนะรับคนละ ${winAmt} เหรียญ`;
-    let isEnd = gameState.players.filter(x => x.points > 0).length <= 1;
-    
-    syncStateToAll();
-    showResultModal("🏆 ไพ่หมดมือ!", det, isEnd, winners, losers);
-    guestConnections.forEach(c => c.send({ type: 'SHOW_RESULT', title: "🏆 ไพ่หมดมือ!", detail: det, isEnd, winners, losers }));
-}
-
-function handleKangEnd(caller, isKang25) {
-    let callerSum = caller.hand.reduce((s,c)=>s+c.val,0);
-    let minScore = callerSum;
-    let isCallerWin = true;
-    
-    gameState.players.forEach(p => {
-        if(!p.isOut && p.id !== caller.id) {
-            let score = p.hand.reduce((s,c)=>s+c.val,0);
-            if(score <= minScore) { minScore = score; isCallerWin = false; }
+            await delay(2000);
+            if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
+            return;
         }
-    });
-
-    let winAmt = isKang25 ? 40 : 20;
-    let det = ""; let winners = []; let losers = [];
-
-    if (isCallerWin) {
-        winners.push(caller.id);
-        det += `[PID:${caller.id}] ชนะแคง! (แต้ม ${callerSum})<br>`;
-        gameState.players.forEach(p => {
-            if(!p.isOut && p.id !== caller.id) { p.points -= winAmt; caller.points += winAmt; losers.push(p.id); det += `[PID:${p.id}] เสีย ${winAmt} เหรียญ<br>`; }
-        });
-    } else {
-        det += `[PID:${caller.id}] ถูกแหกแคง! (แต้ม ${callerSum})<br>`;
-        gameState.players.forEach(p => {
-            if(!p.isOut && p.id !== caller.id) {
-                let score = p.hand.reduce((s,c)=>s+c.val,0);
-                if(score === minScore) { p.points += (winAmt * 2); caller.points -= (winAmt * 2); winners.push(p.id); losers.push(caller.id); det += `[PID:${p.id}] แหกสำเร็จ! รับ ${winAmt * 2} เหรียญ<br>`; }
-            }
-        });
     }
 
-    let isEnd = gameState.players.filter(x => x.points > 0).length <= 1;
-    syncStateToAll();
-    showResultModal(isCallerWin ? "🎉 แคงสำเร็จ!" : "💥 แหกแคง!", det, isEnd, winners, losers);
-    guestConnections.forEach(c => c.send({ type: 'SHOW_RESULT', title: (isCallerWin ? "🎉 แคงสำเร็จ!" : "💥 แหกแคง!"), detail: det, isEnd, winners, losers }));
+    if (!cp.hasDrawnTurn) { processPlayerAction(cp.id, 'DRAW'); await delay(2000); }
+    let rankCounts = {}; cp.hand.forEach(c => rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1);
+    let bestRank = null, maxCount = 0, maxVal = -1;
+    for (let r in rankCounts) {
+        let count = rankCounts[r]; let val = getCardValue(r);
+        if (count > maxCount || (count === maxCount && val > maxVal)) { maxCount = count; maxVal = val; bestRank = r; }
+    }
+    while(true) {
+        let matchIdx = cp.hand.findIndex(c => c.rank === bestRank);
+        if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1500); }
+        else break;
+    }
+    await delay(2000);
+    if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
+}
+
+function resolveSpecialWin(callerId, winType) {
+    window.nextRoundHostId = callerId;
+    gameState.status = 'TRANSITION'; 
+    clearInterval(turnTimerInterval);
+    
+    let active = gameState.players.filter(p => !p.isOut);
+    let beforePoints = {};
+    active.forEach(p => beforePoints[p.id] = p.points);
+    
+    let caller = active.find(p => p.id === callerId);
+    let others = active.filter(p => p.id !== callerId);
+    
+    let aceCount = caller.hand.filter(c => c.rank === 'A').length;
+    let payPerPerson = 0;
+    
+    if (winType === '3A') { payPerPerson = 40; } else { payPerPerson = 20 + (aceCount * 10); }
+    
+    others.forEach(p => { p.points -= payPerPerson; if(p.points < 0) p.points = 0; caller.points += payPerPerson; });
+    
+    let title = `[PID:${caller.id}] ชนะพิเศษกติกา: ${winType}!`;
+    let winners = [caller.id]; let losers = [];
+    let cardDetailLines = [`[PID:${caller.id}] เปิดไพ่ชนะกติกา ${winType}`];
+    let coinDetailLines = [];
+    
+    active.forEach(p => {
+        let diff = p.points - beforePoints[p.id];
+        if (diff > 0) { coinDetailLines.push(`[PID:${p.id}] ได้รับ ${diff} เหรียญ`); } 
+        else if (diff < 0) { losers.push(p.id); coinDetailLines.push(`[PID:${p.id}] เสีย ${Math.abs(diff)} เหรียญ`); } 
+        else { coinDetailLines.push(`[PID:${p.id}] ไม่ได้ไม่เสียเหรียญ`); }
+    });
+    
+    let resultDetail = cardDetailLines.join('<br>') + '<br><br>' + coinDetailLines.join('<br>');
+    syncStateToAll(); broadcastTransition('จบเกมด้วยกติกาพิเศษ! กำลังสรุปผล...', 4000);
+    
+    setTimeout(() => {
+        gameState.status = 'END'; syncStateToAll();
+        let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false, winners, losers };
+        if(myPeerId) window.showResultModal(title, resultDetail, false, winners, losers);
+        guestConnections.forEach(c => c.send(modalData));
+    }, 4000);
+}
+
+function processPlayerAction(pId, action, cardIndex) {
+    let p = gameState.players.find(x => x.id === pId);
+    if (!p || p.isOut) return;
+
+    if (action === 'SPECIAL_WIN') { resolveSpecialWin(p.id, cardIndex); return; }
+
+    if (gameState.status === 'PRE_GAME') {
+        if (action === 'SKIP_PRE' && !p.isBot) {
+            if (!gameState.skipPreVotes) gameState.skipPreVotes = [];
+            if (!gameState.skipPreVotes.includes(pId)) {
+                gameState.skipPreVotes.push(pId); syncStateToAll();
+                let realPlayers = gameState.players.filter(x => !x.isOut && !x.isBot);
+                if (gameState.skipPreVotes.length >= realPlayers.length) {
+                    clearInterval(turnTimerInterval); triggerSound('60'); gameState.status = 'PLAYING';
+                    broadcastAnnounce("📢 ผู้เล่นทุกคนพร้อมแล้ว! ขอเชิญผู้เล่นแรกจั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ");
+                    syncStateToAll(); startTurnTimer(); checkBotTurn();
+                }
+            }
+            return;
+        }
+
+        let handSum = p.hand.reduce((sum, c) => sum + c.val, 0);
+        let isFirstPlayer = (pId === gameState.players[0].id);
+
+        if (action === 'KANG_25' && handSum >= 25) {
+            broadcastKangAnimation(p.id, true);
+            setTimeout(() => resolveKang(p.id, false, false, true), 4500);
+        } else if (action === 'KANG' && isFirstPlayer && handSum < 25) {
+            broadcastKangAnimation(p.id, false);
+            setTimeout(() => resolveKang(p.id, false, false, false), 4500);
+        }
+        return;
+    }
+
+    if (action === 'FLOW') {
+        if (gameState.status !== 'PLAYING') return;
+        let flowPlayer = gameState.players.find(x => x.id === pId);
+        if (!flowPlayer || flowPlayer.isOut) return;
+        
+        // --- การตั้งค่าป้องกันที่ 1 ---
+        // ป้องกันการไหลถ้าผู้เล่นคนนั้นทำการจั่วไพ่แล้ว หรือทิ้งไพ่ปกติไปแล้วในเทิร์นตัวเอง
+        if (flowPlayer.hasDrawnTurn || flowPlayer.hasDiscardedTurn) {
+            return;
+        }
+
+        let topCard = discardPile[discardPile.length - 1]; let card = flowPlayer.hand[cardIndex];
+        if (topCard && card.rank === topCard.rank) {
+            triggerSound('follow'); let dropped = flowPlayer.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
+            flowPlayer.hasFlowedThisTurn = true; 
+
+            let victimId = gameState.flowSourceId;
+            let victim = gameState.players.find(v => v.id === victimId);
+            if(!victim || victim.isOut) {
+                let victimIndex = (gameState.turnIndex - 1 + gameState.players.length) % gameState.players.length;
+                while(gameState.players[victimIndex].isOut) victimIndex = (victimIndex - 1 + gameState.players.length) % gameState.players.length;
+                victim = gameState.players[victimIndex];
+            }
+
+            if (victim) {
+                let flowMult = dropped.rank === 'A' ? 2 : 1; let penalty = 10 * flowMult;
+                victim.points -= penalty; if(victim.points < 0) victim.points = 0; flowPlayer.points += penalty;
+                broadcastAnnounce(`[PID:${flowPlayer.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}! ได้รับ ${penalty} เหรียญ จาก [PID:${victim.id}]`);
+                broadcastFloatSC(victim.id, -penalty); broadcastFloatSC(flowPlayer.id, penalty);
+            }
+
+            gameState.topCardOwnerId = flowPlayer.id; 
+
+            if(flowPlayer.hand.length === 0) { resolveKang(flowPlayer.id, false, 'FLOW_KNOCK'); } 
+            else {
+                gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
+                broadcastTransition('ไหลไพ่สำเร็จ! รอสักครู่...', 2500);
+                setTimeout(() => { gameState.status = 'PLAYING'; syncStateToAll(); startTurnTimer(); }, 2500);
+            }
+        }
+        return;
+    }
+
+    let cp = gameState.players[gameState.turnIndex];
+    if(cp.id !== pId || gameState.status !== 'PLAYING') return; 
+
+    if(action === 'DRAW' && !cp.hasDrawnTurn && !cp.hasFlowedThisTurn) {
+        if(deck.length > 0) {
+            triggerSound('jua'); let drawnCard = deck.pop();
+            cp.hand.push(drawnCard); cp.hasDrawnTurn = true;
+            let publicMsg = `[PID:${cp.id}] จั่วไพ่ 1 ใบ`;
+            if (cp.isBot) { broadcastAnnounce(publicMsg); } 
+            else {
+                let privateMsg = `คุณจั่วได้ไพ่ ${THAI_RANKS[drawnCard.rank]} ${THAI_SUITS[drawnCard.suit]}`;
+                if (myPeerId === cp.id) announce(privateMsg); else announce(publicMsg);
+                guestConnections.forEach(c => {
+                    if (c.peer === cp.id) c.send({ type: 'ANNOUNCE', msg: privateMsg }); else c.send({ type: 'ANNOUNCE', msg: publicMsg });
+                });
+            }
+            syncStateToAll();
+        } else resolveKang(cp.id, true);
+    }
+    else if(action === 'DISCARD') {
+        let card = cp.hand[cardIndex];
+        if (!card) return;
+        if (!cp.hasDiscardedTurn && cp.hasDrawnTurn) {
+            triggerSound('select'); let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
+            
+            let isFirstDiscardInTurn = !cp.hasDiscardedTurn;
+            cp.hasDiscardedTurn = true; cp.discardedRankThisTurn = dropped.rank;
+            
+            if (isFirstDiscardInTurn) {
+                gameState.flowSourceId = cp.id;
+            }
+
+            gameState.topCardOwnerId = cp.id;
+            broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}`);
+            if(cp.hand.length === 0) resolveKang(cp.id, false, 'DRAW_KNOCK'); else syncStateToAll();
+        } 
+        else if (cp.hasDiscardedTurn && card.rank === cp.discardedRankThisTurn) {
+            triggerSound('select'); let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
+            broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]} เพิ่มเติม (เลขเดียวกัน)`);
+            if(cp.hand.length === 0) resolveKang(cp.id, false, 'DRAW_KNOCK'); else syncStateToAll();
+        }
+    }
+    else if(action === 'END_TURN' && (cp.hasDiscardedTurn || cp.hasFlowedThisTurn)) {
+        cp.hasFinishedFirstTurn = true;
+        cp.turnCount = (cp.turnCount || 0) + 1;
+        triggerSound('select'); broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา`);
+        gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
+        broadcastTransition('กำลังเปลี่ยนตาถัดไป...', 2000);
+        setTimeout(() => { gameState.status = 'PLAYING'; nextTurn(); }, 2000);
+    }
+    else if(action === 'KANG' && !cp.hasDrawnTurn && !cp.hasFlowedThisTurn && discardPile.length > 0) {
+        broadcastKangAnimation(cp.id, false); setTimeout(() => resolveKang(cp.id), 4500);
+    }
+}
+
+function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 = false) {
+    window.nextRoundHostId = callerId;
+    gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval);
+    let active = gameState.players.filter(p => !p.isOut);
+    let totalPlayersInRoom = active.length;
+    let beforePoints = {}; active.forEach(p => beforePoints[p.id] = p.points);
+
+    active.forEach(p => { 
+        p.handSum = p.hand.reduce((s, c) => s + c.val, 0); 
+        p.aceCount = p.hand.filter(c => c.rank === 'A').length;
+    });
+    
+    let caller = active.find(p => p.id === callerId); 
+    let resultDetail = "", title = "", winnerColorName = "";
+    const getBasePay = (player) => 10 + (player.aceCount * 10);
+
+    if (winReason === 'FLOW_KNOCK' || winReason === 'DRAW_KNOCK' || winReason === true) {
+        let basePay = (winReason === 'DRAW_KNOCK') ? 20 : 10;
+        let reasonStr = (winReason === 'DRAW_KNOCK') ? 'จั่วแล้วทิ้งไพ่หมดมือ' : 'ไหลไพ่หมดมือน็อก';
+        if (winReason === true) reasonStr = 'น็อค!';
+        
+        winnerColorName = caller.colorInfo.name;
+        title = `[PID:${caller.id}] ${reasonStr}! (ชนะรับ ${basePay} เหรียญ จากทุกคน)`;
+        active.forEach(p => { 
+            if(p.id !== caller.id) { p.points -= basePay; if(p.points < 0) p.points = 0; caller.points += basePay; } 
+        });
+    } else if (isDeckEmpty) {
+        let lowest = active.reduce((min, p) => p.handSum < min.handSum ? p : min, active[0]);
+        let basePay = getBasePay(lowest);
+        winnerColorName = lowest.colorInfo.name;
+        title = `กองไพ่หมด! [PID:${lowest.id}] แต้มต่ำสุด ${lowest.handSum} แต้ม (ชนะ)`;
+        active.forEach(p => { 
+            if(p.id !== lowest.id) { p.points -= basePay; if(p.points < 0) p.points = 0; lowest.points += basePay; } 
+        });
+    } else { 
+        let others = active.filter(p => p.id !== caller.id);
+        let lowestOther = others.reduce((min, p) => p.handSum < min.handSum ? p : min, others[0]);
+
+        if (caller.handSum < lowestOther.handSum) {
+            winnerColorName = caller.colorInfo.name;
+            let payAmount = getBasePay(caller); if (isKang25) payAmount = payAmount * 2; 
+            title = `[PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} สำเร็จ!`;
+            others.forEach(p => { p.points -= payAmount; if(p.points < 0) p.points = 0; caller.points += payAmount; });
+        } else {
+            winnerColorName = lowestOther.colorInfo.name;
+            let payAmount = getBasePay(lowestOther) * totalPlayersInRoom; 
+            title = `[PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} แหก! ([PID:${lowestOther.id}] ชนะ)`;
+            caller.points -= payAmount; if(caller.points < 0) caller.points = 0; lowestOther.points += payAmount;
+        }
+    }
+
+    let winners = []; let losers = [];
+    let cardDetailLines = []; let coinDetailLines = [];
+
+    active.forEach(p => {
+        let diff = p.points - beforePoints[p.id];
+        if (diff > 0) { winners.push(p.id); coinDetailLines.push(`[PID:${p.id}] ได้รับ ${diff} เหรียญ`); } 
+        else if (diff < 0) { losers.push(p.id); coinDetailLines.push(`[PID:${p.id}] เสีย ${Math.abs(diff)} เหรียญ`); } 
+        else { coinDetailLines.push(`[PID:${p.id}] ไม่ได้ไม่เสียเหรียญ`); }
+        cardDetailLines.push(`[PID:${p.id}] เปิดไพ่มาแล้วได้แต้มรวม ${p.handSum} แต้ม`);
+    });
+
+    resultDetail = cardDetailLines.join('<br>') + '<br><br>' + coinDetailLines.join('<br>');
+    syncStateToAll(); broadcastTransition('จบเกม! กำลังสรุปผล...', 4000);
+
+    setTimeout(() => {
+        gameState.status = 'END'; syncStateToAll();
+        let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: false, winners, losers };
+        if(myPeerId) window.showResultModal(title, resultDetail, false, winners, losers);
+        guestConnections.forEach(c => c.send(modalData));
+    }, 4000);
+}
+
+window.closeResultModal = () => {
+    if (window.isStartingRound) return;
+    window.isStartingRound = true;
+    let btn = document.getElementById('btn-next-round');
+    if (btn) { btn.disabled = true; btn.style.display = 'none'; }
+    document.getElementById('result-modal').style.display = 'none';
+    updateHomeBtnVisibility();
+    if(isHost) { guestConnections.forEach(c => c.send({ type: 'START_COUNTDOWN' })); doCountdownAndStart(); }
+};
+
+// =========================================================
+// Client Rendering Logic
+// =========================================================
+function renderClientGame(publicState, privateState) {
+    window.currentPublicState = publicState; // [แคช state ล่าสุดไว้ใช้ดึงเวลาเสกไพ่ใน Client]
+
+    if (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING') { document.getElementById('result-modal').style.display = 'none'; }
+    updateHomeBtnVisibility();
+
+    localPlayerState = privateState;
+    const turnId = publicState.turnId;
+    const isFirstPlayer = (myPeerId === publicState.playersInfo[0].id);
+    const isMyTurn = (turnId === myPeerId);
+    
+    publicState.playersInfo.forEach(p => { globalPlayersMap[p.id] = { isBot: p.isBot, colorName: p.colorName, colorHex: p.colorHex }; });
+    let currPlayerDisp = resolveName(turnId);
+    
+    const turnInd = document.getElementById('turn-indicator');
+    const timerBarContainer = document.getElementById('timer-bar-container');
+    
+    if (publicState.status === 'END') {
+        if(timerBarContainer) timerBarContainer.style.display = 'none';
+        turnInd.style.display = 'none'; 
+        document.getElementById('main-table-area').style.display = 'none';
+        document.getElementById('action-bar-container').style.display = 'none';
+    } else {
+        turnInd.style.display = 'block'; 
+        if(timerBarContainer) timerBarContainer.style.display = 'block';
+        document.getElementById('main-table-area').style.display = 'flex';
+        document.getElementById('action-bar-container').style.display = 'flex';
+        if (publicState.status === 'PRE_GAME') {
+            turnInd.innerText = "เตรียมตัว! เช็คไพ่ในมือ (40 วินาที)";
+        } else {
+            let oldTurnTxt = turnInd.innerText;
+            let newTurnTxt = isMyTurn ? "🔥 ตาของคุณแล้ว!" : `ตาของ ${currPlayerDisp}`;
+            if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
+                turnInd.innerText = newTurnTxt;
+                let topC = publicState.topDiscard;
+                let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
+                if(isMyTurn) announce(`ตาของคุณแล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
+                else announce(`เปลี่ยนตาไปที่ ${currPlayerDisp} (ไพ่บนกองคือ ${topTxt})`, false);
+            }
+        }
+    }
+
+    const renderStatusBar = (containerId) => {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+        let groupAriaLabel = "";
+
+        publicState.playersInfo.forEach((p) => {
+            if (!p.isOut) {
+                let dispName = resolveName(p.id);
+                groupAriaLabel += `${dispName} มี ${p.points} เหรียญ. `;
+                let item = document.createElement('div');
+                item.className = `status-avatar-item ${p.id === turnId && publicState.status === 'PLAYING' ? 'active-turn' : ''}`;
+                item.id = `avatar-${containerId}-${p.id}`;
+                item.style.borderColor = p.colorHex;
+                item.innerHTML = `
+                    <div class="status-coin-header" aria-hidden="true">${p.points} เหรียญ</div>
+                    <div class="status-avatar-icon" style="background-color:${p.colorHex}; color:#fff;" aria-hidden="true">👤</div>
+                    <div class="status-player-label" style="color:${p.colorHex};" aria-hidden="true">${dispName}</div>
+                `;
+                container.appendChild(item);
+            }
+        });
+        container.setAttribute('tabindex', '0');
+        container.setAttribute('role', 'group');
+        container.setAttribute('aria-label', `สถานะผู้เล่นทั้งหมด: ${groupAriaLabel}`);
+    };
+
+    renderStatusBar('players-status-bar'); renderStatusBar('result-status-bar');
+
+    const btnDraw = document.getElementById('btn-draw'); const btnKang = document.getElementById('btn-kang');
+    const btnKang25 = document.getElementById('btn-kang25'); const btnEnd = document.getElementById('btn-end-turn');
+    const btnSkip = document.getElementById('btn-skip-pre'); const btnSpecial = document.getElementById('btn-special');
+    let topC = publicState.topDiscard;
+
+    if (topC) currentTopCardText = `ไพ่บนกองทิ้งปัจจุบันคือ ${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}`;
+    else currentTopCardText = `ยังไม่มีไพ่บนกองทิ้ง`;
+
+    let hasVoted = publicState.skipVotes && publicState.skipVotes.includes(myPeerId);
+
+    if (publicState.status === 'PRE_GAME') {
+        let myHandSum = (localPlayerState.hand || []).reduce((s, c) => s + (c.val || getCardValue(c.rank)), 0);
+        btnDraw.style.display = 'none'; btnEnd.style.display = 'none';
+        
+        if (isFirstPlayer) {
+            if (myHandSum < 25) {
+                btnKang.style.display = 'inline-block'; btnKang.disabled = hasVoted; 
+                btnKang25.style.display = 'none'; btnKang25.disabled = true;
+            } else {
+                btnKang.style.display = 'none'; btnKang.disabled = true;
+                btnKang25.style.display = 'inline-block'; btnKang25.disabled = hasVoted; 
+            }
+        } else {
+            btnKang.style.display = 'none'; btnKang.disabled = true;
+            if (myHandSum >= 25) { btnKang25.style.display = 'inline-block'; btnKang25.disabled = hasVoted; } 
+            else { btnKang25.style.display = 'none'; btnKang25.disabled = true; }
+        }
+        btnSkip.style.display = 'inline-block'; btnSkip.disabled = hasVoted;
+
+    } else if (publicState.status === 'PLAYING' || publicState.status === 'TRANSITION') {
+        btnKang25.style.display = 'none'; btnSkip.style.display = 'none';
+        btnDraw.style.display = 'inline-block'; btnEnd.style.display = 'inline-block'; btnKang.style.display = 'inline-block';
+
+        if(isMyTurn && publicState.status === 'PLAYING') {
+            btnDraw.disabled = localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn;
+            btnKang.disabled = localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn || publicState.discardPileCount === 0;
+            btnEnd.disabled = !(localPlayerState.hasDiscarded || localPlayerState.hasFlowedThisTurn);
+        } else { btnDraw.disabled = true; btnKang.disabled = true; btnEnd.disabled = true; }
+    }
+
+    currentSpecialWinType = getSpecialWinType(localPlayerState.hand, localPlayerState);
+
+    if (currentSpecialWinType && (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING')) {
+        btnSpecial.style.display = 'inline-block'; btnSpecial.innerText = currentSpecialWinType;
+    } else { btnSpecial.style.display = 'none'; }
+
+    const deckCountTxt = document.getElementById('deck-count-text');
+    if(deckCountTxt) deckCountTxt.innerText = publicState.deckCount;
+    
+    const deckBox = document.getElementById('deck-group-box');
+    if(deckBox) deckBox.setAttribute('aria-label', `${publicState.deckCount} ใบที่จั่วได้`);
+    
+    let dp = document.getElementById('discard-pile');
+    if(topC) {
+        let tRank = THAI_RANKS[topC.rank]; let tSuit = THAI_SUITS[topC.suit];
+        dp.innerHTML = `<div class="card ${['♥','♦'].includes(topC.suit)?'red':'black'}" aria-label="ไพ่กองทิ้งใบบนสุดคือ ${tRank} ${tSuit}" role="img">
+                           <div aria-hidden="true">${topC.rank}</div><div class="card-suit" aria-hidden="true">${topC.suit}</div>
+                        </div>`;
+    } else {
+        dp.innerHTML = '<div style="color:#a0a0a0; font-size:0.85rem;">กองทิ้งว่างเปล่า</div>'; 
+        dp.setAttribute('aria-label', 'กองไพ่ทิ้งยังว่างเปล่า');
+    }
+
+    const handUi = document.getElementById('my-hand-ui'); handUi.innerHTML = '';
+    if (publicState.status !== 'END') {
+        
+        // --- การตั้งค่าป้องกันที่ 2 ---
+        // ปรับเงื่อนไข canFlowCard ไม่ให้เกิดสถานะการไหลได้ ถ้าตัวผู้เล่นจั่วไพ่แล้ว หรือทิ้งไพ่รอบนี้ไปแล้ว
+        (localPlayerState.hand || []).forEach((c, index) => {
+            let cardEl = document.createElement('button');
+            cardEl.className = `card ${['♥','♦'].includes(c.suit)?'red':'black'}`;
+            let tRank = THAI_RANKS[c.rank]; let tSuit = THAI_SUITS[c.suit];
+            let actionHint = ""; cardEl.disabled = true;
+            
+            let canFlowCard = (topC && c.rank === topC.rank && !localPlayerState.hasDrawn && !localPlayerState.hasDiscarded);
+
+            if (publicState.status === 'PLAYING') {
+                if (canFlowCard) {
+                    cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
+                    cardEl.style.boxShadow = "0 0 12px var(--blue)"; 
+                    cardEl.onclick = () => window.clientAction('FLOW', index);
+                }
+                else if (isMyTurn) {
+                    if (!localPlayerState.hasDiscarded) {
+                        if (localPlayerState.hasDrawn && !localPlayerState.hasFlowedThisTurn) {
+                            cardEl.disabled = false; actionHint = " กดเพื่อทิ้งไพ่ใบนี้";
+                            cardEl.onclick = () => window.clientAction('DISCARD', index);
+                        }
+                    } else if (c.rank === localPlayerState.discardedRank) {
+                        cardEl.disabled = false; actionHint = " กดเพื่อทิ้งเพิ่มเติม (เลขเดียวกัน)";
+                        cardEl.style.boxShadow = "0 0 12px var(--green)";
+                        cardEl.onclick = () => window.clientAction('DISCARD', index);
+                    }
+                }
+            }
+            
+            cardEl.setAttribute('aria-label', `ไพ่ ${tRank} ${tSuit}${actionHint}`);
+            cardEl.innerHTML = `<div aria-hidden="true">${c.rank}</div><div class="card-suit" aria-hidden="true">${c.suit}</div>`;
+            handUi.appendChild(cardEl);
+        });
+    }
+}
+
+window.clientAction = (action, index = 0) => {
+    if(isHost) processPlayerAction(myPeerId, action, index);
+    else hostConnection.send({ type: 'PLAYER_ACTION', playerId: myPeerId, action, cardIndex: index });
+};
+
+window.showFloatingScore = (targetId, amt) => {
+    let target = document.getElementById(`avatar-players-status-bar-${targetId}`);
+    if (target) {
+        let floatEl = document.createElement('div'); floatEl.className = 'floating-sc';
+        floatEl.style.color = amt > 0 ? '#32cd32' : '#ff4d4d'; floatEl.innerText = amt > 0 ? `+${amt}` : amt; 
+        floatEl.setAttribute('aria-hidden', 'true'); target.appendChild(floatEl); 
+        setTimeout(() => floatEl.remove(), 2000);
+    }
+};
+
+window.showResultModal = (title, detail, isEnd, winners, losers) => {
+    const srOnlyAnnouncer = document.getElementById('sr-only-announcer'); if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
+    const visAnnouncer = document.getElementById('visible-game-announcer'); if (visAnnouncer) visAnnouncer.innerText = '';
+    window.isStartingRound = false;
+
+    let resolvedTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+    let resolvedDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+
+    document.getElementById('result-title').innerText = resolvedTitle;
+    document.getElementById('result-details').innerHTML = resolvedDetail;
+    
+    document.getElementById('result-modal').style.display = 'flex';
+    updateHomeBtnVisibility();
+
+    if (winners && losers) {
+        winners.forEach(id => { let el = document.getElementById(`avatar-result-status-bar-${id}`); if (el) el.classList.add('anim-happy'); });
+        losers.forEach(id => { let el = document.getElementById(`avatar-result-status-bar-${id}`); if (el) el.classList.add('anim-sad'); });
+    }
+
+    let btn = document.getElementById('btn-next-round'); let waitTxt = document.getElementById('guest-waiting-next-round');
+    
+    if(isEnd) {
+        if(btn) { btn.style.display = 'block'; btn.disabled = false; btn.innerText = "กลับหน้าหลัก"; btn.onclick = () => window.location.reload(); }
+        if(waitTxt) waitTxt.style.display = 'none';
+    } else {
+        if(btn) {
+            if (isHost) {
+                btn.style.display = 'block'; btn.disabled = false; btn.innerText = "เริ่มรอบใหม่"; btn.onclick = closeResultModal;
+                if(waitTxt) waitTxt.style.display = 'none';
+            } else { btn.style.display = 'none'; if(waitTxt) waitTxt.style.display = 'block'; }
+        }
+    }
+
+    if(myPeerId) {
+        if (winners && winners.includes(myPeerId)) playSound('win');
+        else if (losers && losers.includes(myPeerId)) playSound('lost');
+        else playSound('no'); 
+    }
+
+    setTimeout(() => { const resultTitle = document.getElementById('result-title'); if (resultTitle) resultTitle.focus(); }, 200);
+};
+
+// =========================================================
+// --- CHEAT MODE LOGIC (รวมฟังก์ชันไว้ล่างสุด) ---
+// =========================================================
+function setCheatHand(type) {
+    let newHand = [];
+    if (type === "ตอง") {
+        newHand = [
+            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
+            { suit: '♥', rank: '7', value: 5, val: 5, id: '7♥' },
+            { suit: '♦', rank: '7', value: 5, val: 5, id: '7♦' },
+            { suit: '♣', rank: '7', value: 5, val: 5, id: '7♣' },
+            { suit: '♠', rank: 'K', value: 10, val: 10, id: 'K♠' },
+            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' },
+            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' }
+        ];
+    } else if (type === "ดอก" || type === "สี") {
+        newHand = [
+            { suit: '♠', rank: '2', value: 5, val: 5, id: '2♠' },
+            { suit: '♠', rank: '3', value: 5, val: 5, id: '3♠' },
+            { suit: '♠', rank: '4', value: 5, val: 5, id: '4♠' },
+            { suit: '♠', rank: '5', value: 5, val: 5, id: '5♠' },
+            { suit: '♠', rank: '6', value: 5, val: 5, id: '6♠' },
+            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
+            { suit: '♠', rank: '8', value: 5, val: 5, id: '8♠' }
+        ];
+    } else if (type === "เรียง") {
+        newHand = [
+            { suit: '♥', rank: '4', value: 5, val: 5, id: '4♥' },
+            { suit: '♥', rank: '5', value: 5, val: 5, id: '5♥' },
+            { suit: '♥', rank: '6', value: 5, val: 5, id: '6♥' },
+            { suit: '♣', rank: '8', value: 5, val: 5, id: '8♣' },
+            { suit: '♣', rank: '9', value: 5, val: 5, id: '9♣' },
+            { suit: '♣', rank: '10', value: 10, val: 10, id: '10♣' },
+            { suit: '♣', rank: 'J', value: 10, val: 10, id: 'J♣' }
+        ];
+    } else if (type === "50") {
+        newHand = [
+            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
+            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
+            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
+            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
+            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
+            { suit: '♦', rank: '10', value: 10, val: 10, id: '10♦' },
+            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' }
+        ];
+    } else if (type === "3a") {
+        newHand = [
+            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
+            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
+            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
+            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
+            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
+            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' },
+            { suit: '♣', rank: 'K', value: 10, val: 10, id: 'K♣' }
+        ];
+    }
+
+    if (isHost) {
+        let p = gameState.players.find(x => x.id === myPeerId);
+        if (p) {
+            p.hand = newHand;
+            syncStateToAll();
+            announce("เสกไพ่สำเร็จ (Host)", false);
+        }
+    } else {
+        localPlayerState.hand = newHand;
+        if (window.currentPublicState) {
+            renderClientGame(window.currentPublicState, localPlayerState);
+        }
+        announce("เสกไพ่สำเร็จ (Client)", false);
+    }
 }
