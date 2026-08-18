@@ -14,6 +14,7 @@ window.submitSpecialWin = () => {
     if (currentSpecialWinType) clientAction('SPECIAL_WIN', currentSpecialWinType);
 };
 
+// ตรวจสอบกฎพิเศษตามที่ร้องขอ
 function getSpecialWinType(hand, player) {
     if (!hand || hand.length === 0) return null;
 
@@ -161,7 +162,7 @@ let hostConnection = null, guestConnections = [];
 let roomPlayers = [], botColors = [], currentBotCount = 0, selectedColorId = 'red';
 let deck = [], discardPile = [];
 let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null, flowSourceId: null, skipPreVotes: [] };
-let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 300, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false };
+let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 300, turnCount: 0, hasFinishedFirstTurn: false };
 let globalPlayersMap = {}; 
 let turnTimerInterval = null;
 let announcerTimeout = null;
@@ -578,10 +579,10 @@ function doCountdownAndStart() {
                     window.joinOrder.forEach(id => {
                         if (id.startsWith('bot_')) {
                             let botIdx = parseInt(id.split('_')[1]); let bColor = botColors[botIdx];
-                            if (bColor) gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 300, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
+                            if (bColor) gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 300, hand: [], isOut: false, turnCount: 0 });
                         } else {
                             let p = roomPlayers.find(x => x.id === id);
-                            if (p) gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
+                            if (p) gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 300, hand: [], isOut: false, turnCount: 0 });
                         }
                     });
                 }
@@ -608,7 +609,8 @@ function startNewRound() {
     
     gameState.players.forEach((p) => {
         if(p.points > 0) { 
-            p.hand = deck.splice(0, 5); p.isOut = false; p.hasDrawnTurn = false; p.hasDiscardedTurn = false; p.hasFlowedThisTurn = false; p.discardedRankThisTurn = null; p.turnCount = 0; p.hasFinishedFirstTurn = false;
+            p.hand = deck.splice(0, 5); p.isOut = false; p.hasDrawnTurn = false; p.hasDiscardedTurn = false; p.discardedRankThisTurn = null; p.turnCount = 0;
+            p.hasFinishedFirstTurn = false; // รีเซ็ตค่าการเช็คจบเทิร์นแรก
         } else { p.isOut = true; } 
     });
     
@@ -681,7 +683,8 @@ function syncStateToAll() {
 
     gameState.players.forEach(p => {
         if(!p.isBot) {
-            let privateState = { hand: p.hand, hasDrawn: p.hasDrawnTurn, hasDiscarded: p.hasDiscardedTurn, discardedRank: p.discardedRankThisTurn, points: p.points, turnCount: p.turnCount, hasFinishedFirstTurn: p.hasFinishedFirstTurn, hasFlowedThisTurn: p.hasFlowedThisTurn };
+            // เพิ่ม hasFinishedFirstTurn ส่งไปยัง Client เพื่อตรวจกฎพิเศษ
+            let privateState = { hand: p.hand, hasDrawn: p.hasDrawnTurn, hasDiscarded: p.hasDiscardedTurn, discardedRank: p.discardedRankThisTurn, points: p.points, turnCount: p.turnCount, hasFinishedFirstTurn: p.hasFinishedFirstTurn };
             if (p.id === myPeerId) renderClientGame(publicState, privateState);
             else {
                 let conn = guestConnections.find(c => c.peer === p.id);
@@ -747,7 +750,7 @@ function broadcastKangAnimation(callerId, isKang25) {
 
 function nextTurn() {
     let prevPlayer = gameState.players[gameState.turnIndex];
-    prevPlayer.hasDrawnTurn = false; prevPlayer.hasDiscardedTurn = false; prevPlayer.hasFlowedThisTurn = false; prevPlayer.discardedRankThisTurn = null;
+    prevPlayer.hasDrawnTurn = false; prevPlayer.hasDiscardedTurn = false; prevPlayer.discardedRankThisTurn = null;
 
     do { gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
     } while (gameState.players[gameState.turnIndex].isOut || gameState.players[gameState.turnIndex].hand.length === 0);
@@ -772,7 +775,8 @@ async function playBotSequence(cp) {
             processPlayerAction(cp.id, 'FLOW', flowIndex); await delay(2500); 
             while(true) {
                 let matchIdx = cp.hand.findIndex(c => c.rank === topCard.rank);
-                if (matchIdx !== -1) { processPlayerAction(cp.id, 'FLOW', matchIdx); await delay(1500); }
+                // เมื่อบอทไหลต่อได้ ให้ไหลต่อเนื่องแทนการ DISCARD เพื่อรักษาสิทธิในการไหลแบบไม่มีลิมิต
+                if (matchIdx !== -1) { processPlayerAction(cp.id, 'FLOW', matchIdx); await delay(3000); }
                 else break;
             }
             await delay(2000);
@@ -873,16 +877,17 @@ function processPlayerAction(pId, action, cardIndex) {
         return;
     }
 
-    if (action === 'FLOW') {
-        if (gameState.status !== 'PLAYING') return;
-        let flowPlayer = gameState.players.find(x => x.id === pId);
-        if (!flowPlayer || flowPlayer.isOut) return;
+    // เปิดโอกาสให้ใครก็ได้ที่มีไพ่เหมือนกับใบบนสุดไหลไพ่ได้โดยอิสระ
+    if (action === 'FLOW' && gameState.status === 'PLAYING') {
+        let topCard = discardPile[discardPile.length - 1]; 
+        let card = p.hand[cardIndex];
         
-        let topCard = discardPile[discardPile.length - 1]; let card = flowPlayer.hand[cardIndex];
-        if (topCard && card.rank === topCard.rank) {
-            triggerSound('follow'); let dropped = flowPlayer.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
-            flowPlayer.hasFlowedThisTurn = true; 
+        if (topCard && card && card.rank === topCard.rank) {
+            triggerSound('follow'); 
+            let dropped = p.hand.splice(cardIndex, 1)[0]; 
+            discardPile.push(dropped);
 
+            // คิดเงินค่าไหลจาก 'เจ้าของไพ่ต้นทาง' เสมอ (flowSourceId)
             let victimId = gameState.flowSourceId;
             let victim = gameState.players.find(v => v.id === victimId);
             if(!victim || victim.isOut) {
@@ -891,29 +896,31 @@ function processPlayerAction(pId, action, cardIndex) {
                 victim = gameState.players[victimIndex];
             }
 
-            if (victim) {
-                let flowMult = dropped.rank === 'A' ? 2 : 1; let penalty = 10 * flowMult;
-                victim.points -= penalty; if(victim.points < 0) victim.points = 0; flowPlayer.points += penalty;
-                broadcastAnnounce(`[PID:${flowPlayer.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}! ได้รับ ${penalty} เหรียญ จาก [PID:${victim.id}]`);
-                broadcastFloatSC(victim.id, -penalty); broadcastFloatSC(flowPlayer.id, penalty);
-            }
+            // เปลี่ยนเฉพาะหน้าไพ่ล่าสุด แต่ **ห้าม** เปลี่ยน flowSourceId เพื่อให้คนถัดไปไหลได้เงินจากคนเดิม
+            gameState.topCardOwnerId = p.id;
 
-            gameState.topCardOwnerId = flowPlayer.id; 
+            let flowMult = dropped.rank === 'A' ? 2 : 1; 
+            let penalty = 10 * flowMult;
+            victim.points -= penalty; if(victim.points < 0) victim.points = 0; p.points += penalty;
+            
+            broadcastAnnounce(`[PID:${p.id}] ไหลไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}! ได้รับ ${penalty} เหรียญ จาก [PID:${victim.id}]`);
+            broadcastFloatSC(victim.id, -penalty); broadcastFloatSC(p.id, penalty);
 
-            if(flowPlayer.hand.length === 0) { resolveKang(flowPlayer.id, false, 'FLOW_KNOCK'); } 
-            else {
+            if(p.hand.length === 0) { 
+                resolveKang(p.id, false, 'FLOW_KNOCK'); 
+            } else {
                 gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
                 broadcastTransition('ไหลไพ่สำเร็จ! รอสักครู่...', 2500);
                 setTimeout(() => { gameState.status = 'PLAYING'; syncStateToAll(); startTurnTimer(); }, 2500);
             }
+            return;
         }
-        return;
     }
 
     let cp = gameState.players[gameState.turnIndex];
     if(cp.id !== pId || gameState.status !== 'PLAYING') return; 
 
-    if(action === 'DRAW' && !cp.hasDrawnTurn && !cp.hasFlowedThisTurn) {
+    if(action === 'DRAW' && !cp.hasDrawnTurn) {
         if(deck.length > 0) {
             triggerSound('jua'); let drawnCard = deck.pop();
             cp.hand.push(drawnCard); cp.hasDrawnTurn = true;
@@ -935,14 +942,17 @@ function processPlayerAction(pId, action, cardIndex) {
         if (!cp.hasDiscardedTurn && cp.hasDrawnTurn) {
             triggerSound('select'); let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
             
-            let isFirstDiscardInTurn = !cp.hasDiscardedTurn;
-            cp.hasDiscardedTurn = true; cp.discardedRankThisTurn = dropped.rank;
+            // ตรวจสอบและตั้งค่า flowSourceId "ก่อน" ที่จะเปลี่ยน state cp.hasDiscardedTurn
+            const isFirstDiscardInTurn = !cp.hasDiscardedTurn;
+            cp.hasDiscardedTurn = true; 
+            cp.discardedRankThisTurn = dropped.rank;
             
+            // หากเป็นการวางไพ่ครั้งแรกของ Turn นี้ ให้ผู้นี้เป็นต้นทางของการไหล
             if (isFirstDiscardInTurn) {
                 gameState.flowSourceId = cp.id;
             }
 
-            gameState.topCardOwnerId = cp.id;
+            gameState.topCardOwnerId = cp.id; 
             broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]}`);
             if(cp.hand.length === 0) resolveKang(cp.id, false, 'DRAW_KNOCK'); else syncStateToAll();
         } 
@@ -952,15 +962,17 @@ function processPlayerAction(pId, action, cardIndex) {
             if(cp.hand.length === 0) resolveKang(cp.id, false, 'DRAW_KNOCK'); else syncStateToAll();
         }
     }
-    else if(action === 'END_TURN' && (cp.hasDiscardedTurn || cp.hasFlowedThisTurn)) {
+    else if(action === 'END_TURN' && cp.hasDiscardedTurn) {
+        // เมื่อผู้เล่นจบเทิร์นของตัวเอง ถือว่าผ่านเทิร์นแรกไปแล้ว (ตัดสิทธิ์กฎพิเศษกลุ่มที่ 2)
         cp.hasFinishedFirstTurn = true;
+
         cp.turnCount = (cp.turnCount || 0) + 1;
         triggerSound('select'); broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา`);
         gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
         broadcastTransition('กำลังเปลี่ยนตาถัดไป...', 2000);
         setTimeout(() => { gameState.status = 'PLAYING'; nextTurn(); }, 2000);
     }
-    else if(action === 'KANG' && !cp.hasDrawnTurn && !cp.hasFlowedThisTurn && discardPile.length > 0) {
+    else if(action === 'KANG' && !cp.hasDrawnTurn && discardPile.length > 0) {
         broadcastKangAnimation(cp.id, false); setTimeout(() => resolveKang(cp.id), 4500);
     }
 }
@@ -1154,13 +1166,16 @@ function renderClientGame(publicState, privateState) {
         btnDraw.style.display = 'inline-block'; btnEnd.style.display = 'inline-block'; btnKang.style.display = 'inline-block';
 
         if(isMyTurn && publicState.status === 'PLAYING') {
-            btnDraw.disabled = localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn;
-            btnKang.disabled = localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn || publicState.discardPileCount === 0;
-            btnEnd.disabled = !(localPlayerState.hasDiscarded || localPlayerState.hasFlowedThisTurn);
+            btnDraw.disabled = localPlayerState.hasDrawn;
+            btnKang.disabled = localPlayerState.hasDrawn || publicState.discardPileCount === 0;
+            btnEnd.disabled = !localPlayerState.hasDiscarded;
         } else { btnDraw.disabled = true; btnKang.disabled = true; btnEnd.disabled = true; }
     }
 
-    currentSpecialWinType = getSpecialWinType(localPlayerState.hand, localPlayerState);
+    // เรียกฟังก์ชันตรวจสอบกฎพิเศษด้วย object player ที่มี state ปัจจุบัน
+    currentSpecialWinType = getSpecialWinType(
+        localPlayerState.hand, localPlayerState
+    );
 
     if (currentSpecialWinType && (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING')) {
         btnSpecial.style.display = 'inline-block'; btnSpecial.innerText = currentSpecialWinType;
@@ -1190,26 +1205,24 @@ function renderClientGame(publicState, privateState) {
             cardEl.className = `card ${['♥','♦'].includes(c.suit)?'red':'black'}`;
             let tRank = THAI_RANKS[c.rank]; let tSuit = THAI_SUITS[c.suit];
             let actionHint = ""; cardEl.disabled = true;
-            
-            let canFlowCard = (topC && c.rank === topC.rank);
 
-            if (publicState.status === 'PLAYING') {
-                if (canFlowCard) {
-                    cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
-                    cardEl.style.boxShadow = "0 0 12px var(--blue)"; 
-                    cardEl.onclick = () => window.clientAction('FLOW', index);
-                }
-                else if (isMyTurn) {
-                    if (!localPlayerState.hasDiscarded) {
-                        if (localPlayerState.hasDrawn && !localPlayerState.hasFlowedThisTurn) {
-                            cardEl.disabled = false; actionHint = " กดเพื่อทิ้งไพ่ใบนี้";
-                            cardEl.onclick = () => window.clientAction('DISCARD', index);
-                        }
-                    } else if (c.rank === localPlayerState.discardedRank) {
-                        cardEl.disabled = false; actionHint = " กดเพื่อทิ้งเพิ่มเติม (เลขเดียวกัน)";
-                        cardEl.style.boxShadow = "0 0 12px var(--green)";
+            // เงื่อนไขการไหลแยกเป็นอิสระ สามารถไหลได้เสมอหากมีไพ่ตรงกับหน้าไพ่กองกลาง
+            const canFlowCard = topC && c.rank === topC.rank;
+
+            if (canFlowCard && publicState.status === 'PLAYING') {
+                cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
+                cardEl.style.boxShadow = "0 0 12px var(--blue)"; 
+                cardEl.onclick = () => window.clientAction('FLOW', index);
+            } else if (isMyTurn && publicState.status === 'PLAYING') {
+                if (!localPlayerState.hasDiscarded) {
+                    if (localPlayerState.hasDrawn) {
+                        cardEl.disabled = false; actionHint = " กดเพื่อทิ้งไพ่ใบนี้";
                         cardEl.onclick = () => window.clientAction('DISCARD', index);
                     }
+                } else if (c.rank === localPlayerState.discardedRank) {
+                    cardEl.disabled = false; actionHint = " กดเพื่อทิ้งเพิ่มเติม (เลขเดียวกัน)";
+                    cardEl.style.boxShadow = "0 0 12px var(--green)";
+                    cardEl.onclick = () => window.clientAction('DISCARD', index);
                 }
             }
             
