@@ -719,7 +719,7 @@ function broadcastFloatSC(targetId, amt) {
 }
 
 // =========================================================
-// [พื้นที่สำหรับพัฒนาต่อ #2] ระบบ Animation
+// [พื้นที่สำหรับพัฒนาต่อ #2] ระบบ Animation (เพิ่มมิติการแสดงผล)
 // =========================================================
 window.playKangAnimation = (callerId, isKang25) => {
     const animScreen = document.getElementById('kang-animation-screen');
@@ -728,6 +728,12 @@ window.playKangAnimation = (callerId, isKang25) => {
     const avatar = document.getElementById('kang-anim-avatar');
 
     animScreen.style.display = 'flex';
+    
+    // --- [เพิ่มมิติการแสดงผล] Visual Trigger: Screen Flash ---
+    animScreen.style.animation = 'none';
+    void animScreen.offsetWidth; // trigger reflow
+    animScreen.style.animation = 'flashScreen 0.4s ease-out';
+    
     text1.style.opacity = '0';
     text2.style.opacity = '0';
     
@@ -737,6 +743,17 @@ window.playKangAnimation = (callerId, isKang25) => {
     
     avatar.style.color = pColorHex;
     avatar.className = 'kang-anim-active';
+    
+    // --- [เพิ่มมิติการแสดงผล] Visual Trigger: Dramatic Avatar Pop ---
+    avatar.style.transform = 'scale(0.1) rotate(-15deg)';
+    avatar.style.transition = 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    setTimeout(() => avatar.style.transform = 'scale(1) rotate(0deg)', 50);
+
+    // --- [เพิ่มมิติการแสดงผล] Visual Trigger: Screen Shake สำหรับ แคง 25 ---
+    if (isKang25) {
+        document.body.style.animation = 'shake 0.5s ease-in-out';
+        setTimeout(() => document.body.style.animation = '', 500);
+    }
 
     playSound(isKang25 ? 'cang25' : 'cang');
 
@@ -1202,12 +1219,23 @@ function renderClientGame(publicState, privateState) {
     if(deckBox) deckBox.setAttribute('aria-label', `${publicState.deckCount} ใบที่จั่วได้`);
     
     let dp = document.getElementById('discard-pile');
+    
+    // --- [เพิ่มมิติการแสดงผล] Visual Trigger: อัปเดตกองทิ้ง ---
     if(topC) {
+        let currentTopId = `${topC.rank}-${topC.suit}`;
+        if (window._lastTopCardId !== currentTopId) {
+            window._lastTopCardId = currentTopId;
+            dp.style.animation = 'none';
+            void dp.offsetWidth; // trigger reflow
+            dp.style.animation = 'cardDropScale 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+        }
+
         let tRank = THAI_RANKS[topC.rank]; let tSuit = THAI_SUITS[topC.suit];
         dp.innerHTML = `<div class="card ${['♥','♦'].includes(topC.suit)?'red':'black'}" aria-label="ไพ่กองทิ้งใบบนสุดคือ ${tRank} ${tSuit}" role="img">
                            <div aria-hidden="true">${topC.rank}</div><div class="card-suit" aria-hidden="true">${topC.suit}</div>
                         </div>`;
     } else {
+        window._lastTopCardId = null;
         dp.innerHTML = '<div style="color:#a0a0a0; font-size:0.85rem;">กองทิ้งว่างเปล่า</div>'; 
         dp.setAttribute('aria-label', 'กองไพ่ทิ้งยังว่างเปล่า');
     }
@@ -1220,6 +1248,10 @@ function renderClientGame(publicState, privateState) {
         (localPlayerState.hand || []).forEach((c, index) => {
             let cardEl = document.createElement('button');
             cardEl.className = `card ${['♥','♦'].includes(c.suit)?'red':'black'}`;
+            
+            // --- [เพิ่มมิติการแสดงผล] Visual Trigger: ไพ่ทยอยแจกเข้ามือ ---
+            cardEl.style.animation = `cardSlideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) ${index * 0.08}s both`;
+
             let tRank = THAI_RANKS[c.rank]; let tSuit = THAI_SUITS[c.suit];
             let actionHint = ""; cardEl.disabled = true;
             
@@ -1253,6 +1285,73 @@ function renderClientGame(publicState, privateState) {
 }
 
 window.clientAction = (action, index = 0) => {
+    // --- [เพิ่มมิติการแสดงผล] Visual Trigger: แอนิเมชันเมื่อผู้เล่นกดทำ Action ส่งข้อมูล ---
+    try {
+        if (action === 'DISCARD' || action === 'FLOW') {
+            const handUi = document.getElementById('my-hand-ui');
+            const cardEl = handUi ? handUi.children[index] : null;
+            const discardPileEl = document.getElementById('discard-pile');
+            
+            if (cardEl && discardPileEl) {
+                const cardRect = cardEl.getBoundingClientRect();
+                const targetRect = discardPileEl.getBoundingClientRect();
+                
+                const clone = cardEl.cloneNode(true);
+                clone.style.position = 'fixed';
+                clone.style.left = `${cardRect.left}px`;
+                clone.style.top = `${cardRect.top}px`;
+                clone.style.width = `${cardRect.width}px`;
+                clone.style.height = `${cardRect.height}px`;
+                clone.style.zIndex = '9999';
+                clone.style.transition = 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)';
+                clone.style.pointerEvents = 'none';
+                clone.style.margin = '0';
+                document.body.appendChild(clone);
+                
+                cardEl.style.opacity = '0'; // ซ่อนไพ่บนมือทันทีเพื่อความสมูท
+                
+                setTimeout(() => {
+                    clone.style.left = `${targetRect.left + (targetRect.width/2) - (cardRect.width/2)}px`;
+                    clone.style.top = `${targetRect.top + (targetRect.height/2) - (cardRect.height/2)}px`;
+                    clone.style.transform = `scale(0.8) rotate(${Math.random() * 30 - 15}deg)`;
+                    clone.style.opacity = '0.7';
+                }, 10);
+                
+                setTimeout(() => clone.remove(), 400);
+            }
+        } else if (action === 'DRAW') {
+            const deckEl = document.getElementById('deck-group-box');
+            if (deckEl) {
+                const deckRect = deckEl.getBoundingClientRect();
+                const clone = document.createElement('div');
+                clone.className = 'card';
+                // สร้างจำลองหลังไพ่คร่าวๆ สำหรับให้ลอยเข้ามือ
+                clone.style.background = 'linear-gradient(135deg, var(--blue, #1e3c72), #2a5298)';
+                clone.style.border = '2px solid #fff';
+                clone.style.position = 'fixed';
+                clone.style.left = `${deckRect.left}px`;
+                clone.style.top = `${deckRect.top}px`;
+                clone.style.width = '60px'; 
+                clone.style.height = '90px';
+                clone.style.borderRadius = '8px';
+                clone.style.zIndex = '9999';
+                clone.style.transition = 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                clone.style.pointerEvents = 'none';
+                document.body.appendChild(clone);
+                
+                setTimeout(() => {
+                    clone.style.left = `50%`;
+                    clone.style.top = `90%`; // ลอยมาทางผู้เล่นด้านล่างจอ
+                    clone.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                    clone.style.opacity = '0';
+                }, 10);
+                
+                setTimeout(() => clone.remove(), 400);
+            }
+        }
+    } catch(e) { console.warn('Animation error ignored', e); }
+    // -----------------------------------------------------------
+
     if(isHost) processPlayerAction(myPeerId, action, index);
     else hostConnection.send({ type: 'PLAYER_ACTION', playerId: myPeerId, action, cardIndex: index });
 };
@@ -1260,10 +1359,35 @@ window.clientAction = (action, index = 0) => {
 window.showFloatingScore = (targetId, amt) => {
     let target = document.getElementById(`avatar-players-status-bar-${targetId}`);
     if (target) {
-        let floatEl = document.createElement('div'); floatEl.className = 'floating-sc';
-        floatEl.style.color = amt > 0 ? '#32cd32' : '#ff4d4d'; floatEl.innerText = amt > 0 ? `+${amt}` : amt; 
-        floatEl.setAttribute('aria-hidden', 'true'); target.appendChild(floatEl); 
-        setTimeout(() => floatEl.remove(), 2000);
+        let floatEl = document.createElement('div'); 
+        floatEl.className = 'floating-sc';
+        
+        // --- [เพิ่มมิติการแสดงผล] Visual Trigger: แอนิเมชันเหรียญที่เด้งขึ้น ---
+        floatEl.style.transition = 'all 1.5s ease-out';
+        floatEl.style.position = 'absolute';
+        floatEl.style.top = '0px';
+        floatEl.style.left = '50%';
+        floatEl.style.transform = 'translate(-50%, 0) scale(0.5)';
+        floatEl.style.opacity = '1';
+        floatEl.style.fontWeight = 'bold';
+        floatEl.style.fontSize = '1.2rem';
+        floatEl.style.textShadow = '0 0 5px rgba(0,0,0,0.8)';
+        
+        floatEl.style.color = amt > 0 ? '#32cd32' : '#ff4d4d'; 
+        floatEl.innerText = amt > 0 ? `+${amt}` : amt; 
+        
+        floatEl.setAttribute('aria-hidden', 'true'); 
+        target.style.position = 'relative'; // Ensure relative positioning
+        target.appendChild(floatEl); 
+        
+        // Trigger reflow & Animate
+        void floatEl.offsetWidth; 
+        setTimeout(() => {
+            floatEl.style.transform = 'translate(-50%, -40px) scale(1.2)';
+            floatEl.style.opacity = '0';
+        }, 10);
+
+        setTimeout(() => floatEl.remove(), 1500);
     }
 };
 
