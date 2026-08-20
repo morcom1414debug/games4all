@@ -1248,12 +1248,18 @@ function renderClientGame(publicState, privateState) {
         btnSpecial.style.display = 'inline-block'; btnSpecial.innerText = currentSpecialWinType;
     } else { btnSpecial.style.display = 'none'; }
 
-    const deckCountTxt = document.getElementById('deck-count-text');
-    if(deckCountTxt) deckCountTxt.innerText = publicState.deckCount;
-    
-    const deckBox = document.getElementById('deck-group-box');
-    if(deckBox) deckBox.setAttribute('aria-label', `${publicState.deckCount} ใบที่จั่วได้`);
-    
+const deckCountTxt = document.getElementById('deck-count-text');
+if (deckCountTxt) {
+    deckCountTxt.innerText = publicState.deckCount;
+}
+
+const deckBox = document.getElementById('deck-group-box');
+if (deckBox) {
+    deckBox.setAttribute(
+        'aria-label',
+        `กองไพ่สำหรับจั่ว เหลือ ${publicState.deckCount} ใบ`
+    );
+}
     let dp = document.getElementById('discard-pile');
     
     // --- [เพิ่มมิติการแสดงผล] Visual Trigger: อัปเดตกองทิ้ง ---
