@@ -1249,15 +1249,13 @@ function renderClientGame(publicState, privateState) {
     } else { btnSpecial.style.display = 'none'; }
 
 const deckCountTxt = document.getElementById('deck-count-text');
-
 if (deckCountTxt) {
     deckCountTxt.innerText = publicState.deckCount;
 }
 
-const deckAccessibleObject = document.getElementById('deck-accessible-object');
-
-if (deckAccessibleObject) {
-    deckAccessibleObject.setAttribute(
+const deckBox = document.getElementById('deck-group-box');
+if (deckBox) {
+    deckBox.setAttribute(
         'aria-label',
         `กองไพ่สำหรับจั่ว เหลือ ${publicState.deckCount} ใบ`
     );
