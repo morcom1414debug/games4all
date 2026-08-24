@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>No Thanks! - เกมออนไลน์เพื่อทุกคน</title>
+    
+    <!-- PeerJS สำหรับการเชื่อมต่อ P2P ระหว่างเล่นเกม -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --surface-dark: #1e1e1e;
+            --primary: #4CAF50;
+            --primary-hover: #45a049;
+            --danger: #f44336;
+            --danger-hover: #da190b;
+            --text-main: #ffffff;
+            --text-muted: #aaaaaa;
+            --focus-ring: #ffc107;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        /* Accessibilty Classes */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        /* Focus Management */
+        *:focus {
+            outline: 3px solid var(--focus-ring);
+            outline-offset: 2px;
+        }
+
+        .screen {
+            display: none;
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: var(--surface-dark);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .screen.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1, h2, h3 {
+            margin-bottom: 20px;
+            color: var(--focus-ring);
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+            width: 100%;
+            max-width: 300px;
+            display: block;
+            transition: background-color 0.2s;
+        }
+
+        button:hover { background-color: var(--primary-hover); }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        
+        button.danger { background-color: var(--danger); }
+        button.danger:hover { background-color: var(--danger-hover); }
+
+        .room-list {
+            list-style: none;
+            margin-bottom: 20px;
+        }
+
+        .room-list li {
+            background: #2a2a2a;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .player-list {
+            margin: 20px 0;
+            padding: 10px;
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+
+        /* In-Game UI */
+        .game-board {
+            text-align: center;
+            padding: 30px;
+            background: #222;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 2px solid #444;
+        }
+
+        .table-card {
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            background: #d32f2f;
+            display: inline-block;
+            padding: 20px 40px;
+            border-radius: 10px;
+            margin: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        }
+
+        .table-coins {
+            font-size: 24px;
+            color: var(--focus-ring);
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .controls button { width: auto; min-width: 150px; }
+
+        .player-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .player-card {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 5px solid transparent;
+        }
+        
+        .player-card.active-turn {
+            border-left-color: var(--focus-ring);
+            background: #333;
+        }
+
+        .rules-text {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- พื้นที่สำหรับ Screen Reader ประกาศข้อมูล (Aria Live) -->
+    <div id="aria-polite" aria-live="polite" class="sr-only"></div>
+    <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
+
+    <!-- 1. หน้าแรก (Main Menu) -->
+    <main id="screen-main" class="screen active">
+        <h1 tabindex="-1" id="title-main">เมนูหลัก No Thanks!</h1>
+        <button id="btn-create-room" aria-label="สร้างห้องใหม่">สร้างห้อง</button>
+        <button id="btn-show-rooms" aria-label="ค้นหาห้องที่เปิดอยู่">เข้าร่วมห้อง</button>
+        <button id="btn-how-to-play" aria-label="วิธีเล่น">วิธีเล่น</button>
+    </main>
+
+    <!-- 2. หน้าวิธีเล่น -->
+    <main id="screen-rules" class="screen">
+        <h2 tabindex="-1" id="title-rules">วิธีเล่น</h2>
+        <div class="rules-text" tabindex="0">
+            <p>กติกา No Thanks!</p>
+            <p>1. ในแต่ละตา จะมีไพ่เปิดอยู่ตรงกลาง</p>
+            <p>2. ผู้เล่นสามารถเลือก "ผ่าน" โดยต้องจ่าย 1 เหรียญวางบนไพ่</p>
+            <p>3. หรือเลือก "รับไพ่" จะได้ไพ่ใบนั้นและเหรียญที่วางอยู่บนไพ่ทั้งหมด และได้เล่นตาต่อไปทันที</p>
+            <p>4. หากไม่มีเหรียญ จะต้องบังคับรับไพ่</p>
+            <p>5. จบเกมเมื่อไพ่กองกลางหมด นำเลขไพ่มาบวกเป็นคะแนน (เลขเรียงกันคิดเฉพาะใบน้อยสุด) ลบด้วยจำนวนเหรียญที่เหลือ ผู้ที่มีคะแนนน้อยที่สุดคือผู้ชนะ</p>
+        </div>
+        <button id="btn-back-main" aria-label="กลับสู่เมนูหลัก">กลับเมนูหลัก</button>
+    </main>
+
+    <!-- 3. หน้าค้นหาห้อง -->
+    <main id="screen-rooms" class="screen">
+        <h2 tabindex="-1" id="title-rooms">ห้องที่เปิดอยู่</h2>
+        <div id="room-list-container" role="region" aria-label="รายการห้อง">
+            <p>กำลังค้นหาห้อง...</p>
+        </div>
+        <button id="btn-back-main-2" aria-label="กลับสู่เมนูหลัก">กลับเมนูหลัก</button>
+    </main>
+
+    <!-- 4. หน้าล็อบบี้ -->
+    <main id="screen-lobby" class="screen">
+        <h2 tabindex="-1" id="title-lobby">ล็อบบี้ห้อง: <span id="lobby-room-id"></span></h2>
+        
+        <div role="group" aria-label="ผู้เล่นในห้อง" class="player-list">
+            <h3>รายชื่อผู้เล่น (<span id="lobby-player-count">1</span>/7)</h3>
+            <ul id="lobby-players"></ul>
+        </div>
+
+        <div id="host-controls" style="display: none;" role="group" aria-label="เครื่องมือหัวหน้าห้อง">
+            <button id="btn-add-bot" aria-label="เพิ่มบอท 1 ตัว">เพิ่มบอท</button>
+            <button id="btn-remove-bot" aria-label="ลบบอท 1 ตัว">ลบบอท</button>
+            <button id="btn-start-game" aria-label="เริ่มเกม" disabled>เริ่มเกม (ต้องมี 3-7 คน)</button>
+        </div>
+        
+        <p id="client-wait-msg" style="display: none;">รอหัวหน้าห้องเริ่มเกม...</p>
+        <button id="btn-leave-room" class="danger" aria-label="ออกจากห้อง">ออกจากห้อง</button>
+    </main>
+
+    <!-- 5. หน้าเล่นเกม -->
+    <main id="screen-game" class="screen">
+        <h2 tabindex="-1" id="title-game">กำลังเล่นเกม</h2>
+        
+        <div class="game-board" role="region" aria-label="กระดานกลาง">
+            <div>ไพ่คงเหลือในกอง: <span id="deck-count">24</span> ใบ</div>
+            <div class="table-card" aria-hidden="true" id="table-card-display">-</div>
+            <div class="table-coins" aria-hidden="true">🪙 เหรียญบนไพ่: <span id="table-coins-display">0</span></div>
+            <div class="sr-only" id="sr-table-info"></div> <!-- สำหรับ Screen Reader อ่านกระดานแบบเต็ม -->
+        </div>
+
+        <div id="game-controls" class="controls" style="display: none;" role="group" aria-label="ตัวเลือกการเล่นของคุณ">
+            <button id="btn-pass" aria-label="ผ่าน จ่าย 1 เหรียญ">ผ่าน (จ่าย 1 เหรียญ)</button>
+            <button id="btn-take" aria-label="รับไพ่ และรับเหรียญบนโต๊ะ">รับไพ่</button>
+        </div>
+
+        <div style="margin-top: 30px;">
+            <h3>สถานะผู้เล่น</h3>
+            <div id="player-statuses" class="player-status" role="list" aria-label="ข้อมูลผู้เล่นทุกคน"></div>
+        </div>
+    </main>
+
+    <!-- 6. หน้าสรุปผล -->
+    <main id="screen-result" class="screen">
+        <h2 tabindex="-1" id="title-result">สรุปผลคะแนน</h2>
+        <div id="result-list" role="list" aria-label="อันดับและคะแนน"></div>
+        
+        <div id="host-result-controls" style="display: none;">
+            <button id="btn-play-again" aria-label="เล่นอีกครั้งกับผู้เล่นเดิม">เล่นอีกครั้ง</button>
+        </div>
+        <button id="btn-back-lobby-result" aria-label="กลับล็อบบี้">กลับไปล็อบบี้</button>
+    </main>
+
+    <script type="module">
+        // --- การตั้งค่า Firebase ตามที่ระบุ ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, set, get, onValue, update, remove, child } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
+            authDomain: "xo-game-134ec.firebaseapp.com",
+            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "xo-game-134ec",
+            storageBucket: "xo-game-134ec.firebasestorage.app",
+            messagingSenderId: "318375224157",
+            appId: "1:318375224157:web:1ae37e5d1f3c6bc2b77eb4"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // --- ระบบสีสำหรับผู้เล่น (แทนการตั้งชื่อ) ---
+        const PLAYER_COLORS = [
+            { id: "red", name: "สีแดง", hex: "#f44336" },
+            { id: "blue", name: "สีน้ำเงิน", hex: "#2196F3" },
+            { id: "green", name: "สีเขียว", hex: "#4CAF50" },
+            { id: "yellow", name: "สีเหลือง", hex: "#FFEB3B" },
+            { id: "purple", name: "สีม่วง", hex: "#9C27B0" },
+            { id: "orange", name: "สีส้ม", hex: "#FF9800" },
+            { id: "pink", name: "สีชมพู", hex: "#E91E63" }
+        ];
+
+        // --- State Management ---
+        let myPeerId = null;
+        let myColor = null;
+        let isHost = false;
+        let currentRoomId = null;
+        
+        let peer = null;
+        let connections = []; // สำหรับ Host เก็บ Connection ของ Client
+        let hostConnection = null; // สำหรับ Client เก็บ Connection ของ Host
+
+        let players = []; // { id, peerId, colorName, isBot, online }
+        let game = {
+            status: 'waiting', // waiting, playing, ended
+            deck: [],
+            tableCard: null,
+            tableCoins: 0,
+            turnIndex: 0,
+            playerStates: {} // { peerId: { coins, cards, score } }
+        };
+
+        // --- ระบบ Accessibility Announcements ---
+        function announce(message, assertive = false) {
+            const targetId = assertive ? 'aria-assertive' : 'aria-polite';
+            const el = document.getElementById(targetId);
+            el.textContent = ''; // clear
+            setTimeout(() => {
+                el.textContent = message;
+            }, 50);
+            console.log(`[Announce]: ${message}`);
+        }
+
+        function switchScreen(screenId, focusId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            if (focusId) {
+                document.getElementById(focusId).focus();
+            }
+        }
+
+        // --- Firebase Logic สำหรับค้นหาและสร้างห้อง ---
+        async function getNextRoomId() {
+            const roomsRef = ref(db, 'nothanks_rooms');
+            const snapshot = await get(roomsRef);
+            let maxId = 0;
+            if (snapshot.exists()) {
+                const rooms = snapshot.val();
+                for (let key in rooms) {
+                    if (key.startsWith("No")) {
+                        const num = parseInt(key.replace("No", ""));
+                        if (!isNaN(num) && num > maxId) maxId = num;
+                    }
+                }
+            }
+            const nextId = (maxId + 1).toString().padStart(5, '0');
+            return `No${nextId}`;
+        }
+
+        // --- การตั้งค่า PeerJS ---
+        function initPeer(onReady) {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                myPeerId = id;
+                onReady();
+            });
+            peer.on('error', (err) => {
+                announce("เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย", true);
+                console.error(err);
+            });
+        }
+
+        // --- Logic การสร้างห้อง (Host) ---
+        document.getElementById('btn-create-room').addEventListener('click', () => {
+            announce("กำลังสร้างห้อง กรุณารอซักครู่");
+            initPeer(async () => {
+                isHost = true;
+                myColor = PLAYER_COLORS[0];
+                currentRoomId = await getNextRoomId();
+                
+                // บันทึกห้องลง Firebase
+                await set(ref(db, `nothanks_rooms/${currentRoomId}`), {
+                    hostId: myPeerId,
+                    status: 'waiting',
+                    timestamp: Date.now()
+                });
+
+                players = [{ id: myPeerId, peerId: myPeerId, color: myColor, isBot: false, online: true }];
+                
+                setupHostEvents();
+                updateLobbyUI();
+                switchScreen('screen-lobby', 'title-lobby');
+                announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId} คุณคือผู้เล่น${myColor.name}`);
+            });
+        });
+
+        // --- Host: จัดการการเชื่อมต่อจาก Client ---
+        function setupHostEvents() {
+            peer.on('connection', (conn) => {
+                conn.on('open', () => {
+                    // กำหนดสีให้ผู้เล่นใหม่
+                    const usedColors = players.map(p => p.color.id);
+                    const availableColor = PLAYER_COLORS.find(c => !usedColors.includes(c.id));
+                    
+                    if (players.length >= 7 || game.status === 'playing' || !availableColor) {
+                        conn.send({ type: 'reject', message: 'ห้องเต็มหรือเกมเริ่มไปแล้ว' });
+                        setTimeout(() => conn.close(), 1000);
+                        return;
+                    }
+
+                    connections.push(conn);
+                    const newPlayer = { id: conn.peer, peerId: conn.peer, color: availableColor, isBot: false, online: true };
+                    players.push(newPlayer);
+                    
+                    announce(`ผู้เล่น${availableColor.name} เข้าร่วมห้องแล้ว`);
+                    
+                    // แจ้ง State ล่าสุดให้ทุกคนทราบ
+                    broadcastState();
+
+                    conn.on('data', (data) => handleClientMessage(conn.peer, data));
+                    conn.on('close', () => handlePlayerDisconnect(conn.peer));
+                });
+            });
+        }
+
+        // --- Logic เข้าร่วมห้อง (Client) ---
+        document.getElementById('btn-show-rooms').addEventListener('click', () => {
+            switchScreen('screen-rooms', 'title-rooms');
+            const listContainer = document.getElementById('room-list-container');
+            listContainer.innerHTML = '<p>กำลังค้นหาห้อง...</p>';
+            announce("กำลังค้นหาห้องที่เปิดอยู่");
+
+            const roomsRef = ref(db, 'nothanks_rooms');
+            get(roomsRef).then((snapshot) => {
+                listContainer.innerHTML = '';
+                if (snapshot.exists()) {
+                    const rooms = snapshot.val();
+                    let ul = document.createElement('ul');
+                    ul.className = 'room-list';
+                    let roomCount = 0;
+                    for (let roomId in rooms) {
+                        if (rooms[roomId].status === 'waiting') {
+                            roomCount++;
+                            let li = document.createElement('li');
+                            let span = document.createElement('span');
+                            span.textContent = `ห้อง: ${roomId}`;
+                            let btn = document.createElement('button');
+                            btn.textContent = "เข้าร่วม";
+                            btn.setAttribute("aria-label", `เข้าร่วมห้อง ${roomId}`);
+                            btn.style.width = "auto";
+                            btn.onclick = () => joinRoom(roomId, rooms[roomId].hostId);
+                            li.appendChild(span);
+                            li.appendChild(btn);
+                            ul.appendChild(li);
+                        }
+                    }
+                    if(roomCount > 0) {
+                        listContainer.appendChild(ul);
+                        announce(`พบ ${roomCount} ห้องที่เปิดอยู่`);
+                    } else {
+                        listContainer.innerHTML = '<p>ไม่พบห้องที่รอเริ่มเกม</p>';
+                        announce("ไม่พบห้องที่รอเริ่มเกมในขณะนี้");
+                    }
+                } else {
+                    listContainer.innerHTML = '<p>ไม่พบห้องที่รอเริ่มเกม</p>';
+                    announce("ไม่พบห้องที่เปิดอยู่");
+                }
+            });
+        });
+
+        function joinRoom(roomId, hostId) {
+            announce(`กำลังเชื่อมต่อไปยังห้อง ${roomId}`);
+            initPeer(() => {
+                isHost = false;
+                currentRoomId = roomId;
+                hostConnection = peer.connect(hostId);
+                
+                hostConnection.on('open', () => {
+                    hostConnection.on('data', handleHostMessage);
+                    hostConnection.on('close', () => {
+                        announce("ขาดการเชื่อมต่อจากหัวหน้าห้อง", true);
+                        leaveRoom();
+                    });
+                });
+            });
+        }
+
+        // --- ระบบสื่อสาร P2P ---
+        function broadcastState() {
+            if (!isHost) return;
+            const payload = { type: 'sync', players, game };
+            connections.forEach(conn => {
+                if(conn.open) conn.send(payload);
+            });
+            updateLobbyUI(); // อัพเดทหน้าจอตัวเอง
+            if (game.status === 'playing') updateGameUI();
+        }
+
+        function handleHostMessage(data) {
+            if (data.type === 'reject') {
+                announce(data.message, true);
+                leaveRoom();
+            } else if (data.type === 'sync') {
+                const wasWaiting = game.status === 'waiting';
+                players = data.players;
+                game = data.game;
+                
+                // หาตัวเอง
+                const me = players.find(p => p.peerId === myPeerId);
+                if(me) myColor = me.color;
+
+                if (game.status === 'waiting') {
+                    if (document.getElementById('screen-lobby').classList.contains('active') === false) {
+                        switchScreen('screen-lobby', 'title-lobby');
+                    }
+                    updateLobbyUI();
+                } else if (game.status === 'playing') {
+                    if (wasWaiting) {
+                        switchScreen('screen-game', 'title-game');
+                        announce("เกมเริ่มแล้ว!", true);
+                    }
+                    updateGameUI();
+                } else if (game.status === 'ended') {
+                    if (document.getElementById('screen-result').classList.contains('active') === false) {
+                        switchScreen('screen-result', 'title-result');
+                    }
+                    updateResultUI();
+                }
+            } else if (data.type === 'announce') {
+                announce(data.message, data.assertive);
+            }
+        }
+
+        function handleClientMessage(peerId, data) {
+            if (!isHost) return;
+            if (data.type === 'action') {
+                const playerIndex = players.findIndex(p => p.id === peerId);
+                if (playerIndex === game.turnIndex) {
+                    processAction(players[playerIndex], data.action);
+                }
+            }
+        }
+
+        function sendAction(action) {
+            if (isHost) {
+                processAction(players[game.turnIndex], action);
+            } else {
+                hostConnection.send({ type: 'action', action: action });
+            }
+        }
+
+        function handlePlayerDisconnect(peerId) {
+            if (!isHost) return;
+            const p = players.find(p => p.peerId === peerId);
+            if (p) {
+                p.online = false;
+                announce(`ผู้เล่น${p.color.name} หลุดจากการเชื่อมต่อ เปลี่ยนเป็นบอทชั่วคราว`, true);
+                p.isBot = true; // Auto bot takeover
+                broadcastState();
+                
+                // ถ้าตาคนที่หลุดพอดี ให้บอทเล่น
+                if (game.status === 'playing' && players[game.turnIndex].id === p.id) {
+                    setTimeout(() => processBotTurn(), 1500);
+                }
+            }
+        }
+
+        // --- ระบบล็อบบี้ ---
+        function updateLobbyUI() {
+            document.getElementById('lobby-room-id').textContent = currentRoomId;
+            document.getElementById('lobby-player-count').textContent = players.length;
+            
+            const ul = document.getElementById('lobby-players');
+            ul.innerHTML = '';
+            players.forEach(p => {
+                let li = document.createElement('li');
+                let botText = p.isBot ? " (บอท)" : "";
+                let youText = p.peerId === myPeerId ? " (คุณ)" : "";
+                li.textContent = `ผู้เล่น${p.color.name}${botText}${youText}`;
+                li.style.color = p.color.hex;
+                li.setAttribute("role", "listitem");
+                ul.appendChild(li);
+            });
+
+            if (isHost) {
+                document.getElementById('host-controls').style.display = 'block';
+                document.getElementById('client-wait-msg').style.display = 'none';
+                
+                document.getElementById('btn-add-bot').disabled = players.length >= 7;
+                const hasBot = players.some(p => p.isBot);
+                document.getElementById('btn-remove-bot').disabled = !hasBot;
+                
+                document.getElementById('btn-start-game').disabled = players.length < 3;
+            } else {
+                document.getElementById('host-controls').style.display = 'none';
+                document.getElementById('client-wait-msg').style.display = 'block';
+            }
+        }
+
+        document.getElementById('btn-add-bot').addEventListener('click', () => {
+            if (players.length >= 7) return;
+            const usedColors = players.map(p => p.color.id);
+            const availableColor = PLAYER_COLORS.find(c => !usedColors.includes(c.id));
+            
+            const botId = `bot_${Date.now()}`;
+            players.push({ id: botId, peerId: null, color: availableColor, isBot: true, online: true });
+            announce(`เพิ่มบอทผู้เล่น${availableColor.name} เรียบร้อยแล้ว`);
+            broadcastState();
+        });
+
+        document.getElementById('btn-remove-bot').addEventListener('click', () => {
+            for (let i = players.length - 1; i >= 0; i--) {
+                if (players[i].isBot) {
+                    const removed = players.splice(i, 1)[0];
+                    announce(`ลบบอทผู้เล่น${removed.color.name} เรียบร้อยแล้ว`);
+                    break;
+                }
+            }
+            broadcastState();
+        });
+
+        // --- เริ่มเกม (Host เท่านั้น) ---
+        document.getElementById('btn-start-game').addEventListener('click', async () => {
+            if (players.length < 3 || players.length > 7) return;
+            
+            announce("เริ่มเกมแล้ว!", true);
+            // ลบห้องออกจาก Firebase เพื่อไม่ให้คนอื่นเห็น
+            await remove(ref(db, `nothanks_rooms/${currentRoomId}`));
+            
+            setupNewGame();
+            switchScreen('screen-game', 'title-game');
+            broadcastState();
+            
+            checkBotTurn();
+        });
+
+        function setupNewGame() {
+            // สร้างกองไพ่ 3-35
+            let deck = Array.from({length: 33}, (_, i) => i + 3);
+            // สับไพ่
+            deck = deck.sort(() => Math.random() - 0.5);
+            // เอาออก 9 ใบ
+            deck.splice(0, 9);
+            
+            game.deck = deck;
+            game.tableCard = game.deck.pop();
+            game.tableCoins = 0;
+            game.status = 'playing';
+            
+            // สุ่มคนเริ่ม
+            game.turnIndex = Math.floor(Math.random() * players.length);
+            
+            // แจกเหรียญ
+            let startCoins = 11;
+            if (players.length === 6) startCoins = 9;
+            if (players.length === 7) startCoins = 7;
+            
+            game.playerStates = {};
+            players.forEach(p => {
+                game.playerStates[p.id] = { coins: startCoins, cards: [] };
+            });
+
+            hostAnnounce(`เปิดไพ่ใบแรก เลข ${game.tableCard}. ตาของ ผู้เล่น${players[game.turnIndex].color.name}`);
+        }
+
+        // --- Game Logic กติกาหลัก ---
+        function hostAnnounce(msg, assertive = false) {
+            announce(msg, assertive);
+            connections.forEach(conn => {
+                if(conn.open) conn.send({ type: 'announce', message: msg, assertive: assertive });
+            });
+        }
+
+        function processAction(player, action) {
+            if (game.status !== 'playing') return;
+            
+            const pState = game.playerStates[player.id];
+            
+            if (action === 'pass') {
+                if (pState.coins <= 0) {
+                    // หากบังคับผ่านไม่ได้
+                    return;
+                }
+                pState.coins -= 1;
+                game.tableCoins += 1;
+                
+                hostAnnounce(`ผู้เล่น${player.color.name} เลือกผ่าน จ่าย 1 เหรียญ. เหรียญบนไพ่รวมเป็น ${game.tableCoins}`);
+                
+                // เลื่อนตาถัดไป
+                game.turnIndex = (game.turnIndex + 1) % players.length;
+                const nextPlayer = players[game.turnIndex];
+                
+                setTimeout(() => {
+                    hostAnnounce(`ตาของ ผู้เล่น${nextPlayer.color.name}`);
+                    broadcastState();
+                    checkBotTurn();
+                }, 500);
+
+            } else if (action === 'take') {
+                pState.cards.push(game.tableCard);
+                pState.cards.sort((a,b) => a-b);
+                const gainedCoins = game.tableCoins;
+                pState.coins += gainedCoins;
+                
+                hostAnnounce(`ผู้เล่น${player.color.name} รับไพ่เลข ${game.tableCard} และเหรียญ ${gainedCoins} เหรียญ`, true);
+                
+                if (game.deck.length > 0) {
+                    game.tableCard = game.deck.pop();
+                    game.tableCoins = 0;
+                    
+                    setTimeout(() => {
+                        hostAnnounce(`เปิดไพ่ใบใหม่ เลข ${game.tableCard}. ตาของ ผู้เล่น${player.color.name} อีกครั้ง`);
+                        broadcastState();
+                        checkBotTurn();
+                    }, 1500);
+                } else {
+                    // จบเกม
+                    endGame();
+                }
+            }
+        }
+
+        // --- ระบบ AI Bot ---
+        function checkBotTurn() {
+            if (!isHost || game.status !== 'playing') return;
+            const currentPlayer = players[game.turnIndex];
+            if (currentPlayer.isBot) {
+                setTimeout(() => processBotTurn(), 2000); // ดีเลย์ให้ AI คิด และให้ Screen Reader อ่านจบ
+            }
+        }
+
+        function processBotTurn() {
+            if (game.status !== 'playing') return;
+            const bot = players[game.turnIndex];
+            const state = game.playerStates[bot.id];
+            
+            // กฎ 1: ไม่มีเหรียญ บังคับรับ
+            if (state.coins === 0) {
+                processAction(bot, 'take');
+                return;
+            }
+
+            // กฎ 2: ถ้ารับแล้วคุ้มค่าเพราะไพ่ต่อเนื่อง 
+            const hasPrev = state.cards.includes(game.tableCard - 1);
+            const hasNext = state.cards.includes(game.tableCard + 1);
+            if (hasPrev || hasNext) {
+                processAction(bot, 'take');
+                return;
+            }
+
+            // กฎ 3: คำนวณความคุ้มค่า (มูลค่าไพ่ - เหรียญบนไพ่)
+            const effectiveValue = game.tableCard - game.tableCoins;
+            // ถ้ามูลค่าน้อยกว่า 6 ถือว่าน่าเก็บ (ยิ่งน้อยยิ่งดีในเกมนี้)
+            if (effectiveValue <= 5) {
+                processAction(bot, 'take');
+                return;
+            }
+
+            // นอกนั้นยอมเสียเหรียญผ่าน
+            processAction(bot, 'pass');
+        }
+
+        // --- UI ระหว่างเล่น ---
+        function updateGameUI() {
+            document.getElementById('deck-count').textContent = game.deck.length;
+            
+            const cardDisplay = document.getElementById('table-card-display');
+            const coinDisplay = document.getElementById('table-coins-display');
+            
+            cardDisplay.textContent = game.tableCard !== null ? game.tableCard : "-";
+            coinDisplay.textContent = game.tableCoins;
+
+            // เตรียมคำอ่านแบบยาวสำหรับบอร์ด
+            let boardStatusText = `ไพ่บนโต๊ะคือเลข ${game.tableCard} มีเหรียญสะสม ${game.tableCoins} เหรียญ`;
+            document.getElementById('sr-table-info').textContent = boardStatusText;
+
+            // จัดการปุ่มของผู้เล่น
+            const controls = document.getElementById('game-controls');
+            const btnPass = document.getElementById('btn-pass');
+            const btnTake = document.getElementById('btn-take');
+            
+            const currentPlayer = players[game.turnIndex];
+            const isMyTurn = currentPlayer.peerId === myPeerId;
+
+            if (isMyTurn && !currentPlayer.isBot) {
+                controls.style.display = 'flex';
+                const myState = game.playerStates[currentPlayer.id];
+                
+                if (myState.coins <= 0) {
+                    btnPass.disabled = true;
+                    btnPass.setAttribute('aria-label', 'ผ่านไม่ได้ คุณไม่มีเหรียญ ต้องรับไพ่เท่านั้น');
+                } else {
+                    btnPass.disabled = false;
+                    btnPass.setAttribute('aria-label', 'จ่าย 1 เหรียญเพื่อผ่าน');
+                }
+                
+                // ให้ Focus ไปที่ปุ่มรับไพ่หรือผ่านอัตโนมัติเมื่อถึงตา
+                setTimeout(() => {
+                    if(!btnPass.disabled) { btnPass.focus(); }
+                    else { btnTake.focus(); }
+                }, 100);
+            } else {
+                controls.style.display = 'none';
+            }
+
+            // แสดงสถานะผู้เล่นทุกคน
+            const statusContainer = document.getElementById('player-statuses');
+            statusContainer.innerHTML = '';
+            
+            players.forEach((p, index) => {
+                const state = game.playerStates[p.id];
+                const cardListStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
+                const isTurn = index === game.turnIndex;
+                
+                const div = document.createElement('div');
+                div.className = `player-card ${isTurn ? 'active-turn' : ''}`;
+                div.style.borderTop = `5px solid ${p.color.hex}`;
+                
+                // ซ่อนจำนวนเหรียญคนอื่นแบบสายตา แต่ Screen Reader อ่านได้ตามกติกาจริงหรือไม่?
+                // ตามกติกา เหรียญเป็นความลับ แต่ในเกมออนไลน์ส่วนใหญ่จะซ่อนไว้ 
+                // แต่เพื่อความง่ายและ Accessibility ให้บอกเหรียญของทุกคนได้เพื่อการคำนวณ
+                const coinText = p.peerId === myPeerId ? state.coins : (isHost && p.isBot ? state.coins : '? (ลับ)');
+                const actualCoinStr = state.coins; // ให้บอทและตัวเองเห็น
+                
+                div.innerHTML = `
+                    <h4 style="color: ${p.color.hex}">${isTurn ? '▶ ' : ''}ผู้เล่น${p.color.name} ${p.peerId===myPeerId?'(คุณ)':''}</h4>
+                    <p>เหรียญ: <span aria-hidden="true">${coinText}</span><span class="sr-only">${p.peerId===myPeerId ? state.coins : 'จำนวนเหรียญถูกปิดบัง'} เหรียญ</span></p>
+                    <p>ไพ่ที่เก็บ: ${cardListStr}</p>
+                `;
+                
+                div.setAttribute('role', 'listitem');
+                if (isTurn) {
+                    div.setAttribute('aria-label', `ตาปัจจุบัน: ผู้เล่น${p.color.name}, มีไพ่ ${cardListStr}`);
+                }
+                statusContainer.appendChild(div);
+            });
+        }
+
+        // --- ปุ่มเล่นเกม ---
+        document.getElementById('btn-pass').addEventListener('click', () => sendAction('pass'));
+        document.getElementById('btn-take').addEventListener('click', () => sendAction('take'));
+
+        // --- ระบบคิดคะแนนและจบเกม ---
+        function calculateScore(cards, coins) {
+            if (cards.length === 0) return -coins;
+            // เรียงไพ่จากน้อยไปมาก
+            let sorted = [...cards].sort((a,b) => a-b);
+            let score = sorted[0];
+            for (let i = 1; i < sorted.length; i++) {
+                // ถ้าไม่ต่อเนื่องกัน ให้เอาค่าบวกเพิ่ม
+                if (sorted[i] !== sorted[i-1] + 1) {
+                    score += sorted[i];
+                }
+            }
+            return score - coins;
+        }
+
+        function endGame() {
+            game.status = 'ended';
+            
+            // คิดคะแนนทุกคน
+            players.forEach(p => {
+                const state = game.playerStates[p.id];
+                state.score = calculateScore(state.cards, state.coins);
+            });
+            
+            hostAnnounce("ไพ่หมดกองแล้ว จบเกม! กำลังสรุปผลคะแนน", true);
+            setTimeout(() => {
+                broadcastState();
+            }, 1000);
+        }
+
+        function updateResultUI() {
+            const list = document.getElementById('result-list');
+            list.innerHTML = '';
+            
+            // เรียงจากคะแนนน้อยไปมาก (น้อยสุดชนะ)
+            let results = players.map(p => {
+                return {
+                    name: `ผู้เล่น${p.color.name}`,
+                    hex: p.color.hex,
+                    score: game.playerStates[p.id].score,
+                    cards: game.playerStates[p.id].cards,
+                    coins: game.playerStates[p.id].coins,
+                    isMe: p.peerId === myPeerId
+                };
+            });
+            
+            results.sort((a, b) => a.score - b.score);
+            
+            let rankTextForSr = "สรุปผลคะแนน: ";
+            
+            results.forEach((r, index) => {
+                const div = document.createElement('div');
+                div.className = 'player-card';
+                div.style.marginBottom = '10px';
+                div.style.borderLeftColor = r.hex;
+                
+                div.innerHTML = `
+                    <h3 style="color: ${r.hex}">อันดับ ${index + 1}: ${r.name} ${r.isMe ? '(คุณ)' : ''}</h3>
+                    <p><strong>คะแนนสุทธิ: ${r.score} คะแนน</strong></p>
+                    <p>ไพ่: ${r.cards.length > 0 ? r.cards.join(', ') : 'ไม่มีไพ่'} | เหรียญเหลือ: ${r.coins}</p>
+                `;
+                list.appendChild(div);
+                
+                rankTextForSr += `อันดับ ${index + 1} ${r.name} ได้ ${r.score} คะแนน. `;
+            });
+
+            announce(rankTextForSr);
+
+            if (isHost) {
+                document.getElementById('host-result-controls').style.display = 'block';
+            }
+        }
+
+        document.getElementById('btn-play-again').addEventListener('click', () => {
+            if (!isHost) return;
+            game.status = 'waiting';
+            broadcastState();
+            hostAnnounce("หัวหน้าห้องเลือกเล่นอีกครั้ง กลับสู่ล็อบบี้");
+        });
+
+        // --- ระบบออกห้อง ---
+        function leaveRoom() {
+            if (peer) peer.destroy(); // ปิดการเชื่อมต่อ
+            
+            if (isHost && game.status === 'waiting' && currentRoomId) {
+                remove(ref(db, `nothanks_rooms/${currentRoomId}`)); // ลบห้องถ้าออกตอนรอ
+            }
+            
+            isHost = false;
+            currentRoomId = null;
+            players = [];
+            connections = [];
+            
+            switchScreen('screen-main', 'title-main');
+            announce("ออกจากห้อง กลับสู่เมนูหลักแล้ว");
+        }
+
+        document.getElementById('btn-leave-room').addEventListener('click', leaveRoom);
+        document.getElementById('btn-back-lobby-result').addEventListener('click', leaveRoom);
+
+        // --- ปุ่มทั่วไป ---
+        document.getElementById('btn-how-to-play').addEventListener('click', () => {
+            switchScreen('screen-rules', 'title-rules');
+        });
+        document.getElementById('btn-back-main').addEventListener('click', () => {
+            switchScreen('screen-main', 'title-main');
+        });
+        document.getElementById('btn-back-main-2').addEventListener('click', () => {
+            switchScreen('screen-main', 'title-main');
+        });
+
+        // ประกาศเมื่อโหลดหน้าเสร็จ
+        window.onload = () => {
+            setTimeout(() => {
+                announce("ยินดีต้อนรับเข้าสู่เกม No Thanks! เกมบริหารความเสี่ยง โฟกัสอยู่ที่เมนูหลักแล้ว");
+                document.getElementById('title-main').focus();
+            }, 500);
+        };
+
+        // ป้องกันการปิดหน้าต่างแล้วค้างห้องไว้
+        window.addEventListener('beforeunload', () => {
+            if (isHost && game.status === 'waiting' && currentRoomId) {
+                remove(ref(db, `nothanks_rooms/${currentRoomId}`));
+            }
+        });
+
+    </script>
+</body>
+</html>
