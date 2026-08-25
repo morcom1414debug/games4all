@@ -320,8 +320,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        // เพิ่ม onDisconnect เข้ามาในบรรทัดนี้
-        import { getDatabase, ref, set, get, onValue, update, remove, child, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+        import { getDatabase, ref, set, get, onValue, update, remove, child } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
@@ -367,6 +366,7 @@
 
         // --- ระบบ Accessibility Announcements (Clear after read) ---
         function announce(message, assertive = false) {
+            // ดักจับและแปลง Tag สรรพนามให้ตรงกับอุปกรณ์ปัจจุบัน (แก้ไขให้ประกาศตามแต่ละเครื่อง)
             if (typeof message === 'string') {
                 message = message.replace(/\[PLAYER:(.+?)\]/g, (match, id) => {
                     const p = players.find(p => p.id === id);
@@ -380,7 +380,7 @@
             setTimeout(() => { 
                 el.textContent = message; 
                 setTimeout(() => {
-                    el.textContent = ''; 
+                    el.textContent = ''; // Clean announcement ไม่ให้ค้างรบกวน SC
                 }, 3000);
             }, 50);
             console.log(`[Announce]: ${message}`);
@@ -389,9 +389,9 @@
         function switchScreen(screenId, focusId) {
             document.querySelectorAll('.screen').forEach(s => {
                 s.classList.remove('active');
-                s.classList.remove('view-all-mode'); 
+                s.classList.remove('view-all-mode'); // ล้างโหมดซ่อนทุกครั้งที่เปลี่ยนหน้าจอ
             });
-            document.getElementById('all-players-section').style.display = 'none'; 
+            document.getElementById('all-players-section').style.display = 'none'; // ปิดหน้าต่างผู้เล่นอื่นอัตโนมัติ
             document.getElementById(screenId).classList.add('active');
             if (focusId) {
                 document.getElementById(focusId).focus();
@@ -450,19 +450,21 @@
             });
         }
 
-        // ปรับปรุงฟังก์ชันการหาเลขห้องใหม่ ให้บันทึกเลขล่าสุดแยกไว้ต่างหาก เพื่อให้รันต่อไปเรื่อยๆ
         async function getNextRoomId() {
-            const counterRef = ref(db, 'nothanks_room_counter/last_id');
-            const snapshot = await get(counterRef);
+            const roomsRef = ref(db, 'nothanks_rooms');
+            const snapshot = await get(roomsRef);
             let maxId = 0;
             if (snapshot.exists()) {
-                maxId = snapshot.val();
+                const rooms = snapshot.val();
+                for (let key in rooms) {
+                    if (key.startsWith("No")) {
+                        const num = parseInt(key.replace("No", ""));
+                        if (!isNaN(num) && num > maxId) maxId = num;
+                    }
+                }
             }
-            const nextIdNum = maxId + 1;
-            await set(counterRef, nextIdNum);
-            
-            const nextIdStr = nextIdNum.toString().padStart(5, '0');
-            return `no${nextIdStr}`; // ใช้ฟอร์แมต no00001, no00002...
+            const nextId = (maxId + 1).toString().padStart(5, '0');
+            return `No${nextId}`;
         }
 
         function initPeer(onReady) {
@@ -485,14 +487,11 @@
                 myColor = PLAYER_COLORS[0]; 
                 currentRoomId = await getNextRoomId();
                 
-                const roomRef = ref(db, `nothanks_rooms/${currentRoomId}`);
-                await set(roomRef, {
+                await set(ref(db, `nothanks_rooms/${currentRoomId}`), {
                     hostId: myPeerId,
                     status: 'waiting',
                     timestamp: Date.now()
                 });
-                // เพิ่ม onDisconnect: หากเน็ตของ host หลุดหรือปิดเบราว์เซอร์ ห้องนี้จะโดนลบอัตโนมัติจากเซิร์ฟเวอร์
-                onDisconnect(roomRef).remove();
 
                 players = [{ id: myPeerId, peerId: myPeerId, color: myColor, isBot: false, online: true }];
                 
