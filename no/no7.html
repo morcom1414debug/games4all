@@ -320,6 +320,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        // เพิ่ม onDisconnect เข้ามาในบรรทัดนี้
         import { getDatabase, ref, set, get, onValue, update, remove, child, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
         const firebaseConfig = {
@@ -349,7 +350,6 @@
         let myColor = null;
         let isHost = false;
         let currentRoomId = null;
-        let heartbeatInterval = null;
         
         let peer = null;
         let connections = []; 
@@ -364,36 +364,6 @@
             turnIndex: 0,
             playerStates: {} 
         };
-
-        // --- ระบบ Heartbeat และอัปเดตข้อมูลห้องลง Firebase ---
-        function startHeartbeat() {
-            stopHeartbeat();
-            heartbeatInterval = setInterval(() => {
-                if (isHost && currentRoomId && game.status === 'waiting') {
-                    update(ref(db, `nothanks_rooms/${currentRoomId}`), {
-                        lastActive: Date.now()
-                    });
-                }
-            }, 5000);
-        }
-
-        function stopHeartbeat() {
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-                heartbeatInterval = null;
-            }
-        }
-
-        function updateRoomInFirebase() {
-            if (!isHost || !currentRoomId || game.status !== 'waiting') return;
-            const roomRef = ref(db, `nothanks_rooms/${currentRoomId}`);
-            update(roomRef, {
-                currentPlayers: players.length,
-                maxPlayers: 7,
-                playerNames: players.map(p => getPronoun(p)),
-                lastActive: Date.now()
-            });
-        }
 
         // --- ระบบ Accessibility Announcements (Clear after read) ---
         function announce(message, assertive = false) {
@@ -449,24 +419,14 @@
                     let ul = document.createElement('ul');
                     ul.className = 'room-list';
                     let roomCount = 0;
-                    const now = Date.now();
                     
                     for (let roomId in rooms) {
                         if (rooms[roomId].status === 'waiting') {
-                            const lastActive = rooms[roomId].lastActive || rooms[roomId].timestamp || 0;
-                            // เช็คถ้าห้องไม่มีการเคลื่อนไหวนานเกิน 15 วินาที สั่งลบห้องร้างทันที
-                            if (now - lastActive > 15000) {
-                                remove(ref(db, `nothanks_rooms/${roomId}`));
-                                continue;
-                            }
-
                             roomCount++;
                             let li = document.createElement('li');
                             
                             let span = document.createElement('span');
-                            const currentP = rooms[roomId].currentPlayers || 1;
-                            const maxP = rooms[roomId].maxPlayers || 7;
-                            span.textContent = `รหัสห้อง: ${roomId} (ผู้เล่น: ${currentP}/${maxP})`;
+                            span.textContent = `รหัสห้อง: ${roomId}`;
                             
                             let btn = document.createElement('button');
                             btn.textContent = "เข้าร่วม";
@@ -525,23 +485,18 @@
                 myColor = PLAYER_COLORS[0]; 
                 currentRoomId = await getNextRoomId();
                 
-                players = [{ id: myPeerId, peerId: myPeerId, color: myColor, isBot: false, online: true }];
-
                 const roomRef = ref(db, `nothanks_rooms/${currentRoomId}`);
                 await set(roomRef, {
                     hostId: myPeerId,
                     status: 'waiting',
-                    timestamp: Date.now(),
-                    lastActive: Date.now(),
-                    currentPlayers: players.length,
-                    maxPlayers: 7,
-                    playerNames: players.map(p => getPronoun(p))
+                    timestamp: Date.now()
                 });
                 // เพิ่ม onDisconnect: หากเน็ตของ host หลุดหรือปิดเบราว์เซอร์ ห้องนี้จะโดนลบอัตโนมัติจากเซิร์ฟเวอร์
                 onDisconnect(roomRef).remove();
 
+                players = [{ id: myPeerId, peerId: myPeerId, color: myColor, isBot: false, online: true }];
+                
                 setupHostEvents();
-                startHeartbeat();
                 updateLobbyUI();
                 switchScreen('screen-lobby', 'title-lobby');
                 announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId} คุณเริ่มต้นที่${myColor.name}`);
@@ -598,9 +553,7 @@
                 if(conn.open) conn.send(payload);
             });
             updateLobbyUI(); 
-            if (game.status === 'waiting') {
-                updateRoomInFirebase();
-            } else if (game.status === 'playing') {
+            if (game.status === 'playing') {
                 updateGameUI();
             } else if (game.status === 'ended') {
                 if (!document.getElementById('screen-result').classList.contains('active')) {
@@ -775,7 +728,6 @@
         document.getElementById('btn-start-game').addEventListener('click', async () => {
             if (players.length < 3 || players.length > 7) return;
             
-            stopHeartbeat();
             announce("เริ่มเกมแล้ว!", true);
             await remove(ref(db, `nothanks_rooms/${currentRoomId}`));
             
@@ -1117,7 +1069,6 @@
 
         // --- ระบบออกห้อง ---
         function leaveRoom() {
-            stopHeartbeat();
             if (peer) peer.destroy(); 
             
             if (isHost && game.status === 'waiting' && currentRoomId) {
@@ -1149,7 +1100,6 @@
         };
 
         window.addEventListener('beforeunload', () => {
-            stopHeartbeat();
             if (isHost && game.status === 'waiting' && currentRoomId) {
                 remove(ref(db, `nothanks_rooms/${currentRoomId}`));
             }
