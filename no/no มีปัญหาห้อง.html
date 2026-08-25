@@ -62,6 +62,7 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            position: relative; /* เพิ่มสำหรับตำแหน่ง absolute ในตัว Container */
         }
 
         .screen.active {
@@ -91,7 +92,7 @@
             width: 100%;
             max-width: 300px;
             display: block;
-            transition: background-color 0.2s, opacity 0.2s;
+            transition: background-color 0.2s, opacity 0.2s, transform 0.1s;
         }
 
         button:hover:not(:disabled) { background-color: var(--primary-hover); }
@@ -99,6 +100,32 @@
         
         button.danger { background-color: var(--danger); }
         button.danger:hover:not(:disabled) { background-color: var(--danger-hover); }
+
+        /* การออกแบบปุ่ม Home */
+        .home-btn {
+            background: transparent;
+            font-size: 28px;
+            width: auto;
+            padding: 5px 10px;
+            box-shadow: none;
+            border: 2px solid transparent;
+            margin: 0;
+        }
+        .home-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        .home-btn.top-left {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+        .home-btn.center-bottom {
+            margin: 30px auto 10px auto;
+            display: block;
+            max-width: 100px;
+            font-size: 32px;
+        }
 
         .room-list {
             list-style: none;
@@ -204,20 +231,56 @@
             border: 2px solid #333;
         }
         
-        /* CSS เพิ่มเติม: สำหรับบังคับซ่อนส่วนอื่นๆ ของหน้าเกมเมื่อดูสถานะรวม */
         #screen-game.view-all-mode > *:not(#all-players-section) {
             display: none !important;
         }
+
+        /* Animation Overlay (Start & End Scence) */
+        #anim-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: #000000;
+            z-index: 10000;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #anim-text {
+            color: #FFEB3B; /* สีเหลืองทองเพื่อความสวยงาม ตัดกับพื้นดำ */
+            font-size: 6vw;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 2px 4px 12px rgba(255, 255, 255, 0.2);
+            white-space: nowrap;
+        }
+        .pop-anim {
+            animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        @keyframes pop {
+            0% { transform: scale(0.4); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
     </style>
 </head>
 <body>
+
+    <!-- Animation Overlay Layer (ซ่อนการมองเห็นทุกอย่าง) -->
+    <div id="anim-overlay" aria-hidden="true">
+        <h1 id="anim-text"></h1>
+    </div>
 
     <!-- พื้นที่สำหรับ Screen Reader ประกาศข้อมูล (Aria Live) -->
     <div id="aria-polite" aria-live="polite" class="sr-only"></div>
     <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
 
     <!-- 1. หน้าแรก (Main Menu) -->
-    <main id="screen-main" class="screen active">
+    <main id="screen-main" class="screen active" style="padding-top: 70px;">
+        <!-- ปุ่มกลับชุมชน มุมซ้ายบน -->
+        <button class="home-btn top-left" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
+        
         <h1 tabindex="-1" id="title-main">เมนูหลัก No Thanks!</h1>
         <button id="btn-create-room" aria-label="สร้างห้องใหม่">สร้างห้อง</button>
         <button id="btn-how-to-play" aria-label="วิธีเล่น">วิธีเล่น</button>
@@ -307,20 +370,65 @@
         <button id="btn-view-others" class="floating-btn" aria-label="ดูสถานะผู้เล่นทุกคน">👥 ดูสถานะผู้เล่นทุกคน</button>
     </main>
 
-    <!-- 6. หน้าสรุปผล -->
+    <!-- 6. หน้าสรุปผล (ปรับแก้ตัดปุ่มอื่นๆ ออกตามกฎ และวางปุ่ม home ตำแหน่งกลางล่าง) -->
     <main id="screen-result" class="screen">
         <h2 tabindex="-1" id="title-result">สรุปผลคะแนน</h2>
         <div id="result-list" role="list" aria-label="อันดับและคะแนน"></div>
         
-        <div id="host-result-controls" style="display: none;">
-            <button id="btn-play-again" aria-label="เล่นอีกครั้งกับผู้เล่นเดิม">เล่นอีกครั้ง</button>
-        </div>
-        <button id="btn-back-lobby-result" aria-label="กลับสู่ล็อบบี้">กลับไปหน้าล็อบบี้</button>
+        <button class="home-btn center-bottom" aria-label="กลับสู่ชุมชน" onclick="window.location.href='../index.html'">🏠</button>
     </main>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getDatabase, ref, set, get, onValue, update, remove, child } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        // --- ระบบเสียง Web Audio API ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+        const buffers = {};
+        const audioFiles = ['1', 'select', 'start', 'bgm', 'jua', 'skip', 'win', 'no', 'lost'];
+        
+        async function loadAudio() {
+            for (let file of audioFiles) {
+                try {
+                    const response = await fetch(`audio/${file}.mp3`);
+                    const arrayBuffer = await response.arrayBuffer();
+                    buffers[file] = await audioCtx.decodeAudioData(arrayBuffer);
+                } catch (e) { console.warn("ไม่สามารถโหลดไฟล์เสียง:", file); }
+            }
+        }
+        loadAudio();
+        
+        document.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }, { once: true });
+
+        let bgmSource = null;
+        function playSound(name, loop = false) {
+            if (!buffers[name]) return null;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffers[name];
+            source.connect(audioCtx.destination);
+            source.loop = loop;
+            source.start(0);
+            return source;
+        }
+
+        function stopBGM() {
+            if (bgmSource) {
+                try { bgmSource.stop(); } catch(e){}
+                bgmSource = null;
+            }
+        }
+
+        function broadcastSound(soundName) {
+            if (!isHost) return;
+            connections.forEach(conn => {
+                if(conn.open) conn.send({ type: 'playSound', sound: soundName });
+            });
+        }
+        // ------------------------------
 
         const firebaseConfig = {
             apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
@@ -366,7 +474,6 @@
 
         // --- ระบบ Accessibility Announcements (Clear after read) ---
         function announce(message, assertive = false) {
-            // ดักจับและแปลง Tag สรรพนามให้ตรงกับอุปกรณ์ปัจจุบัน (แก้ไขให้ประกาศตามแต่ละเครื่อง)
             if (typeof message === 'string') {
                 message = message.replace(/\[PLAYER:(.+?)\]/g, (match, id) => {
                     const p = players.find(p => p.id === id);
@@ -376,36 +483,84 @@
 
             const targetId = assertive ? 'aria-assertive' : 'aria-polite';
             const el = document.getElementById(targetId);
+            
+            // Clean before inject ensuring previous content is removed
             el.textContent = ''; 
             setTimeout(() => { 
                 el.textContent = message; 
                 setTimeout(() => {
-                    el.textContent = ''; // Clean announcement ไม่ให้ค้างรบกวน SC
+                    el.textContent = ''; // Clean announcement clear ออกให้หมด
                 }, 3000);
             }, 50);
-            console.log(`[Announce]: ${message}`);
+        }
+
+        // --- ระบบอัปเดตตัวอักษร Animation (พร้อมส่ง Aria Live ภายในจังหวะเดียวกัน) ---
+        function updateAnimText(text) {
+            const animText = document.getElementById('anim-text');
+            animText.classList.remove('pop-anim');
+            void animText.offsetWidth; 
+            animText.textContent = text;
+            animText.classList.add('pop-anim');
+            announce(text, true);
+        }
+
+        // --- Animation เริ่มเกม ---
+        function playStartSequence(callback) {
+            const overlay = document.getElementById('anim-overlay');
+            overlay.style.display = 'flex';
+            playSound('start');
+            stopBGM();
+
+            setTimeout(() => updateAnimText("No Thanks!"), 200);
+            setTimeout(() => updateAnimText("3"), 1200);
+            setTimeout(() => updateAnimText("2"), 2200);
+            setTimeout(() => updateAnimText("1"), 3200);
+            setTimeout(() => updateAnimText("รับหรือไม่เอา"), 4200);
+            
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                document.getElementById('anim-text').textContent = "";
+                bgmSource = playSound('bgm', true);
+                if(callback) callback();
+            }, 4890);
+        }
+
+        // --- Animation จบเกม ---
+        function playEndSequence(callback) {
+            const overlay = document.getElementById('anim-overlay');
+            overlay.style.display = 'flex';
+            stopBGM();
+            window.hasPlayedEndAudio = false;
+            
+            setTimeout(() => updateAnimText("No Thanks!"), 200);
+            setTimeout(() => updateAnimText("กำลังทำการสรุปผล"), 1200);
+            setTimeout(() => updateAnimText("ได้แก่"), 2500);
+            
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                document.getElementById('anim-text').textContent = "";
+                if(callback) callback();
+            }, 3000);
         }
 
         function switchScreen(screenId, focusId) {
             document.querySelectorAll('.screen').forEach(s => {
                 s.classList.remove('active');
-                s.classList.remove('view-all-mode'); // ล้างโหมดซ่อนทุกครั้งที่เปลี่ยนหน้าจอ
+                s.classList.remove('view-all-mode'); 
             });
-            document.getElementById('all-players-section').style.display = 'none'; // ปิดหน้าต่างผู้เล่นอื่นอัตโนมัติ
+            document.getElementById('all-players-section').style.display = 'none'; 
             document.getElementById(screenId).classList.add('active');
             if (focusId) {
                 document.getElementById(focusId).focus();
             }
         }
 
-        // --- ฟังก์ชันสร้างสรรพนาม ---
         function getPronoun(player) {
             if (player.peerId === myPeerId) return `คุณ${player.color.name}`;
             if (player.isBot) return `บอท${player.color.name}`;
             return `เพื่อน${player.color.name}`;
         }
 
-        // --- Firebase Logic ติดตามห้องในหน้าแรก ---
         function initRoomListener() {
             const roomsRef = ref(db, 'nothanks_rooms');
             const mainRoomList = document.getElementById('main-room-list');
@@ -432,7 +587,9 @@
                             btn.textContent = "เข้าร่วม";
                             btn.setAttribute("aria-label", `เข้าร่วมห้อง ${roomId}`);
                             btn.style.width = "auto";
-                            btn.onclick = () => joinRoom(roomId, rooms[roomId].hostId);
+                            btn.onclick = () => {
+                                joinRoom(roomId, rooms[roomId].hostId);
+                            };
                             
                             li.appendChild(span);
                             li.appendChild(btn);
@@ -481,6 +638,7 @@
 
         // --- Host สร้างห้อง ---
         document.getElementById('btn-create-room').addEventListener('click', () => {
+            playSound('1'); // กดสร้างห้องใหม่ให้เล่น 1.mp3
             announce("กำลังสร้างห้อง กรุณารอซักครู่");
             initPeer(async () => {
                 isHost = true;
@@ -497,6 +655,12 @@
                 
                 setupHostEvents();
                 updateLobbyUI();
+                
+                // รีเซ็ตปุ่มเริ่มเกมให้พร้อมเสมอหากสร้างห้องใหม่
+                const btnStart = document.getElementById('btn-start-game');
+                btnStart.style.display = 'block';
+                btnStart.style.opacity = '1';
+                
                 switchScreen('screen-lobby', 'title-lobby');
                 announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId} คุณเริ่มต้นที่${myColor.name}`);
             });
@@ -518,6 +682,9 @@
                     const newPlayer = { id: conn.peer, peerId: conn.peer, color: availableColor, isBot: false, online: true };
                     players.push(newPlayer);
                     
+                    playSound('select'); // เล่นเมื่อมี client เข้าร่วมสำเร็จ
+                    broadcastSound('select'); // ให้ฝั่ง client ที่อยู่ในห้องได้ยินด้วย
+
                     announce(`${getPronoun(newPlayer)} เข้าร่วมห้องแล้ว`);
                     broadcastState();
 
@@ -566,8 +733,10 @@
             if (data.type === 'reject') {
                 announce(data.message, true);
                 leaveRoom();
+            } else if (data.type === 'playSound') {
+                playSound(data.sound);
             } else if (data.type === 'sync') {
-                const wasWaiting = game.status === 'waiting';
+                const oldStatus = game.status;
                 players = data.players;
                 game = data.game;
                 
@@ -579,17 +748,29 @@
                         switchScreen('screen-lobby', 'title-lobby');
                     }
                     updateLobbyUI();
-                } else if (game.status === 'playing') {
-                    if (wasWaiting) {
+                } else if (game.status === 'starting' && oldStatus !== 'starting') {
+                    playStartSequence(() => {
                         switchScreen('screen-game', 'title-game');
-                        announce("เกมเริ่มแล้ว!", true);
+                    });
+                } else if (game.status === 'playing') {
+                    if (!document.getElementById('screen-game').classList.contains('active')) {
+                        switchScreen('screen-game', 'title-game');
                     }
                     updateGameUI();
+                } else if (game.status === 'ending_anim' && oldStatus !== 'ending_anim') {
+                    playEndSequence(() => {
+                        // wait for ended broadcast
+                    });
                 } else if (game.status === 'ended') {
                     if (!document.getElementById('screen-result').classList.contains('active')) {
                         switchScreen('screen-result', 'title-result');
                     }
                     updateResultUI();
+                    
+                    if(!window.hasPlayedEndAudio) {
+                        window.hasPlayedEndAudio = true;
+                        setTimeout(() => playEndAudio(), 1500);
+                    }
                 }
             } else if (data.type === 'announce') {
                 announce(data.message, data.assertive);
@@ -709,6 +890,10 @@
             const botId = `bot_${Date.now()}`;
             const newBot = { id: botId, peerId: null, color: availableColor, isBot: true, online: true };
             players.push(newBot);
+            
+            playSound('select');
+            broadcastSound('select');
+
             announce(`เพิ่ม${getPronoun(newBot)} เรียบร้อยแล้ว`);
             broadcastState();
         });
@@ -717,6 +902,8 @@
             for (let i = players.length - 1; i >= 0; i--) {
                 if (players[i].isBot) {
                     const removed = players.splice(i, 1)[0];
+                    playSound('select');
+                    broadcastSound('select');
                     announce(`ลบ${getPronoun(removed)} เรียบร้อยแล้ว`);
                     break;
                 }
@@ -727,14 +914,22 @@
         document.getElementById('btn-start-game').addEventListener('click', async () => {
             if (players.length < 3 || players.length > 7) return;
             
-            announce("เริ่มเกมแล้ว!", true);
+            const btnStart = document.getElementById('btn-start-game');
+            btnStart.disabled = true;
+            btnStart.style.opacity = '0';
+            setTimeout(() => { btnStart.style.display = 'none'; }, 200);
+            
             await remove(ref(db, `nothanks_rooms/${currentRoomId}`));
             
-            setupNewGame();
-            switchScreen('screen-game', 'title-game');
+            game.status = 'starting';
             broadcastState();
             
-            checkBotTurn();
+            playStartSequence(() => {
+                setupNewGame();
+                switchScreen('screen-game', 'title-game');
+                broadcastState();
+                checkBotTurn();
+            });
         });
 
         function setupNewGame() {
@@ -759,7 +954,6 @@
             });
 
             const firstPlayer = players[game.turnIndex];
-            // ฝัง Tag เพื่อไปแปลงเป็นสรรพนามในอุปกรณ์ปลายทาง
             hostAnnounce(`เปิดไพ่ใบแรก เลข ${game.tableCard}. รอบของ[PLAYER:${firstPlayer.id}]`);
         }
 
@@ -778,6 +972,9 @@
             if (action === 'pass') {
                 if (pState.coins <= 0) return; 
                 
+                playSound('skip');
+                broadcastSound('skip');
+
                 pState.coins -= 1;
                 game.tableCoins += 1;
                 
@@ -793,6 +990,9 @@
                 }, 2000);
 
             } else if (action === 'take') {
+                playSound('jua');
+                broadcastSound('jua');
+
                 pState.cards.push(game.tableCard);
                 pState.cards.sort((a,b) => a-b);
                 const gainedCoins = game.tableCoins;
@@ -840,14 +1040,11 @@
             processAction(bot, 'pass');
         }
 
-        // --- UI ระหว่างเล่น และการทำ Grouping ARIA ---
         function updateGameUI() {
             const currentPlayer = players[game.turnIndex];
             
-            // อัปเดต Title Heading ให้ระบุผู้เล่นปัจจุบัน (อิงตามสรรพนามของอุปกรณ์ผู้ใช้งาน)
             document.getElementById('title-game').textContent = `รอบของ${getPronoun(currentPlayer)}`;
 
-            // Group การอ่านไพ่ในกอง
             document.getElementById('deck-count').textContent = game.deck.length;
             document.getElementById('deck-info-container').setAttribute('aria-label', `ไพ่ในกองเหลือ ${game.deck.length} ใบ`);
             
@@ -856,7 +1053,6 @@
             cardDisplay.textContent = game.tableCard !== null ? game.tableCard : "-";
             coinDisplay.textContent = game.tableCoins;
 
-            // Group การอ่านหน้าโต๊ะ
             const tableInfoStr = `ไพ่บนโต๊ะคือเลข ${game.tableCard !== null ? game.tableCard : "-"} เหรียญสะสม ${game.tableCoins} เหรียญ`;
             document.getElementById('table-info-container').setAttribute('aria-label', tableInfoStr);
 
@@ -870,7 +1066,6 @@
                 controls.style.display = 'flex';
                 const myState = game.playerStates[currentPlayer.id];
                 
-                // รีเซ็ตปุ่มให้กดได้
                 btnTake.disabled = false;
                 btnTake.style.opacity = '1';
                 
@@ -892,7 +1087,6 @@
                 controls.style.display = 'none';
             }
 
-            // สถานะเครื่องเล่นตัวเอง (ด้านล่างสุด)
             const myStatusGroup = document.getElementById('my-status-group');
             const me = players.find(p => p.peerId === myPeerId);
             if (me) {
@@ -900,7 +1094,6 @@
                 const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
                 const isTurn = players[game.turnIndex].id === me.id;
                 
-                // อ่านแค่: คุณสี... มีเหรียญ (ตัวเลข) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
                 const ariaLabelText = `${getPronoun(me)} มีเหรียญ ${state.coins} เหรียญ ไพ่ในมือ : ${cardStr}`;
                 
                 myStatusGroup.style.borderTop = `5px solid ${me.color.hex}`;
@@ -937,20 +1130,17 @@
             sendAction('take');
         });
 
-        // ปุ่มดูสถานะผู้เล่นทุกคนฝังบนหน้าเว็บ (ไม่ใช่ Dialog ใหม่)
         document.getElementById('btn-view-others').addEventListener('click', () => {
             const section = document.getElementById('all-players-section');
             const list = document.getElementById('all-players-list');
             list.innerHTML = '';
             
-            // เพิ่ม Class เพื่อซ่อนข้อมูลอื่นๆ ในหน้าเกม
             document.getElementById('screen-game').classList.add('view-all-mode');
             
             players.forEach((p, index) => {
                 const state = game.playerStates[p.id];
                 const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
                 
-                // ตรวจสอบว่าเป็นตัวเองหรือไม่ ถ้าใช่ให้แสดงเหรียญ ถ้าไม่ใช่ให้ซ่อนไว้ตามกฎ
                 const isMe = (p.peerId === myPeerId && !p.isBot);
                 const displayedCoins = isMe ? `${state.coins} เหรียญ` : '?? เหรียญ (ซ่อนตามกฎ)';
                 const ariaCoinsText = isMe ? `${state.coins}` : 'ไม่สามารถดูได้';
@@ -960,10 +1150,8 @@
                 div.style.borderTop = `5px solid ${p.color.hex}`;
                 div.style.marginBottom = '15px';
                 
-                // Format: ผู้เล่นสี... มีเหรียญ (ตัวเลข/ซ่อน) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
                 const label = `${getPronoun(p)} มีเหรียญ ${ariaCoinsText} เหรียญ ไพ่ในมือ : ${cardStr}`;
                 
-                // ปรับแต่งโดยการฝังข้อความลงใน sr-only class ด้านใน เพื่อรองรับ NVDA Browse Mode
                 div.setAttribute('tabindex', '0');
                 div.setAttribute('role', 'listitem');
                 
@@ -980,20 +1168,16 @@
             section.style.display = 'block';
             document.getElementById('title-all-players').focus();
             
-            // เลื่อนหน้าจอลงไปให้เห็น section เต็มๆ
             section.scrollIntoView({ behavior: 'smooth' });
         });
 
-        // ปุ่มปิดสถานะผู้เล่น
         document.getElementById('btn-close-all-players').addEventListener('click', () => {
             document.getElementById('all-players-section').style.display = 'none';
-            // นำ Class ซ่อนออกจากหน้าจอ เพื่อแสดงองค์ประกอบกลับมาตามเดิม
             document.getElementById('screen-game').classList.remove('view-all-mode');
             
             document.getElementById('btn-view-others').focus();
         });
 
-        // --- ระบบคิดคะแนนและจบเกม ---
         function calculateScore(cards, coins) {
             if (cards.length === 0) return -coins;
             let sorted = [...cards].sort((a,b) => a-b);
@@ -1007,17 +1191,42 @@
         }
 
         function endGame() {
-            game.status = 'ended';
-            
-            players.forEach(p => {
-                const state = game.playerStates[p.id];
-                state.score = calculateScore(state.cards, state.coins);
-            });
-            
+            game.status = 'ending_anim';
             hostAnnounce("ไพ่หมดกองแล้ว จบเกม! กำลังสรุปผลคะแนน", true);
-            setTimeout(() => {
+            broadcastState();
+
+            playEndSequence(() => {
+                game.status = 'ended';
+                players.forEach(p => {
+                    const state = game.playerStates[p.id];
+                    state.score = calculateScore(state.cards, state.coins);
+                });
                 broadcastState();
-            }, 1000);
+                
+                updateResultUI();
+                if(!window.hasPlayedEndAudio) {
+                    window.hasPlayedEndAudio = true;
+                    setTimeout(() => playEndAudio(), 1500);
+                }
+            });
+        }
+
+        // --- เช็คผลแพ้ชนะสำหรับเครื่องที่ใช้เล่น เพื่อเล่นไฟล์เสียง ---
+        function playEndAudio() {
+            const me = players.find(p => p.peerId === myPeerId);
+            if(!me || me.isBot) return; 
+            
+            const scores = players.map(p => game.playerStates[p.id].score);
+            const minScore = Math.min(...scores);
+            const minScoreCount = scores.filter(s => s === minScore).length;
+            
+            const myScore = game.playerStates[me.id].score;
+            if (myScore === minScore) {
+                if (minScoreCount === 1) playSound('win');
+                else playSound('no');
+            } else {
+                playSound('lost');
+            }
         }
 
         function updateResultUI() {
@@ -1053,26 +1262,16 @@
             });
 
             announce(rankTextForSr);
-
-            if (isHost) {
-                document.getElementById('host-result-controls').style.display = 'block';
-            }
         }
 
-        document.getElementById('btn-play-again').addEventListener('click', () => {
-            if (!isHost) return;
-            game.status = 'waiting';
-            broadcastState();
-            hostAnnounce("หัวหน้าห้องเลือกเล่นอีกครั้ง กลับสู่ล็อบบี้");
-        });
-
-        // --- ระบบออกห้อง ---
         function leaveRoom() {
             if (peer) peer.destroy(); 
             
             if (isHost && game.status === 'waiting' && currentRoomId) {
                 remove(ref(db, `nothanks_rooms/${currentRoomId}`)); 
             }
+            
+            stopBGM(); // หยุดเล่นเพลง BGM
             
             isHost = false;
             currentRoomId = null;
@@ -1085,11 +1284,9 @@
         }
 
         document.getElementById('btn-leave-room').addEventListener('click', leaveRoom);
-        document.getElementById('btn-back-lobby-result').addEventListener('click', leaveRoom);
         document.getElementById('btn-how-to-play').addEventListener('click', () => switchScreen('screen-rules', 'title-rules'));
         document.getElementById('btn-back-main').addEventListener('click', () => switchScreen('screen-main', 'title-main'));
 
-        // เริ่มต้นการทำงานหน้าแรก
         window.onload = () => {
             initRoomListener();
             setTimeout(() => {
