@@ -366,14 +366,6 @@
 
         // --- ระบบ Accessibility Announcements (Clear after read) ---
         function announce(message, assertive = false) {
-            // ดักจับและแปลง Tag สรรพนามให้ตรงกับอุปกรณ์ปัจจุบัน (แก้ไขให้ประกาศตามแต่ละเครื่อง)
-            if (typeof message === 'string') {
-                message = message.replace(/\[PLAYER:(.+?)\]/g, (match, id) => {
-                    const p = players.find(p => p.id === id);
-                    return p ? getPronoun(p) : "ผู้เล่น";
-                });
-            }
-
             const targetId = assertive ? 'aria-assertive' : 'aria-polite';
             const el = document.getElementById(targetId);
             el.textContent = ''; 
@@ -759,8 +751,7 @@
             });
 
             const firstPlayer = players[game.turnIndex];
-            // ฝัง Tag เพื่อไปแปลงเป็นสรรพนามในอุปกรณ์ปลายทาง
-            hostAnnounce(`เปิดไพ่ใบแรก เลข ${game.tableCard}. รอบของ[PLAYER:${firstPlayer.id}]`);
+            hostAnnounce(`เปิดไพ่ใบแรก เลข ${game.tableCard}. รอบของ${getPronoun(firstPlayer)}`);
         }
 
         function hostAnnounce(msg, assertive = false) {
@@ -781,13 +772,13 @@
                 pState.coins -= 1;
                 game.tableCoins += 1;
                 
-                hostAnnounce(`[PLAYER:${player.id}] เลือกผ่าน จ่าย 1 เหรียญ. เหรียญบนไพ่รวมเป็น ${game.tableCoins}`);
+                hostAnnounce(`${getPronoun(player)} เลือกผ่าน จ่าย 1 เหรียญ. เหรียญบนไพ่รวมเป็น ${game.tableCoins}`);
                 
                 game.turnIndex = (game.turnIndex + 1) % players.length;
                 const nextPlayer = players[game.turnIndex];
                 
                 setTimeout(() => {
-                    hostAnnounce(`รอบของ[PLAYER:${nextPlayer.id}]`);
+                    hostAnnounce(`รอบของ${getPronoun(nextPlayer)}`);
                     broadcastState();
                     checkBotTurn();
                 }, 2000);
@@ -798,14 +789,14 @@
                 const gainedCoins = game.tableCoins;
                 pState.coins += gainedCoins;
                 
-                hostAnnounce(`[PLAYER:${player.id}] รับไพ่เลข ${game.tableCard} และรับเหรียญ ${gainedCoins} เหรียญ`, true);
+                hostAnnounce(`${getPronoun(player)} รับไพ่เลข ${game.tableCard} และรับเหรียญ ${gainedCoins} เหรียญ`, true);
                 
                 if (game.deck.length > 0) {
                     game.tableCard = game.deck.pop();
                     game.tableCoins = 0;
                     
                     setTimeout(() => {
-                        hostAnnounce(`เปิดไพ่ใบใหม่ เลข ${game.tableCard}. รอบของ[PLAYER:${player.id}] อีกครั้ง`);
+                        hostAnnounce(`เปิดไพ่ใบใหม่ เลข ${game.tableCard}. รอบของ${getPronoun(player)} อีกครั้ง`);
                         broadcastState();
                         checkBotTurn();
                     }, 2000);
@@ -842,11 +833,6 @@
 
         // --- UI ระหว่างเล่น และการทำ Grouping ARIA ---
         function updateGameUI() {
-            const currentPlayer = players[game.turnIndex];
-            
-            // อัปเดต Title Heading ให้ระบุผู้เล่นปัจจุบัน (อิงตามสรรพนามของอุปกรณ์ผู้ใช้งาน)
-            document.getElementById('title-game').textContent = `รอบของ${getPronoun(currentPlayer)}`;
-
             // Group การอ่านไพ่ในกอง
             document.getElementById('deck-count').textContent = game.deck.length;
             document.getElementById('deck-info-container').setAttribute('aria-label', `ไพ่ในกองเหลือ ${game.deck.length} ใบ`);
@@ -864,6 +850,7 @@
             const btnPass = document.getElementById('btn-pass');
             const btnTake = document.getElementById('btn-take');
             
+            const currentPlayer = players[game.turnIndex];
             const isMyTurn = currentPlayer.peerId === myPeerId;
 
             if (isMyTurn && !currentPlayer.isBot) {
