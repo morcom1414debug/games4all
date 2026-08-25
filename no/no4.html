@@ -203,11 +203,6 @@
             border-radius: 8px;
             border: 2px solid #333;
         }
-        
-        /* CSS เพิ่มเติม: สำหรับบังคับซ่อนส่วนอื่นๆ ของหน้าเกมเมื่อดูสถานะรวม */
-        #screen-game.view-all-mode > *:not(#all-players-section) {
-            display: none !important;
-        }
     </style>
 </head>
 <body>
@@ -379,10 +374,7 @@
         }
 
         function switchScreen(screenId, focusId) {
-            document.querySelectorAll('.screen').forEach(s => {
-                s.classList.remove('active');
-                s.classList.remove('view-all-mode'); // ล้างโหมดซ่อนทุกครั้งที่เปลี่ยนหน้าจอ
-            });
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById('all-players-section').style.display = 'none'; // ปิดหน้าต่างผู้เล่นอื่นอัตโนมัติ
             document.getElementById(screenId).classList.add('active');
             if (focusId) {
@@ -890,6 +882,9 @@
                 // อ่านแค่: คุณสี... มีเหรียญ (ตัวเลข) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
                 const ariaLabelText = `${getPronoun(me)} มีเหรียญ ${state.coins} เหรียญ ไพ่ในมือ : ${cardStr}`;
                 
+                // ถอดการแปะ aria-label ออก เพื่อแก้บัค NVDA ใน Browse Mode
+                // myStatusGroup.setAttribute('aria-label', ariaLabelText);
+                
                 myStatusGroup.style.borderTop = `5px solid ${me.color.hex}`;
                 
                 if (isTurn) {
@@ -930,25 +925,17 @@
             const list = document.getElementById('all-players-list');
             list.innerHTML = '';
             
-            // เพิ่ม Class เพื่อซ่อนข้อมูลอื่นๆ ในหน้าเกม
-            document.getElementById('screen-game').classList.add('view-all-mode');
-            
             players.forEach((p, index) => {
                 const state = game.playerStates[p.id];
                 const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
-                
-                // ตรวจสอบว่าเป็นตัวเองหรือไม่ ถ้าใช่ให้แสดงเหรียญ ถ้าไม่ใช่ให้ซ่อนไว้ตามกฎ
-                const isMe = (p.peerId === myPeerId && !p.isBot);
-                const displayedCoins = isMe ? `${state.coins} เหรียญ` : '?? เหรียญ (ซ่อนตามกฎ)';
-                const ariaCoinsText = isMe ? `${state.coins}` : 'ไม่สามารถดูได้';
                 
                 const div = document.createElement('div');
                 div.className = `player-card`;
                 div.style.borderTop = `5px solid ${p.color.hex}`;
                 div.style.marginBottom = '15px';
                 
-                // Format: ผู้เล่นสี... มีเหรียญ (ตัวเลข/ซ่อน) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
-                const label = `${getPronoun(p)} มีเหรียญ ${ariaCoinsText} เหรียญ ไพ่ในมือ : ${cardStr}`;
+                // Format: ผู้เล่นสี... มีเหรียญ (ตัวเลข) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
+                const label = `${getPronoun(p)} มีเหรียญ ${state.coins} เหรียญ ไพ่ในมือ : ${cardStr}`;
                 
                 // ปรับแต่งโดยการฝังข้อความลงใน sr-only class ด้านใน เพื่อรองรับ NVDA Browse Mode
                 div.setAttribute('tabindex', '0');
@@ -958,7 +945,7 @@
                     <span class="sr-only">${label}</span>
                     <div aria-hidden="true">
                         <h3 style="color: ${p.color.hex}; margin-bottom: 5px; font-size: 18px;">${getPronoun(p)}</h3>
-                        <p>🪙 ${displayedCoins} | 🃏 ไพ่ในมือ : ${cardStr}</p>
+                        <p>🪙 ${state.coins} เหรียญ | 🃏 ไพ่ในมือ : ${cardStr}</p>
                     </div>
                 `;
                 list.appendChild(div);
@@ -974,9 +961,6 @@
         // ปุ่มปิดสถานะผู้เล่น
         document.getElementById('btn-close-all-players').addEventListener('click', () => {
             document.getElementById('all-players-section').style.display = 'none';
-            // นำ Class ซ่อนออกจากหน้าจอ เพื่อแสดงองค์ประกอบกลับมาตามเดิม
-            document.getElementById('screen-game').classList.remove('view-all-mode');
-            
             document.getElementById('btn-view-others').focus();
         });
 
