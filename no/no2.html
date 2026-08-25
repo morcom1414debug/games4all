@@ -91,14 +91,14 @@
             width: 100%;
             max-width: 300px;
             display: block;
-            transition: background-color 0.2s, opacity 0.2s;
+            transition: background-color 0.2s;
         }
 
-        button:hover:not(:disabled) { background-color: var(--primary-hover); }
+        button:hover { background-color: var(--primary-hover); }
         button:disabled { background-color: #555; cursor: not-allowed; }
         
         button.danger { background-color: var(--danger); }
-        button.danger:hover:not(:disabled) { background-color: var(--danger-hover); }
+        button.danger:hover { background-color: var(--danger-hover); }
 
         .room-list {
             list-style: none;
@@ -124,15 +124,12 @@
 
         /* In-Game UI */
         .game-board {
+            text-align: center;
             padding: 30px;
             background: #222;
             border-radius: 8px;
             margin-bottom: 20px;
             border: 2px solid #444;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
         }
 
         .table-card {
@@ -143,13 +140,14 @@
             display: inline-block;
             padding: 20px 40px;
             border-radius: 10px;
+            margin: 10px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.5);
-            margin-bottom: 10px;
         }
 
         .table-coins {
             font-size: 24px;
             color: var(--focus-ring);
+            margin-bottom: 20px;
         }
 
         .controls {
@@ -182,6 +180,17 @@
             overflow-y: auto;
         }
 
+        .overlay-screen {
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(18, 18, 18, 0.95); 
+            z-index: 1000; 
+            padding: 20px; 
+            overflow-y: auto;
+        }
+
         .floating-btn {
             position: fixed; 
             bottom: 20px; 
@@ -192,16 +201,6 @@
             font-size: 18px; 
             box-shadow: 0 4px 8px rgba(0,0,0,0.5);
             z-index: 999;
-        }
-
-        /* Section สถานะผู้เล่นที่ถูกฝังในหน้าเว็บ */
-        .all-players-section {
-            display: none;
-            margin-top: 30px;
-            padding: 20px;
-            background: #1a1a1a;
-            border-radius: 8px;
-            border: 2px solid #333;
         }
     </style>
 </head>
@@ -273,13 +272,10 @@
         <h2 tabindex="-1" id="title-game">กำลังเล่นเกม</h2>
         
         <div class="game-board" role="region" aria-label="กระดานกลาง">
-            <div id="deck-info-container" tabindex="0" style="flex: 1; text-align: left; font-size: 20px;">
-                <span aria-hidden="true">ไพ่คงเหลือในกอง: <span id="deck-count">24</span> ใบ</span>
-            </div>
-            <div id="table-info-container" tabindex="0" style="flex: 1; text-align: right;">
-                <div class="table-card" aria-hidden="true" id="table-card-display">-</div>
-                <div class="table-coins" aria-hidden="true">🪙 เหรียญบนไพ่: <span id="table-coins-display">0</span></div>
-            </div>
+            <div>ไพ่คงเหลือในกอง: <span id="deck-count">24</span> ใบ</div>
+            <div class="table-card" aria-hidden="true" id="table-card-display">-</div>
+            <div class="table-coins" aria-hidden="true">🪙 เหรียญบนไพ่: <span id="table-coins-display">0</span></div>
+            <div class="sr-only" id="sr-table-info"></div> <!-- สำหรับ Screen Reader อ่านกระดานแบบเต็ม -->
         </div>
 
         <div id="game-controls" class="controls" style="display: none;" role="group" aria-label="ตัวเลือกการเล่นของคุณ">
@@ -292,15 +288,15 @@
             <!-- JS จะใส่ข้อมูลสถานะรวมไว้ที่นี่ -->
         </div>
 
-        <!-- Section แสดงผู้เล่นทุกคนฝังในหน้าเว็บ -->
-        <div id="all-players-section" class="all-players-section" tabindex="-1">
-            <h2 style="text-align: center; color: var(--focus-ring);" tabindex="-1" id="title-all-players">สถานะผู้เล่นทุกคน</h2>
-            <div id="all-players-list" role="list"></div>
-            <button id="btn-close-all-players" style="margin: 30px auto; display: block; max-width: 200px;">ปิด</button>
-        </div>
-
-        <button id="btn-view-others" class="floating-btn" aria-label="ดูสถานะผู้เล่นทุกคน">👥 ดูสถานะผู้เล่นทุกคน</button>
+        <button id="btn-view-others" class="floating-btn" aria-label="ดูสถานะผู้เล่นอื่น">👥 ดูสถานะผู้เล่นอื่น</button>
     </main>
+
+    <!-- 5. Overlay ดูสถานะผู้เล่นทั้งหมด (ตอนเล่นเกม) -->
+    <div id="players-overlay" class="overlay-screen" role="dialog" aria-modal="true" aria-label="สถานะผู้เล่นทุกคน">
+        <h2 style="text-align: center; color: var(--focus-ring);" tabindex="-1" id="title-overlay">สถานะผู้เล่นทุกคน</h2>
+        <div id="overlay-player-list" role="list"></div>
+        <button id="btn-close-overlay" style="margin: 30px auto; display: block; max-width: 200px;">ปิด</button>
+    </div>
 
     <!-- 6. หน้าสรุปผล -->
     <main id="screen-result" class="screen">
@@ -359,23 +355,18 @@
             playerStates: {} 
         };
 
-        // --- ระบบ Accessibility Announcements (Clear after read) ---
+        // --- ระบบ Accessibility Announcements ---
         function announce(message, assertive = false) {
             const targetId = assertive ? 'aria-assertive' : 'aria-polite';
             const el = document.getElementById(targetId);
             el.textContent = ''; 
-            setTimeout(() => { 
-                el.textContent = message; 
-                setTimeout(() => {
-                    el.textContent = ''; // Clean announcement ไม่ให้ค้างรบกวน SC
-                }, 3000);
-            }, 50);
+            setTimeout(() => { el.textContent = message; }, 50);
             console.log(`[Announce]: ${message}`);
         }
 
         function switchScreen(screenId, focusId) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('all-players-section').style.display = 'none'; // ปิดหน้าต่างผู้เล่นอื่นอัตโนมัติ
+            document.getElementById('players-overlay').style.display = 'none'; // ปิด overlay อัตโนมัติถ้ามี
             document.getElementById(screenId).classList.add('active');
             if (focusId) {
                 document.getElementById(focusId).focus();
@@ -395,7 +386,7 @@
             const mainRoomList = document.getElementById('main-room-list');
             
             onValue(roomsRef, (snapshot) => {
-                if (currentRoomId) return; 
+                if (currentRoomId) return; // ไม่ต้องโหลดถ้าอยู่ในห้องแล้ว
                 
                 mainRoomList.innerHTML = '';
                 if (snapshot.exists()) {
@@ -409,6 +400,7 @@
                             roomCount++;
                             let li = document.createElement('li');
                             
+                            // สมมติฐานจำนวนคนจาก firebase (เพื่อแสดงคร่าวๆ) หรือแค่แจ้งชื่อห้อง
                             let span = document.createElement('span');
                             span.textContent = `รหัสห้อง: ${roomId}`;
                             
@@ -468,7 +460,7 @@
             announce("กำลังสร้างห้อง กรุณารอซักครู่");
             initPeer(async () => {
                 isHost = true;
-                myColor = PLAYER_COLORS[0]; 
+                myColor = PLAYER_COLORS[0]; // Auto สีแดง
                 currentRoomId = await getNextRoomId();
                 
                 await set(ref(db, `nothanks_rooms/${currentRoomId}`), {
@@ -529,6 +521,7 @@
             });
         }
 
+        // --- ระบบสื่อสาร P2P & แก้ไขบั๊ก End Game (broadcastState) ---
         function broadcastState() {
             if (!isHost) return;
             const payload = { type: 'sync', players, game };
@@ -539,6 +532,7 @@
             if (game.status === 'playing') {
                 updateGameUI();
             } else if (game.status === 'ended') {
+                // แก้ Bug เกมค้างตอนจบ: อัปเดตหน้าจอโฮสต์เมื่อเกมจบด้วย
                 if (!document.getElementById('screen-result').classList.contains('active')) {
                     switchScreen('screen-result', 'title-result');
                 }
@@ -613,6 +607,7 @@
             }
         }
 
+        // --- ระบบล็อบบี้และการจัดการบอท / สี ---
         function updateLobbyUI() {
             document.getElementById('lobby-room-id').textContent = currentRoomId;
             document.getElementById('lobby-player-count').textContent = players.length;
@@ -631,6 +626,7 @@
                 document.getElementById('host-controls').style.display = 'block';
                 document.getElementById('client-wait-msg').style.display = 'none';
                 
+                // คำนวณจำนวนบอท
                 let botCount = players.filter(p => p.isBot).length;
                 document.getElementById('bot-count-display').textContent = botCount;
                 
@@ -708,6 +704,7 @@
             broadcastState();
         });
 
+        // --- เริ่มเกม (Host) ---
         document.getElementById('btn-start-game').addEventListener('click', async () => {
             if (players.length < 3 || players.length > 7) return;
             
@@ -753,6 +750,7 @@
             });
         }
 
+        // --- Game Logic กติกาและดีเลย์ ---
         function processAction(player, action) {
             if (game.status !== 'playing') return;
             
@@ -769,6 +767,7 @@
                 game.turnIndex = (game.turnIndex + 1) % players.length;
                 const nextPlayer = players[game.turnIndex];
                 
+                // หน่วงเวลาเปลี่ยนรอบใหม่ 2 วินาที
                 setTimeout(() => {
                     hostAnnounce(`รอบของ${getPronoun(nextPlayer)}`);
                     broadcastState();
@@ -787,6 +786,7 @@
                     game.tableCard = game.deck.pop();
                     game.tableCoins = 0;
                     
+                    // หน่วงเวลาเปลี่ยนรอบใหม่ 2 วินาที (หากรับไพ่ จะเป็นรอบของคนเดิม)
                     setTimeout(() => {
                         hostAnnounce(`เปิดไพ่ใบใหม่ เลข ${game.tableCard}. รอบของ${getPronoun(player)} อีกครั้ง`);
                         broadcastState();
@@ -802,6 +802,7 @@
             if (!isHost || game.status !== 'playing') return;
             const currentPlayer = players[game.turnIndex];
             if (currentPlayer.isBot) {
+                // หน่วงเวลาการตัดสินใจของบอท 1.5 วินาทีหลังจากเริ่มรอบ
                 setTimeout(() => processBotTurn(), 1500); 
             }
         }
@@ -825,18 +826,16 @@
 
         // --- UI ระหว่างเล่น และการทำ Grouping ARIA ---
         function updateGameUI() {
-            // Group การอ่านไพ่ในกอง
             document.getElementById('deck-count').textContent = game.deck.length;
-            document.getElementById('deck-info-container').setAttribute('aria-label', `ไพ่ในกองเหลือ ${game.deck.length} ใบ`);
             
             const cardDisplay = document.getElementById('table-card-display');
             const coinDisplay = document.getElementById('table-coins-display');
+            
             cardDisplay.textContent = game.tableCard !== null ? game.tableCard : "-";
             coinDisplay.textContent = game.tableCoins;
 
-            // Group การอ่านหน้าโต๊ะ
-            const tableInfoStr = `ไพ่บนโต๊ะคือเลข ${game.tableCard !== null ? game.tableCard : "-"} เหรียญสะสม ${game.tableCoins} เหรียญ`;
-            document.getElementById('table-info-container').setAttribute('aria-label', tableInfoStr);
+            let boardStatusText = `ไพ่บนโต๊ะคือเลข ${game.tableCard} มีเหรียญสะสม ${game.tableCoins} เหรียญ`;
+            document.getElementById('sr-table-info').textContent = boardStatusText;
 
             const controls = document.getElementById('game-controls');
             const btnPass = document.getElementById('btn-pass');
@@ -849,17 +848,11 @@
                 controls.style.display = 'flex';
                 const myState = game.playerStates[currentPlayer.id];
                 
-                // รีเซ็ตปุ่มให้กดได้
-                btnTake.disabled = false;
-                btnTake.style.opacity = '1';
-                
                 if (myState.coins <= 0) {
                     btnPass.disabled = true;
-                    btnPass.style.opacity = '0.5';
                     btnPass.setAttribute('aria-label', 'ผ่านไม่ได้ คุณไม่มีเหรียญ ต้องรับไพ่เท่านั้น');
                 } else {
                     btnPass.disabled = false;
-                    btnPass.style.opacity = '1';
                     btnPass.setAttribute('aria-label', 'จ่าย 1 เหรียญเพื่อผ่าน');
                 }
                 
@@ -871,7 +864,7 @@
                 controls.style.display = 'none';
             }
 
-            // สถานะเครื่องเล่นตัวเอง (ด้านล่างสุด)
+            // Group สำหรับแสดงสถานะของเครื่องเราเองหน้าหลักเกม
             const myStatusGroup = document.getElementById('my-status-group');
             const me = players.find(p => p.peerId === myPeerId);
             if (me) {
@@ -879,8 +872,8 @@
                 const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
                 const isTurn = players[game.turnIndex].id === me.id;
                 
-                // อ่านแค่: คุณสี... มีเหรียญ (ตัวเลข) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
-                const ariaLabelText = `${getPronoun(me)} มีเหรียญ ${state.coins} เหรียญ ไพ่ในมือ : ${cardStr}`;
+                // รวมข้อความให้อ่านรวดเดียว
+                const ariaLabelText = `${isTurn ? 'รอบของคุณ ' : ''}สถานะของคุณ มีเหรียญ ${state.coins} เหรียญ, ไพ่ที่เก็บ: ${cardStr}`;
                 myStatusGroup.setAttribute('aria-label', ariaLabelText);
                 myStatusGroup.style.borderTop = `5px solid ${me.color.hex}`;
                 
@@ -890,73 +883,59 @@
                     myStatusGroup.classList.remove('active-turn');
                 }
 
+                // ใช้ aria-hidden="true" ภายในเพื่อให้ SC อ่านแค่ aria-label ตัวแม่ตัวเดียว
                 myStatusGroup.innerHTML = `
                     <div aria-hidden="true">
                         <h3 style="color: ${me.color.hex}; margin-bottom: 5px;">${isTurn ? '▶ ' : ''}${getPronoun(me)}</h3>
-                        <p>🪙 ${state.coins} เหรียญ | 🃏 ไพ่ในมือ : ${cardStr}</p>
+                        <p>🪙 ${state.coins} เหรียญ | 🃏 ไพ่: ${cardStr}</p>
                     </div>
                 `;
             }
         }
 
-        function disableActionButtons() {
-            document.getElementById('btn-pass').disabled = true;
-            document.getElementById('btn-take').disabled = true;
-            document.getElementById('btn-pass').style.opacity = '0.5';
-            document.getElementById('btn-take').style.opacity = '0.5';
-        }
-
-        document.getElementById('btn-pass').addEventListener('click', () => {
-            disableActionButtons();
-            sendAction('pass');
-        });
-        document.getElementById('btn-take').addEventListener('click', () => {
-            disableActionButtons();
-            sendAction('take');
-        });
-
-        // ปุ่มดูสถานะผู้เล่นทุกคนฝังบนหน้าเว็บ (ไม่ใช่ Dialog ใหม่)
+        // ปุ่มเปิด Overlay ผู้เล่นอื่น
         document.getElementById('btn-view-others').addEventListener('click', () => {
-            const section = document.getElementById('all-players-section');
-            const list = document.getElementById('all-players-list');
+            const overlay = document.getElementById('players-overlay');
+            const list = document.getElementById('overlay-player-list');
             list.innerHTML = '';
             
             players.forEach((p, index) => {
                 const state = game.playerStates[p.id];
                 const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
+                const isTurn = index === game.turnIndex;
                 
                 const div = document.createElement('div');
-                div.className = `player-card`;
+                div.className = `player-card ${isTurn ? 'active-turn' : ''}`;
                 div.style.borderTop = `5px solid ${p.color.hex}`;
                 div.style.marginBottom = '15px';
                 
-                // Format: ผู้เล่นสี... มีเหรียญ (ตัวเลข) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
-                const label = `${getPronoun(p)} มีเหรียญ ${state.coins} เหรียญ ไพ่ในมือ : ${cardStr}`;
+                // Grouping สถานะแต่ละคน
+                const label = `${isTurn ? 'รอบปัจจุบัน ' : ''}สถานะของ${getPronoun(p)} มีเหรียญ ${state.coins} เหรียญ, ไพ่ที่เก็บ: ${cardStr}`;
                 div.setAttribute('tabindex', '0');
                 div.setAttribute('aria-label', label);
                 div.setAttribute('role', 'listitem');
                 
                 div.innerHTML = `
                     <div aria-hidden="true">
-                        <h3 style="color: ${p.color.hex}; margin-bottom: 5px; font-size: 18px;">${getPronoun(p)}</h3>
-                        <p>🪙 ${state.coins} เหรียญ | 🃏 ไพ่ในมือ : ${cardStr}</p>
+                        <h3 style="color: ${p.color.hex}; margin-bottom: 5px; font-size: 18px;">${isTurn ? '▶ ' : ''}${getPronoun(p)}</h3>
+                        <p>🪙 ${state.coins} เหรียญ | 🃏 ไพ่: ${cardStr}</p>
                     </div>
                 `;
                 list.appendChild(div);
             });
             
-            section.style.display = 'block';
-            document.getElementById('title-all-players').focus();
-            
-            // เลื่อนหน้าจอลงไปให้เห็น section เต็มๆ
-            section.scrollIntoView({ behavior: 'smooth' });
+            overlay.style.display = 'block';
+            document.getElementById('title-overlay').focus();
         });
 
-        // ปุ่มปิดสถานะผู้เล่น
-        document.getElementById('btn-close-all-players').addEventListener('click', () => {
-            document.getElementById('all-players-section').style.display = 'none';
+        // ปุ่มปิด Overlay
+        document.getElementById('btn-close-overlay').addEventListener('click', () => {
+            document.getElementById('players-overlay').style.display = 'none';
             document.getElementById('btn-view-others').focus();
         });
+
+        document.getElementById('btn-pass').addEventListener('click', () => sendAction('pass'));
+        document.getElementById('btn-take').addEventListener('click', () => sendAction('take'));
 
         // --- ระบบคิดคะแนนและจบเกม ---
         function calculateScore(cards, coins) {
@@ -1045,7 +1024,7 @@
             connections = [];
             
             switchScreen('screen-main', 'title-main');
-            initRoomListener(); 
+            initRoomListener(); // กลับมาหน้าแรกก็ดึงข้อมูลห้องอีกครั้ง
             announce("ออกจากห้อง กลับสู่เมนูหลักแล้ว");
         }
 
