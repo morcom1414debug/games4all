@@ -279,14 +279,6 @@
     <main id="screen-game" class="screen">
         <h2 tabindex="-1" id="title-game">กำลังเล่นเกม</h2>
         
-        <!-- Timer Bar สำหรับผู้เล่นที่มองเห็น -->
-        <div id="timer-bar-container" style="display: none; margin-bottom: 20px;" aria-hidden="true">
-            <div id="timer-bar-text" style="text-align: center; font-weight: bold; font-size: 18px; margin-bottom: 8px; color: var(--text-main);">เหลือเวลา 40 วินาที</div>
-            <div style="width: 100%; background: #333; height: 16px; border-radius: 8px; overflow: hidden; border: 1px solid #555;">
-                <div id="timer-bar-fill" style="width: 100%; height: 100%; background-color: var(--primary); transition: width 0.2s linear, background-color 0.3s;"></div>
-            </div>
-        </div>
-
         <div class="game-board" role="region" aria-label="กระดานกลาง" style="position: relative;">
             <button id="btn-refresh-audio" aria-label="รีเฟรชระบบเสียง" style="position: absolute; top: 10px; right: 10px; width: auto; background: transparent; font-size: 24px; padding: 5px; margin: 0; box-shadow: none; display: none;">🔊</button>
             
@@ -374,87 +366,13 @@
             tableCard: null,
             tableCoins: 0,
             turnIndex: 0,
-            playerStates: {},
-            turnStartTime: null
+            playerStates: {} 
         };
 
         let isJoiningRoom = false;
         let joinTimeoutId = null;
         let myLastTurnState = null;
         let turnAnnounceTimeout = null;
-
-        let turnTimer = null;
-
-        function stopTimer() {
-            if (turnTimer) {
-                clearInterval(turnTimer);
-                turnTimer = null;
-            }
-            const container = document.getElementById('timer-bar-container');
-            if (container) {
-                container.style.display = 'none';
-            }
-        }
-
-        function startOrUpdateTimer() {
-            stopTimer();
-
-            if (game.status !== 'playing') return;
-            const currentPlayer = players[game.turnIndex];
-            if (!currentPlayer || currentPlayer.isBot) return;
-
-            const container = document.getElementById('timer-bar-container');
-            if (!container) return;
-
-            container.style.display = 'block';
-
-            function tick() {
-                if (game.status !== 'playing') {
-                    stopTimer();
-                    return;
-                }
-                const now = Date.now();
-                const elapsed = Math.floor((now - (game.turnStartTime || now)) / 1000);
-                const remaining = Math.max(0, 40 - elapsed);
-
-                const textEl = document.getElementById('timer-bar-text');
-                const fillEl = document.getElementById('timer-bar-fill');
-
-                if (textEl) {
-                    textEl.textContent = `เหลือเวลา ${remaining} วินาที`;
-                }
-
-                if (fillEl) {
-                    const percentage = Math.max(0, Math.min(100, (remaining / 40) * 100));
-                    fillEl.style.width = `${percentage}%`;
-
-                    if (remaining > 20) {
-                        fillEl.style.backgroundColor = 'var(--primary)';
-                    } else if (remaining > 10) {
-                        fillEl.style.backgroundColor = '#ff9800';
-                    } else {
-                        fillEl.style.backgroundColor = 'var(--danger)';
-                    }
-                }
-
-                if (remaining <= 0) {
-                    stopTimer();
-                    if (isHost && game.status === 'playing') {
-                        const pState = game.playerStates[currentPlayer.id];
-                        if (pState) {
-                            if (pState.coins > 0) {
-                                processAction(currentPlayer, 'pass');
-                            } else {
-                                processAction(currentPlayer, 'take');
-                            }
-                        }
-                    }
-                }
-            }
-
-            tick();
-            turnTimer = setInterval(tick, 200);
-        }
 
         // --- ระบบ Heartbeat และอัปเดตข้อมูลห้องลง Firebase ---
         function startHeartbeat() {
@@ -508,9 +426,6 @@
         }
 
         function switchScreen(screenId, focusId) {
-            if (screenId !== 'screen-game') {
-                stopTimer();
-            }
             document.querySelectorAll('.screen').forEach(s => {
                 s.classList.remove('active');
                 s.classList.remove('view-all-mode'); 
@@ -987,7 +902,6 @@
             game.status = 'playing';
             
             game.turnIndex = Math.floor(Math.random() * players.length);
-            game.turnStartTime = Date.now();
             
             let startCoins = 11;
             if (players.length === 6) startCoins = 9;
@@ -1011,7 +925,6 @@
 
         function processAction(player, action) {
             if (game.status !== 'playing') return;
-            stopTimer();
             
             const pState = game.playerStates[player.id];
             
@@ -1027,7 +940,6 @@
                 const nextPlayer = players[game.turnIndex];
                 
                 setTimeout(() => {
-                    game.turnStartTime = Date.now();
                     hostAnnounce(`รอบของ[PLAYER:${nextPlayer.id}]`);
                     broadcastState();
                     checkBotTurn();
@@ -1046,7 +958,6 @@
                     game.tableCoins = 0;
                     
                     setTimeout(() => {
-                        game.turnStartTime = Date.now();
                         hostAnnounce(`เปิดไพ่ใบใหม่ เลข ${game.tableCard}. รอบของ[PLAYER:${player.id}] อีกครั้ง`);
                         broadcastState();
                         checkBotTurn();
@@ -1088,12 +999,6 @@
             const currentPlayer = players[game.turnIndex];
             
             document.getElementById('title-game').textContent = `รอบของ${getPronoun(currentPlayer)}`;
-
-            if (game.status === 'playing' && currentPlayer && !currentPlayer.isBot) {
-                startOrUpdateTimer();
-            } else {
-                stopTimer();
-            }
 
             document.getElementById('deck-count').textContent = game.deck.length;
             document.getElementById('deck-info-container').setAttribute('aria-label', `ไพ่ในกองเหลือ ${game.deck.length} ใบ`);
@@ -1186,7 +1091,6 @@
         }
 
         function disableActionButtons() {
-            stopTimer();
             document.getElementById('btn-pass').disabled = true;
             document.getElementById('btn-take').disabled = true;
             document.getElementById('btn-pass').style.opacity = '0.5';
@@ -1264,7 +1168,6 @@
         }
 
         function endGame() {
-            stopTimer();
             game.status = 'ended';
             
             players.forEach(p => {
@@ -1326,7 +1229,6 @@
 
         // --- ระบบออกห้อง ---
         function leaveRoom() {
-            stopTimer();
             stopHeartbeat();
             resetJoinState(); // clear anything lingering
             if (peer) peer.destroy(); 
@@ -1362,7 +1264,6 @@
         };
 
         window.addEventListener('beforeunload', () => {
-            stopTimer();
             stopHeartbeat();
             if (isHost && game.status === 'waiting' && currentRoomId) {
                 remove(ref(db, `nothanks_rooms/${currentRoomId}`));
@@ -1410,18 +1311,6 @@
                     event.preventDefault();
                     event.stopPropagation();
                     announce(`ไพ่ในกองเหลือ ${game.deck.length} ใบ`);
-                } else if (key === 't') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (game.status === 'playing') {
-                        const currentPlayer = players[game.turnIndex];
-                        if (currentPlayer && !currentPlayer.isBot) {
-                            const now = Date.now();
-                            const elapsed = Math.floor((now - (game.turnStartTime || now)) / 1000);
-                            const remaining = Math.max(0, 40 - elapsed);
-                            announce(`เหลือเวลาอีก ${remaining} วินาที`);
-                        }
-                    }
                 }
             }
         });
