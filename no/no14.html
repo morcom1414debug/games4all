@@ -544,7 +544,6 @@
         };
 
         let isJoiningRoom = false;
-        let isCreatingRoom = false; // ป้องกันการสร้างห้องซ้ำ
         let joinTimeoutId = null;
         let myLastTurnState = null;
         let turnAnnounceTimeout = null;
@@ -777,66 +776,37 @@
                 if (isJoiningRoom) {
                     resetJoinState();
                 }
-                if (isCreatingRoom) {
-                    isCreatingRoom = false;
-                    const btn = document.getElementById('btn-create-room');
-                    if (btn) btn.disabled = false;
-                    if (peer) { peer.destroy(); peer = null; }
-                }
             });
         }
 
         // --- Host สร้างห้อง ---
         document.getElementById('btn-create-room').addEventListener('click', () => {
-            if (isCreatingRoom) return; // One-Time Creation Guard
-            isCreatingRoom = true;
-            
-            const btnCreate = document.getElementById('btn-create-room');
-            btnCreate.disabled = true; // ล็อกปุ่มทันที
-
             playSound('1');
             announce("กำลังสร้างห้อง กรุณารอซักครู่");
-            
-            let isPeerCallbackCalled = false; // ป้องกัน callback ทำงานซ้อน
-
             initPeer(async () => {
-                if (isPeerCallbackCalled) return;
-                isPeerCallbackCalled = true;
+                isHost = true;
+                myColor = PLAYER_COLORS[0]; 
+                currentRoomId = await getNextRoomId();
+                
+                players = [{ id: myPeerId, peerId: myPeerId, color: myColor, isBot: false, online: true }];
 
-                try {
-                    isHost = true;
-                    myColor = PLAYER_COLORS[0]; 
-                    currentRoomId = await getNextRoomId();
-                    
-                    players = [{ id: myPeerId, peerId: myPeerId, color: myColor, isBot: false, online: true }];
+                const roomRef = ref(db, `nothanks_rooms/${currentRoomId}`);
+                await set(roomRef, {
+                    hostId: myPeerId,
+                    status: 'waiting',
+                    timestamp: Date.now(),
+                    lastActive: Date.now(),
+                    currentPlayers: players.length,
+                    maxPlayers: 7,
+                    playerNames: players.map(p => getPronoun(p))
+                });
+                onDisconnect(roomRef).remove();
 
-                    const roomRef = ref(db, `nothanks_rooms/${currentRoomId}`);
-                    await set(roomRef, {
-                        hostId: myPeerId,
-                        status: 'waiting',
-                        timestamp: Date.now(),
-                        lastActive: Date.now(),
-                        currentPlayers: players.length,
-                        maxPlayers: 7,
-                        playerNames: players.map(p => getPronoun(p))
-                    });
-                    onDisconnect(roomRef).remove();
-
-                    setupHostEvents();
-                    startHeartbeat();
-                    updateLobbyUI();
-                    switchScreen('screen-lobby', 'title-lobby');
-                    announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId} คุณเริ่มต้นที่${myColor.name}`);
-                    
-                    isCreatingRoom = false; // รีเซ็ตสถานะเมื่อสร้างสำเร็จ
-                    btnCreate.disabled = false;
-                } catch (error) {
-                    console.error("Room creation error:", error);
-                    announce("เกิดข้อผิดพลาดในการสร้างห้อง", true);
-                    isCreatingRoom = false;
-                    btnCreate.disabled = false;
-                    if (peer) { peer.destroy(); peer = null; }
-                }
+                setupHostEvents();
+                startHeartbeat();
+                updateLobbyUI();
+                switchScreen('screen-lobby', 'title-lobby');
+                announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId} คุณเริ่มต้นที่${myColor.name}`);
             });
         });
 
