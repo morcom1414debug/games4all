@@ -279,9 +279,7 @@
     <main id="screen-game" class="screen">
         <h2 tabindex="-1" id="title-game">กำลังเล่นเกม</h2>
         
-        <div class="game-board" role="region" aria-label="กระดานกลาง" style="position: relative;">
-            <button id="btn-refresh-audio" aria-label="รีเฟรชระบบเสียง" style="position: absolute; top: 10px; right: 10px; width: auto; background: transparent; font-size: 24px; padding: 5px; margin: 0; box-shadow: none; display: none;">🔊</button>
-            
+        <div class="game-board" role="region" aria-label="กระดานกลาง">
             <div id="deck-info-container" tabindex="0" style="flex: 1; text-align: left; font-size: 20px;">
                 <span aria-hidden="true">ไพ่คงเหลือในกอง: <span id="deck-count">24</span> ใบ</span>
             </div>
@@ -963,8 +961,6 @@
                         checkBotTurn();
                     }, 2000);
                 } else {
-                    game.tableCard = null; 
-                    game.tableCoins = 0;
                     endGame();
                 }
             }
@@ -1014,12 +1010,7 @@
             const controls = document.getElementById('game-controls');
             const btnPass = document.getElementById('btn-pass');
             const btnTake = document.getElementById('btn-take');
-            const btnRefreshAudio = document.getElementById('btn-refresh-audio');
             
-            if (btnRefreshAudio) {
-                btnRefreshAudio.style.display = (game.status === 'playing') ? 'block' : 'none';
-            }
-
             const isMyTurn = currentPlayer.peerId === myPeerId;
 
             if (isMyTurn && !currentPlayer.isBot) {
@@ -1267,78 +1258,6 @@
             stopHeartbeat();
             if (isHost && game.status === 'waiting' && currentRoomId) {
                 remove(ref(db, `nothanks_rooms/${currentRoomId}`));
-            }
-        });
-
-        // --- ระบบ Keyboard Shortcut ---
-        window.addEventListener('keydown', (event) => {
-            if (game.status !== 'playing') return;
-
-            if (event.altKey) {
-                const key = event.key.toLowerCase();
-                if (key === 's') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const btnPass = document.getElementById('btn-pass');
-                    if (btnPass && !btnPass.disabled && btnPass.offsetParent !== null) {
-                        btnPass.click();
-                    }
-                } else if (key === 'g') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const btnTake = document.getElementById('btn-take');
-                    if (btnTake && !btnTake.disabled && btnTake.offsetParent !== null) {
-                        btnTake.click();
-                    }
-                } else if (key === 'c') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const me = players.find(p => p.peerId === myPeerId);
-                    if (me && game.playerStates[me.id]) {
-                        const state = game.playerStates[me.id];
-                        const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
-                        const tableCardStr = game.tableCard !== null ? game.tableCard : "-";
-                        announce(`ไพ่บนโต๊ะเลข ${tableCardStr} เหรียญสะสม ${game.tableCoins} คุณมีเหรียญ ${state.coins} ไพ่ในมือ ${cardStr}`);
-                    }
-                } else if (key === 'a') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const btnViewOthers = document.getElementById('btn-view-others');
-                    if (btnViewOthers && btnViewOthers.offsetParent !== null) {
-                        btnViewOthers.click();
-                    }
-                } else if (key === 'k') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    announce(`ไพ่ในกองเหลือ ${game.deck.length} ใบ`);
-                }
-            }
-        });
-
-        // --- ระบบรีเฟรชเสียง ---
-        document.getElementById('btn-refresh-audio').addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            
-            try {
-                if (window.AudioContext || window.webkitAudioContext) {
-                    if (window.gameAudioContext && window.gameAudioContext.state !== 'closed') {
-                        window.gameAudioContext.close().then(() => {
-                            window.gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                            window.gameAudioContext.resume();
-                        });
-                    } else {
-                        window.gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                        window.gameAudioContext.resume();
-                    }
-                }
-                
-                if (typeof window.reloadAudioBuffers === 'function') window.reloadAudioBuffers();
-                if (typeof window.resyncScheduler === 'function') window.resyncScheduler();
-                
-                announce("รีเฟรชระบบเสียงเรียบร้อยแล้ว");
-            } catch (err) {
-                console.error("Audio refresh error:", err);
             }
         });
 
