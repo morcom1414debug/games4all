@@ -248,15 +248,13 @@
     <main id="screen-lobby" class="screen">
         <h2 tabindex="-1" id="title-lobby">รหัสห้อง: <span id="lobby-room-id"></span></h2>
         
-        <div id="color-selection-section" style="margin-bottom: 20px; background: #2a2a2a; padding: 15px; border-radius: 4px;">
-            <h3 style="font-size: 16px; margin-bottom: 10px;">เลือกสีตัวละครของคุณ</h3>
-            <div id="color-options" style="display: flex; gap: 15px; justify-content: flex-start; flex-wrap: wrap;" role="group" aria-label="เลือกสีตัวละคร">
-                <!-- Radio Buttons สำหรับเลือกสีจะถูกสร้างที่นี่ -->
-            </div>
-        </div>
-
         <div id="host-controls" style="display: none;" role="group" aria-label="เครื่องมือหัวหน้าห้อง">
             
+            <h3 style="font-size: 16px; margin-bottom: 10px;">เลือกสีของคุณ</h3>
+            <div id="color-options" style="display: flex; gap: 15px; justify-content: flex-start; margin-bottom: 20px; flex-wrap: wrap;">
+                <!-- Radio Buttons สำหรับเลือกสีจะถูกสร้างที่นี่ -->
+            </div>
+
             <div style="display: flex; align-items: center; justify-content: flex-start; gap: 20px; margin-bottom: 20px; background: #2a2a2a; padding: 15px; border-radius: 4px;">
                 <button id="btn-remove-bot" class="danger" style="width: auto; margin: 0;" aria-label="ลดบอท 1 ตัว">- ลดบอท</button>
                 <span id="bot-count-display" style="font-size: 24px; font-weight: bold; width: 30px; text-align: center;" aria-live="polite">0</span>
@@ -367,11 +365,6 @@
             playerStates: {} 
         };
 
-        let isJoiningRoom = false;
-        let joinTimeoutId = null;
-        let myLastTurnState = null;
-        let turnAnnounceTimeout = null;
-
         // --- ระบบ Heartbeat และอัปเดตข้อมูลห้องลง Firebase ---
         function startHeartbeat() {
             stopHeartbeat();
@@ -448,7 +441,7 @@
             const mainRoomList = document.getElementById('main-room-list');
             
             onValue(roomsRef, (snapshot) => {
-                if (currentRoomId && !isJoiningRoom) return; 
+                if (currentRoomId) return; 
                 
                 mainRoomList.innerHTML = '';
                 if (snapshot.exists()) {
@@ -461,6 +454,7 @@
                     for (let roomId in rooms) {
                         if (rooms[roomId].status === 'waiting') {
                             const lastActive = rooms[roomId].lastActive || rooms[roomId].timestamp || 0;
+                            // เช็คถ้าห้องไม่มีการเคลื่อนไหวนานเกิน 15 วินาที สั่งลบห้องร้างทันที
                             if (now - lastActive > 15000) {
                                 remove(ref(db, `nothanks_rooms/${roomId}`));
                                 continue;
@@ -476,12 +470,7 @@
                             btn.textContent = `เข้าร่วมห้อง ${roomId} (${currentP}/${maxP})`;
                             btn.setAttribute("aria-label", `เข้าร่วมห้อง ${roomId} ผู้เล่น ${currentP} จาก ${maxP} คน`);
                             btn.style.width = "100%";
-                            
-                            if (isJoiningRoom) {
-                                btn.disabled = true;
-                            }
-                            
-                            btn.onclick = function() { joinRoom(roomId, rooms[roomId].hostId, this); };
+                            btn.onclick = () => joinRoom(roomId, rooms[roomId].hostId);
                             
                             li.appendChild(btn);
                             ul.appendChild(li);
@@ -498,6 +487,7 @@
             });
         }
 
+        // ปรับปรุงฟังก์ชันการหาเลขห้องใหม่ ให้บันทึกเลขล่าสุดแยกไว้ต่างหาก เพื่อให้รันต่อไปเรื่อยๆ
         async function getNextRoomId() {
             const counterRef = ref(db, 'nothanks_room_counter/last_id');
             const snapshot = await get(counterRef);
@@ -509,7 +499,7 @@
             await set(counterRef, nextIdNum);
             
             const nextIdStr = nextIdNum.toString().padStart(5, '0');
-            return `no${nextIdStr}`; 
+            return `no${nextIdStr}`; // ใช้ฟอร์แมต no00001, no00002...
         }
 
         function initPeer(onReady) {
@@ -521,9 +511,6 @@
             peer.on('error', (err) => {
                 announce("เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย", true);
                 console.error(err);
-                if (isJoiningRoom) {
-                    resetJoinState();
-                }
             });
         }
 
@@ -547,6 +534,7 @@
                     maxPlayers: 7,
                     playerNames: players.map(p => getPronoun(p))
                 });
+                // เพิ่ม onDisconnect: หากเน็ตของ host หลุดหรือปิดเบราว์เซอร์ ห้องนี้จะโดนลบอัตโนมัติจากเซิร์ฟเวอร์
                 onDisconnect(roomRef).remove();
 
                 setupHostEvents();
@@ -583,27 +571,8 @@
         }
 
         // --- Client เข้าร่วมห้อง ---
-        window.joinRoom = function(roomId, hostId, btn = null) {
-            if (isJoiningRoom) return;
-            isJoiningRoom = true;
-
-            const allButtons = document.querySelectorAll('#main-room-list button');
-            allButtons.forEach(b => {
-                b.disabled = true;
-                if (btn && b === btn) {
-                    b.textContent = 'กำลังเข้าร่วมห้อง...';
-                }
-            });
-
+        window.joinRoom = function(roomId, hostId) {
             announce(`กำลังเชื่อมต่อไปยังห้อง ${roomId}`);
-            
-            joinTimeoutId = setTimeout(() => {
-                if (isJoiningRoom) {
-                    announce("เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง", true);
-                    resetJoinState();
-                }
-            }, 10000);
-
             initPeer(() => {
                 isHost = false;
                 currentRoomId = roomId;
@@ -612,40 +581,11 @@
                 hostConnection.on('open', () => {
                     hostConnection.on('data', handleHostMessage);
                     hostConnection.on('close', () => {
-                        if (isJoiningRoom) {
-                            announce("หัวหน้าห้องปฏิเสธการเชื่อมต่อ หรือห้องปิดไปแล้ว", true);
-                            resetJoinState();
-                        } else {
-                            announce("ขาดการเชื่อมต่อจากหัวหน้าห้อง", true);
-                            leaveRoom();
-                        }
+                        announce("ขาดการเชื่อมต่อจากหัวหน้าห้อง", true);
+                        leaveRoom();
                     });
                 });
-                hostConnection.on('error', (err) => {
-                    if (isJoiningRoom) {
-                        announce("เกิดข้อผิดพลาดในการเชื่อมต่อ", true);
-                        resetJoinState();
-                    }
-                });
             });
-        }
-
-        function resetJoinState() {
-            isJoiningRoom = false;
-            if (joinTimeoutId) {
-                clearTimeout(joinTimeoutId);
-                joinTimeoutId = null;
-            }
-            if (hostConnection) {
-                hostConnection.close();
-                hostConnection = null;
-            }
-            if (peer) {
-                peer.destroy();
-                peer = null;
-            }
-            currentRoomId = null;
-            initRoomListener();
         }
 
         function broadcastState() {
@@ -669,18 +609,10 @@
 
         function handleHostMessage(data) {
             if (data.type === 'reject') {
-                if (isJoiningRoom) resetJoinState();
                 announce(data.message, true);
-                if (!isJoiningRoom) leaveRoom();
+                leaveRoom();
             } else if (data.type === 'sync') {
-                if (isJoiningRoom) {
-                    isJoiningRoom = false;
-                    if (joinTimeoutId) clearTimeout(joinTimeoutId);
-                }
-
                 const wasWaiting = game.status === 'waiting';
-                const oldPlayers = [...players];
-                
                 players = data.players;
                 game = data.game;
                 
@@ -688,31 +620,6 @@
                 if(me) myColor = me.color;
 
                 if (game.status === 'waiting') {
-                    if (!isHost && oldPlayers.length > 0) {
-                        const oldIds = oldPlayers.map(p => p.id);
-                        const newIds = players.map(p => p.id);
-                        
-                        players.forEach(p => {
-                            if (!oldIds.includes(p.id) && p.peerId !== myPeerId) {
-                                if (p.isBot) {
-                                    announce(`บอท${p.color.name} ถูกเพิ่มเข้าห้องแล้ว`);
-                                } else {
-                                    announce(`เพื่อน${p.color.name} เข้าร่วมห้องแล้ว`);
-                                }
-                            }
-                        });
-                        
-                        oldPlayers.forEach(p => {
-                            if (!newIds.includes(p.id)) {
-                                if (p.isBot) {
-                                    announce(`บอท${p.color.name} ถูกลบออกจากห้องแล้ว`);
-                                } else {
-                                    announce(`เพื่อน${p.color.name} ออกจากห้องแล้ว`);
-                                }
-                            }
-                        });
-                    }
-
                     if (!document.getElementById('screen-lobby').classList.contains('active')) {
                         switchScreen('screen-lobby', 'title-lobby');
                         announce(`เข้าร่วมห้อง ${currentRoomId} สำเร็จ คุณได้รับ${myColor.name} รอหัวหน้าห้องเริ่มเกม`);
@@ -740,16 +647,6 @@
                 const playerIndex = players.findIndex(p => p.id === peerId);
                 if (playerIndex === game.turnIndex) {
                     processAction(players[playerIndex], data.action);
-                }
-            } else if (data.type === 'changeColor') {
-                const isTaken = players.some(p => p.color.id === data.colorId);
-                if (!isTaken) {
-                    const player = players.find(p => p.peerId === peerId);
-                    const newColor = PLAYER_COLORS.find(c => c.id === data.colorId);
-                    if (player && newColor) {
-                        player.color = newColor;
-                        broadcastState();
-                    }
                 }
             }
         }
@@ -791,8 +688,6 @@
                 ul.appendChild(li);
             });
 
-            renderColors();
-
             if (isHost) {
                 document.getElementById('host-controls').style.display = 'block';
                 document.getElementById('client-wait-msg').style.display = 'none';
@@ -804,13 +699,16 @@
                 document.getElementById('btn-remove-bot').disabled = botCount === 0;
                 
                 document.getElementById('btn-start-game').disabled = players.length < 3;
+                
+                renderHostColors();
             } else {
                 document.getElementById('host-controls').style.display = 'none';
                 document.getElementById('client-wait-msg').style.display = 'block';
             }
         }
 
-        function renderColors() {
+        function renderHostColors() {
+            if (!isHost) return;
             const container = document.getElementById('color-options');
             container.innerHTML = '';
             
@@ -823,7 +721,7 @@
                 
                 const radio = document.createElement('input');
                 radio.type = 'radio';
-                radio.name = 'player-color';
+                radio.name = 'host-color';
                 radio.value = c.id;
                 radio.checked = (myColor && myColor.id === c.id);
                 
@@ -832,14 +730,10 @@
                 
                 radio.addEventListener('change', () => {
                     if (radio.checked) {
-                        if (isHost) {
-                            myColor = c;
-                            const me = players.find(p => p.peerId === myPeerId);
-                            if (me) me.color = c;
-                            broadcastState();
-                        } else {
-                            hostConnection.send({ type: 'changeColor', colorId: c.id });
-                        }
+                        myColor = c;
+                        const me = players.find(p => p.peerId === myPeerId);
+                        if (me) me.color = c;
+                        broadcastState();
                     }
                 });
                 
@@ -911,6 +805,7 @@
             });
 
             const firstPlayer = players[game.turnIndex];
+            // ฝัง Tag เพื่อไปแปลงเป็นสรรพนามในอุปกรณ์ปลายทาง
             hostAnnounce(`เริ่มเกมแล้ว! เปิดไพ่ใบแรก เลข ${game.tableCard} เป็นรอบของ [PLAYER:${firstPlayer.id}]`, true);
         }
 
@@ -991,11 +886,14 @@
             processAction(bot, 'pass');
         }
 
+        // --- UI ระหว่างเล่น และการทำ Grouping ARIA ---
         function updateGameUI() {
             const currentPlayer = players[game.turnIndex];
             
+            // อัปเดต Title Heading ให้ระบุผู้เล่นปัจจุบัน (อิงตามสรรพนามของอุปกรณ์ผู้ใช้งาน)
             document.getElementById('title-game').textContent = `รอบของ${getPronoun(currentPlayer)}`;
 
+            // Group การอ่านไพ่ในกอง
             document.getElementById('deck-count').textContent = game.deck.length;
             document.getElementById('deck-info-container').setAttribute('aria-label', `ไพ่ในกองเหลือ ${game.deck.length} ใบ`);
             
@@ -1004,6 +902,7 @@
             cardDisplay.textContent = game.tableCard !== null ? game.tableCard : "-";
             coinDisplay.textContent = game.tableCoins;
 
+            // Group การอ่านหน้าโต๊ะ
             const tableInfoStr = `ไพ่บนโต๊ะคือเลข ${game.tableCard !== null ? game.tableCard : "-"} เหรียญสะสม ${game.tableCoins} เหรียญ`;
             document.getElementById('table-info-container').setAttribute('aria-label', tableInfoStr);
 
@@ -1017,6 +916,7 @@
                 controls.style.display = 'flex';
                 const myState = game.playerStates[currentPlayer.id];
                 
+                // รีเซ็ตปุ่มให้กดได้
                 btnTake.disabled = false;
                 btnTake.style.opacity = '1';
                 
@@ -1034,26 +934,11 @@
                     if(!btnPass.disabled) { btnPass.focus(); }
                     else { btnTake.focus(); }
                 }, 100);
-
-                const currentStateStr = `${game.tableCard}-${game.tableCoins}`;
-                if (myLastTurnState !== currentStateStr) {
-                    myLastTurnState = currentStateStr;
-                    if (turnAnnounceTimeout) clearTimeout(turnAnnounceTimeout);
-                    turnAnnounceTimeout = setTimeout(() => {
-                        if (game.status === 'playing' && players[game.turnIndex]?.peerId === myPeerId) {
-                            announce(`ถึงรอบคุณแล้ว ไพ่บนโต๊ะคือเลข ${game.tableCard !== null ? game.tableCard : "-"} เหรียญสะสม ${game.tableCoins} เหรียญ`, true);
-                        }
-                    }, 1500);
-                }
             } else {
                 controls.style.display = 'none';
-                myLastTurnState = null;
-                if (turnAnnounceTimeout) {
-                    clearTimeout(turnAnnounceTimeout);
-                    turnAnnounceTimeout = null;
-                }
             }
 
+            // สถานะเครื่องเล่นตัวเอง (ด้านล่างสุด)
             const myStatusGroup = document.getElementById('my-status-group');
             const me = players.find(p => p.peerId === myPeerId);
             if (me) {
@@ -1061,6 +946,7 @@
                 const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
                 const isTurn = players[game.turnIndex].id === me.id;
                 
+                // อ่านแค่: คุณสี... มีเหรียญ (ตัวเลข) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
                 const ariaLabelText = `${getPronoun(me)} มีเหรียญ ${state.coins} เหรียญ ไพ่ในมือ : ${cardStr}`;
                 
                 myStatusGroup.style.borderTop = `5px solid ${me.color.hex}`;
@@ -1097,17 +983,20 @@
             sendAction('take');
         });
 
+        // ปุ่มดูสถานะผู้เล่นทุกคนฝังบนหน้าเว็บ (ไม่ใช่ Dialog ใหม่)
         document.getElementById('btn-view-others').addEventListener('click', () => {
             const section = document.getElementById('all-players-section');
             const list = document.getElementById('all-players-list');
             list.innerHTML = '';
             
+            // เพิ่ม Class เพื่อซ่อนข้อมูลอื่นๆ ในหน้าเกม
             document.getElementById('screen-game').classList.add('view-all-mode');
             
             players.forEach((p, index) => {
                 const state = game.playerStates[p.id];
                 const cardStr = state.cards.length > 0 ? state.cards.join(', ') : 'ไม่มีไพ่';
                 
+                // ตรวจสอบว่าเป็นตัวเองหรือไม่ ถ้าใช่ให้แสดงเหรียญ ถ้าไม่ใช่ให้ซ่อนไว้ตามกฎ
                 const isMe = (p.peerId === myPeerId && !p.isBot);
                 const displayedCoins = isMe ? `${state.coins} เหรียญ` : '?? เหรียญ (ซ่อนตามกฎ)';
                 const ariaCoinsText = isMe ? `${state.coins}` : 'ไม่สามารถดูได้';
@@ -1117,8 +1006,10 @@
                 div.style.borderTop = `5px solid ${p.color.hex}`;
                 div.style.marginBottom = '15px';
                 
+                // Format: ผู้เล่นสี... มีเหรียญ (ตัวเลข/ซ่อน) เหรียญ ไพ่ในมือ : (เลขไพ่ที่มีทั้งหมด)
                 const label = `${getPronoun(p)} มีเหรียญ ${ariaCoinsText} เหรียญ ไพ่ในมือ : ${cardStr}`;
                 
+                // ปรับแต่งโดยการฝังข้อความลงใน sr-only class ด้านใน เพื่อรองรับ NVDA Browse Mode
                 div.setAttribute('tabindex', '0');
                 div.setAttribute('role', 'listitem');
                 
@@ -1135,11 +1026,14 @@
             section.style.display = 'block';
             document.getElementById('title-all-players').focus();
             
+            // เลื่อนหน้าจอลงไปให้เห็น section เต็มๆ
             section.scrollIntoView({ behavior: 'smooth' });
         });
 
+        // ปุ่มปิดสถานะผู้เล่น
         document.getElementById('btn-close-all-players').addEventListener('click', () => {
             document.getElementById('all-players-section').style.display = 'none';
+            // นำ Class ซ่อนออกจากหน้าจอ เพื่อแสดงองค์ประกอบกลับมาตามเดิม
             document.getElementById('screen-game').classList.remove('view-all-mode');
             
             document.getElementById('btn-view-others').focus();
@@ -1221,7 +1115,6 @@
         // --- ระบบออกห้อง ---
         function leaveRoom() {
             stopHeartbeat();
-            resetJoinState(); // clear anything lingering
             if (peer) peer.destroy(); 
             
             if (isHost && game.status === 'waiting' && currentRoomId) {
@@ -1232,8 +1125,6 @@
             currentRoomId = null;
             players = [];
             connections = [];
-            myLastTurnState = null;
-            if (turnAnnounceTimeout) { clearTimeout(turnAnnounceTimeout); turnAnnounceTimeout = null; }
             
             switchScreen('screen-main', 'title-main');
             initRoomListener(); 
