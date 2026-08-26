@@ -216,15 +216,9 @@
     <div id="aria-polite" aria-live="polite" class="sr-only"></div>
     <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
 
-    <!-- หน้าจอ Animation แสดงผลเต็มจอ -->
-    <div id="anim-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #000; z-index: 999999; flex-direction: column; justify-content: center; align-items: center;">
-        <div id="anim-text" style="font-size: 52px; font-weight: bold; color: #FFD700; text-align: center; text-shadow: 0 0 15px rgba(255, 215, 0, 0.6); padding: 20px;"></div>
-    </div>
-
     <!-- 1. หน้าแรก (Main Menu) -->
-    <main id="screen-main" class="screen active" style="position: relative;">
-        <button id="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="position: absolute; top: 15px; left: 15px; width: auto; margin: 0; padding: 6px 14px; font-size: 20px; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🏠</button>
-        <h1 tabindex="-1" id="title-main" style="text-align: center; margin-top: 10px;">เมนูหลัก No Thanks!</h1>
+    <main id="screen-main" class="screen active">
+        <h1 tabindex="-1" id="title-main">เมนูหลัก No Thanks!</h1>
         <button id="btn-create-room" aria-label="สร้างห้องใหม่">สร้างห้อง</button>
         <button id="btn-how-to-play" aria-label="วิธีเล่น">วิธีเล่น</button>
         
@@ -330,7 +324,10 @@
         <h2 tabindex="-1" id="title-result">สรุปผลคะแนน</h2>
         <div id="result-list" role="list" aria-label="อันดับและคะแนน"></div>
         
-        <button id="btn-home-result" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="margin: 25px auto 0 auto; display: block; width: auto; padding: 12px 24px; font-size: 24px; background: var(--primary); border: none; border-radius: 4px; cursor: pointer;">🏠</button>
+        <div id="host-result-controls" style="display: none;">
+            <button id="btn-play-again" aria-label="เล่นอีกครั้งกับผู้เล่นเดิม">เล่นอีกครั้ง</button>
+        </div>
+        <button id="btn-back-lobby-result" aria-label="กลับสู่ล็อบบี้">กลับไปหน้าล็อบบี้</button>
     </main>
 
     <script type="module">
@@ -349,208 +346,6 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-
-        // --- ระบบ Web Audio API ---
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const soundBuffers = {};
-        const soundFiles = {
-            '1': 'audio/1.mp3',
-            'select': 'audio/select.mp3',
-            'start': 'audio/start.mp3',
-            'bgm': 'audio/bgm.mp3',
-            'jua': 'audio/jua.mp3',
-            'skip': 'audio/skip.mp3',
-            'win': 'audio/win.mp3',
-            'no': 'audio/no.mp3',
-            'lost': 'audio/lost.mp3'
-        };
-        let bgmSource = null;
-
-        function ensureAudioContext() {
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        }
-        window.addEventListener('click', ensureAudioContext, { once: false });
-        window.addEventListener('keydown', ensureAudioContext, { once: false });
-
-        async function loadAudioBuffers() {
-            for (const [key, path] of Object.entries(soundFiles)) {
-                try {
-                    const res = await fetch(path);
-                    const arrayBuffer = await res.arrayBuffer();
-                    soundBuffers[key] = await audioCtx.decodeAudioData(arrayBuffer);
-                } catch (e) {
-                    console.warn(`Audio load error: ${key}`, e);
-                }
-            }
-        }
-        loadAudioBuffers();
-        window.reloadAudioBuffers = loadAudioBuffers;
-
-        function playSound(name, loop = false) {
-            ensureAudioContext();
-            if (!soundBuffers[name]) return null;
-            try {
-                const source = audioCtx.createBufferSource();
-                source.buffer = soundBuffers[name];
-                source.loop = loop;
-                source.connect(audioCtx.destination);
-                source.start(0);
-                return source;
-            } catch (e) {
-                console.error(`Error playing sound ${name}:`, e);
-                return null;
-            }
-        }
-
-        function playBGM() {
-            stopBGM();
-            bgmSource = playSound('bgm', true);
-        }
-
-        function stopBGM() {
-            if (bgmSource) {
-                try { bgmSource.stop(); } catch(e){}
-                bgmSource = null;
-            }
-        }
-
-        function broadcastSound(soundName) {
-            playSound(soundName);
-            if (isHost) {
-                connections.forEach(conn => {
-                    if (conn.open) conn.send({ type: 'playSound', sound: soundName });
-                });
-            }
-        }
-
-        let animTimeouts = [];
-        function clearAnimTimeouts() {
-            animTimeouts.forEach(t => clearTimeout(t));
-            animTimeouts = [];
-        }
-
-        function runStartSequence(onComplete) {
-            stopBGM();
-            playSound('start');
-
-            const overlay = document.getElementById('anim-overlay');
-            const textEl = document.getElementById('anim-text');
-            overlay.style.display = 'flex';
-            textEl.textContent = '';
-
-            clearAnimTimeouts();
-
-            // 0.2 วินาที: No Thanks!
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = 'No Thanks!';
-                textEl.style.color = '#FFD700';
-                announce('No Thanks!', true);
-            }, 200));
-
-            // 1.2 วินาที: 3
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = '3';
-                textEl.style.color = '#FFFFFF';
-                announce('3', true);
-            }, 1200));
-
-            // 2.2 วินาที: 2
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = '2';
-                textEl.style.color = '#FFFFFF';
-                announce('2', true);
-            }, 2200));
-
-            // 3.2 วินาที: 1
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = '1';
-                textEl.style.color = '#FFFFFF';
-                announce('1', true);
-            }, 3200));
-
-            // 4.2 วินาที: รับหรือไม่เอา
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = 'รับหรือไม่เอา';
-                textEl.style.color = '#FFD700';
-                announce('รับหรือไม่เอา', true);
-            }, 4200));
-
-            // 4.89s + 0.2s = 5.09s เล่น BGM และซ่อน Animation
-            animTimeouts.push(setTimeout(() => {
-                document.getElementById('aria-polite').textContent = '';
-                document.getElementById('aria-assertive').textContent = '';
-                overlay.style.display = 'none';
-                playBGM();
-                if (onComplete) onComplete();
-            }, 5090));
-        }
-
-        function runEndSequence(onComplete) {
-            stopBGM();
-
-            const overlay = document.getElementById('anim-overlay');
-            const textEl = document.getElementById('anim-text');
-            overlay.style.display = 'flex';
-            textEl.textContent = '';
-
-            clearAnimTimeouts();
-
-            // 0.2 วินาที: No Thanks!
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = 'No Thanks!';
-                textEl.style.color = '#FFD700';
-                announce('No Thanks!', true);
-            }, 200));
-
-            // 1.2 วินาที: กำลังทำการสรุปผล
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = 'กำลังทำการสรุปผล';
-                textEl.style.color = '#FFFFFF';
-                announce('กำลังทำการสรุปผล', true);
-            }, 1200));
-
-            // 1.5 วินาที: เล่นไฟล์เสียงสรุปผล (win / no / lost)
-            animTimeouts.push(setTimeout(() => {
-                playEndGameSound();
-            }, 1500));
-
-            // 2.5 วินาที: ได้แก่
-            animTimeouts.push(setTimeout(() => {
-                textEl.textContent = 'ได้แก่';
-                textEl.style.color = '#FFD700';
-                announce('ได้แก่', true);
-            }, 2500));
-
-            // 3.0 วินาที: จบแอนิเมชัน สลับเข้าหน้าสรุปผล
-            animTimeouts.push(setTimeout(() => {
-                document.getElementById('aria-polite').textContent = '';
-                document.getElementById('aria-assertive').textContent = '';
-                overlay.style.display = 'none';
-                if (onComplete) onComplete();
-            }, 3000));
-        }
-
-        function playEndGameSound() {
-            const me = players.find(p => p.peerId === myPeerId);
-            if (me && game.playerStates[me.id]) {
-                const allScores = players.map(p => game.playerStates[p.id].score);
-                const minScore = Math.min(...allScores);
-                const myScore = game.playerStates[me.id].score;
-                const minCount = allScores.filter(s => s === minScore).length;
-
-                if (myScore === minScore) {
-                    if (minCount === 1) {
-                        playSound('win');
-                    } else {
-                        playSound('no');
-                    }
-                } else {
-                    playSound('lost');
-                }
-            }
-        }
 
         const PLAYER_COLORS = [
             { id: "red", name: "สีแดง", hex: "#f44336" },
@@ -821,7 +616,6 @@
 
         // --- Host สร้างห้อง ---
         document.getElementById('btn-create-room').addEventListener('click', () => {
-            playSound('1');
             announce("กำลังสร้างห้อง กรุณารอซักครู่");
             initPeer(async () => {
                 isHost = true;
@@ -867,7 +661,6 @@
                     players.push(newPlayer);
                     
                     announce(`${getPronoun(newPlayer)} เข้าร่วมห้องแล้ว`);
-                    broadcastSound('select');
                     broadcastState();
 
                     conn.on('data', (data) => handleClientMessage(conn.peer, data));
@@ -954,13 +747,10 @@
             } else if (game.status === 'playing') {
                 updateGameUI();
             } else if (game.status === 'ended') {
-                const overlay = document.getElementById('anim-overlay');
-                if (!overlay || overlay.style.display === 'none') {
-                    if (!document.getElementById('screen-result').classList.contains('active')) {
-                        switchScreen('screen-result', 'title-result');
-                    }
-                    updateResultUI();
+                if (!document.getElementById('screen-result').classList.contains('active')) {
+                    switchScreen('screen-result', 'title-result');
                 }
+                updateResultUI();
             }
         }
 
@@ -969,15 +759,6 @@
                 if (isJoiningRoom) resetJoinState();
                 announce(data.message, true);
                 if (!isJoiningRoom) leaveRoom();
-            } else if (data.type === 'playSound') {
-                playSound(data.sound);
-            } else if (data.type === 'startSequence') {
-                runStartSequence();
-            } else if (data.type === 'endSequence') {
-                runEndSequence(() => {
-                    switchScreen('screen-result', 'title-result');
-                    updateResultUI();
-                });
             } else if (data.type === 'sync') {
                 if (isJoiningRoom) {
                     isJoiningRoom = false;
@@ -1030,13 +811,10 @@
                     }
                     updateGameUI();
                 } else if (game.status === 'ended') {
-                    const overlay = document.getElementById('anim-overlay');
-                    if (!overlay || overlay.style.display === 'none') {
-                        if (!document.getElementById('screen-result').classList.contains('active')) {
-                            switchScreen('screen-result', 'title-result');
-                        }
-                        updateResultUI();
+                    if (!document.getElementById('screen-result').classList.contains('active')) {
+                        switchScreen('screen-result', 'title-result');
                     }
+                    updateResultUI();
                 }
             } else if (data.type === 'announce') {
                 announce(data.message, data.assertive);
@@ -1112,11 +890,7 @@
                 document.getElementById('btn-add-bot').disabled = players.length >= 7;
                 document.getElementById('btn-remove-bot').disabled = botCount === 0;
                 
-                const btnStart = document.getElementById('btn-start-game');
-                if (game.status === 'waiting') {
-                    btnStart.style.display = 'block';
-                    btnStart.disabled = players.length < 3;
-                }
+                document.getElementById('btn-start-game').disabled = players.length < 3;
             } else {
                 document.getElementById('host-controls').style.display = 'none';
                 document.getElementById('client-wait-msg').style.display = 'block';
@@ -1174,7 +948,6 @@
             const newBot = { id: botId, peerId: null, color: availableColor, isBot: true, online: true };
             players.push(newBot);
             announce(`เพิ่ม${getPronoun(newBot)} เรียบร้อยแล้ว`);
-            broadcastSound('select');
             broadcastState();
         });
 
@@ -1183,7 +956,6 @@
                 if (players[i].isBot) {
                     const removed = players.splice(i, 1)[0];
                     announce(`ลบ${getPronoun(removed)} เรียบร้อยแล้ว`);
-                    broadcastSound('select');
                     break;
                 }
             }
@@ -1192,25 +964,16 @@
 
         document.getElementById('btn-start-game').addEventListener('click', async () => {
             if (players.length < 3 || players.length > 7) return;
-
-            const btnStart = document.getElementById('btn-start-game');
-            btnStart.disabled = true;
-            btnStart.style.display = 'none';
             
             stopHeartbeat();
             announce("เริ่มเกมแล้ว!", true);
             await remove(ref(db, `nothanks_rooms/${currentRoomId}`));
             
-            connections.forEach(conn => {
-                if (conn.open) conn.send({ type: 'startSequence' });
-            });
-
-            runStartSequence(() => {
-                setupNewGame();
-                switchScreen('screen-game', 'title-game');
-                broadcastState();
-                checkBotTurn();
-            });
+            setupNewGame();
+            switchScreen('screen-game', 'title-game');
+            broadcastState();
+            
+            checkBotTurn();
         });
 
         function setupNewGame() {
@@ -1258,7 +1021,6 @@
                 pState.coins -= 1;
                 game.tableCoins += 1;
                 
-                broadcastSound('skip');
                 hostAnnounce(`[PLAYER:${player.id}] เลือกผ่าน จ่าย 1 เหรียญ. เหรียญบนไพ่รวมเป็น ${game.tableCoins}`);
                 
                 game.turnIndex = (game.turnIndex + 1) % players.length;
@@ -1277,7 +1039,6 @@
                 const gainedCoins = game.tableCoins;
                 pState.coins += gainedCoins;
                 
-                broadcastSound('jua');
                 hostAnnounce(`[PLAYER:${player.id}] รับไพ่เลข ${game.tableCard} และรับเหรียญ ${gainedCoins} เหรียญ`, true);
                 
                 if (game.deck.length > 0) {
@@ -1511,13 +1272,10 @@
                 state.score = calculateScore(state.cards, state.coins);
             });
             
-            connections.forEach(conn => {
-                if (conn.open) conn.send({ type: 'endSequence' });
-            });
-
-            runEndSequence(() => {
+            hostAnnounce("ไพ่หมดกองแล้ว จบเกม! กำลังสรุปผลคะแนน", true);
+            setTimeout(() => {
                 broadcastState();
-            });
+            }, 1000);
         }
 
         function updateResultUI() {
@@ -1553,11 +1311,21 @@
             });
 
             announce(rankTextForSr);
+
+            if (isHost) {
+                document.getElementById('host-result-controls').style.display = 'block';
+            }
         }
+
+        document.getElementById('btn-play-again').addEventListener('click', () => {
+            if (!isHost) return;
+            game.status = 'waiting';
+            broadcastState();
+            hostAnnounce("หัวหน้าห้องเลือกเล่นอีกครั้ง กลับสู่ล็อบบี้");
+        });
 
         // --- ระบบออกห้อง ---
         function leaveRoom() {
-            stopBGM();
             stopTimer();
             stopHeartbeat();
             resetJoinState(); // clear anything lingering
@@ -1580,6 +1348,7 @@
         }
 
         document.getElementById('btn-leave-room').addEventListener('click', leaveRoom);
+        document.getElementById('btn-back-lobby-result').addEventListener('click', leaveRoom);
         document.getElementById('btn-how-to-play').addEventListener('click', () => switchScreen('screen-rules', 'title-rules'));
         document.getElementById('btn-back-main').addEventListener('click', () => switchScreen('screen-main', 'title-main'));
 
@@ -1593,7 +1362,6 @@
         };
 
         window.addEventListener('beforeunload', () => {
-            stopBGM();
             stopTimer();
             stopHeartbeat();
             if (isHost && game.status === 'waiting' && currentRoomId) {
