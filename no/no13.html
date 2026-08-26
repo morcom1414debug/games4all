@@ -208,78 +208,6 @@
         #screen-game.view-all-mode > *:not(#all-players-section) {
             display: none !important;
         }
-
-        /* Animation Screen Overlay */
-        .anim-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: #000000;
-            z-index: 99999;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-
-        .anim-text {
-            font-size: 52px;
-            font-weight: bold;
-            color: #ffc107;
-            text-shadow: 0 0 25px rgba(255, 193, 7, 0.7);
-            animation: popIn 0.3s ease-out;
-            padding: 20px;
-        }
-
-        @keyframes popIn {
-            0% { transform: scale(0.8); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        /* Buttons Style for Home */
-        .btn-home-main {
-            position: absolute;
-            top: 15px;
-            left: 15px;
-            width: auto;
-            min-width: 44px;
-            height: 44px;
-            padding: 0 10px;
-            font-size: 22px;
-            background: #2a2a2a;
-            border: 1px solid #444;
-            border-radius: 8px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-            color: #fff;
-        }
-        .btn-home-main:hover {
-            background: #333;
-        }
-
-        .btn-home-result {
-            width: auto;
-            min-width: 60px;
-            height: 48px;
-            font-size: 24px;
-            background: #2a2a2a;
-            border: 1px solid #444;
-            border-radius: 8px;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto;
-            color: #fff;
-        }
-        .btn-home-result:hover {
-            background: #333;
-        }
     </style>
 </head>
 <body>
@@ -288,15 +216,15 @@
     <div id="aria-polite" aria-live="polite" class="sr-only"></div>
     <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
 
-    <!-- Animation Fullscreen Overlay -->
-    <div id="anim-overlay" class="anim-overlay" style="display: none;" aria-hidden="true">
-        <div id="anim-text" class="anim-text"></div>
+    <!-- หน้าจอ Animation แสดงผลเต็มจอ -->
+    <div id="anim-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #000; z-index: 999999; flex-direction: column; justify-content: center; align-items: center;">
+        <div id="anim-text" style="font-size: 52px; font-weight: bold; color: #FFD700; text-align: center; text-shadow: 0 0 15px rgba(255, 215, 0, 0.6); padding: 20px;"></div>
     </div>
 
     <!-- 1. หน้าแรก (Main Menu) -->
     <main id="screen-main" class="screen active" style="position: relative;">
-        <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'">🏠</button>
-        <h1 tabindex="-1" id="title-main" style="margin-top: 10px;">เมนูหลัก No Thanks!</h1>
+        <button id="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="position: absolute; top: 15px; left: 15px; width: auto; margin: 0; padding: 6px 14px; font-size: 20px; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; cursor: pointer;">🏠</button>
+        <h1 tabindex="-1" id="title-main" style="text-align: center; margin-top: 10px;">เมนูหลัก No Thanks!</h1>
         <button id="btn-create-room" aria-label="สร้างห้องใหม่">สร้างห้อง</button>
         <button id="btn-how-to-play" aria-label="วิธีเล่น">วิธีเล่น</button>
         
@@ -398,13 +326,11 @@
     </main>
 
     <!-- 6. หน้าสรุปผล -->
-    <main id="screen-result" class="screen" style="text-align: center;">
+    <main id="screen-result" class="screen">
         <h2 tabindex="-1" id="title-result">สรุปผลคะแนน</h2>
         <div id="result-list" role="list" aria-label="อันดับและคะแนน"></div>
         
-        <div style="margin-top: 25px; display: flex; justify-content: center;">
-            <button class="btn-home-result" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'">🏠</button>
-        </div>
+        <button id="btn-home-result" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="margin: 25px auto 0 auto; display: block; width: auto; padding: 12px 24px; font-size: 24px; background: var(--primary); border: none; border-radius: 4px; cursor: pointer;">🏠</button>
     </main>
 
     <script type="module">
@@ -424,12 +350,10 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // --- ระบบจัดการ Web Audio API ---
-        let audioCtx = null;
-        const audioBuffers = {};
-        let bgmSource = null;
-
-        const audioFiles = {
+        // --- ระบบ Web Audio API ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const soundBuffers = {};
+        const soundFiles = {
             '1': 'audio/1.mp3',
             'select': 'audio/select.mp3',
             'start': 'audio/start.mp3',
@@ -440,58 +364,43 @@
             'no': 'audio/no.mp3',
             'lost': 'audio/lost.mp3'
         };
+        let bgmSource = null;
 
-        function getAudioContext() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
+        function ensureAudioContext() {
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
-            return audioCtx;
         }
+        window.addEventListener('click', ensureAudioContext, { once: false });
+        window.addEventListener('keydown', ensureAudioContext, { once: false });
 
-        async function loadAudio(key, url) {
-            try {
-                const response = await fetch(url);
-                const arrayBuffer = await response.arrayBuffer();
-                const ctx = getAudioContext();
-                const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-                audioBuffers[key] = audioBuffer;
-            } catch (e) {
-                console.warn(`Failed to load audio ${key}:`, e);
+        async function loadAudioBuffers() {
+            for (const [key, path] of Object.entries(soundFiles)) {
+                try {
+                    const res = await fetch(path);
+                    const arrayBuffer = await res.arrayBuffer();
+                    soundBuffers[key] = await audioCtx.decodeAudioData(arrayBuffer);
+                } catch (e) {
+                    console.warn(`Audio load error: ${key}`, e);
+                }
             }
         }
+        loadAudioBuffers();
+        window.reloadAudioBuffers = loadAudioBuffers;
 
-        function initAudio() {
-            for (const [key, url] of Object.entries(audioFiles)) {
-                loadAudio(key, url);
-            }
-        }
-
-        function playSound(key, loop = false) {
+        function playSound(name, loop = false) {
+            ensureAudioContext();
+            if (!soundBuffers[name]) return null;
             try {
-                const ctx = getAudioContext();
-                if (!audioBuffers[key]) return null;
-                
-                const source = ctx.createBufferSource();
-                source.buffer = audioBuffers[key];
+                const source = audioCtx.createBufferSource();
+                source.buffer = soundBuffers[name];
                 source.loop = loop;
-                source.connect(ctx.destination);
+                source.connect(audioCtx.destination);
                 source.start(0);
                 return source;
             } catch (e) {
-                console.warn("Play sound error:", e);
+                console.error(`Error playing sound ${name}:`, e);
                 return null;
-            }
-        }
-
-        function stopBGM() {
-            if (bgmSource) {
-                try {
-                    bgmSource.stop();
-                } catch(e){}
-                bgmSource = null;
             }
         }
 
@@ -500,17 +409,148 @@
             bgmSource = playSound('bgm', true);
         }
 
-        function broadcastSound(soundKey) {
-            playSound(soundKey);
+        function stopBGM() {
+            if (bgmSource) {
+                try { bgmSource.stop(); } catch(e){}
+                bgmSource = null;
+            }
+        }
+
+        function broadcastSound(soundName) {
+            playSound(soundName);
             if (isHost) {
                 connections.forEach(conn => {
-                    if (conn.open) conn.send({ type: 'playSound', sound: soundKey });
+                    if (conn.open) conn.send({ type: 'playSound', sound: soundName });
                 });
             }
         }
 
-        window.addEventListener('click', () => { getAudioContext(); }, { once: false });
-        initAudio();
+        let animTimeouts = [];
+        function clearAnimTimeouts() {
+            animTimeouts.forEach(t => clearTimeout(t));
+            animTimeouts = [];
+        }
+
+        function runStartSequence(onComplete) {
+            stopBGM();
+            playSound('start');
+
+            const overlay = document.getElementById('anim-overlay');
+            const textEl = document.getElementById('anim-text');
+            overlay.style.display = 'flex';
+            textEl.textContent = '';
+
+            clearAnimTimeouts();
+
+            // 0.2 วินาที: No Thanks!
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = 'No Thanks!';
+                textEl.style.color = '#FFD700';
+                announce('No Thanks!', true);
+            }, 200));
+
+            // 1.2 วินาที: 3
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = '3';
+                textEl.style.color = '#FFFFFF';
+                announce('3', true);
+            }, 1200));
+
+            // 2.2 วินาที: 2
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = '2';
+                textEl.style.color = '#FFFFFF';
+                announce('2', true);
+            }, 2200));
+
+            // 3.2 วินาที: 1
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = '1';
+                textEl.style.color = '#FFFFFF';
+                announce('1', true);
+            }, 3200));
+
+            // 4.2 วินาที: รับหรือไม่เอา
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = 'รับหรือไม่เอา';
+                textEl.style.color = '#FFD700';
+                announce('รับหรือไม่เอา', true);
+            }, 4200));
+
+            // 4.89s + 0.2s = 5.09s เล่น BGM และซ่อน Animation
+            animTimeouts.push(setTimeout(() => {
+                document.getElementById('aria-polite').textContent = '';
+                document.getElementById('aria-assertive').textContent = '';
+                overlay.style.display = 'none';
+                playBGM();
+                if (onComplete) onComplete();
+            }, 5090));
+        }
+
+        function runEndSequence(onComplete) {
+            stopBGM();
+
+            const overlay = document.getElementById('anim-overlay');
+            const textEl = document.getElementById('anim-text');
+            overlay.style.display = 'flex';
+            textEl.textContent = '';
+
+            clearAnimTimeouts();
+
+            // 0.2 วินาที: No Thanks!
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = 'No Thanks!';
+                textEl.style.color = '#FFD700';
+                announce('No Thanks!', true);
+            }, 200));
+
+            // 1.2 วินาที: กำลังทำการสรุปผล
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = 'กำลังทำการสรุปผล';
+                textEl.style.color = '#FFFFFF';
+                announce('กำลังทำการสรุปผล', true);
+            }, 1200));
+
+            // 1.5 วินาที: เล่นไฟล์เสียงสรุปผล (win / no / lost)
+            animTimeouts.push(setTimeout(() => {
+                playEndGameSound();
+            }, 1500));
+
+            // 2.5 วินาที: ได้แก่
+            animTimeouts.push(setTimeout(() => {
+                textEl.textContent = 'ได้แก่';
+                textEl.style.color = '#FFD700';
+                announce('ได้แก่', true);
+            }, 2500));
+
+            // 3.0 วินาที: จบแอนิเมชัน สลับเข้าหน้าสรุปผล
+            animTimeouts.push(setTimeout(() => {
+                document.getElementById('aria-polite').textContent = '';
+                document.getElementById('aria-assertive').textContent = '';
+                overlay.style.display = 'none';
+                if (onComplete) onComplete();
+            }, 3000));
+        }
+
+        function playEndGameSound() {
+            const me = players.find(p => p.peerId === myPeerId);
+            if (me && game.playerStates[me.id]) {
+                const allScores = players.map(p => game.playerStates[p.id].score);
+                const minScore = Math.min(...allScores);
+                const myScore = game.playerStates[me.id].score;
+                const minCount = allScores.filter(s => s === minScore).length;
+
+                if (myScore === minScore) {
+                    if (minCount === 1) {
+                        playSound('win');
+                    } else {
+                        playSound('no');
+                    }
+                } else {
+                    playSound('lost');
+                }
+            }
+        }
 
         const PLAYER_COLORS = [
             { id: "red", name: "สีแดง", hex: "#f44336" },
@@ -914,10 +954,13 @@
             } else if (game.status === 'playing') {
                 updateGameUI();
             } else if (game.status === 'ended') {
-                if (!document.getElementById('screen-result').classList.contains('active')) {
-                    switchScreen('screen-result', 'title-result');
+                const overlay = document.getElementById('anim-overlay');
+                if (!overlay || overlay.style.display === 'none') {
+                    if (!document.getElementById('screen-result').classList.contains('active')) {
+                        switchScreen('screen-result', 'title-result');
+                    }
+                    updateResultUI();
                 }
-                updateResultUI();
             }
         }
 
@@ -928,12 +971,13 @@
                 if (!isJoiningRoom) leaveRoom();
             } else if (data.type === 'playSound') {
                 playSound(data.sound);
-            } else if (data.type === 'triggerStartAnim') {
-                runStartAnim();
-            } else if (data.type === 'triggerEndAnim') {
-                players = data.players;
-                game = data.game;
-                runEndAnim();
+            } else if (data.type === 'startSequence') {
+                runStartSequence();
+            } else if (data.type === 'endSequence') {
+                runEndSequence(() => {
+                    switchScreen('screen-result', 'title-result');
+                    updateResultUI();
+                });
             } else if (data.type === 'sync') {
                 if (isJoiningRoom) {
                     isJoiningRoom = false;
@@ -986,10 +1030,13 @@
                     }
                     updateGameUI();
                 } else if (game.status === 'ended') {
-                    if (!document.getElementById('screen-result').classList.contains('active')) {
-                        switchScreen('screen-result', 'title-result');
+                    const overlay = document.getElementById('anim-overlay');
+                    if (!overlay || overlay.style.display === 'none') {
+                        if (!document.getElementById('screen-result').classList.contains('active')) {
+                            switchScreen('screen-result', 'title-result');
+                        }
+                        updateResultUI();
                     }
-                    updateResultUI();
                 }
             } else if (data.type === 'announce') {
                 announce(data.message, data.assertive);
@@ -1065,7 +1112,11 @@
                 document.getElementById('btn-add-bot').disabled = players.length >= 7;
                 document.getElementById('btn-remove-bot').disabled = botCount === 0;
                 
-                document.getElementById('btn-start-game').disabled = players.length < 3;
+                const btnStart = document.getElementById('btn-start-game');
+                if (game.status === 'waiting') {
+                    btnStart.style.display = 'block';
+                    btnStart.disabled = players.length < 3;
+                }
             } else {
                 document.getElementById('host-controls').style.display = 'none';
                 document.getElementById('client-wait-msg').style.display = 'block';
@@ -1132,72 +1183,29 @@
                 if (players[i].isBot) {
                     const removed = players.splice(i, 1)[0];
                     announce(`ลบ${getPronoun(removed)} เรียบร้อยแล้ว`);
+                    broadcastSound('select');
                     break;
                 }
             }
-            broadcastSound('select');
             broadcastState();
         });
 
-        function runStartAnim(onComplete) {
-            stopBGM();
-            playSound('start');
-            
-            const overlay = document.getElementById('anim-overlay');
-            const textEl = document.getElementById('anim-text');
-            overlay.style.display = 'flex';
-            textEl.textContent = '';
-            
-            setTimeout(() => {
-                textEl.textContent = 'No Thanks!';
-                announce('No Thanks!', true);
-            }, 200);
-            
-            setTimeout(() => {
-                textEl.textContent = '3';
-                announce('3', true);
-            }, 1200);
-            
-            setTimeout(() => {
-                textEl.textContent = '2';
-                announce('2', true);
-            }, 2200);
-
-            setTimeout(() => {
-                textEl.textContent = '1';
-                announce('1', true);
-            }, 3200);
-
-            setTimeout(() => {
-                textEl.textContent = 'รับหรือไม่เอา';
-                announce('รับหรือไม่เอา', true);
-            }, 4200);
-
-            setTimeout(() => {
-                overlay.style.display = 'none';
-                textEl.textContent = '';
-                document.getElementById('aria-polite').textContent = '';
-                document.getElementById('aria-assertive').textContent = '';
-                if (onComplete) onComplete();
-                playBGM();
-            }, 5090);
-        }
-
         document.getElementById('btn-start-game').addEventListener('click', async () => {
             if (players.length < 3 || players.length > 7) return;
-            
+
             const btnStart = document.getElementById('btn-start-game');
             btnStart.disabled = true;
             btnStart.style.display = 'none';
-
+            
+            stopHeartbeat();
+            announce("เริ่มเกมแล้ว!", true);
+            await remove(ref(db, `nothanks_rooms/${currentRoomId}`));
+            
             connections.forEach(conn => {
-                if (conn.open) conn.send({ type: 'triggerStartAnim' });
+                if (conn.open) conn.send({ type: 'startSequence' });
             });
 
-            stopHeartbeat();
-            await remove(ref(db, `nothanks_rooms/${currentRoomId}`));
-
-            runStartAnim(() => {
+            runStartSequence(() => {
                 setupNewGame();
                 switchScreen('screen-game', 'title-game');
                 broadcastState();
@@ -1247,10 +1255,10 @@
             if (action === 'pass') {
                 if (pState.coins <= 0) return; 
                 
-                broadcastSound('skip');
                 pState.coins -= 1;
                 game.tableCoins += 1;
                 
+                broadcastSound('skip');
                 hostAnnounce(`[PLAYER:${player.id}] เลือกผ่าน จ่าย 1 เหรียญ. เหรียญบนไพ่รวมเป็น ${game.tableCoins}`);
                 
                 game.turnIndex = (game.turnIndex + 1) % players.length;
@@ -1264,12 +1272,12 @@
                 }, 2000);
 
             } else if (action === 'take') {
-                broadcastSound('jua');
                 pState.cards.push(game.tableCard);
                 pState.cards.sort((a,b) => a-b);
                 const gainedCoins = game.tableCoins;
                 pState.coins += gainedCoins;
                 
+                broadcastSound('jua');
                 hostAnnounce(`[PLAYER:${player.id}] รับไพ่เลข ${game.tableCard} และรับเหรียญ ${gainedCoins} เหรียญ`, true);
                 
                 if (game.deck.length > 0) {
@@ -1494,59 +1502,6 @@
             return score - coins;
         }
 
-        function runEndAnim() {
-            const overlay = document.getElementById('anim-overlay');
-            const textEl = document.getElementById('anim-text');
-            overlay.style.display = 'flex';
-            textEl.textContent = '';
-
-            setTimeout(() => {
-                textEl.textContent = 'No Thanks!';
-                announce('No Thanks!', true);
-            }, 200);
-
-            setTimeout(() => {
-                textEl.textContent = 'กำลังทำการสรุปผล';
-                announce('กำลังทำการสรุปผล', true);
-            }, 1200);
-
-            setTimeout(() => {
-                playEndGameSound();
-            }, 1500);
-
-            setTimeout(() => {
-                textEl.textContent = 'ได้แก่';
-                announce('ได้แก่', true);
-            }, 2500);
-
-            setTimeout(() => {
-                overlay.style.display = 'none';
-                textEl.textContent = '';
-                document.getElementById('aria-polite').textContent = '';
-                document.getElementById('aria-assertive').textContent = '';
-                switchScreen('screen-result', 'title-result');
-                updateResultUI();
-            }, 3000);
-        }
-
-        function playEndGameSound() {
-            if (!players || players.length === 0) return;
-            const scores = players.map(p => game.playerStates[p.id]?.score ?? 999);
-            const minScore = Math.min(...scores);
-            const winners = players.filter(p => game.playerStates[p.id]?.score === minScore);
-            const me = players.find(p => p.peerId === myPeerId);
-
-            if (me && game.playerStates[me.id] && game.playerStates[me.id].score === minScore) {
-                if (winners.length === 1) {
-                    playSound('win');
-                } else {
-                    playSound('no');
-                }
-            } else {
-                playSound('lost');
-            }
-        }
-
         function endGame() {
             stopTimer();
             game.status = 'ended';
@@ -1556,11 +1511,13 @@
                 state.score = calculateScore(state.cards, state.coins);
             });
             
-            hostAnnounce("ไพ่หมดกองแล้ว จบเกม! กำลังสรุปผลคะแนน", true);
             connections.forEach(conn => {
-                if(conn.open) conn.send({ type: 'triggerEndAnim', players, game });
+                if (conn.open) conn.send({ type: 'endSequence' });
             });
-            runEndAnim();
+
+            runEndSequence(() => {
+                broadcastState();
+            });
         }
 
         function updateResultUI() {
@@ -1603,7 +1560,7 @@
             stopBGM();
             stopTimer();
             stopHeartbeat();
-            resetJoinState();
+            resetJoinState(); // clear anything lingering
             if (peer) peer.destroy(); 
             
             if (isHost && game.status === 'waiting' && currentRoomId) {
@@ -1708,16 +1665,19 @@
             
             try {
                 if (window.AudioContext || window.webkitAudioContext) {
-                    if (audioCtx && audioCtx.state !== 'closed') {
-                        audioCtx.close().then(() => {
-                            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                            audioCtx.resume();
+                    if (window.gameAudioContext && window.gameAudioContext.state !== 'closed') {
+                        window.gameAudioContext.close().then(() => {
+                            window.gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                            window.gameAudioContext.resume();
                         });
                     } else {
-                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                        audioCtx.resume();
+                        window.gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        window.gameAudioContext.resume();
                     }
                 }
+                
+                if (typeof window.reloadAudioBuffers === 'function') window.reloadAudioBuffers();
+                if (typeof window.resyncScheduler === 'function') window.resyncScheduler();
                 
                 announce("รีเฟรชระบบเสียงเรียบร้อยแล้ว");
             } catch (err) {
