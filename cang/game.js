@@ -948,6 +948,13 @@ function processPlayerAction(pId, action, cardIndex) {
             return;
         }
 
+        // --- เพิ่ม Logic Guard ป้องกันการไหลแซง Turn ---
+        let currentPlayerId = gameState.players[gameState.turnIndex].id;
+        if (pId !== currentPlayerId) {
+            return; // ปฏิเสธ Action หากไม่ใช่ Turn ของผู้เล่นที่กดไหล
+        }
+        // ----------------------------------------------
+
         let topCard = discardPile[discardPile.length - 1]; let card = flowPlayer.hand[cardIndex];
         if (topCard && card.rank === topCard.rank) {
             triggerSound('follow'); let dropped = flowPlayer.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
@@ -1082,7 +1089,7 @@ function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 
         let others = active.filter(p => p.id !== caller.id);
         let lowestOther = others.reduce((min, p) => p.handSum < min.handSum ? p : min, others[0]);
 
-        if (caller.handSum < lowestOther.handSum) {
+        if (caller.handSum <= lowestOther.handSum) { // เปลี่ยนจาก < เป็น <= เพื่อให้ชนะเสมอเมื่อแต้มต่ำสุดเท่ากัน
             winnerColorName = caller.colorInfo.name;
             let payAmount = getBasePay(caller); if (isKang25) payAmount = payAmount * 2; 
             title = `[PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} สำเร็จ!`;
@@ -1303,9 +1310,15 @@ if (deckAccessibleObject) {
 
             if (publicState.status === 'PLAYING') {
                 if (canFlowCard) {
-                    cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
-                    cardEl.style.boxShadow = "0 0 12px var(--blue)"; 
-                    cardEl.onclick = () => window.clientAction('FLOW', index);
+                    if (isMyTurn) { // เป็น Turn ตัวเองเท่านั้นจึงจะไหลได้
+                        cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
+                        cardEl.style.boxShadow = "0 0 12px var(--blue)"; 
+                        cardEl.onclick = () => window.clientAction('FLOW', index);
+                    } else { // ไม่ใช่ Turn ตัวเอง ไม่สามารถกดได้ และทำให้แสดงสถานะ dim/disabled
+                        cardEl.disabled = true;
+                        cardEl.style.opacity = '0.5';
+                        cardEl.style.cursor = 'not-allowed';
+                    }
                 }
                 else if (isMyTurn) {
                     if (!localPlayerState.hasDiscarded) {
