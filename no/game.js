@@ -141,6 +141,10 @@ let turnAnnounceTimeout = null;
 
 let turnTimer = null;
 
+// Visual State Tracking Variables
+let visualMyPreviousCoins = null;
+let visualMyPreviousCards = [];
+
 // --- Visual Background Init ---
 function initBackground() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -260,6 +264,49 @@ function updateRoomInFirebase() {
     });
 }
 
+// --- Visual Helper Functions (Added for Animation logic only) ---
+function triggerMyStatusVisualTriggers() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const me = players.find(p => p.peerId === myPeerId);
+    if (!me || game.status !== 'playing') return;
+    
+    const state = game.playerStates[me.id];
+    if (!state) return;
+
+    // Trigger Coin increase animation
+    if (visualMyPreviousCoins !== null && state.coins > visualMyPreviousCoins) {
+        const coinEl = document.querySelector('.my-status-coin');
+        if (coinEl) {
+            coinEl.animate([
+                { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 transparent)' },
+                { transform: 'scale(1.8)', filter: 'drop-shadow(0 0 15px gold) drop-shadow(0 0 5px white)' },
+                { transform: 'scale(1.4) translateY(-4px)', filter: 'drop-shadow(0 0 10px gold)' },
+                { transform: 'scale(1.7) translateY(0px)', filter: 'drop-shadow(0 0 15px gold)' },
+                { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 transparent)' }
+            ], { duration: 500, easing: 'ease-out' });
+        }
+    }
+    visualMyPreviousCoins = state.coins;
+
+    // Trigger New Card in Hand animation
+    if (visualMyPreviousCards.length > 0 && state.cards.length > visualMyPreviousCards.length) {
+        const newCards = state.cards.filter(c => !visualMyPreviousCards.includes(c));
+        const cardElements = document.querySelectorAll('.my-cards-grid .mini-card');
+        cardElements.forEach(el => {
+            const cardVal = parseInt(el.textContent);
+            if (newCards.includes(cardVal)) {
+                el.animate([
+                    { transform: 'translateX(30px) scale(0.7)', opacity: 0 },
+                    { transform: 'translateX(0px) scale(1.15)', opacity: 1 },
+                    { transform: 'scale(0.95)' },
+                    { transform: 'scale(1)' }
+                ], { duration: 600, easing: 'ease-out' });
+            }
+        });
+    }
+    visualMyPreviousCards = [...state.cards];
+}
+
 // --- Visual Animation Hooks ---
 function visualAnimThrowCoin(playerId) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -268,6 +315,7 @@ function visualAnimThrowCoin(playerId) {
         startEl = document.querySelector('#my-status-group .hud-avatar');
     }
     const tableCoin = document.getElementById('table-coins-display');
+    const tableCard = document.getElementById('table-card-display');
     if (!startEl || !tableCoin) return;
 
     const startRect = startEl.getBoundingClientRect();
@@ -277,21 +325,43 @@ function visualAnimThrowCoin(playerId) {
     coin.className = 'visual-fly-coin';
     coin.textContent = '🪙';
     coin.setAttribute('aria-hidden', 'true');
+    // Ensure absolute positioning avoids layout shifts
+    coin.style.position = 'fixed';
+    coin.style.zIndex = '9999';
     document.body.appendChild(coin);
 
     coin.style.left = `${startRect.left + startRect.width/2 - 16}px`;
     coin.style.top = `${startRect.top + startRect.height/2 - 16}px`;
 
-    requestAnimationFrame(() => {
-        coin.style.transform = `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(0.5)`;
-        coin.style.opacity = '0';
-    });
+    coin.animate([
+        { transform: 'translate(0, 0) scale(0.5)', opacity: 1 },
+        { transform: `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(1)`, opacity: 0.8 },
+        { transform: `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(0)`, opacity: 0 }
+    ], { duration: 400, easing: 'ease-in-out' });
 
     setTimeout(() => {
         if (coin.parentNode) coin.parentNode.removeChild(coin);
-        tableCoin.parentElement.classList.add('pulse-anim');
-        setTimeout(() => tableCoin.parentElement.classList.remove('pulse-anim'), 300);
-    }, 500);
+        
+        // 1. Table Coin Badge Animation
+        const coinContainer = tableCoin.parentElement;
+        if (coinContainer) {
+            coinContainer.animate([
+                { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 transparent)' },
+                { transform: 'scale(1.6)', filter: 'drop-shadow(0 0 10px gold) drop-shadow(0 0 20px #fff)' },
+                { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 transparent)' }
+            ], { duration: 400, easing: 'ease-out' });
+        }
+
+        // 2. Table Card Wobble
+        if (tableCard) {
+            tableCard.animate([
+                { transform: 'rotate(0deg)' },
+                { transform: 'rotate(-4deg)' },
+                { transform: 'rotate(4deg)' },
+                { transform: 'rotate(0deg)' }
+            ], { duration: 300, easing: 'ease-in-out' });
+        }
+    }, 350);
 }
 
 function visualAnimDealCard(cardNum) {
@@ -304,27 +374,35 @@ function visualAnimDealCard(cardNum) {
     const endRect = tableCard.getBoundingClientRect();
 
     const card = document.createElement('div');
-    card.className = 'visual-fly-card';
+    card.className = 'visual-fly-card mini-card'; // Reusing some CSS
     card.textContent = cardNum;
     card.setAttribute('aria-hidden', 'true');
+    card.style.position = 'fixed';
+    card.style.zIndex = '9998';
+    card.style.left = `${startRect.left + startRect.width/2 - 25}px`;
+    card.style.top = `${startRect.top + startRect.height/2 - 35}px`;
     document.body.appendChild(card);
 
-    card.style.left = `${startRect.left + startRect.width/2 - 40}px`;
-    card.style.top = `${startRect.top + startRect.height/2 - 55}px`;
-
-    requestAnimationFrame(() => {
-        card.style.transform = `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) rotateY(180deg) scale(1.3)`;
-        card.style.opacity = '0';
-    });
-
+    // Make original transparent temporarily so it doesn't double-render
     tableCard.style.opacity = '0';
+
+    card.animate([
+        { transform: `translate(0px, 0px) rotateY(180deg) scale(0.5)`, opacity: 0 },
+        { transform: `translate(0px, 0px) rotateY(180deg) scale(1)`, opacity: 1, offset: 0.1 },
+        { transform: `translate(${(endRect.left - startRect.left)/2}px, ${(endRect.top - startRect.top)/2 - 30}px) rotateY(90deg) scale(1.2)` },
+        { transform: `translate(${endRect.left - startRect.left - 15}px, ${endRect.top - startRect.top + 20}px) rotateY(0deg) scale(1.3)` },
+        { transform: `translate(${endRect.left - startRect.left - 15}px, ${endRect.top - startRect.top + 20}px) rotateY(0deg) scale(0.95)` },
+        { transform: `translate(${endRect.left - startRect.left - 15}px, ${endRect.top - startRect.top + 20}px) rotateY(0deg) scale(1)` }
+    ], { duration: 750, easing: 'ease-out', fill: 'forwards' });
 
     setTimeout(() => {
         if (card.parentNode) card.parentNode.removeChild(card);
         tableCard.style.opacity = '1';
-        tableCard.classList.add('pop-anim');
-        setTimeout(() => tableCard.classList.remove('pop-anim'), 400);
-    }, 600);
+        tableCard.animate([
+            { transform: 'scale(1.1)' },
+            { transform: 'scale(1)' }
+        ], { duration: 200 });
+    }, 750);
 }
 
 function visualAnimTakeCard(playerId, cardNum, coins) {
@@ -340,41 +418,54 @@ function visualAnimTakeCard(playerId, cardNum, coins) {
     const startRect = tableCard.getBoundingClientRect();
 
     const card = document.createElement('div');
-    card.className = 'visual-fly-card';
+    card.className = 'visual-fly-card mini-card';
     card.textContent = cardNum;
     card.setAttribute('aria-hidden', 'true');
+    card.style.position = 'fixed';
+    card.style.zIndex = '9998';
+    card.style.left = `${startRect.left + startRect.width/2 - 25}px`;
+    card.style.top = `${startRect.top + startRect.height/2 - 35}px`;
     document.body.appendChild(card);
-
-    card.style.left = `${startRect.left + startRect.width/2 - 40}px`;
-    card.style.top = `${startRect.top + startRect.height/2 - 55}px`;
-
-    for (let i = 0; i < Math.min(coins, 7); i++) {
-        setTimeout(() => {
-            const coin = document.createElement('div');
-            coin.className = 'visual-fly-coin';
-            coin.textContent = '🪙';
-            coin.setAttribute('aria-hidden', 'true');
-            document.body.appendChild(coin);
-            coin.style.left = `${startRect.left + startRect.width/2 - 16}px`;
-            coin.style.top = `${startRect.top + startRect.height/2 - 16}px`;
-            requestAnimationFrame(() => {
-                coin.style.transform = `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(0.5)`;
-                coin.style.opacity = '0';
-            });
-            setTimeout(() => { if (coin.parentNode) coin.parentNode.removeChild(coin); }, 500);
-        }, i * 100);
-    }
-
-    requestAnimationFrame(() => {
-        card.style.transform = `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(0.3)`;
-        card.style.opacity = '0';
-    });
 
     tableCard.style.opacity = '0'; 
 
+    // Card Animation: Scale, tilt slightly, then fly to target
+    card.animate([
+        { transform: 'translate(0, 0) scale(1) rotate(0deg)' },
+        { transform: 'translate(0, 0) scale(1.1) rotate(-8deg)', offset: 0.2 },
+        { transform: `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(0.3) rotate(15deg)`, opacity: 0.5 },
+        { transform: `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(0) rotate(15deg)`, opacity: 0 }
+    ], { duration: 600, easing: 'ease-in-out', fill: 'forwards' });
+
+    // Coins Animation: Arc and scatter towards target
+    const maxCoinsVisual = Math.min(coins, 10);
+    for (let i = 0; i < maxCoinsVisual; i++) {
+        const coin = document.createElement('div');
+        coin.className = 'visual-fly-coin';
+        coin.textContent = '🪙';
+        coin.setAttribute('aria-hidden', 'true');
+        coin.style.position = 'fixed';
+        coin.style.zIndex = '9999';
+        coin.style.left = `${startRect.left + startRect.width/2 - 16}px`;
+        coin.style.top = `${startRect.top + startRect.height/2 - 16}px`;
+        document.body.appendChild(coin);
+        
+        // Randomize scatter for more life-like feel
+        const scatterX = (Math.random() - 0.5) * 60;
+        const arcY = -40 - (Math.random() * 40); 
+        
+        coin.animate([
+            { transform: 'translate(0, 0) scale(0.8)', opacity: 1 },
+            { transform: `translate(${(endRect.left - startRect.left)/2 + scatterX}px, ${(endRect.top - startRect.top)/2 + arcY}px) scale(1.2)`, offset: 0.5 },
+            { transform: `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px) scale(0.3)`, opacity: 0 }
+        ], { duration: 500, delay: i * 40, easing: 'ease-in-out', fill: 'forwards' });
+
+        setTimeout(() => { if (coin.parentNode) coin.parentNode.removeChild(coin); }, 500 + i * 40);
+    }
+
     setTimeout(() => {
         if (card.parentNode) card.parentNode.removeChild(card);
-    }, 600);
+    }, 650);
 }
 
 function triggerVisualsFromAnnounce(rawMessage) {
@@ -1295,6 +1386,7 @@ function updateGameUI() {
 
     // Always call visual layers update
     updateVisualPlayers();
+    triggerMyStatusVisualTriggers();
 }
 
 function disableActionButtons() {
@@ -1525,6 +1617,8 @@ function leaveRoom() {
     players = [];
     connections = [];
     myLastTurnState = null;
+    visualMyPreviousCoins = null;
+    visualMyPreviousCards = [];
     if (turnAnnounceTimeout) { clearTimeout(turnAnnounceTimeout); turnAnnounceTimeout = null; }
     
     switchScreen('screen-main', 'title-main');
