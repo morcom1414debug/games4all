@@ -698,7 +698,6 @@
         <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'">🏠</button>
         <h1 tabindex="-1" id="title-main" style="margin-top: 10px; text-align: center; font-size: 36px; text-transform: uppercase; letter-spacing: 2px;">No Thanks!</h1>
         <p style="text-align: center; font-size: 16px; color: var(--text-muted); margin-top: -10px;">การ์ดเกมนี้สำหรับการสันทนาการร่วมกัน</p>
-        <p style="text-align: center; font-size: 15px; color: var(--primary); margin-top: 10px; padding: 0 10px;">เกมนี้ออกแบบให้ผู้ใช้ Screen Reader และผู้เล่นทั่วไป สนุกร่วมกันได้อย่างเท่าเทียม</p>
         <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 30px;">
             <button id="btn-create-room" aria-label="สร้างห้องใหม่">สร้างห้อง</button>
             <button id="btn-how-to-play" aria-label="วิธีเล่น" style="background: linear-gradient(180deg, #1976D2, #1565C0); border-bottom-color: #0D47A1;">วิธีเล่น</button>
@@ -1266,22 +1265,15 @@
             const mainRoomList = document.getElementById('main-room-list');
             
             onValue(roomsRef, (snapshot) => {
-                if (isJoiningRoom || currentRoomId) return; 
+                if (currentRoomId && !isJoiningRoom) return; 
                 
-                let ul = mainRoomList.querySelector('ul.room-list');
-                if (!ul) {
-                    mainRoomList.innerHTML = '';
-                    ul = document.createElement('ul');
-                    ul.className = 'room-list';
-                    mainRoomList.appendChild(ul);
-                }
-
+                mainRoomList.innerHTML = '';
                 if (snapshot.exists()) {
                     const rooms = snapshot.val();
+                    let ul = document.createElement('ul');
+                    ul.className = 'room-list';
                     let roomCount = 0;
                     const now = Date.now();
-                    const currentRooms = [];
-                    const existingRooms = Array.from(ul.children).map(li => li.dataset.roomId);
                     
                     for (let roomId in rooms) {
                         if (rooms[roomId].status === 'waiting') {
@@ -1292,49 +1284,29 @@
                             }
 
                             roomCount++;
-                            currentRooms.push(roomId);
+                            let li = document.createElement('li');
                             
                             const currentP = rooms[roomId].currentPlayers || 1;
                             const maxP = rooms[roomId].maxPlayers || 7;
                             
-                            let existingLi = ul.querySelector(`li[data-room-id="${roomId}"]`);
-                            if (existingLi) {
-                                let btn = existingLi.querySelector('button');
-                                if (btn && !isJoiningRoom) {
-                                    btn.textContent = `เข้าร่วมห้อง ${roomId} (${currentP}/${maxP})`;
-                                    btn.setAttribute("aria-label", `เข้าร่วมห้อง ${roomId} ผู้เล่น ${currentP} จาก ${maxP} คน`);
-                                }
-                            } else {
-                                let li = document.createElement('li');
-                                li.dataset.roomId = roomId;
-                                
-                                let btn = document.createElement('button');
-                                btn.textContent = `เข้าร่วมห้อง ${roomId} (${currentP}/${maxP})`;
-                                btn.setAttribute("aria-label", `เข้าร่วมห้อง ${roomId} ผู้เล่น ${currentP} จาก ${maxP} คน`);
-                                btn.style.width = "100%";
-                                
-                                if (isJoiningRoom) {
-                                    btn.disabled = true;
-                                }
-                                
-                                btn.addEventListener('click', function() { 
-                                    joinRoom(roomId, rooms[roomId].hostId, this); 
-                                });
-                                
-                                li.appendChild(btn);
-                                ul.appendChild(li);
+                            let btn = document.createElement('button');
+                            btn.textContent = `เข้าร่วมห้อง ${roomId} (${currentP}/${maxP})`;
+                            btn.setAttribute("aria-label", `เข้าร่วมห้อง ${roomId} ผู้เล่น ${currentP} จาก ${maxP} คน`);
+                            btn.style.width = "100%";
+                            
+                            if (isJoiningRoom) {
+                                btn.disabled = true;
                             }
+                            
+                            btn.onclick = function() { joinRoom(roomId, rooms[roomId].hostId, this); };
+                            
+                            li.appendChild(btn);
+                            ul.appendChild(li);
                         }
                     }
-
-                    existingRooms.forEach(id => {
-                        if (!currentRooms.includes(id)) {
-                            let liToRemove = ul.querySelector(`li[data-room-id="${id}"]`);
-                            if (liToRemove) ul.removeChild(liToRemove);
-                        }
-                    });
-
-                    if (roomCount === 0) {
+                    if (roomCount > 0) {
+                        mainRoomList.appendChild(ul);
+                    } else {
                         mainRoomList.innerHTML = '<p style="text-align:center;">ไม่มีห้องที่เปิดอยู่ในขณะนี้</p>';
                     }
                 } else {
