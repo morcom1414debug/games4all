@@ -361,11 +361,11 @@
     </main>
 
     <main id="screen-result" class="screen" style="text-align: center; justify-content: center;">
-        <div id="result-status-bar" style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 10px; background: rgba(0,0,0,0.4); border-radius: 12px; margin-bottom: 30px; flex-wrap: wrap; width: 100%;"></div>
-
-        <h1 tabindex="-1" id="title-result" style="font-size: 40px; color: var(--primary); margin-top: 10px;">จบเกม!</h1>
+        <h1 tabindex="-1" id="title-result" style="font-size: 40px; color: var(--primary);">จบเกม!</h1>
         <h2 id="winner-text" style="font-size: 28px; margin-bottom: 30px;"><span aria-hidden="true">🏆</span> ผู้ชนะ: ...</h2>
         
+        <div id="result-status-bar" style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 10px; background: rgba(0,0,0,0.4); border-radius: 12px; margin-bottom: 20px; flex-wrap: wrap; width: 100%;"></div>
+
         <div id="result-host-controls" style="display: none; margin-top: 30px; gap: 10px; justify-content: center;">
             <button id="btn-play-again" style="width: auto;"><span aria-hidden="true">🔄</span> เล่นรอบใหม่</button>
         </div>
@@ -910,8 +910,7 @@
             } else if (data.type === 'unoEffect') {
                 showUnoEffect();
             } else if (data.type === 'endGame') {
-                game.status = 'ended'; 
-                showResult(data.winnerId, data.scores, data.matchOver);
+                game.status = 'ended'; showResult(data.winnerId, data.scores);
             }
         }
 
@@ -1282,17 +1281,10 @@
             
             game.playerStates[winnerId].score += score;
             
-            // เช็คผู้ชนะเด็ดขาด (สมบูรณ์)
-            if (game.playerStates[winnerId].score >= 200) {
-                game.matchOver = true;
-            } else {
-                game.matchOver = false;
-            }
-            
             if (isHost) {
                 broadcastGameState(); // Make sure clients have the new accumulated score and states
-                connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, scores: score, matchOver: game.matchOver }); });
-                game.status = 'ended'; showResult(winnerId, score, game.matchOver);
+                connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, scores: score }); });
+                game.status = 'ended'; showResult(winnerId, score);
             }
         }
 
@@ -1581,27 +1573,10 @@
             else if (hostConnection && hostConnection.open) hostConnection.send({ type: 'action', action, payload });
         }
 
-        function showResult(winnerId, score, matchOver = false) {
+        function showResult(winnerId, score) {
             switchScreen('screen-result', 'title-result');
             const winner = players.find(p => p.id === winnerId);
-            
-            let winnerHtml = `<span aria-hidden="true">🏆</span> ผู้ชนะ: ${getPronounName(winner)} (ได้คะแนนเพิ่ม: ${score})`;
-            
-            if (matchOver) {
-                const colorDef = COLORS.find(c => c.id === winner.colorId);
-                const colorName = colorDef ? colorDef.name : 'ไม่ทราบสี';
-                const kingTexts = [
-                    `ตัวละคร${colorName} คือจ้าวแห่ง Uno!`,
-                    `ขอแสดงความยินดี! ตัวละคร${colorName} ได้ก้าวขึ้นเป็นจ้าวแห่ง Uno!`,
-                    `เกมจบสมบูรณ์! ตัวละคร${colorName} คว้าตำแหน่งจ้าวแห่ง Uno ไปครอง!`,
-                    `ไม่มีใครหยุดได้! ตัวละคร${colorName} คือจ้าวแห่ง Uno ตัวจริง!`,
-                    `ครองบัลลังก์สำเร็จ ตัวละคร${colorName} คือจ้าวแห่ง Uno แห่งห้องนี้!`
-                ];
-                const randText = kingTexts[Math.floor(Math.random() * kingTexts.length)];
-                winnerHtml += `<br><br><span style="color: var(--focus-ring); font-size: 32px; font-weight: bold; text-shadow: 0 2px 10px rgba(255,215,0,0.5);">${randText}</span>`;
-            }
-
-            document.getElementById('winner-text').innerHTML = winnerHtml;
+            document.getElementById('winner-text').innerHTML = `<span aria-hidden="true">🏆</span> ผู้ชนะ: ${getPronounName(winner)} (ได้คะแนนเพิ่ม: ${score})`;
             
             const resultStatusBar = document.getElementById('result-status-bar');
             if (resultStatusBar) {
@@ -1627,12 +1602,8 @@
             }
 
             if (isHost) {
-                if (matchOver) {
-                    document.getElementById('result-host-controls').style.display = 'none';
-                } else {
-                    document.getElementById('result-host-controls').style.display = 'flex';
-                    document.getElementById('btn-play-again').onclick = () => initUNOGame();
-                }
+                document.getElementById('result-host-controls').style.display = 'flex';
+                document.getElementById('btn-play-again').onclick = () => initUNOGame();
             }
         }
 
