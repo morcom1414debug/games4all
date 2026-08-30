@@ -437,15 +437,6 @@
             return `เพื่อน${colorName}`;
         }
 
-        // --- เพิ่ม Helper: formatMessage เพื่อเปลี่ยน [PLAYER:id] เป็นสรรพนามที่ถูกต้องตามมุมมองของแต่ละ Client ---
-        function formatMessage(msg) {
-            if (typeof msg !== 'string') return msg;
-            return msg.replace(/\[PLAYER:([^\]]+)\]/g, (match, id) => {
-                const p = players.find(x => x.id === id);
-                return getPronounName(p);
-            });
-        }
-
         // --- Accessibility Utils (Queue System & Auto Clear) ---
         let politeQueue = [];
         let assertiveQueue = [];
@@ -486,7 +477,6 @@
 
         function announce(text, assertive = false) {
             if (!text) return;
-            text = formatMessage(text);
             if (assertive) {
                 assertiveQueue.push(text);
                 if (!isAnnouncingAssertive) processQueue('assertive');
@@ -779,7 +769,6 @@
                     players.push({ id: data.peerId, name: `Player`, isBot: false, colorId: getAvailableColors()[0], connection: conn });
                     syncLobby();
                     update(ref(db, `uno_rooms/${currentRoomId}`), { currentPlayers: players.length });
-                    broadcastAnnounce(`[PLAYER:${data.peerId}] เข้าร่วมห้องสำเร็จ`, true);
                 }
                 else if (data.type === 'changeColor') {
                     const peerId = conn.customPeerId || conn.peer;
@@ -801,8 +790,8 @@
                 const botId = 'bot_' + Date.now();
                 const colorDef = COLORS.find(c => c.id === colorId);
                 players.push({ id: botId, name: `Bot`, isBot: true, colorId: colorId });
+                announce(`เพิ่มบอท${colorDef.name} 1 ตัวแล้ว`, true);
                 syncLobby();
-                broadcastAnnounce(`เพิ่มบอท${colorDef.name} 1 ตัวแล้ว`, true);
             }
         };
         document.getElementById('btn-remove-bot').onclick = () => {
@@ -812,8 +801,8 @@
                 const removedBot = players[actualIdx];
                 const colorDef = COLORS.find(c => c.id === removedBot.colorId);
                 players.splice(actualIdx, 1);
+                announce(`ลดบอท${colorDef.name} 1 ตัวแล้ว`, true);
                 syncLobby();
-                broadcastAnnounce(`ลดบอท${colorDef.name} 1 ตัวแล้ว`, true);
             }
         };
 
@@ -865,210 +854,216 @@
                     c.send({ type: 'gameSync', game: pState });
                 }
             });
-            renderGame(safeGame, game.playerStates[myPeerId].hand);
-        }
-
-        function broadcastAnnounce(msg, assertive = false) {
-            announce(msg, assertive);
-            if(isHost) connections.forEach(c => { if (c.open) c.send({ type: 'announce', message: msg, assertive: assertive }); });
-        }
-        
-        function showAnimOverlay(text) {
-            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-            text = formatMessage(text);
-            const overlay = document.getElementById('anim-overlay');
-            const textEl = document.getElementById('anim-text');
-            textEl.textContent = text;
-            overlay.style.display = 'flex';
-            setTimeout(() => { overlay.style.display = 'none'; }, 1500);
+            renderGame({ ...safeGame, myHand: [...game.playerStates[myPeerId].hand] });
+            processTurnTimer();
         }
 
         function showUnoEffect() {
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
             const overlay = document.getElementById('anim-overlay');
             const textEl = document.getElementById('anim-text');
-            textEl.className = 'anim-uno';
+            
             textEl.textContent = 'UNO!';
+            textEl.className = 'anim-uno'; 
             overlay.style.display = 'flex';
+            
             setTimeout(() => { 
-                overlay.style.display = 'none';
-                textEl.className = 'anim-text'; 
+                overlay.style.display = 'none'; 
+                textEl.className = 'anim-text'; // reset back
             }, 1500);
         }
 
         function handleClientData(data) {
             if (data.type === 'lobbySync') {
                 players = data.players;
+                const me = players.find(p => p.id === myPeerId);
+                if (me) myColorId = me.colorId;
                 renderLobby();
             } else if (data.type === 'gameSync') {
-                // Fix: State sync validation - Discard out of order packets
-                if (data.game.syncTimestamp < lastSyncTimestamp) {
-                    console.warn('Dropped older game state packet');
-                    return; 
+                // Fix: Check syncTimestamp to discard outdated packets
+                if (data.game.syncTimestamp) {
+                    if (data.game.syncTimestamp < lastSyncTimestamp) {
+                        return; // Discard old state
+                    }
+                    lastSyncTimestamp = data.game.syncTimestamp;
                 }
-                lastSyncTimestamp = data.game.syncTimestamp;
-                
-                // Keep local players array perfectly synced with game state
+
                 if (data.game.players) {
                     players = data.game.players;
                 }
-                
                 if (game.status === 'waiting' && data.game.status === 'playing') {
                     switchScreen('screen-game', 'top-status-bar');
-                    announce('เกมเริ่มแล้ว!', true);
+                    announce('เริ่มเกมแล้ว!', true);
                 }
-                renderGame(data.game, data.game.myHand);
+                game = { ...game, ...data.game };
+                renderGame(data.game);
             } else if (data.type === 'announce') {
-                announce(data.message, data.assertive);
+                announce(data.message, true);
                 showAnimOverlay(data.message);
             } else if (data.type === 'unoEffect') {
                 showUnoEffect();
+            } else if (data.type === 'endGame') {
+                game.status = 'ended'; showResult(data.winnerId, data.scores);
             }
         }
 
+        function handleHostDisconnect() { announce('Host หลุด!', true); leaveLobby(); }
         function handleClientDisconnect(peerId) {
-            if (!isHost || game.status !== 'waiting') return;
-            players = players.filter(p => p.id !== peerId);
-            connections = connections.filter(c => (c.customPeerId || c.peer) !== peerId);
-            syncLobby();
-            update(ref(db, `uno_rooms/${currentRoomId}`), { currentPlayers: players.length });
-        }
-
-        function handleHostDisconnect() {
-            if (!isHost) {
-                announce('Host ออกจากห้องแล้ว', true);
-                leaveLobby();
+            if (!isHost) return;
+            const p = players.find(x => x.id === peerId);
+            if (p) {
+                p.isBot = true;
+                syncLobby();
+                if (game.status === 'playing') broadcastGameState();
             }
-        }
-
-        // --- Core Game Logic (Host Only) ---
-        function generateDeck() {
-            const d = [];
-            const colors = ['red', 'blue', 'green', 'yellow'];
-            colors.forEach(c => {
-                d.push({ id: `0_${c}`, type: 'number', color: c, value: 0 });
-                for(let i=1; i<=9; i++) {
-                    d.push({ id: `${i}_${c}_1`, type: 'number', color: c, value: i });
-                    d.push({ id: `${i}_${c}_2`, type: 'number', color: c, value: i });
-                }
-                for(let i=0; i<2; i++) {
-                    d.push({ id: `skip_${c}_${i}`, type: 'skip', color: c, value: 20 });
-                    d.push({ id: `rev_${c}_${i}`, type: 'reverse', color: c, value: 20 });
-                    d.push({ id: `draw2_${c}_${i}`, type: 'draw2', color: c, value: 20 });
-                }
-            });
-            for(let i=0; i<4; i++) {
-                d.push({ id: `wild_${i}`, type: 'wild', color: 'wild', value: 50 });
-                d.push({ id: `wild4_${i}`, type: 'wild4', color: 'wild', value: 50 });
-            }
-            return d.sort(() => Math.random() - 0.5);
         }
 
         document.getElementById('btn-start-game').onclick = () => {
-            if (players.length < 2) return;
+            disableBtn('btn-start-game');
+            if (isHost && players.length >= 2) {
+                remove(ref(db, `uno_rooms/${currentRoomId}`));
+                initUNOGame();
+            }
+        };
+
+        function generateDeck() {
+            const deck = [];
+            const colors = ['red', 'blue', 'green', 'yellow'];
+            colors.forEach(c => {
+                deck.push({ color: c, type: 'number', value: 0 });
+                for(let i=1; i<=9; i++) {
+                    deck.push({ color: c, type: 'number', value: i });
+                    deck.push({ color: c, type: 'number', value: i });
+                }
+                for(let i=0; i<2; i++) {
+                    deck.push({ color: c, type: 'skip', value: 'Skip' });
+                    deck.push({ color: c, type: 'reverse', value: 'Reverse' });
+                    deck.push({ color: c, type: 'draw2', value: 'Draw Two' });
+                }
+            });
+            for(let i=0; i<4; i++) {
+                deck.push({ color: 'wild', type: 'wild', value: 'Wild' });
+                deck.push({ color: 'wild', type: 'wild4', value: 'Wild Draw Four' });
+            }
+            return deck.sort(() => Math.random() - 0.5);
+        }
+
+        function initUNOGame() {
             game.status = 'playing';
-            update(ref(db, `uno_rooms/${currentRoomId}`), { status: 'playing' });
-            
             game.deck = generateDeck();
             game.discardPile = [];
-            game.playerStates = {};
+            game.direction = 1;
+            game.turnIndex = 0;
+            game.lastTurnIndex = -1;
+            game.challengeData = null;
             
             players.forEach(p => {
                 game.playerStates[p.id] = { hand: [], declaredUNO: false, score: 0, hasDrawn: false };
-                for(let i=0; i<7; i++) game.playerStates[p.id].hand.push(game.deck.pop());
+                for(let i=0; i<7; i++) drawCardHost(p.id);
             });
 
-            let topCard;
-            do {
-                topCard = game.deck.pop();
-                if (topCard.type === 'wild4') game.deck.unshift(topCard);
-            } while (topCard.type === 'wild4');
-            
+            let topCard = game.deck.pop();
+            while(topCard.type === 'wild4') { game.deck.unshift(topCard); topCard = game.deck.pop(); }
             game.discardPile.push(topCard);
             game.currentColor = topCard.color === 'wild' ? ['red','blue','green','yellow'][Math.floor(Math.random()*4)] : topCard.color;
-            game.turnIndex = 0; game.direction = 1; game.lastTurnIndex = -1;
-            game.challengeData = null;
 
-            if (topCard.type === 'reverse') game.direction = -1;
-            else if (topCard.type === 'skip') game.turnIndex = 1;
-            else if (topCard.type === 'draw2') drawCardHost(players[1].id, 2);
+            if (topCard.type === 'skip') game.turnIndex = (game.turnIndex + 1) % players.length;
+            else if (topCard.type === 'reverse') { game.direction = -1; game.turnIndex = (players.length - 1) % players.length; }
+            else if (topCard.type === 'draw2') { drawCardHost(players[game.turnIndex].id, 2); game.turnIndex = (game.turnIndex + 1) % players.length; }
 
             switchScreen('screen-game', 'top-status-bar');
-            broadcastAnnounce('เกมเริ่มแล้ว!', true);
+            broadcastAnnounce('เกมเริ่มแล้ว!');
+            game.currentTurnStartTime = Date.now();
             broadcastGameState();
-            checkBotTurn();
-        };
+        }
 
-        function drawCardHost(peerId, count) {
+        function drawCardHost(playerId, count = 1) {
             for(let i=0; i<count; i++) {
                 if (game.deck.length === 0) {
-                    if (game.discardPile.length > 1) {
-                        const top = game.discardPile.pop();
-                        game.deck = game.discardPile.sort(() => Math.random() - 0.5);
-                        game.discardPile = [top];
-                        broadcastAnnounce('สับกองทิ้งใหม่');
-                    } else break; 
+                    if (game.discardPile.length <= 1) break;
+                    const top = game.discardPile.pop();
+                    game.deck = game.discardPile.sort(() => Math.random() - 0.5);
+                    game.discardPile = [top];
+                    broadcastAnnounce('สับกองทิ้งใหม่');
                 }
-                game.playerStates[peerId].hand.push(game.deck.pop());
+                game.playerStates[playerId].hand.push(game.deck.pop());
+                game.playerStates[playerId].declaredUNO = false;
             }
-            game.playerStates[peerId].declaredUNO = false;
+        }
+
+        function nextTurn(steps = 1) {
+            game.turnIndex = (game.turnIndex + (steps * game.direction) + players.length * 10) % players.length;
+            game.currentTurnStartTime = Date.now();
+            game.challengeData = null;
+            
+            players.forEach(p => {
+                const s = game.playerStates[p.id];
+                s.hasDrawn = false;
+                if (s.hand.length === 1 && !s.declaredUNO && p.id !== players[game.turnIndex].id) {
+                    broadcastAnnounce(`${getPronounName(p)} ลืมประกาศ UNO โดนปรับจั่ว 2 ใบ`, true);
+                    drawCardHost(p.id, 2);
+                }
+            });
+            broadcastGameState();
         }
 
         function isValidPlay(card, hand) {
-            if (game.challengeData) return false;
+            if (card.color === 'wild') return true;
             const top = game.discardPile[game.discardPile.length - 1];
-            if (card.color === 'wild') {
-                if (card.type === 'wild4') {
-                    // Rule: Wild Draw Four ลงได้เสมอ แต่จะเสี่ยงโดน Challenge ถ้ามีสีตรง
-                    return true;
-                }
-                return true; 
+            
+            // แก้ไขปัญหาที่ 1: ตรวจสอบการ์ดใบก่อนหน้า หากเป็น Wild Card ให้ข้ามการเช็ค value 
+            // ผู้เล่นจะต้องลงการ์ดสีที่ตรงกันเท่านั้น หรือเปลี่ยนสีต่อด้วยการ์ด Wild 
+            if (top.color === 'wild') {
+                return card.color === game.currentColor;
             }
-            return card.color === game.currentColor || card.value === top.value || (card.type !== 'number' && card.type === top.type);
-        }
-
-        function calculateScore() {
-            let total = 0;
-            players.forEach(p => {
-                game.playerStates[p.id].hand.forEach(c => total += c.value);
-            });
-            return total;
+            
+            return card.color === game.currentColor || card.value === top.value;
         }
 
         function handlePlayerAction(peerId, action, payload) {
             if (!isHost || game.status !== 'playing') return;
-            const state = game.playerStates[peerId];
             const currentPlayer = players[game.turnIndex];
             
-            // Check UNO Status on ANY action
-            if (state.hand.length > 2) {
-                state.declaredUNO = false;
-            }
-
             if (game.challengeData && game.challengeData.victimId === peerId) {
                 if (action === 'challenge_yes') {
                     const attackerId = game.challengeData.attackerId;
                     const hasMatchingColor = game.playerStates[attackerId].hand.some(c => c.color === game.challengeData.prevColor);
                     if (hasMatchingColor) {
-                        broadcastAnnounce(`Challenge สำเร็จ! [PLAYER:${attackerId}] โดนปรับจั่ว 4 ใบ`);
+                        broadcastAnnounce(`Challenge สำเร็จ! ${getPronounName(players.find(p=>p.id===attackerId))} โดนปรับจั่ว 4 ใบ`);
                         drawCardHost(attackerId, 4);
                     } else {
-                        broadcastAnnounce(`Challenge พลาด! [PLAYER:${peerId}] โดนปรับจั่ว 6 ใบ`);
+                        broadcastAnnounce(`Challenge พลาด! ${getPronounName(players.find(p=>p.id===peerId))} โดนปรับจั่ว 6 ใบ`);
                         drawCardHost(peerId, 6);
                     }
                     nextTurn();
                 } else if (action === 'challenge_no') {
-                    broadcastAnnounce(`[PLAYER:${peerId}] ไม่ยอมรับ Challenge โดนจั่ว 4 ใบ`);
+                    broadcastAnnounce(`${getPronounName(players.find(p=>p.id===peerId))} ไม่ยอมรับ Challenge โดนจั่ว 4 ใบ`);
                     drawCardHost(peerId, 4); 
                     nextTurn();
                 }
                 return;
             }
 
-            // ประกาศ UNO ล่วงหน้าก่อนลงการ์ด (เหลือ 2 ใบ -> จะลง 1 ใบให้เหลือ 1 ใบ)
+            if (currentPlayer.id !== peerId) {
+                if (action === 'announce_uno' && game.playerStates[peerId].hand.length === 2 && !game.playerStates[peerId].declaredUNO) {
+                    game.playerStates[peerId].declaredUNO = true;
+                    const pName = getPronounName(players.find(p=>p.id===peerId));
+                    broadcastAnnounce(`${pName} ประกาศ UNO!`, true);
+                    
+                    if (isHost) connections.forEach(c => { if (c.open) c.send({ type: 'unoEffect' }); });
+                    showUnoEffect();
+                    
+                    broadcastGameState();
+                }
+                return;
+            }
+
+            const state = game.playerStates[peerId];
+
             if (action === 'announce_uno' && state.hand.length === 2 && !state.declaredUNO) {
                 state.declaredUNO = true;
-                broadcastAnnounce(`[PLAYER:${peerId}] ประกาศ UNO!`, true);
+                const pName = getPronounName(players.find(p=>p.id===peerId));
+                broadcastAnnounce(`${pName} ประกาศ UNO!`, true);
                 
                 if (isHost) connections.forEach(c => { if (c.open) c.send({ type: 'unoEffect' }); });
                 showUnoEffect();
@@ -1077,25 +1072,14 @@
                 return;
             }
 
-            if (currentPlayer.id !== peerId) return; // Not their turn
-
-            // ประกาศ UNO ขณะที่เป็นตาตัวเอง
-            if (action === 'announce_uno' && game.playerStates[peerId].hand.length === 2 && !game.playerStates[peerId].declaredUNO) {
-                game.playerStates[peerId].declaredUNO = true;
-                broadcastAnnounce(`[PLAYER:${peerId}] ประกาศ UNO!`, true);
-                
-                if (isHost) connections.forEach(c => { if (c.open) c.send({ type: 'unoEffect' }); });
-                showUnoEffect();
-                
-                broadcastGameState();
-            }
-
             if (action === 'play') {
                 const card = state.hand[payload.cardIndex];
                 if (isValidPlay(card, state.hand)) {
                     
+                    // รวบรวมข้อความประกาศเหตุการณ์ใน Turn นี้
+                    const pName = getPronounName(currentPlayer);
                     const cardARIA = getCardARIA(card);
-                    let playMsg = `[PLAYER:${currentPlayer.id}] วางการ์ด ${cardARIA}`;
+                    let playMsg = `${pName} วางการ์ด ${cardARIA}`;
                     
                     if (card.color === 'wild' && payload.selectedColor) {
                         const colorNames = {red:'แดง', blue:'น้ำเงิน', green:'เขียว', yellow:'เหลือง'};
@@ -1104,9 +1088,8 @@
 
                     state.hand.splice(payload.cardIndex, 1);
                     game.discardPile.push(card);
-                    game.currentColor = card.color === 'wild' ? payload.selectedColor : card.color;
-                    state.hasDrawn = false;
-                    
+                    game.currentColor = card.color !== 'wild' ? card.color : payload.selectedColor;
+
                     if (state.hand.length === 0) { 
                         broadcastAnnounce(playMsg);
                         handleWin(peerId); 
@@ -1116,7 +1099,7 @@
                     // ต่อข้อความสำหรับผลของการ์ดพิเศษ
                     if (card.type === 'skip') {
                         const nextPlayer = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        playMsg += `, ส่งผลให้ [PLAYER:${nextPlayer.id}] ถูกใช้การ์ด skip ข้ามตา`;
+                        playMsg += `, ส่งผลให้ ${getPronounName(nextPlayer)} ถูกใช้การ์ด skip ข้ามตา`;
                         broadcastAnnounce(playMsg);
                         nextTurn(2);
                     }
@@ -1128,14 +1111,14 @@
                     }
                     else if (card.type === 'draw2') { 
                         const nextPlayer = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        playMsg += `, ส่งผลให้ [PLAYER:${nextPlayer.id}] โดนบังคับจั่ว 2 ใบและถูกข้ามตา`;
+                        playMsg += `, ส่งผลให้ ${getPronounName(nextPlayer)} โดนบังคับจั่ว 2 ใบและถูกข้ามตา`;
                         broadcastAnnounce(playMsg);
                         drawCardHost(players[(game.turnIndex + game.direction + players.length) % players.length].id, 2); 
                         nextTurn(2); 
                     }
                     else if (card.type === 'wild4') {
                         const nextPlayer = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        playMsg += `, ส่งผลให้ [PLAYER:${nextPlayer.id}] ถูกใช้ Wild Draw Four ต้องเลือกว่าจะ Challenge หรือไม่`;
+                        playMsg += `, ส่งผลให้ ${getPronounName(nextPlayer)} ถูกใช้ Wild Draw Four ต้องเลือกว่าจะ Challenge หรือไม่`;
                         broadcastAnnounce(playMsg);
                         game.challengeData = { victimId: nextPlayer.id, attackerId: peerId, prevColor: game.currentColor };
                         broadcastGameState();
@@ -1147,342 +1130,347 @@
                 }
             } else if (action === 'draw') {
                 if (!state.hasDrawn) {
-                    broadcastAnnounce(`[PLAYER:${currentPlayer.id}] จั่วการ์ด 1 ใบ`);
+                    const pName = getPronounName(currentPlayer);
+                    broadcastAnnounce(`${pName} จั่วการ์ด 1 ใบ`);
                     drawCardHost(peerId, 1);
                     state.hasDrawn = true;
                     broadcastGameState();
                 }
             } else if (action === 'pass') {
                 if (state.hasDrawn) {
-                    broadcastAnnounce(`[PLAYER:${currentPlayer.id}] จบตา`);
-                    state.hasDrawn = false;
+                    broadcastAnnounce(`${getPronounName(currentPlayer)} จบตา`);
                     nextTurn(1);
                 }
             }
         }
 
         function handleWin(winnerId) {
-            broadcastAnnounce(`จบเกม! ผู้ชนะคือ [PLAYER:${winnerId}]`, true);
-            const score = calculateScore();
-            game.playerStates[winnerId].score += score;
-            game.status = 'finished';
-            update(ref(db, `uno_rooms/${currentRoomId}`), { status: 'waiting' });
+            const winner = players.find(p => p.id === winnerId);
+            broadcastAnnounce(`จบเกม! ผู้ชนะคือ ${getPronounName(winner)}`, true);
+            let score = 0;
+            players.forEach(p => {
+                if(p.id !== winnerId) {
+                    game.playerStates[p.id].hand.forEach(c => {
+                        if (c.type === 'number') score += c.value;
+                        else if (c.type === 'wild' || c.type === 'wild4') score += 50;
+                        else score += 20;
+                    });
+                }
+            });
+            if (isHost) {
+                connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, scores: score }); });
+                game.status = 'ended'; showResult(winnerId, score);
+            }
+        }
+
+        function broadcastAnnounce(msg, assertive = false) {
+            announce(msg, assertive);
+            if(isHost) connections.forEach(c => { if (c.open) c.send({ type: 'announce', message: msg }); });
+        }
+
+        function processTurnTimer() {
+            if (!isHost || game.status !== 'playing') return;
+            const currentPlayer = players[game.turnIndex];
             
-            // Sync final state then show result
-            broadcastGameState();
+            if (game.challengeData) {
+                if (players.find(p => p.id === game.challengeData.victimId).isBot) {
+                    setTimeout(() => handlePlayerAction(game.challengeData.victimId, 'challenge_no'), 2500);
+                }
+                return;
+            }
+
+            if (currentPlayer.isBot) {
+                clearTimeout(myBotDelay);
+                // Reduced Bot Delay by 0.5s (from 3500 to 3000)
+                const delay = 3000 + Math.random() * 2000;
+                myBotDelay = setTimeout(() => {
+                    if (game.status !== 'playing' || players[game.turnIndex].id !== currentPlayer.id) return;
+                    
+                    const state = game.playerStates[currentPlayer.id];
+                    const validCards = state.hand.map((c, i) => ({card: c, index: i})).filter(x => isValidPlay(x.card, state.hand));
+                    
+                    if (state.hand.length === 2 && validCards.length > 0 && !state.declaredUNO) {
+                        handlePlayerAction(currentPlayer.id, 'announce_uno');
+                    }
+
+                    if (validCards.length > 0) {
+                        const playChoice = validCards[Math.floor(Math.random() * validCards.length)];
+                        handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)] });
+                    } else {
+                        if (!state.hasDrawn) {
+                            handlePlayerAction(currentPlayer.id, 'draw');
+                        } else {
+                            handlePlayerAction(currentPlayer.id, 'pass');
+                        }
+                    }
+                }, delay);
+            }
+        }
+
+        // --- Rendering ---
+        function getCardARIA(card) {
+            if (!card) return '';
+            const cName = { red: 'แดง ', blue: 'น้ำเงิน ', green: 'เขียว ', yellow: 'เหลือง ', wild: '' }[card.color];
+            let vName = card.value;
+            if (card.type === 'skip') vName = 'Skip';
+            else if (card.type === 'reverse') vName = 'Reverse';
+            else if (card.type === 'draw2') vName = 'Draw Two';
+            else if (card.type === 'wild') vName = 'Wild';
+            else if (card.type === 'wild4') vName = 'Wild Draw Four';
             
-            setTimeout(() => {
-                if(isHost) connections.forEach(c => { if(c.open) c.send({ type: 'gameSync', game: { status: 'finished', winnerId, score }}); });
-                showResult(winnerId, score);
-            }, 1000);
+            return `${cName}${vName}`.trim();
+        }
+        
+        function renderCardHTML(card, index = -1, isPlayable = false) {
+            let inner = '';
+            if (card.type === 'number') inner = card.value;
+            else if (card.type === 'skip') inner = '<span class="card-special-text">Skip</span>';
+            else if (card.type === 'reverse') inner = '<span class="card-special-text">Reverse</span>';
+            else if (card.type === 'draw2') inner = '<span class="card-special-text">Draw Two</span>';
+            else if (card.type === 'wild') inner = '<span class="card-wild-text">Wild</span>';
+            else if (card.type === 'wild4') inner = '<span class="card-wild-text">Wild Draw Four</span>';
+
+            const btn = document.createElement(index >= 0 ? 'button' : 'div');
+            btn.className = `uno-card card-${card.color} ${!isPlayable && index >= 0 ? 'disabled' : ''}`;
+            btn.innerHTML = inner;
+            
+            if (index >= 0) {
+                btn.setAttribute('aria-label', `${getCardARIA(card)} ${isPlayable ? 'ลงได้' : 'ลงไม่ได้'}`);
+                if (isPlayable) btn.onclick = () => onCardClicked(index, card);
+                else btn.setAttribute('aria-disabled', 'true');
+            }
+            return btn;
+        }
+
+        function toggleMainGameUI(show) {
+            const topBar = document.getElementById('top-status-bar');
+            const midArea = document.querySelector('.middle-area');
+            const bottomArea = document.getElementById('my-cards-container').parentElement;
+            
+            if (show) {
+                topBar.style.display = 'flex';
+                midArea.style.display = 'flex';
+                bottomArea.style.display = 'flex';
+                topBar.removeAttribute('aria-hidden');
+                midArea.removeAttribute('aria-hidden');
+                bottomArea.removeAttribute('aria-hidden');
+            } else {
+                topBar.style.display = 'none';
+                midArea.style.display = 'none';
+                bottomArea.style.display = 'none';
+                topBar.setAttribute('aria-hidden', 'true');
+                midArea.setAttribute('aria-hidden', 'true');
+                bottomArea.setAttribute('aria-hidden', 'true');
+            }
+        }
+
+        function renderGame(gameState) {
+            // Update current turn heading safely
+            const turnPlayerObj = players[gameState.turnIndex];
+            if (turnPlayerObj) {
+                document.getElementById('current-turn-heading').textContent = `ถึงรอบ${getPronounName(turnPlayerObj)}`;
+            }
+
+            if (gameState.turnIndex !== game.lastTurnIndex) {
+                const currentPlayer = players[gameState.turnIndex];
+                if (currentPlayer) {
+                    const pronoun = getPronounName(currentPlayer);
+                    
+                    if (currentPlayer.id === myPeerId) {
+                        let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
+                        if (gameState.topDiscard) {
+                            const displayCard = {...gameState.topDiscard};
+                            if (displayCard.color === 'wild' && gameState.currentColor) {
+                                displayCard.color = gameState.currentColor;
+                            }
+                            
+                            let cardName = getCardARIA(displayCard);
+                            announceMsg += ` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`;
+                        }
+                        announce(announceMsg);
+                    } else {
+                        announce(`ถึงรอบ${pronoun}แล้ว`);
+                    }
+                }
+                game.lastTurnIndex = gameState.turnIndex;
+            }
+
+            // Track drawn cards and announce for accessibility
+            const myHand = gameState.myHand || [];
+            if (typeof window._myPrevHand !== 'undefined') {
+                if (myHand.length > window._myPrevHand.length) {
+                    const diff = myHand.length - window._myPrevHand.length;
+                    const newCards = myHand.slice(-diff);
+                    newCards.forEach(c => {
+                        announce(`ได้รับการ์ด ${getCardARIA(c)}`);
+                    });
+                }
+            }
+            window._myPrevHand = [...myHand];
+
+            const statusBar = document.getElementById('top-status-bar');
+            statusBar.innerHTML = '';
+            
+            let ariaStatusBarText = `ทิศทางการเล่น ${gameState.direction === 1 ? 'ขวา' : 'ซ้าย'}, `;
+            
+            const dirDiv = document.createElement('div');
+            dirDiv.className = 'direction-indicator';
+            dirDiv.setAttribute('aria-hidden', 'true');
+            dirDiv.textContent = gameState.direction === 1 ? '➡️' : '⬅️';
+            statusBar.appendChild(dirDiv);
+
+            players.forEach((p, idx) => {
+                const pState = gameState.playerStates[p.id];
+                const isTurn = idx === gameState.turnIndex;
+                const cDef = COLORS.find(c => c.id === p.colorId);
+                const pName = getPronounName(p);
+                
+                if (pState) {
+                    ariaStatusBarText += `${pName} มีการ์ด ${pState.cardCount} ใบ คะแนน ${pState.score}. `;
+                    
+                    const charDiv = document.createElement('div');
+                    charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`;
+                    charDiv.setAttribute('aria-hidden', 'true');
+                    charDiv.innerHTML = `
+                        <div class="char-cards-count">${pState.cardCount} ใบ</div>
+                        <div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':'😊'}</span></div>
+                        <div class="char-score">คะแนน: ${pState.score}</div>
+                    `;
+                    statusBar.appendChild(charDiv);
+                }
+            });
+            statusBar.setAttribute('aria-label', ariaStatusBarText);
+
+            document.getElementById('deck-count-visual').textContent = gameState.deckCount;
+            document.getElementById('deck-aria-label').textContent = `การ์ดในกองเหลือ ${gameState.deckCount} ใบ`;
+
+            const discardEl = document.getElementById('discard-pile');
+            discardEl.innerHTML = '';
+            if (gameState.topDiscard) {
+                const displayCard = {...gameState.topDiscard};
+                if (displayCard.color === 'wild' && gameState.currentColor) {
+                    displayCard.color = gameState.currentColor;
+                }
+                discardEl.appendChild(renderCardHTML(displayCard));
+                document.getElementById('discard-aria-label').textContent = `การ์ดที่แสดงคือ ${getCardARIA(displayCard)}`;
+            }
+
+            const chalArea = document.getElementById('challenge-area');
+            if (gameState.challengeData && gameState.challengeData.victimId === myPeerId) {
+                chalArea.style.display = 'block';
+                toggleMainGameUI(false);
+                document.getElementById('btn-challenge-yes').onclick = () => sendAction('challenge_yes');
+                document.getElementById('btn-challenge-no').onclick = () => sendAction('challenge_no');
+                setTimeout(() => document.getElementById('btn-challenge-yes').focus(), 100);
+            } else {
+                chalArea.style.display = 'none';
+                if (document.getElementById('color-picker-modal').style.display !== 'flex') {
+                    toggleMainGameUI(true);
+                }
+            }
+
+            const myContainer = document.getElementById('my-cards-container');
+            myContainer.innerHTML = '';
+            
+            if (myHand.length > 8) myContainer.classList.add('compact');
+            else myContainer.classList.remove('compact');
+
+            // Safe logic for finding turn based on accurate players list
+            const isMyTurn = turnPlayerObj && turnPlayerObj.id === myPeerId && !gameState.challengeData;
+            
+            myHand.forEach((card, idx) => {
+                const playable = isMyTurn && isValidPlay(card, myHand);
+                myContainer.appendChild(renderCardHTML(card, idx, playable));
+            });
+
+            const btnDraw = document.getElementById('btn-draw');
+            const btnPass = document.getElementById('btn-pass');
+            const btnUno = document.getElementById('btn-uno');
+            
+            const myState = gameState.playerStates[myPeerId];
+            const playableCardsCount = myHand.filter(card => isValidPlay(card, myHand)).length;
+
+            // Post-UNO and standard flow actions
+            if (isMyTurn) {
+                if (myState && myState.declaredUNO) {
+                    btnDraw.disabled = true;
+                    btnPass.disabled = true;
+                } else if (myState && myState.hasDrawn) {
+                    btnDraw.disabled = true;
+                    btnPass.disabled = false;
+                    btnPass.onclick = () => sendAction('pass');
+                } else {
+                    btnDraw.disabled = false;
+                    btnPass.disabled = true;
+                    btnDraw.onclick = () => sendAction('draw');
+                }
+            } else {
+                btnDraw.disabled = true;
+                btnPass.disabled = true;
+            }
+
+            // UNO Button Condition Logic
+            if (isMyTurn && myHand.length === 2 && myState && !myState.declaredUNO && playableCardsCount > 0) {
+                btnUno.disabled = false;
+                btnUno.onclick = () => {
+                    btnUno.disabled = true;
+                    sendAction('announce_uno');
+                };
+            } else {
+                btnUno.disabled = true;
+            }
+        }
+
+        let pendingPlayCardIndex = -1;
+        window.selectWildColor = function(color) {
+            document.getElementById('color-picker-modal').style.display = 'none';
+            toggleMainGameUI(true);
+            if (pendingPlayCardIndex !== -1) {
+                sendAction('play', { cardIndex: pendingPlayCardIndex, selectedColor: color });
+                pendingPlayCardIndex = -1;
+            }
+        };
+
+        function onCardClicked(index, card) {
+            if (card.color === 'wild') {
+                pendingPlayCardIndex = index;
+                const modal = document.getElementById('color-picker-modal');
+                modal.style.display = 'flex';
+                toggleMainGameUI(false);
+                setTimeout(() => modal.querySelector('.color-btn').focus(), 100);
+            } else {
+                sendAction('play', { cardIndex: index });
+            }
+        }
+
+        function sendAction(action, payload = null) {
+            if (isHost) handlePlayerAction(myPeerId, action, payload);
+            else if (hostConnection && hostConnection.open) hostConnection.send({ type: 'action', action, payload });
         }
 
         function showResult(winnerId, score) {
             switchScreen('screen-result', 'title-result');
             const winner = players.find(p => p.id === winnerId);
             document.getElementById('winner-text').innerHTML = `<span aria-hidden="true">🏆</span> ผู้ชนะ: ${getPronounName(winner)} (คะแนน: ${score})`;
-            document.getElementById('result-host-controls').style.display = isHost ? 'flex' : 'none';
-        }
-
-        document.getElementById('btn-play-again').onclick = () => {
-            if (!isHost) return;
-            switchScreen('screen-lobby', 'title-lobby');
-            game.status = 'waiting';
-            update(ref(db, `uno_rooms/${currentRoomId}`), { status: 'waiting' });
-            syncLobby();
-        };
-
-        function nextTurn(steps = 1) {
-            // Check for UNO Penalty
-            players.forEach(p => {
-                const s = game.playerStates[p.id];
-                if (s.hand.length === 1 && !s.declaredUNO && p.id !== players[game.turnIndex].id) {
-                    broadcastAnnounce(`[PLAYER:${p.id}] ลืมประกาศ UNO โดนปรับจั่ว 2 ใบ`, true);
-                    drawCardHost(p.id, 2);
-                }
-            });
-
-            game.turnIndex = (game.turnIndex + (game.direction * steps) + players.length * 10) % players.length;
-            game.currentTurnStartTime = Date.now();
-            
-            // Force reset any flags on next player
-            game.playerStates[players[game.turnIndex].id].hasDrawn = false;
-            
-            broadcastGameState();
-            checkBotTurn();
-        }
-
-        function checkBotTurn() {
-            if (!isHost || game.status !== 'playing' || game.challengeData) return;
-            const currentPlayer = players[game.turnIndex];
-            if (currentPlayer.isBot) {
-                const botId = currentPlayer.id;
-                setTimeout(() => {
-                    if (game.turnIndex !== players.findIndex(p => p.id === botId)) return; // Safety check
-                    
-                    const state = game.playerStates[botId];
-                    const validCards = state.hand.map((c, i) => ({c, i})).filter(item => isValidPlay(item.c, state.hand));
-                    
-                    if (validCards.length > 0) {
-                        const playItem = validCards[Math.floor(Math.random() * validCards.length)];
-                        
-                        // Check UNO condition for bot
-                        if (state.hand.length === 2) {
-                            handlePlayerAction(botId, 'announce_uno', null);
-                        }
-
-                        let payload = { cardIndex: playItem.i };
-                        if (playItem.c.color === 'wild') {
-                            const colors = ['red', 'blue', 'green', 'yellow'];
-                            payload.selectedColor = colors[Math.floor(Math.random()*4)];
-                        }
-                        
-                        setTimeout(() => handlePlayerAction(botId, 'play', payload), 1000);
-                        
-                    } else {
-                        handlePlayerAction(botId, 'draw', null);
-                        setTimeout(() => {
-                            if (game.turnIndex === players.findIndex(p => p.id === botId)) {
-                                const newValid = state.hand.map((c, i) => ({c, i})).filter(item => isValidPlay(item.c, state.hand));
-                                if (newValid.length > 0 && newValid[newValid.length-1].i === state.hand.length-1) {
-                                     let p = { cardIndex: state.hand.length-1 };
-                                     if(state.hand[state.hand.length-1].color === 'wild') p.selectedColor = ['red','blue','green','yellow'][Math.floor(Math.random()*4)];
-                                     handlePlayerAction(botId, 'play', p);
-                                } else {
-                                     handlePlayerAction(botId, 'pass', null);
-                                }
-                            }
-                        }, 1500);
-                    }
-                }, 1500 + Math.random() * 1000);
+            if (isHost) {
+                document.getElementById('result-host-controls').style.display = 'flex';
+                document.getElementById('btn-play-again').onclick = () => initUNOGame();
             }
         }
 
-        function getCardARIA(card) {
-            if (!card) return 'ไม่มีการ์ด';
-            const colorNames = {red:'แดง', blue:'น้ำเงิน', green:'เขียว', yellow:'เหลือง', wild:''};
-            const cName = card.color !== 'wild' ? `สี${colorNames[card.color]}` : '';
-            if (card.type === 'number') return `${card.value} ${cName}`;
-            if (card.type === 'skip') return `ข้ามตา ${cName}`;
-            if (card.type === 'reverse') return `ย้อนกลับ ${cName}`;
-            if (card.type === 'draw2') return `บวกสอง ${cName}`;
-            if (card.type === 'wild') return `เปลี่ยนสี`;
-            if (card.type === 'wild4') return `เปลี่ยนสีและบวกสี่`;
-            return '';
+        function showAnimOverlay(text) {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const overlay = document.getElementById('anim-overlay');
+            const textEl = document.getElementById('anim-text');
+            textEl.textContent = text;
+            overlay.style.display = 'flex';
+            setTimeout(() => { overlay.style.display = 'none'; }, 1500);
         }
 
-        // --- Client Rendering ---
-        function renderGame(gameState, myHand) {
-            // Fix: Rebuild players array globally on client too
-            if (gameState.players) {
-                players = gameState.players;
-            }
-            
-            if (gameState.status === 'finished') {
-                showResult(gameState.winnerId, gameState.score);
-                return;
-            }
-
-            const topBar = document.getElementById('top-status-bar');
-            topBar.innerHTML = '';
-            
-            const dirIcon = document.createElement('div');
-            dirIcon.className = 'direction-indicator';
-            dirIcon.setAttribute('aria-hidden', 'true');
-            dirIcon.textContent = gameState.direction === 1 ? '▶' : '◀';
-            topBar.appendChild(dirIcon);
-
-            let currentPlayer = null;
-            gameState.players.forEach((p, idx) => {
-                const s = gameState.playerStates[p.id];
-                if (!s) return; // Safety check
-                const isTurn = idx === gameState.turnIndex;
-                if (isTurn) currentPlayer = p;
-                
-                const charEl = document.createElement('div');
-                charEl.className = `character-card ${isTurn ? 'is-turn' : ''}`;
-                
-                const cDef = COLORS.find(c => c.id === p.colorId);
-                const bg = cDef ? cDef.hex : '#fff';
-                
-                let html = `<div class="char-cards-count" aria-label="การ์ด ${s.cardCount} ใบ"><span aria-hidden="true">🃏</span> ${s.cardCount}</div>`;
-                html += `<div class="char-avatar" style="background:${bg}" aria-hidden="true">👤</div>`;
-                charEl.innerHTML = html;
-                topBar.appendChild(charEl);
-            });
-            
-            if (currentPlayer && gameState.turnIndex !== gameState.lastTurnIndex) {
-                const pronoun = getPronounName(currentPlayer);
-                
-                const cardARIA = getCardARIA(gameState.topDiscard);
-                const colorNames = {red:'แดง', blue:'น้ำเงิน', green:'เขียว', yellow:'เหลือง'};
-                const colorCurrent = gameState.currentColor;
-                let cardName = cardARIA;
-                if (gameState.topDiscard && gameState.topDiscard.color === 'wild') {
-                    cardName += ` เปลี่ยนเป็นสี${colorNames[colorCurrent]}`;
-                }
-
-                if (currentPlayer.id === myPeerId) {
-                    let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
-                    if (gameState.topDiscard) {
-                        announceMsg += ` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`;
-                    }
-                    if (gameState.challengeData && gameState.challengeData.victimId === myPeerId) {
-                         announceMsg += ` และคุณถูก Wild Draw 4 โปรดเลือกท้าทาย`;
-                    }
-                    announce(announceMsg);
-                    document.getElementById('current-turn-heading').textContent = "ตาของคุณ";
-                } else {
-                    announce(`ถึงรอบ${pronoun}แล้ว`);
-                    document.getElementById('current-turn-heading').textContent = `ตาของ${pronoun}`;
-                }
-                gameState.lastTurnIndex = gameState.turnIndex; // Store locally avoiding repeat
-            }
-
-            document.getElementById('deck-count-visual').textContent = gameState.deckCount;
-            document.getElementById('deck-aria-label').textContent = `การ์ดในกองเหลือ ${gameState.deckCount} ใบ`;
-
-            const discard = document.getElementById('discard-pile');
-            discard.innerHTML = '';
-            if (gameState.topDiscard) {
-                const c = gameState.topDiscard;
-                const el = document.createElement('div');
-                el.className = `uno-card card-${c.color}`;
-                if(c.type === 'number') el.textContent = c.value;
-                else {
-                    const txt = document.createElement('div');
-                    txt.className = c.color === 'wild' ? 'card-wild-text' : 'card-special-text';
-                    if (c.type === 'skip') txt.textContent = 'SKIP';
-                    else if (c.type === 'reverse') txt.innerHTML = '&#8634;';
-                    else if (c.type === 'draw2') txt.textContent = '+2';
-                    else if (c.type === 'wild') txt.textContent = 'WILD';
-                    else if (c.type === 'wild4') txt.textContent = '+4';
-                    el.appendChild(txt);
-                }
-                discard.appendChild(el);
-                
-                const cardARIA = getCardARIA(c);
-                const colorNames = {red:'แดง', blue:'น้ำเงิน', green:'เขียว', yellow:'เหลือง'};
-                let aria = `การ์ดที่แสดงคือ ${cardARIA}`;
-                if (c.color === 'wild' && gameState.currentColor) {
-                    aria += ` เปลี่ยนเป็นสี${colorNames[gameState.currentColor]}`;
-                    el.style.border = `4px solid ${COLORS.find(x => x.id === gameState.currentColor).hex}`;
-                }
-                document.getElementById('discard-aria-label').textContent = aria;
-            }
-
-            // Challenge Area
-            if (gameState.challengeData && gameState.challengeData.victimId === myPeerId) {
-                document.getElementById('challenge-area').style.display = 'block';
-                document.getElementById('my-cards-container').style.display = 'none';
-                document.querySelector('.bottom-actions').style.display = 'none';
-            } else {
-                document.getElementById('challenge-area').style.display = 'none';
-                document.getElementById('my-cards-container').style.display = 'grid';
-                document.querySelector('.bottom-actions').style.display = 'flex';
-            }
-
-            const handEl = document.getElementById('my-cards-container');
-            if (myHand.length > 8) handEl.classList.add('compact');
-            else handEl.classList.remove('compact');
-            
-            handEl.innerHTML = '';
-            
-            const isMyTurn = currentPlayer && currentPlayer.id === myPeerId && !gameState.challengeData;
-            const myState = gameState.playerStates[myPeerId];
-
-            myHand.forEach((c, idx) => {
-                const el = document.createElement('button');
-                const valid = isMyTurn && !myState.hasDrawn && isValidPlay(c, myHand);
-                el.className = `uno-card card-${c.color} ${!valid ? 'disabled' : ''}`;
-                
-                if (c.type === 'number') el.textContent = c.value;
-                else {
-                    const txt = document.createElement('div');
-                    txt.className = c.color === 'wild' ? 'card-wild-text' : 'card-special-text';
-                    if (c.type === 'skip') txt.textContent = 'SKIP';
-                    else if (c.type === 'reverse') txt.innerHTML = '&#8634;';
-                    else if (c.type === 'draw2') txt.textContent = '+2';
-                    else if (c.type === 'wild') txt.textContent = 'WILD';
-                    else if (c.type === 'wild4') txt.textContent = '+4';
-                    el.appendChild(txt);
-                }
-
-                el.setAttribute('aria-label', getCardARIA(c) + (!valid ? ' (เล่นไม่ได้)' : ''));
-                if (!valid) el.setAttribute('disabled', 'true');
-
-                el.onclick = () => {
-                    if (valid) {
-                        if (c.color === 'wild') {
-                            window.pendingCardIndex = idx;
-                            document.getElementById('color-picker-modal').style.display = 'flex';
-                            document.getElementById('color-picker-title').focus();
-                        } else {
-                            if (isHost) handlePlayerAction(myPeerId, 'play', { cardIndex: idx });
-                            else hostConnection.send({ type: 'action', action: 'play', payload: { cardIndex: idx }});
-                        }
-                    }
-                };
-                handEl.appendChild(el);
-            });
-
-            // Update Bottom Actions
-            disableBtn('btn-draw', !isMyTurn || myState.hasDrawn);
-            disableBtn('btn-pass', !isMyTurn || !myState.hasDrawn);
-            
-            const btnUno = document.getElementById('btn-uno');
-            // Can press UNO when it's your turn AND you have 2 cards, OR if you have 2 cards anytime to pre-declare
-            if (myHand.length === 2 && !myState.declaredUNO) {
-                btnUno.disabled = false;
-                btnUno.style.opacity = '1';
-                btnUno.classList.add('pulse'); // You can add CSS for pulsing later
-            } else {
-                btnUno.disabled = true;
-                btnUno.style.opacity = '0.5';
-                btnUno.classList.remove('pulse');
-            }
-        }
-
-        window.selectWildColor = (colorId) => {
-            document.getElementById('color-picker-modal').style.display = 'none';
-            if (window.pendingCardIndex !== undefined) {
-                if (isHost) handlePlayerAction(myPeerId, 'play', { cardIndex: window.pendingCardIndex, selectedColor: colorId });
-                else hostConnection.send({ type: 'action', action: 'play', payload: { cardIndex: window.pendingCardIndex, selectedColor: colorId }});
-                window.pendingCardIndex = undefined;
-            }
-        };
-
-        // UI Event Listeners
-        document.getElementById('btn-draw').onclick = () => {
-            if (isHost) handlePlayerAction(myPeerId, 'draw', null);
-            else hostConnection.send({ type: 'action', action: 'draw' });
-        };
-        document.getElementById('btn-pass').onclick = () => {
-            if (isHost) handlePlayerAction(myPeerId, 'pass', null);
-            else hostConnection.send({ type: 'action', action: 'pass' });
-        };
-        document.getElementById('btn-uno').onclick = () => {
-            if (isHost) handlePlayerAction(myPeerId, 'announce_uno', null);
-            else hostConnection.send({ type: 'action', action: 'announce_uno' });
-            disableBtn('btn-uno', true);
-        };
-        document.getElementById('btn-challenge-yes').onclick = () => {
-            if (isHost) handlePlayerAction(myPeerId, 'challenge_yes', null);
-            else hostConnection.send({ type: 'action', action: 'challenge_yes' });
-        };
-        document.getElementById('btn-challenge-no').onclick = () => {
-            if (isHost) handlePlayerAction(myPeerId, 'challenge_no', null);
-            else hostConnection.send({ type: 'action', action: 'challenge_no' });
-        };
-        
         document.getElementById('btn-refresh-audio').onclick = () => {
-             announce("รีเฟรชระบบเสียงสำเร็จ");
+             announce('รีเฟรชระบบเสียงแล้ว');
         };
 
-        window.addEventListener('beforeunload', () => {
-            if (isHost && currentRoomId) remove(ref(db, `uno_rooms/${currentRoomId}`));
-        });
-        
     </script>
 </body>
 </html>
