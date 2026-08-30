@@ -388,7 +388,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getDatabase, ref, update, remove, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+        import { getDatabase, ref, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
@@ -408,10 +408,6 @@
         let connections = [];
         let hostConnection = null;
         let currentRoomId = null;
-        
-        // Flags for preventing double action
-        let isJoiningRoom = false;
-        let isCreatingRoom = false;
         
         const MAX_PLAYERS = 6;
         const COLORS = [
@@ -559,99 +555,41 @@
             }
             activeRooms.forEach(([id, room]) => {
                 const li = document.createElement('li');
-                li.style.margin = '10px 0';
-                
+                li.style.background = 'rgba(255,255,255,0.1)'; li.style.margin = '10px 0'; li.style.padding = '10px'; li.style.borderRadius = '8px';
+                li.innerHTML = `<span style="font-weight:bold;">ห้อง: ${id}</span> <span>(${room.currentPlayers}/${MAX_PLAYERS})</span>`;
                 const btn = document.createElement('button');
-                btn.style.width = '100%';
-                btn.style.maxWidth = '100%'; // Span entirely across
-                btn.style.textAlign = 'left';
-                btn.style.display = 'flex';
-                btn.style.justifyContent = 'space-between';
-                btn.style.alignItems = 'center';
-                btn.style.padding = '15px';
-                
-                const hostCountText = `มีผู้เล่น ${room.currentPlayers} / ${MAX_PLAYERS} คน`;
-                btn.innerHTML = `<span style="font-weight:bold; font-size:18px;">ห้อง: ${id}</span> <span>${hostCountText}</span>`;
-                btn.setAttribute('aria-label', `เข้าร่วมห้อง ${id} ${hostCountText}`);
-                
-                btn.onclick = () => {
-                    if (isJoiningRoom) return;
-                    isJoiningRoom = true;
-                    btn.disabled = true;
-                    btn.style.opacity = '0.5';
-                    joinRoom(id, room.hostPeerId);
-                };
-                
+                btn.textContent = 'เข้าร่วม'; btn.style.width = 'auto'; btn.style.padding = '5px 10px'; btn.style.float = 'right'; btn.style.marginTop = '-5px';
+                btn.onclick = () => joinRoom(id, room.hostPeerId);
                 li.appendChild(btn);
                 list.appendChild(li);
             });
         }
 
         document.getElementById('btn-create-room').onclick = async () => {
-            if (isCreatingRoom) return;
-            if (!myPeerId) {
-                announce('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่');
-                return;
-            }
+            disableBtn('btn-create-room');
+            isHost = true;
+            currentRoomId = "uno" + String(Math.floor(Math.random() * 99999) + 1).padStart(5, '0');
+            myColorId = getAvailableColors()[0];
+            players = [{ id: myPeerId, name: "Host (คุณ)", isBot: false, colorId: myColorId, connection: null }];
             
-            isCreatingRoom = true;
-            disableBtn('btn-create-room', true);
-            const btn = document.getElementById('btn-create-room');
-            btn.style.opacity = '0.5';
+            await update(ref(db, `uno_rooms/${currentRoomId}`), {
+                hostPeerId: myPeerId, status: 'waiting', currentPlayers: 1, lastActive: Date.now()
+            });
 
-            try {
-                // Determine sequential room ID
-                let nextIdNum = 1;
-                const metaSnapshot = await get(ref(db, 'uno_metadata/last_room_id'));
-                if (metaSnapshot.exists()) {
-                    nextIdNum = metaSnapshot.val() + 1;
-                    if (nextIdNum > 99999) nextIdNum = 1;
+            setInterval(() => {
+                if (isHost && currentRoomId && game.status === 'waiting') {
+                    update(ref(db, `uno_rooms/${currentRoomId}`), { lastActive: Date.now() });
                 }
-                await update(ref(db, 'uno_metadata'), { last_room_id: nextIdNum });
-                
-                currentRoomId = "uno" + String(nextIdNum).padStart(5, '0');
-                
-                isHost = true;
-                myColorId = getAvailableColors()[0];
-                players = [{ id: myPeerId, name: "Host (คุณ)", isBot: false, colorId: myColorId, connection: null }];
-                
-                await update(ref(db, `uno_rooms/${currentRoomId}`), {
-                    hostPeerId: myPeerId, status: 'waiting', currentPlayers: 1, lastActive: Date.now()
-                });
+            }, 3000);
 
-                setInterval(() => {
-                    if (isHost && currentRoomId && game.status === 'waiting') {
-                        update(ref(db, `uno_rooms/${currentRoomId}`), { lastActive: Date.now() });
-                    }
-                }, 3000);
-
-                enterLobby();
-            } catch (err) {
-                console.error(err);
-                isCreatingRoom = false;
-                disableBtn('btn-create-room', false);
-                btn.style.opacity = '1';
-                announce('สร้างห้องไม่สำเร็จ กรุณาลองใหม่');
-            }
+            enterLobby();
+            disableBtn('btn-create-room', false);
         };
 
         function joinRoom(roomId, hostPeerId) {
-            if (!myPeerId) {
-                announce('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่');
-                isJoiningRoom = false;
-                return;
-            }
-            
             isHost = false; currentRoomId = roomId;
             announce('กำลังเชื่อมต่อไปยัง Host...');
             hostConnection = peer.connect(hostPeerId, { reliable: true });
-            
-            hostConnection.on('error', (err) => {
-                console.error(err);
-                announce('การเชื่อมต่อล้มเหลว', true);
-                leaveLobby();
-            });
-            
             hostConnection.on('open', () => {
                 hostConnection.send({ type: 'joinReq', peerId: myPeerId });
                 enterLobby();
@@ -662,24 +600,12 @@
 
         function leaveLobby() {
             if (isHost) {
-                if (currentRoomId) remove(ref(db, `uno_rooms/${currentRoomId}`));
+                remove(ref(db, `uno_rooms/${currentRoomId}`));
                 connections.forEach(c => c.close());
             } else if (hostConnection) {
                 hostConnection.close();
             }
             currentRoomId = null; isHost = false; players = []; game.status = 'waiting';
-            
-            // Clean up state flags
-            isJoiningRoom = false;
-            isCreatingRoom = false;
-            
-            // Restore create button visually
-            const btnCreate = document.getElementById('btn-create-room');
-            if (btnCreate) {
-                disableBtn('btn-create-room', false);
-                btnCreate.style.opacity = '1';
-            }
-            
             switchScreen('screen-main', 'btn-create-room');
             announce('ออกจากห้องแล้ว');
         }
@@ -747,24 +673,20 @@
         function setupHostConnection(conn) {
             conn.on('data', data => {
                 if (data.type === 'joinReq') {
-                    conn.customPeerId = data.peerId; // Save robust mapping for race condition prevention
                     if (players.length >= MAX_PLAYERS) return;
                     players.push({ id: data.peerId, name: `Player`, isBot: false, colorId: getAvailableColors()[0], connection: conn });
                     syncLobby();
                     update(ref(db, `uno_rooms/${currentRoomId}`), { currentPlayers: players.length });
                 }
                 else if (data.type === 'changeColor') {
-                    const peerId = conn.customPeerId || conn.peer;
-                    const p = players.find(x => x.id === peerId);
-                    if (p && !players.some(x => x.colorId === data.colorId && x.id !== peerId)) {
+                    const p = players.find(x => x.id === conn.peer);
+                    if (p && !players.some(x => x.colorId === data.colorId && x.id !== conn.peer)) {
                         p.colorId = data.colorId; syncLobby();
                     }
                 }
-                else if (data.type === 'action') {
-                    handlePlayerAction(conn.customPeerId || conn.peer, data.action, data.payload);
-                }
+                else if (data.type === 'action') handlePlayerAction(conn.peer, data.action, data.payload);
             });
-            conn.on('close', () => handleClientDisconnect(conn.customPeerId || conn.peer));
+            conn.on('close', () => handleClientDisconnect(conn.peer));
         }
 
         document.getElementById('btn-add-bot').onclick = () => {
@@ -798,10 +720,6 @@
 
         function broadcastGameState() {
             if (!isHost) return;
-            
-            // Fix: Include current players array inside gameSync to avoid race conditions with lobbySync
-            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, colorId: p.colorId }));
-            
             const safeGame = {
                 status: game.status,
                 deckCount: game.deck.length,
@@ -810,10 +728,8 @@
                 direction: game.direction,
                 currentColor: game.currentColor,
                 challengeData: game.challengeData,
-                players: safePlayers,
                 playerStates: {}
             };
-            
             players.forEach(p => {
                 safeGame.playerStates[p.id] = {
                     cardCount: game.playerStates[p.id].hand.length,
@@ -825,13 +741,8 @@
 
             connections.forEach(c => {
                 if(c.open) {
-                    const targetPeerId = c.customPeerId || c.peer;
-                    const targetState = game.playerStates[targetPeerId];
-                    // Safeguard to prevent crashing if old connection is still around
-                    if (targetState) {
-                        const pState = { ...safeGame, myHand: targetState.hand };
-                        c.send({ type: 'gameSync', game: pState });
-                    }
+                    const pState = { ...safeGame, myHand: game.playerStates[c.peer].hand };
+                    c.send({ type: 'gameSync', game: pState });
                 }
             });
             renderGame({ ...safeGame, myHand: game.playerStates[myPeerId].hand });
@@ -860,9 +771,6 @@
                 if (me) myColorId = me.colorId;
                 renderLobby();
             } else if (data.type === 'gameSync') {
-                if (data.game.players) {
-                    players = data.game.players;
-                }
                 if (game.status === 'waiting' && data.game.status === 'playing') {
                     switchScreen('screen-game', 'top-status-bar');
                     announce('เริ่มเกมแล้ว!', true);
@@ -1146,8 +1054,7 @@
 
             if (currentPlayer.isBot) {
                 clearTimeout(myBotDelay);
-                // Reduced Bot Delay by 0.5s (from 3500 to 3000)
-                const delay = 3000 + Math.random() * 2000;
+                const delay = 3500 + Math.random() * 2000;
                 myBotDelay = setTimeout(() => {
                     if (game.status !== 'playing' || players[game.turnIndex].id !== currentPlayer.id) return;
                     
@@ -1230,7 +1137,7 @@
         }
 
         function renderGame(gameState) {
-            // Update current turn heading safely
+            // Update current turn heading
             const turnPlayerObj = players[gameState.turnIndex];
             if (turnPlayerObj) {
                 document.getElementById('current-turn-heading').textContent = `ถึงรอบ${getPronounName(turnPlayerObj)}`;
@@ -1238,24 +1145,22 @@
 
             if (gameState.turnIndex !== game.lastTurnIndex) {
                 const currentPlayer = players[gameState.turnIndex];
-                if (currentPlayer) {
-                    const pronoun = getPronounName(currentPlayer);
-                    
-                    if (currentPlayer.id === myPeerId) {
-                        let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
-                        if (gameState.topDiscard) {
-                            const displayCard = {...gameState.topDiscard};
-                            if (displayCard.color === 'wild' && gameState.currentColor) {
-                                displayCard.color = gameState.currentColor;
-                            }
-                            
-                            let cardName = getCardARIA(displayCard);
-                            announceMsg += ` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`;
+                const pronoun = getPronounName(currentPlayer);
+                
+                if (currentPlayer.id === myPeerId) {
+                    let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
+                    if (gameState.topDiscard) {
+                        const displayCard = {...gameState.topDiscard};
+                        if (displayCard.color === 'wild' && gameState.currentColor) {
+                            displayCard.color = gameState.currentColor;
                         }
-                        announce(announceMsg);
-                    } else {
-                        announce(`ถึงรอบ${pronoun}แล้ว`);
+                        
+                        let cardName = getCardARIA(displayCard);
+                        announceMsg += ` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`;
                     }
+                    announce(announceMsg);
+                } else {
+                    announce(`ถึงรอบ${pronoun}แล้ว`);
                 }
                 game.lastTurnIndex = gameState.turnIndex;
             }
@@ -1290,19 +1195,17 @@
                 const cDef = COLORS.find(c => c.id === p.colorId);
                 const pName = getPronounName(p);
                 
-                if (pState) {
-                    ariaStatusBarText += `${pName} มีการ์ด ${pState.cardCount} ใบ คะแนน ${pState.score}. `;
-                    
-                    const charDiv = document.createElement('div');
-                    charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`;
-                    charDiv.setAttribute('aria-hidden', 'true');
-                    charDiv.innerHTML = `
-                        <div class="char-cards-count">${pState.cardCount} ใบ</div>
-                        <div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':'😊'}</span></div>
-                        <div class="char-score">คะแนน: ${pState.score}</div>
-                    `;
-                    statusBar.appendChild(charDiv);
-                }
+                ariaStatusBarText += `${pName} มีการ์ด ${pState.cardCount} ใบ คะแนน ${pState.score}. `;
+                
+                const charDiv = document.createElement('div');
+                charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`;
+                charDiv.setAttribute('aria-hidden', 'true');
+                charDiv.innerHTML = `
+                    <div class="char-cards-count">${pState.cardCount} ใบ</div>
+                    <div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':'😊'}</span></div>
+                    <div class="char-score">คะแนน: ${pState.score}</div>
+                `;
+                statusBar.appendChild(charDiv);
             });
             statusBar.setAttribute('aria-label', ariaStatusBarText);
 
@@ -1340,8 +1243,7 @@
             if (myHand.length > 8) myContainer.classList.add('compact');
             else myContainer.classList.remove('compact');
 
-            // Safe logic for finding turn based on accurate players list
-            const isMyTurn = turnPlayerObj && turnPlayerObj.id === myPeerId && !gameState.challengeData;
+            const isMyTurn = players[gameState.turnIndex].id === myPeerId && !gameState.challengeData;
             
             myHand.forEach((card, idx) => {
                 const playable = isMyTurn && isValidPlay(card, myHand);
@@ -1375,7 +1277,7 @@
             }
 
             // UNO Button Condition Logic
-            if (isMyTurn && myHand.length === 2 && myState && !myState.declaredUNO && playableCardsCount > 0) {
+            if (isMyTurn && myHand.length === 2 && !myState.declaredUNO && playableCardsCount > 0) {
                 btnUno.disabled = false;
                 btnUno.onclick = () => {
                     btnUno.disabled = true;
