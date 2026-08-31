@@ -381,9 +381,6 @@
         const soundBuffers = {};
         const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc'];
         
-        let turnAudioEnqueued = 0; // ติดตามจำนวนคิวของเสียง turn ที่กำลังจะเล่น/กำลังเล่นอยู่
-        let pendingABC = false; // ร้องขอการเล่น abc รอไว้
-
         async function initAudio() {
             for (let name of soundNames) {
                 try {
@@ -398,24 +395,7 @@
         let bgmNode = null;
         function playSound(name, onEndedCb = null) {
             if(audioCtx.state === 'suspended') audioCtx.resume();
-
-            const handleTurnEnded = () => {
-                if (name === 'turn') {
-                    turnAudioEnqueued = Math.max(0, turnAudioEnqueued - 1);
-                    // หากไม่มีคิวเสียง turn ค้างอยู่ และมีคำสั่งขอเล่น abc ล่วงหน้า
-                    if (turnAudioEnqueued === 0 && pendingABC) {
-                        pendingABC = false;
-                        // ยืนยันอีกครั้งว่ารอบปัจจุบันยังคงเป็นของตัวผู้เล่นเองจริงๆ
-                        const currentPlayer = players[game.turnIndex];
-                        if (currentPlayer && currentPlayer.id === myPeerId && !currentPlayer.isBot) {
-                            playSound('abc');
-                        }
-                    }
-                }
-            };
-
             if(!soundBuffers[name]) {
-                handleTurnEnded();
                 if(onEndedCb) onEndedCb();
                 return null;
             }
@@ -424,12 +404,9 @@
             source.connect(audioCtx.destination);
             source.start(0);
             
-            source.onended = () => {
-                handleTurnEnded();
-                if (onEndedCb) {
-                    onEndedCb();
-                }
-            };
+            if (onEndedCb) {
+                source.onended = onEndedCb;
+            }
             if (name === 'bgm') {
                 source.loop = true;
                 bgmNode = source;
@@ -1182,7 +1159,6 @@
                 case 'passTurn': {
                     const p = players.find(x => x.id === data.playerId);
                     if (p) msg = `${getPronounName(p)} จบตา`;
-                    turnAudioEnqueued++;
                     playSound('turn');
                     break;
                 }
@@ -1221,10 +1197,7 @@
                         if (target) msg += `, ส่งผลให้ ${getPronounName(target)} ถูกใช้ Wild Draw Four ต้องเลือกว่าจะ Challenge หรือไม่`;
                     }
                     
-                    if (!data.isWin) {
-                        sequence.push('turn');
-                        turnAudioEnqueued++;
-                    }
+                    if (!data.isWin) sequence.push('turn');
 
                     const playSeq = (arr) => {
                         if (!arr || arr.length === 0) return;
@@ -1589,17 +1562,8 @@
                 const currentPlayer = players[gameState.turnIndex];
                 if (currentPlayer) {
                     if (currentPlayer.id === myPeerId && !currentPlayer.isBot) {
-                        // หากมีเสียง turn อยู่ในคิว ให้รอการประมวลผลก่อน
-                        if (turnAudioEnqueued > 0) {
-                            pendingABC = true;
-                        } else {
-                            playSound('abc');
-                        }
-                    } else {
-                        // ไม่ใช่ Turn ของเรา ต้องยกเลิกการรอเล่น abc หากมีค้างอยู่
-                        pendingABC = false;
+                        playSound('abc');
                     }
-
                     const pronoun = getPronounName(currentPlayer);
                     if (currentPlayer.id === myPeerId) {
                         let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
@@ -1713,7 +1677,7 @@
                 } else if (myState && myState.hasDrawn) {
                     btnDraw.disabled = true;
                     btnPass.disabled = false;
-                    btnPass.onclick = () => { turnAudioEnqueued++; playSound('turn'); sendAction('pass'); };
+                    btnPass.onclick = () => { playSound('turn'); sendAction('pass'); };
                 } else {
                     btnDraw.disabled = false;
                     btnPass.disabled = true;
