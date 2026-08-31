@@ -883,7 +883,7 @@ function handleClientData(data) {
 		showUnoEffect();
 	} else if (data.type === 'endGame') {
 		game.status = 'ended'; 
-		doWinAnimation(data.winner, () => {
+		doWinAnimation(() => {
 			showResult(data.winnerId, data.scores, data.matchOver);
 		});
 	} else if (data.type === 'playSound') {
@@ -936,7 +936,7 @@ function doStartAnimation(callback) {
 	}, 5000);
 }
 
-function doWinAnimation(winner, callback) {
+function doWinAnimation(callback) {
 	stopBGM();
 	const animDiv = document.createElement('div');
 	animDiv.id = 'win-anim-screen';
@@ -949,7 +949,7 @@ function doWinAnimation(winner, callback) {
 	const steps = [
 		{ time: 200, text: 'Uno' },
 		{ time: 1200, text: 'กำลังทำการสรุปผล' },
-		{ time: 2500, text: 'ได้แก่ ' + winner }
+		{ time: 2500, text: 'ได้แก่' }
 	];
 	
 	steps.forEach(step => {
@@ -1386,11 +1386,9 @@ function handleWin(winnerId) {
 	
 	if (isHost) {
 		broadcastGameState(); 
-		const winnerPlayer = players.find(p => p.id === winnerId);
-		const winnerName = winnerPlayer ? getPronounName(winnerPlayer) : 'ผู้เล่น';
-		connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, winner: winnerName, scores: score, matchOver: game.matchOver }); });
+		connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, scores: score, matchOver: game.matchOver }); });
 		game.status = 'ended'; 
-		doWinAnimation(winnerName, () => {
+		doWinAnimation(() => {
 			showResult(winnerId, score, game.matchOver);
 		});
 	}
@@ -1428,10 +1426,6 @@ function processTurnTimer() {
 			if (validCards.length > 0) {
 				const playChoice = validCards[Math.floor(Math.random() * validCards.length)];
 				handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)], isAuto: true });
-				
-				if (game.playerStates[currentPlayer.id].hand.length === 0 && game.status !== 'ended') {
-					handleWin(currentPlayer.id);
-				}
 			} else {
 				if (!state.hasDrawn) {
 					handlePlayerAction(currentPlayer.id, 'draw', { isAuto: true });
@@ -1465,10 +1459,6 @@ window.turnTimerInterval = setInterval(() => {
 		if (validCards.length > 0) {
 			const playChoice = validCards[Math.floor(Math.random() * validCards.length)];
 			handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)], isAuto: true });
-			
-			if (game.playerStates[currentPlayer.id].hand.length === 0 && game.status !== 'ended') {
-				handleWin(currentPlayer.id);
-			}
 		} else {
 			if (!state.hasDrawn) {
 				handlePlayerAction(currentPlayer.id, 'draw', { isAuto: true });
