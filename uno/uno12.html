@@ -379,7 +379,7 @@
         // --- Web Audio API System ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const soundBuffers = {};
-        const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc'];
+        const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win'];
         
         async function initAudio() {
             for (let name of soundNames) {
@@ -1150,10 +1150,7 @@
                 }
                 case 'drawCard': {
                     const p = players.find(x => x.id === data.playerId);
-                    if (p) {
-                        msg = `${getPronounName(p)} จั่วการ์ด 1 ใบ`;
-                        if (p.isBot || data.isAuto) playSound('jua');
-                    }
+                    if (p) msg = `${getPronounName(p)} จั่วการ์ด 1 ใบ`;
                     break;
                 }
                 case 'passTurn': {
@@ -1177,35 +1174,24 @@
                         msg += ` เปลี่ยนเป็นสี${colorNames[data.selectedColor]}`;
                     }
 
-                    const sequence = [];
-                    if (p.isBot || data.isAuto) sequence.push('select');
-
                     if (data.effect === 'skip') {
-                        sequence.push('skip');
+                        playSoundEvent('skip', true);
                         const target = players.find(x => x.id === data.targetId);
                         if (target) msg += `, ส่งผลให้ ${getPronounName(target)} ถูกใช้การ์ด skip ข้ามตา`;
                     } else if (data.effect === 'reverse') {
-                        sequence.push('reverse');
+                        playSoundEvent('reverse', true);
                         msg += `, ทำการกลับทิศทางการเล่น`;
                     } else if (data.effect === 'draw2') {
-                        sequence.push('draw2');
+                        playSoundEvent('draw2', true);
                         const target = players.find(x => x.id === data.targetId);
                         if (target) msg += `, ส่งผลให้ ${getPronounName(target)} โดนบังคับจั่ว 2 ใบและถูกข้ามตา`;
                     } else if (data.effect === 'wild4') {
-                        sequence.push('draw4');
+                        playSoundEvent('draw4', true);
                         const target = players.find(x => x.id === data.targetId);
                         if (target) msg += `, ส่งผลให้ ${getPronounName(target)} ถูกใช้ Wild Draw Four ต้องเลือกว่าจะ Challenge หรือไม่`;
+                    } else {
+                        playSound('turn');
                     }
-                    
-                    if (!data.isWin) sequence.push('turn');
-
-                    const playSeq = (arr) => {
-                        if (!arr || arr.length === 0) return;
-                        const s = arr.shift();
-                        playSound(s, () => playSeq(arr));
-                    };
-                    playSeq(sequence);
-
                     break;
                 }
                 case 'playerJoined': {
@@ -1226,7 +1212,7 @@
             if(isHost) connections.forEach(c => { if (c.open) c.send({ type: 'gameEvent', eventData: eventData }); });
         }
 
-        function handlePlayerAction(peerId, action, payload = null) {
+        function handlePlayerAction(peerId, action, payload) {
             if (!isHost || game.status !== 'playing') return;
             const currentPlayer = players[game.turnIndex];
             
@@ -1283,18 +1269,13 @@
                     game.discardPile.push(card);
                     game.currentColor = card.color !== 'wild' ? card.color : payload.selectedColor;
 
-                    const isWin = state.hand.length === 0;
-                    const isAuto = payload && payload.isAuto;
-
                     if (state.hand.length === 0) { 
                         broadcastGameEvent({
                             type: 'playCard',
                             playerId: peerId,
                             card: card,
                             selectedColor: payload.selectedColor,
-                            effect: 'none',
-                            isWin: isWin,
-                            isAuto: isAuto
+                            effect: 'none'
                         });
                         handleWin(peerId); 
                         return; 
@@ -1308,9 +1289,7 @@
                             card: card,
                             selectedColor: payload.selectedColor,
                             effect: 'skip',
-                            targetId: nextPlayer.id,
-                            isWin: isWin,
-                            isAuto: isAuto
+                            targetId: nextPlayer.id
                         });
                         nextTurn(2);
                     }
@@ -1320,9 +1299,7 @@
                             playerId: peerId,
                             card: card,
                             selectedColor: payload.selectedColor,
-                            effect: 'reverse',
-                            isWin: isWin,
-                            isAuto: isAuto
+                            effect: 'reverse'
                         });
                         game.direction = game.direction === 1 ? -1 : 1;
                         nextTurn(players.length === 2 ? 2 : 1);
@@ -1335,9 +1312,7 @@
                             card: card,
                             selectedColor: payload.selectedColor,
                             effect: 'draw2',
-                            targetId: nextPlayer.id,
-                            isWin: isWin,
-                            isAuto: isAuto
+                            targetId: nextPlayer.id
                         });
                         drawCardHost(players[(game.turnIndex + game.direction + players.length) % players.length].id, 2); 
                         nextTurn(2); 
@@ -1350,9 +1325,7 @@
                             card: card,
                             selectedColor: payload.selectedColor,
                             effect: 'wild4',
-                            targetId: nextPlayer.id,
-                            isWin: isWin,
-                            isAuto: isAuto
+                            targetId: nextPlayer.id
                         });
                         game.challengeData = { victimId: nextPlayer.id, attackerId: peerId, prevColor: game.currentColor };
                         broadcastGameState();
@@ -1363,22 +1336,20 @@
                             playerId: peerId,
                             card: card,
                             selectedColor: payload.selectedColor,
-                            effect: 'none',
-                            isWin: isWin,
-                            isAuto: isAuto
+                            effect: 'none'
                         });
                         nextTurn(1);
                     }
                 }
             } else if (action === 'draw') {
                 if (!state.hasDrawn) {
-                    broadcastGameEvent({ type: 'drawCard', playerId: peerId, isAuto: payload && payload.isAuto });
+                    broadcastGameEvent({ type: 'drawCard', playerId: peerId });
                     drawCardHost(peerId, 1);
                     state.hasDrawn = true;
                     
                     const validCardsCount = state.hand.filter(c => isValidPlay(c, state.hand)).length;
                     if (validCardsCount === 0) {
-                        broadcastGameEvent({ type: 'passTurn', playerId: peerId, isAuto: payload && payload.isAuto });
+                        broadcastGameEvent({ type: 'passTurn', playerId: peerId });
                         nextTurn(1);
                     } else {
                         broadcastGameState();
@@ -1386,7 +1357,7 @@
                 }
             } else if (action === 'pass') {
                 if (state.hasDrawn) {
-                    broadcastGameEvent({ type: 'passTurn', playerId: currentPlayer.id, isAuto: payload && payload.isAuto });
+                    broadcastGameEvent({ type: 'passTurn', playerId: currentPlayer.id });
                     nextTurn(1);
                 }
             }
@@ -1453,12 +1424,12 @@
 
                     if (validCards.length > 0) {
                         const playChoice = validCards[Math.floor(Math.random() * validCards.length)];
-                        handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)], isAuto: true });
+                        handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)] });
                     } else {
                         if (!state.hasDrawn) {
-                            handlePlayerAction(currentPlayer.id, 'draw', { isAuto: true });
+                            handlePlayerAction(currentPlayer.id, 'draw');
                         } else {
-                            handlePlayerAction(currentPlayer.id, 'pass', { isAuto: true });
+                            handlePlayerAction(currentPlayer.id, 'pass');
                         }
                     }
                 }, delay);
@@ -1486,12 +1457,12 @@
                 }
                 if (validCards.length > 0) {
                     const playChoice = validCards[Math.floor(Math.random() * validCards.length)];
-                    handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)], isAuto: true });
+                    handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)] });
                 } else {
                     if (!state.hasDrawn) {
-                        handlePlayerAction(currentPlayer.id, 'draw', { isAuto: true });
+                        handlePlayerAction(currentPlayer.id, 'draw');
                     } else {
-                        handlePlayerAction(currentPlayer.id, 'pass', { isAuto: true });
+                        handlePlayerAction(currentPlayer.id, 'pass');
                     }
                 }
             }
@@ -1561,9 +1532,6 @@
             if (gameState.turnIndex !== game.lastTurnIndex) {
                 const currentPlayer = players[gameState.turnIndex];
                 if (currentPlayer) {
-                    if (currentPlayer.id === myPeerId && !currentPlayer.isBot) {
-                        playSound('abc');
-                    }
                     const pronoun = getPronounName(currentPlayer);
                     if (currentPlayer.id === myPeerId) {
                         let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
@@ -1828,13 +1796,12 @@
                 const btnUno = document.getElementById('btn-uno');
                 if(btnUno && !btnUno.disabled && game.status === 'playing') btnUno.click();
             }
-            if (e.altKey && e.key.toLowerCase() === 'c') {
-                e.preventDefault();
-                if(game.status === 'playing') {
-                    const ariaLabel = document.getElementById('discard-aria-label');
-                    if (ariaLabel && ariaLabel.textContent) {
-                        announce(ariaLabel.textContent);
-                    }
+            if (e.altKey && e.key === 'c') {
+                if(game.status === 'playing' && game.topDiscard) {
+                    const displayCard = {...game.topDiscard};
+                    if (displayCard.color === 'wild' && game.currentColor) displayCard.color = game.currentColor;
+                    const cardName = getCardARIA(displayCard);
+                    announce(`${cardName} แสดงอยู่`);
                 }
             }
             if (e.altKey && e.key === 't') {
