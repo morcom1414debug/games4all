@@ -2,14 +2,267 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>No Thanks! - เกมออนไลน์เพื่อทุกคน</title>
     
     <!-- PeerJS สำหรับการเชื่อมต่อ P2P ระหว่างเล่นเกม -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
-    <!-- นำเข้า CSS ที่แยกออกไป -->
+    <!-- นำเข้า CSS เดิม -->
     <link rel="stylesheet" href="style.css">
+
+    <!-- CSS เฉพาะสำหรับการจัด Layout หน้าเกม (Responsive & Mobile First) -->
+    <style>
+        /* -----------------------------------------
+           Layout หน้าเล่นเกม (Mobile First)
+           ----------------------------------------- */
+        #screen-game.active {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh; /* บังคับให้พอดีจอ ไม่ต้อง Scroll */
+            width: 100%;
+            overflow: hidden;
+            padding: 0;
+            box-sizing: border-box;
+            background-color: #121212;
+        }
+
+        /* ส่วนที่ 1: Game Header */
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: env(safe-area-inset-top, 10px) 15px 10px 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            z-index: 20;
+        }
+
+        #title-game {
+            font-size: clamp(1.1rem, 4vw, 1.5rem);
+            margin: 0;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            color: white;
+            text-align: left;
+            flex: 1;
+            /* แก้ปัญหา Screen reader เจอแต่ผู้มองเห็นไม่เห็น ด้วยการยกเลิก sr-only ซ่อนแอบ */
+            position: static !important;
+            clip: auto !important;
+            width: auto !important;
+            height: auto !important;
+        }
+
+        #btn-refresh-audio {
+            font-size: 1.5rem;
+            background: transparent;
+            border: none;
+            padding: 5px 10px;
+            margin: 0;
+            cursor: pointer;
+            box-shadow: none;
+            display: none; /* ถูกควบคุมด้วย game.js */
+        }
+
+        /* Timer Bar */
+        #timer-bar-container {
+            padding: 10px 15px 0 15px;
+            z-index: 20;
+        }
+        #timer-bar-text {
+            text-align: center; 
+            font-weight: bold; 
+            font-size: clamp(12px, 3vw, 16px); 
+            margin-bottom: 5px; 
+            color: #aaa;
+        }
+
+        /* Game Board (พื้นที่ตรงกลางทั้งหมด) */
+        .game-board {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* ส่วนที่ 2: พื้นที่กองไพ่และไพ่เปิด (แนวนอนเสมอ) */
+        .game-table-area {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            align-items: center;
+            justify-items: center;
+            flex: 1; /* ดันให้ขยายเต็มพื้นที่ตรงกลาง */
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #deck-info-container, #table-info-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+
+        /* กองไพ่คว่ำ */
+        .deck-card {
+            width: clamp(90px, 25vw, 130px);
+            aspect-ratio: 2.5 / 3.5;
+            background: repeating-linear-gradient(45deg, #2b2b2b, #2b2b2b 10px, #333 10px, #333 20px);
+            border: 2px solid #555;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.4);
+        }
+        .deck-card span { font-size: clamp(1.5rem, 5vw, 2.5rem); }
+        #deck-count { font-size: clamp(1.2rem, 4vw, 1.8rem); font-weight: bold; margin-top: 5px; }
+
+        /* ไพ่เปิดและเหรียญ */
+        .table-card-wrapper {
+            position: relative;
+            width: clamp(90px, 25vw, 130px);
+            aspect-ratio: 2.5 / 3.5;
+        }
+
+        #table-card-display {
+            width: 100%;
+            height: 100%;
+            background: white;
+            color: black;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(2.5rem, 8vw, 3.5rem);
+            font-weight: bold;
+            border: 2px solid #ccc;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: opacity 0.3s;
+        }
+
+        .coins-badge {
+            position: absolute;
+            bottom: -15px;
+            right: -15px;
+            background: radial-gradient(circle, #ffd54f, #f57f17);
+            color: #3e2723;
+            font-weight: bold;
+            padding: 6px 12px;
+            border-radius: 20px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.6);
+            font-size: clamp(1rem, 4vw, 1.2rem);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            z-index: 5;
+            transition: transform 0.2s;
+        }
+
+        /* ปุ่ม Action (ผ่าน/รับไพ่) */
+        #game-controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        #game-controls button {
+            padding: 12px 20px;
+            font-size: clamp(1rem, 4vw, 1.2rem);
+            flex: 1;
+            max-width: 150px;
+            margin: 0;
+        }
+
+        /* ส่วนที่ 3: สถานะผู้เล่นเครื่องนี้ */
+        #my-status-group {
+            background: rgba(0, 0, 0, 0.7);
+            border-top: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px 16px 0 0;
+            padding: 15px;
+            padding-bottom: calc(env(safe-area-inset-bottom, 10px) + 15px);
+            box-sizing: border-box;
+            width: 100%;
+            transition: background 0.3s;
+        }
+        #my-status-group.active-turn {
+            background: rgba(46, 125, 50, 0.4);
+            border-top: 2px solid #4CAF50;
+        }
+
+        /* ปุ่มดูสถานะคนอื่น (Floating Button) */
+        #btn-view-others {
+            position: fixed;
+            bottom: calc(env(safe-area-inset-bottom, 10px) + 100px); /* ลอยอยู่เหนือ status bar ตัวเอง */
+            right: 15px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1976D2, #1565C0);
+            color: white;
+            border: 2px solid #0D47A1;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+        }
+        #btn-view-others:active { transform: scale(0.95); }
+
+        /* Modal หน้าจอสถานะผู้เล่นทุกคน */
+        #all-players-section {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100dvh;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 200;
+            flex-direction: column;
+            padding: env(safe-area-inset-top, 20px) 15px env(safe-area-inset-bottom, 20px) 15px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #all-players-section[style*="display: block"] {
+            display: flex !important; 
+        }
+        .all-players-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #btn-close-all-players {
+            background: #d32f2f;
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 8px;
+            margin: 0;
+            width: auto;
+        }
+
+        /* Decorative Layer */
+        #visual-players-layer {
+            position: absolute; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            z-index: 5; 
+            pointer-events: none;
+        }
+    </style>
 </head>
 <body>
 
@@ -26,7 +279,7 @@
     </div>
 
     <!-- 1. หน้าแรก (Main Menu) -->
-    <main id="screen-main" class="screen" style="position: relative;">
+    <main id="screen-main" class="screen active" style="position: relative;">
         <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'">🏠</button>
         <h1 tabindex="-1" id="title-main" style="margin-top: 10px; text-align: center; font-size: 36px; text-transform: uppercase; letter-spacing: 2px;">No Thanks!</h1>
         <p style="text-align: center; font-size: 16px; color: var(--text-muted); margin-top: -10px;">การ์ดเกมนี้สำหรับการสันทนาการร่วมกัน</p>
@@ -98,69 +351,88 @@
         <button id="btn-leave-room" class="danger" aria-label="ออกจากห้อง" style="margin: 0 auto;">ออกจากห้อง</button>
     </main>
 
-    <!-- 4. หน้าเล่นเกม -->
+    <!-- 4. หน้าเล่นเกม (แก้ไขโครงสร้าง Layout ใหม่ตามกฎเหล็ก) -->
     <main id="screen-game" class="screen">
-        <!-- ส่วนที่ 1: Game Header (ชิดซ้าย = Heading Turn, ชิดขวา = ปุ่ม Refresh Audio) -->
+        
+        <!-- ส่วนที่ 1: Game Header -->
         <div class="game-header">
             <h2 tabindex="-1" id="title-game">กำลังเล่นเกม</h2>
-            <button id="btn-refresh-audio" aria-label="รีเฟรชระบบเสียง" style="display: none;">🔊</button>
+            <button id="btn-refresh-audio" aria-label="รีเฟรชระบบเสียง">🔊</button>
         </div>
         
         <!-- Timer Bar สำหรับผู้เล่นที่มองเห็น -->
-        <div id="timer-bar-container" style="display: none; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 12px;" aria-hidden="true">
-            <div id="timer-bar-text" style="text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 6px; color: var(--text-muted); text-transform: uppercase;">เหลือเวลา 40 วินาที</div>
-            <div style="width: 100%; background: #222; height: 10px; border-radius: 8px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">
-                <div id="timer-bar-fill" style="width: 100%; height: 100%; background-color: var(--primary); transition: width 0.2s linear, background-color 0.3s; border-radius: 8px;"></div>
+        <div id="timer-bar-container" style="display: none;" aria-hidden="true">
+            <div id="timer-bar-text">เหลือเวลา 40 วินาที</div>
+            <div style="width: 100%; background: #222; height: 12px; border-radius: 8px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">
+                <div id="timer-bar-fill" style="width: 100%; height: 100%; background-color: #2196F3; transition: width 0.2s linear, background-color 0.3s; border-radius: 8px;"></div>
             </div>
         </div>
 
         <!-- Decorative Visual Players Layer -->
-        <div id="visual-players-layer" aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none;"></div>
+        <div id="visual-players-layer" aria-hidden="true"></div>
 
-        <!-- ส่วนที่ 2: พื้นที่กองไพ่และไพ่เปิด (แนวนอน ซ้าย-ขวา เสมอ) -->
+        <!-- Board Area หลัก -->
         <div class="game-board" role="region" aria-label="กระดานกลาง">
-            <div id="deck-info-container" tabindex="0">
-                <span aria-hidden="true">ไพ่คงเหลือในกอง: <span id="deck-count">24</span> ใบ</span>
-            </div>
             
-            <div id="table-info-container" tabindex="0">
-                <div class="table-card" aria-hidden="true" id="table-card-display">-</div>
-                <div class="table-coins" aria-hidden="true">🪙 เหรียญบนไพ่: <span id="table-coins-display">0</span></div>
+            <!-- ส่วนที่ 2: พื้นที่กองไพ่และไพ่เปิด -->
+            <div class="game-table-area">
+                <!-- ฝั่งซ้าย: กองไพ่ -->
+                <div id="deck-info-container" tabindex="0">
+                    <div class="deck-card">
+                        <span aria-hidden="true">🃏</span>
+                        <div id="deck-count">33</div>
+                    </div>
+                </div>
+                
+                <!-- ฝั่งขวา: ไพ่ที่เปิด -->
+                <div id="table-info-container" tabindex="0">
+                    <div class="table-card-wrapper">
+                        <div id="table-card-display">-</div>
+                        <div class="coins-badge">
+                            <span aria-hidden="true">🪙</span>
+                            <span id="table-coins-display">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ปุ่มควบคุมการเล่นของตัวเอง -->
+            <div id="game-controls" style="display: none;">
+                <button id="btn-pass" class="btn-pass" aria-label="ผ่าน (จ่าย 1 เหรียญ)">ผ่าน (1🪙)</button>
+                <button id="btn-take" class="btn-take" aria-label="รับไพ่">รับไพ่</button>
+            </div>
+
+            <!-- ส่วนที่ 3: สถานะผู้เล่นเครื่องนี้ -->
+            <div id="my-status-group" tabindex="0">
+                <!-- ถูก Inject ข้อมูลโดย game.js -->
             </div>
         </div>
 
-        <div id="game-controls" class="controls" style="display: none; position: relative; z-index: 15;" role="group" aria-label="ตัวเลือกการเล่นของคุณ">
-            <button id="btn-pass" aria-label="ผ่าน จ่าย 1 เหรียญ">ผ่าน (-1 🪙)</button>
-            <button id="btn-take" aria-label="รับไพ่ และรับเหรียญบนโต๊ะ" style="background: linear-gradient(180deg, #1976D2, #1565C0); border-bottom-color: #0D47A1;">รับไพ่</button>
-        </div>
+        <!-- ปุ่มดูสถานะผู้เล่นทุกคน (ลอยอยู่มุมขวาล่าง) -->
+        <button id="btn-view-others" aria-label="ดูสถานะผู้เล่นทุกคน">👥</button>
 
-        <!-- ส่วนที่ 3: สถานะของผู้เล่นเครื่องนี้ -->
-        <div id="my-status-group" tabindex="0" role="group" class="player-card" style="position: relative; z-index: 15;">
-            <!-- JS จะใส่ข้อมูลสถานะรวมไว้ที่นี่ -->
-        </div>
-
-        <!-- Section แสดงผู้เล่นทุกคนฝังในหน้าเว็บ -->
-        <div id="all-players-section" class="all-players-section" tabindex="-1">
-            <h2 style="text-align: center; color: var(--focus-ring);" tabindex="-1" id="title-all-players">สถานะผู้เล่นทุกคน</h2>
-            <div id="all-players-list" role="list" style="display: flex; flex-direction: column; gap: 15px;"></div>
-            <button id="btn-close-all-players" style="margin: 30px auto 0 auto; display: block; max-width: 200px;">ปิด</button>
-        </div>
-
-        <!-- ปุ่มดูสถานะผู้เล่นทุกคนแบบ Floating Button -->
-        <button id="btn-view-others" class="floating-btn" aria-label="ดูสถานะผู้เล่นทุกคน">👥 สถานะผู้เล่นทุกคน</button>
-    </main>
-
-    <!-- 6. หน้าสรุปผล -->
-    <main id="screen-result" class="screen" style="text-align: center;">
-        <h2 tabindex="-1" id="title-result" style="font-size: 36px; text-transform: uppercase;">สรุปผลคะแนน</h2>
-        <div id="result-list" role="list" aria-label="อันดับและคะแนน" style="display: flex; flex-direction: column; gap: 15px; margin-top: 30px;"></div>
-        
-        <div style="margin-top: 35px; display: flex; justify-content: center;">
-            <button class="btn-home-result" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'">🏠 กลับสู่ชุมชน</button>
+        <!-- หน้าต่างดูสถานะคนอื่นทั้งหมด -->
+        <div id="all-players-section" style="display: none;">
+            <div class="all-players-header">
+                <h2 tabindex="-1" id="title-all-players" style="margin:0; font-size: 1.5rem;">สถานะผู้เล่นทุกคน</h2>
+                <button id="btn-close-all-players" aria-label="ปิดหน้าต่าง">❌ ปิด</button>
+            </div>
+            <div id="all-players-list">
+                <!-- ถูก Inject ข้อมูลโดย game.js -->
+            </div>
         </div>
     </main>
 
-    <!-- นำเข้า JavaScript ที่แยกออกไป -->
+    <!-- 5. หน้าสรุปผลคะแนนเมื่อจบเกม -->
+    <main id="screen-result" class="screen">
+        <h2 tabindex="-1" id="title-result" style="text-align: center; margin-bottom: 20px;">สรุปผลคะแนน</h2>
+        <div id="result-list" role="list" aria-label="รายชื่ออันดับคะแนน"></div>
+        <div style="text-align: center; margin-top: 30px;">
+            <button id="btn-back-main-result" onclick="location.reload()" aria-label="กลับเมนูหลัก">กลับเมนูหลัก</button>
+        </div>
+    </main>
+
+    <!-- เชื่อมต่อ Logic เกม -->
     <script type="module" src="game.js"></script>
 </body>
 </html>
