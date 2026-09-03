@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO Online - กติกาคลาสสิก</title>
+    
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+	<!-- เรียกใช้ไฟล์ CSS ที่นี่ -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="aria-polite" aria-live="polite" class="sr-only"></div>
+    <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
+
+    <div id="anim-overlay" class="anim-overlay" style="display: none;" aria-hidden="true">
+        <div id="anim-text" class="anim-text"></div>
+    </div>
+
+    <!-- Visual Animations Layer (Hidden from Screen Readers) -->
+    <div id="visual-fx-layer" aria-hidden="true"></div>
+
+    <main id="screen-main" class="screen active">
+<button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'"><span aria-hidden="true">🏠</span></button>
+        <h1 tabindex="-1" id="title-main" style="text-align: center; font-size: 36px; margin-top: 20px; letter-spacing: 2px;">UNO Online</h1>
+        
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+            <button id="btn-create-room"><span aria-hidden="true">➕</span> สร้างห้องใหม่</button>
+            <button id="btn-show-rules"><span aria-hidden="true">📖</span> วิธีเล่นและกติกา</button>
+        </div>
+
+        <h2 style="margin-top: 30px; font-size: 20px;">ห้องที่เปิดอยู่</h2>
+        <ul id="room-list" class="room-list" role="list" style="list-style: none; padding: 0;">
+            <li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">กำลังโหลดรายการห้อง...</li>
+        </ul>
+    </main>
+
+    <main id="screen-rules" class="screen">
+        <h2 tabindex="-1" id="title-rules">กติกา UNO</h2>
+        <div style="overflow-y: auto; flex: 1; padding-right: 10px; margin-bottom: 20px;" tabindex="0" aria-label="เนื้อหากติกา">
+            <p><strong>เป้าหมาย:</strong> ทิ้งไพ่ในมือให้หมดก่อนผู้เล่นคนอื่น</p>
+            <p><strong>ไพ่พิเศษ:</strong></p>
+            <ul>
+                <li><strong>Skip:</strong> ข้ามผู้เล่นคนถัดไป</li>
+                <li><strong>Reverse:</strong> กลับทิศทางการเล่น</li>
+                <li><strong>Draw Two:</strong> ผู้เล่นคนถัดไปต้องจั่วไพ่ 2 ใบและข้ามตา</li>
+                <li><strong>Wild:</strong> เลือกเปลี่ยนสีของเกมได้</li>
+                <li><strong>Wild Draw Four:</strong> เปลี่ยนสี และคนถัดไปจั่ว 4 ใบ (ลงได้เมื่อไม่มีสีที่ตรงกับกองทิ้งเท่านั้น) สามารถท้าทาย (Challenge) ได้</li>
+            </ul>
+        </div>
+        <button id="btn-close-rules" style="margin: 0 auto;">กลับหน้าหลัก</button>
+    </main>
+
+    <main id="screen-lobby" class="screen">
+        <h2 tabindex="-1" id="title-lobby">ล็อบบี้: <span id="lobby-room-id"></span></h2>
+        
+        <h3 style="font-size: 16px;">เลือกสีผู้เล่น</h3>
+        <div id="color-selection" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center;" role="group" aria-label="เลือกสี"></div>
+
+        <h3 style="font-size: 16px;">ผู้เล่นในห้อง (<span id="lobby-player-count">1</span>/6)</h3>
+        <ul id="lobby-player-list" style="list-style: none; margin-bottom: 20px;" role="list"></ul>
+
+        <div id="host-controls" style="display: none; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+            <h3 style="text-align: center; font-size: 16px; margin-bottom: 10px;">การจัดการ Bot</h3>
+            <div class="bot-controls">
+                <button id="btn-remove-bot" class="danger" aria-label="ลดบอท"><span aria-hidden="true">-</span></button>
+                <span id="bot-count-display" aria-hidden="true">0</span>
+                <button id="btn-add-bot" aria-label="เพิ่มบอท"><span aria-hidden="true">+</span></button>
+            </div>
+            <button id="btn-start-game" style="margin: 0 auto; display: block;"><span aria-hidden="true">🚀</span> เริ่มเกม</button>
+        </div>
+        <button id="btn-leave-lobby" class="danger" style="margin: 20px auto 0 auto;">ออกจากห้อง</button>
+    </main>
+
+    <main id="screen-game" class="screen">
+        <button id="btn-refresh-audio" class="btn-refresh-audio" aria-label="รีเฟรชเสียง"><span aria-hidden="true">🔊</span> รีเฟรช</button>
+        
+        <div id="top-status-bar" tabindex="0">
+            </div>
+
+        <h2 id="current-turn-heading" tabindex="-1" style="text-align: center; color: var(--focus-ring); font-size: 20px; margin: 0 0 15px 0; padding: 8px; background: rgba(0,0,0,0.4); border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);">
+            </h2>
+
+        <div class="middle-area">
+            <div id="deck-container">
+                <div class="uno-card deck-pile" aria-hidden="true">
+                    <span class="deck-pile-top">UNO</span>
+                    <span class="deck-pile-mid" id="deck-count-visual">108</span>
+                    <span class="deck-pile-bot">ใบ</span>
+                </div>
+                <div class="sr-only" id="deck-aria-label">การ์ดในกองเหลือ 108 ใบ</div>
+            </div>
+
+            <div id="discard-container">
+                <div id="discard-pile" aria-hidden="true"></div>
+                <div class="sr-only" id="discard-aria-label">การ์ดที่แสดงคือ ...</div>
+            </div>
+        </div>
+        
+        <div id="challenge-area" style="display: none; width: 100%; margin-bottom: 15px;">
+            <p style="text-align: center; color: var(--focus-ring); margin-bottom: 10px;">มีการใช้ Wild Draw Four คุณต้องการ Challenge ไหม?</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="btn-challenge-yes">ใช่ Challenge!</button>
+                <button id="btn-challenge-no" class="danger">ไม่ยอมรับ (+4)</button>
+            </div>
+        </div>
+
+        <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 10px; flex: 1; display: flex; flex-direction: column;">
+            <div id="my-cards-container" role="group" aria-label="ไพ่ในมือ">
+                </div>
+            
+            <div class="bottom-actions">
+                <button id="btn-draw" class="info">จั่วการ์ด</button>
+                <button id="btn-pass" style="background: #757575; border-color: #424242;">จบตา</button>
+                <button id="btn-uno" class="danger" disabled>UNO</button>
+            </div>
+        </div>
+
+        <div id="color-picker-modal">
+            <h2 style="color: white; margin-bottom: 20px;" tabindex="-1" id="color-picker-title">เลือกสีสำหรับ Wild</h2>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+                <button class="color-btn card-red" onclick="selectWildColor('red')" aria-label="เลือกสีแดง"></button>
+                <button class="color-btn card-blue" onclick="selectWildColor('blue')" aria-label="เลือกสีน้ำเงิน"></button>
+                <button class="color-btn card-green" onclick="selectWildColor('green')" aria-label="เลือกสีเขียว"></button>
+                <button class="color-btn card-yellow" onclick="selectWildColor('yellow')" aria-label="เลือกสีเหลือง"></button>
+            </div>
+        </div>
+    </main>
+
+    <main id="screen-result" class="screen" style="text-align: center; justify-content: center;">
+        <div id="result-status-bar" style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 10px; background: rgba(0,0,0,0.4); border-radius: 12px; margin-bottom: 30px; flex-wrap: wrap; width: 100%;"></div>
+
+        <h1 tabindex="-1" id="title-result" style="font-size: 40px; color: var(--primary); margin-top: 10px;">จบเกม!</h1>
+        <h2 id="winner-text" style="font-size: 28px; margin-bottom: 30px;"><span aria-hidden="true">🏆</span> ผู้ชนะ: ...</h2>
+        
+        <div id="result-host-controls" style="display: none; margin-top: 30px; gap: 10px; justify-content: center;">
+            <button id="btn-play-again" style="width: auto;"><span aria-hidden="true">🔄</span> เล่นรอบใหม่</button>
+        </div>
+<button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="position: static; margin: 20px auto; display: block;"><span aria-hidden="true">🏠</span> กลับหน้าหลัก</button>
+    </main>
+	<!-- เรียกใช้ไฟล์ JS ที่นี่  -->
+    <script type="module" src="uno.js"></script>
+</body>
+</html>

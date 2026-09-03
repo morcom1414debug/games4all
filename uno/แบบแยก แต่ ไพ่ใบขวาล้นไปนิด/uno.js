@@ -30,13 +30,11 @@ function playSound(name, onEndedCb = null) {
 			// หากไม่มีคิวเสียง turn ค้างอยู่ และมีคำสั่งขอเล่น abc ล่วงหน้า
 			if (turnAudioEnqueued === 0 && pendingABC) {
 				pendingABC = false;
-				setTimeout(() => {
-					// ยืนยันอีกครั้งว่ารอบปัจจุบันยังคงเป็นของตัวผู้เล่นเองจริงๆ
-					const currentPlayer = players[game.turnIndex];
-					if (currentPlayer && currentPlayer.id === myPeerId && !currentPlayer.isBot) {
-						playSound('abc');
-					}
-				}, 1000);
+				// ยืนยันอีกครั้งว่ารอบปัจจุบันยังคงเป็นของตัวผู้เล่นเองจริงๆ
+				const currentPlayer = players[game.turnIndex];
+				if (currentPlayer && currentPlayer.id === myPeerId && !currentPlayer.isBot) {
+					playSound('abc');
+				}
 			}
 		}
 	};
@@ -1565,12 +1563,7 @@ function renderGame(gameState) {
 				if (turnAudioEnqueued > 0) {
 					pendingABC = true;
 				} else {
-					setTimeout(() => {
-						const cp = players[game.turnIndex];
-						if (cp && cp.id === myPeerId && !cp.isBot) {
-							playSound('abc');
-						}
-					}, 1000);
+					playSound('abc');
 				}
 			} else {
 				pendingABC = false;
@@ -1625,195 +1618,196 @@ function renderGame(gameState) {
 		if (pState) {
 			ariaStatusBarText += `${pName} มีการ์ด ${pState.cardCount} ใบ คะแนน ${pState.score}. `;
 			const charDiv = document.createElement('div');
-			charDiv.className = `character-card ${isTurn ? 'active-turn' : ''}`;
-			charDiv.dataset.playerId = p.id;
-			charDiv.style.border = `3px solid ${cDef ? cDef.hex : '#fff'}`;
-			if (isTurn) {
-				charDiv.style.boxShadow = `0 0 15px ${cDef ? cDef.hex : '#fff'}, inset 0 0 10px ${cDef ? cDef.hex : '#fff'}`;
-			} else {
-				charDiv.style.boxShadow = 'none';
-			}
+			charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`;
+			charDiv.setAttribute('data-player-id', p.id);
 			charDiv.setAttribute('aria-hidden', 'true');
-
 			charDiv.innerHTML = `
-				<div class="character-mascot" style="background:${cDef?cDef.hex:'#fff'}; border:1px solid #fff;"><span aria-hidden="true">${p.isBot?'🤖':getMascotEmoji(p.colorId)}</span></div>
-				<div class="character-name">${pName}</div>
-				<div class="character-card-count">🃏 ${pState.cardCount} ใบ</div>
-				<div style="font-size:12px; color:var(--text-muted);">⭐ ${pState.score}</div>
+				<div class="char-cards-count">${pState.cardCount} ใบ</div>
+				<div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':getMascotEmoji(p.colorId)}</span></div>
+				<div class="char-score">คะแนน: ${pState.score}</div>
 			`;
 			statusBar.appendChild(charDiv);
 		}
 	});
+	statusBar.setAttribute('aria-label', ariaStatusBarText);
 
-	const discardContainer = document.getElementById('discard-container');
-	discardContainer.innerHTML = '';
+	document.getElementById('deck-count-visual').textContent = gameState.deckCount;
+	document.getElementById('deck-aria-label').textContent = `การ์ดในกองเหลือ ${gameState.deckCount} ใบ`;
+
+	const discardEl = document.getElementById('discard-pile');
+	discardEl.innerHTML = '';
 	if (gameState.topDiscard) {
 		const displayCard = {...gameState.topDiscard};
-		if (displayCard.color === 'wild' && gameState.currentColor) {
-			displayCard.color = gameState.currentColor;
-		}
-		const topEl = renderCardHTML(displayCard);
-
-		const cDef = COLORS.find(c => c.id === gameState.currentColor);
-		if (cDef) {
-			topEl.style.boxShadow = `0 0 30px ${cDef.hex}, 0 0 10px ${cDef.hex}`;
-			topEl.style.borderColor = cDef.hex;
-		}
-
-		discardContainer.appendChild(topEl);
-		const cNames = {red:'สีแดง', blue:'สีน้ำเงิน', green:'สีเขียว', yellow:'สีเหลือง'};
-		const currentCName = cNames[gameState.currentColor] || 'ไม่ระบุสี';
-		discardContainer.setAttribute('aria-label', `กองทิ้ง การ์ดใบบนสุดคือ ${getCardARIA(displayCard)} สีปัจจุบันคือ ${currentCName}`);
+		if (displayCard.color === 'wild' && gameState.currentColor) displayCard.color = gameState.currentColor;
+		discardEl.appendChild(renderCardHTML(displayCard));
+		document.getElementById('discard-aria-label').textContent = `การ์ดที่แสดงคือ ${getCardARIA(displayCard)}`;
 	}
 
-	const deckContainer = document.getElementById('deck-container');
-	deckContainer.setAttribute('aria-label', `กองจั่ว การ์ดเหลือ ${gameState.deckCount} ใบ`);
-
-	const isMyTurn = players[gameState.turnIndex].id === myPeerId;
-	const isVictimOfChallenge = gameState.challengeData && gameState.challengeData.victimId === myPeerId;
-
-	const modal = document.getElementById('color-picker-modal');
-	if (modal.style.display !== 'flex' && !isVictimOfChallenge) {
-		toggleMainGameUI(true);
+	const chalArea = document.getElementById('challenge-area');
+	if (gameState.challengeData && gameState.challengeData.victimId === myPeerId) {
+		chalArea.style.display = 'block';
+		toggleMainGameUI(false);
+		document.getElementById('btn-challenge-yes').onclick = () => sendAction('challenge_yes');
+		document.getElementById('btn-challenge-no').onclick = () => sendAction('challenge_no');
+		setTimeout(() => document.getElementById('btn-challenge-yes').focus(), 100);
+	} else {
+		chalArea.style.display = 'none';
+		if (document.getElementById('color-picker-modal').style.display !== 'flex') {
+			toggleMainGameUI(true);
+		}
 	}
 
-	const isMyHandPlayable = isMyTurn && !gameState.challengeData;
-	const handContainer = document.getElementById('my-cards-container');
-	handContainer.innerHTML = '';
+	const myContainer = document.getElementById('my-cards-container');
+	myContainer.innerHTML = '';
 	
-	const myState = gameState.playerStates[myPeerId];
-	let myPlayableCount = 0;
-	if (myState) {
-		myHand.forEach((card, i) => {
-			const playable = isMyHandPlayable && isValidPlay(card, myHand);
-			if (playable) myPlayableCount++;
-			const cardEl = renderCardHTML(card, i, playable);
-			handContainer.appendChild(cardEl);
-		});
-	}
+	if (myHand.length > 8) myContainer.classList.add('compact');
+	else myContainer.classList.remove('compact');
 
-	const myStatusText = document.getElementById('my-status-info');
-	let statusText = `คุณมีการ์ดทั้งหมด ${myHand.length} ใบ `;
-	if (isMyTurn && !gameState.challengeData) {
-		statusText += `, เป็นตาของคุณ คุณมีการ์ดที่สามารถลงได้ ${myPlayableCount} ใบ`;
-	}
-	myStatusText.textContent = statusText;
+	const isMyTurn = turnPlayerObj && turnPlayerObj.id === myPeerId && !gameState.challengeData;
+	
+	myHand.forEach((card, idx) => {
+		const playable = isMyTurn && isValidPlay(card, myHand);
+		myContainer.appendChild(renderCardHTML(card, idx, playable));
+	});
 
 	const btnDraw = document.getElementById('btn-draw');
 	const btnPass = document.getElementById('btn-pass');
 	const btnUno = document.getElementById('btn-uno');
+	
+	const myState = gameState.playerStates[myPeerId];
+	const playableCardsCount = myHand.filter(card => isValidPlay(card, myHand)).length;
 
-	if (isMyTurn && !gameState.challengeData && myState) {
-		if (!myState.hasDrawn) {
-			btnDraw.style.display = 'inline-block';
-			disableBtn('btn-draw', false);
-			btnPass.style.display = 'none';
+	if (isMyTurn) {
+		if (myState && myState.declaredUNO && myHand.length === 2) {
+			btnDraw.disabled = true;
+			btnPass.disabled = true;
+		} else if (myState && myState.hasDrawn) {
+			btnDraw.disabled = true;
+			btnPass.disabled = false;
+			btnPass.onclick = () => { turnAudioEnqueued++; playSound('turn'); sendAction('pass'); };
 		} else {
-			btnDraw.style.display = 'none';
-			btnPass.style.display = 'inline-block';
-			disableBtn('btn-pass', false);
+			btnDraw.disabled = false;
+			btnPass.disabled = true;
+			btnDraw.onclick = () => { playSound('jua'); sendAction('draw'); };
 		}
 	} else {
-		btnDraw.style.display = 'inline-block';
-		disableBtn('btn-draw', true);
-		btnPass.style.display = 'none';
+		btnDraw.disabled = true;
+		btnPass.disabled = true;
 	}
 
-	if (myHand.length === 2 && !myState.declaredUNO) {
-		btnUno.style.display = 'inline-block';
-		disableBtn('btn-uno', false);
+	if (isMyTurn && myHand.length === 2 && myState && !myState.declaredUNO && playableCardsCount > 0) {
+		btnUno.disabled = false;
+		btnUno.onclick = () => {
+			btnUno.disabled = true;
+			sendAction('announce_uno');
+		};
 	} else {
-		btnUno.style.display = 'none';
-	}
-
-	const challengeContainer = document.getElementById('challenge-container');
-	challengeContainer.innerHTML = '';
-	if (isVictimOfChallenge) {
-		toggleMainGameUI(false); 
-		const attacker = players.find(p => p.id === gameState.challengeData.attackerId);
-		const cDiv = document.createElement('div');
-		cDiv.style.background = 'rgba(0,0,0,0.9)'; cDiv.style.padding = '20px'; cDiv.style.borderRadius = '15px'; cDiv.style.textAlign = 'center';
-		cDiv.style.border = '2px solid var(--accent-red)';
-		cDiv.innerHTML = `<h2 tabIndex="-1" id="challenge-heading" style="color:#f56462; font-size: 2rem;">ผู้เล่น ${getPronounName(attacker)} ใช้การ์ด Wild Draw Four!</h2><p style="font-size: 1.5rem;">คุณต้องการ Challenge (ท้าทาย) หรือไม่?</p>`;
-		
-		const btnYes = document.createElement('button');
-		btnYes.textContent = 'Challenge (ยอมรับความเสี่ยง)';
-		btnYes.style.margin = '10px'; btnYes.style.fontSize = '1.2rem'; btnYes.style.padding = '15px 25px';
-		btnYes.onclick = () => {
-			playSound('select');
-			toggleMainGameUI(true);
-			challengeContainer.innerHTML = '';
-			if (isHost) handlePlayerAction(myPeerId, 'challenge_yes');
-			else hostConnection.send({ type: 'action', action: 'challenge_yes' });
-		};
-
-		const btnNo = document.createElement('button');
-		btnNo.textContent = 'ไม่ Challenge (ยอมรับจั่ว 4 ใบ)';
-		btnNo.style.margin = '10px'; btnNo.style.fontSize = '1.2rem'; btnNo.style.padding = '15px 25px';
-		btnNo.onclick = () => {
-			playSound('select');
-			toggleMainGameUI(true);
-			challengeContainer.innerHTML = '';
-			if (isHost) handlePlayerAction(myPeerId, 'challenge_no');
-			else hostConnection.send({ type: 'action', action: 'challenge_no' });
-		};
-
-		cDiv.appendChild(btnYes); cDiv.appendChild(btnNo);
-		challengeContainer.appendChild(cDiv);
-		
-		setTimeout(() => {
-			document.getElementById('challenge-heading').focus();
-			announce(`ผู้เล่น ${getPronounName(attacker)} ใช้การ์ด Wild Draw Four! คุณต้องการ Challenge หรือไม่?`, true);
-		}, 100);
+		btnUno.disabled = true;
 	}
 }
 
 let pendingPlayCardIndex = -1;
+window.selectWildColor = function(color) {
+	broadcastSound('select');
+	document.getElementById('color-picker-modal').style.display = 'none';
+	toggleMainGameUI(true);
+	if (pendingPlayCardIndex !== -1) {
+		sendAction('play', { cardIndex: pendingPlayCardIndex, selectedColor: color });
+		pendingPlayCardIndex = -1;
+	}
+};
+
 function onCardClicked(index, card) {
+	broadcastSound('select');
 	if (card.color === 'wild') {
 		pendingPlayCardIndex = index;
-		toggleMainGameUI(false); 
 		const modal = document.getElementById('color-picker-modal');
 		modal.style.display = 'flex';
-		const title = document.getElementById('color-picker-title');
-		title.focus();
-		announce('กรุณาเลือกสีที่ต้องการเปลี่ยน', true);
+		toggleMainGameUI(false);
+		setTimeout(() => modal.querySelector('.color-btn').focus(), 100);
 	} else {
-		playSound('select');
-		executePlayCard(index, null);
+		sendAction('play', { cardIndex: index });
 	}
 }
 
-document.querySelectorAll('.color-pick-btn').forEach(btn => {
-	btn.onclick = (e) => {
-		const color = e.target.dataset.color;
-		playSound('select');
-		document.getElementById('color-picker-modal').style.display = 'none';
-		toggleMainGameUI(true);
-		executePlayCard(pendingPlayCardIndex, color);
-	};
-});
-
-function executePlayCard(index, selectedColor) {
-	if (isHost) handlePlayerAction(myPeerId, 'play', { cardIndex: index, selectedColor });
-	else hostConnection.send({ type: 'action', action: 'play', payload: { cardIndex: index, selectedColor } });
+function sendAction(action, payload = null) {
+	if (isHost) handlePlayerAction(myPeerId, action, payload);
+	else if (hostConnection && hostConnection.open) hostConnection.send({ type: 'action', action, payload });
 }
 
-document.getElementById('btn-draw').onclick = () => {
-	playSound('select');
-	if (isHost) handlePlayerAction(myPeerId, 'draw');
-	else hostConnection.send({ type: 'action', action: 'draw' });
-};
-document.getElementById('btn-pass').onclick = () => {
-	playSound('select');
-	if (isHost) handlePlayerAction(myPeerId, 'pass');
-	else hostConnection.send({ type: 'action', action: 'pass' });
-};
-document.getElementById('btn-uno').onclick = () => {
-	playSound('select');
-	if (isHost) handlePlayerAction(myPeerId, 'announce_uno');
-	else hostConnection.send({ type: 'action', action: 'announce_uno' });
-};
+function showResult(winnerId, score, matchOver = false) {
+	switchScreen('screen-result', 'title-result');
+	const winner = players.find(p => p.id === winnerId);
+	
+	let winnerHtml = `<span aria-hidden="true">🏆</span> ผู้ชนะ: ${getPronounName(winner)} (ได้คะแนนเพิ่ม: ${score})`;
+	
+	if (matchOver) {
+		const colorDef = COLORS.find(c => c.id === winner.colorId);
+		const colorName = colorDef ? colorDef.name : 'ไม่ทราบสี';
+		const kingTexts = [
+			`ตัวละคร${colorName} คือจ้าวแห่ง Uno!`,
+			`ขอแสดงความยินดี! ตัวละคร${colorName} ได้ก้าวขึ้นเป็นจ้าวแห่ง Uno!`,
+			`เกมจบสมบูรณ์! ตัวละคร${colorName} คว้าตำแหน่งจ้าวแห่ง Uno ไปครอง!`,
+			`ไม่มีใครหยุดได้! ตัวละคร${colorName} คือจ้าวแห่ง Uno ตัวจริง!`,
+			`ครองบัลลังก์สำเร็จ ตัวละคร${colorName} คือจ้าวแห่ง Uno แห่งห้องนี้!`
+		];
+		const randText = kingTexts[Math.floor(Math.random() * kingTexts.length)];
+		winnerHtml += `<br><br><span style="color: var(--focus-ring); font-size: 32px; font-weight: bold; text-shadow: 0 2px 10px rgba(255,215,0,0.5);">${randText}</span>`;
+	}
+
+	let scoreListHtml = `<div style="margin-top: 25px; font-size: 20px; color: var(--text-main);">
+		<div style="font-weight: bold; margin-bottom: 10px;">คะแนนสะสมปัจจุบันของผู้เล่นทุกคน</div>
+		<ul style="list-style: none; padding: 0;">`;
+	players.forEach(p => {
+		const cDef = COLORS.find(c => c.id === p.colorId);
+		const colorName = cDef ? cDef.name : 'ไม่ทราบสี';
+		const pScore = game.playerStates[p.id] ? game.playerStates[p.id].score : 0;
+		scoreListHtml += `<li style="margin-bottom: 5px;">${colorName}: คะแนนสะสม ${pScore} แต้ม</li>`;
+	});
+	scoreListHtml += `</ul></div>`;
+	
+	winnerHtml += scoreListHtml;
+
+	document.getElementById('winner-text').innerHTML = winnerHtml;
+	
+	const resultStatusBar = document.getElementById('result-status-bar');
+	if (resultStatusBar) {
+		resultStatusBar.innerHTML = '';
+		players.forEach(p => {
+			const pState = game.playerStates[p.id];
+			const cDef = COLORS.find(c => c.id === p.colorId);
+			if (pState) {
+				const charDiv = document.createElement('div');
+				charDiv.className = `character-card`;
+				charDiv.setAttribute('data-player-id', p.id);
+				charDiv.setAttribute('aria-hidden', 'true');
+				const cardCount = pState.cardCount !== undefined ? pState.cardCount : (pState.hand ? pState.hand.length : 0);
+				charDiv.innerHTML = `
+					<div class="char-cards-count">${cardCount} ใบ</div>
+					<div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':getMascotEmoji(p.colorId)}</span></div>
+					<div class="char-score">คะแนน: ${pState.score}</div>
+				`;
+				resultStatusBar.appendChild(charDiv);
+			}
+		});
+	}
+
+	if (isHost) {
+		document.getElementById('btn-start-game').style.display = 'block'; 
+		if (matchOver) {
+			document.getElementById('result-host-controls').style.display = 'none';
+		} else {
+			document.getElementById('result-host-controls').style.display = 'flex';
+			document.getElementById('btn-play-again').onclick = () => {
+				connections.forEach(c => { if(c.open) c.send({ type: 'startAnim' }); });
+				doStartAnimation(() => {
+					initUNOGame();
+					setTimeout(() => { playSound('bgm'); connections.forEach(c => { if(c.open) c.send({ type: 'playSound', soundName: 'bgm' }); }); }, 200);
+				});
+			};
+		}
+	}
+}
 
 function showAnimOverlay(text) {
 	if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -1821,59 +1815,42 @@ function showAnimOverlay(text) {
 	const textEl = document.getElementById('anim-text');
 	textEl.textContent = text;
 	overlay.style.display = 'flex';
-	setTimeout(() => { overlay.style.display = 'none'; }, 1000);
+	setTimeout(() => { overlay.style.display = 'none'; }, 1500);
 }
 
-function showResult(winnerId, score, matchOver) {
-	switchScreen('screen-result', 'result-title');
-	const winner = players.find(p => p.id === winnerId);
-	const title = document.getElementById('result-title');
-	const winnerText = document.getElementById('result-winner-text');
-	
-	const winnerName = winner ? getPronounName(winner) : 'ผู้เล่น';
-	if (matchOver) {
-		title.textContent = '🏆 จบการแข่งขัน!';
-		winnerText.textContent = `ผู้ชนะการแข่งขันได้แก่ ${winnerName}! คะแนนรอบนี้: +${score}`;
-	} else {
-		title.textContent = '🎉 จบรอบ!';
-		winnerText.textContent = `ผู้ชนะรอบนี้ได้แก่ ${winnerName}! ได้รับ +${score} คะแนน`;
+document.getElementById('btn-refresh-audio').onclick = () => {
+	 announce('รีเฟรชระบบเสียงแล้ว');
+	 if(audioCtx.state === 'suspended') audioCtx.resume();
+};
+
+document.addEventListener('keydown', (e) => {
+	if (e.altKey && e.key === 'p') {
+		const btnDraw = document.getElementById('btn-draw');
+		if(btnDraw && !btnDraw.disabled && game.status === 'playing') btnDraw.click();
 	}
-
-	const list = document.getElementById('result-score-list');
-	list.innerHTML = '';
-	players.slice().sort((a,b) => game.playerStates[b.id].score - game.playerStates[a.id].score).forEach((p, idx) => {
-		const li = document.createElement('li');
-		li.style.padding = '10px'; li.style.background = 'rgba(255,255,255,0.1)'; li.style.marginBottom = '5px'; li.style.borderRadius = '5px';
-		li.textContent = `อันดับ ${idx+1}: ${getPronounName(p)} - คะแนนรวม: ${game.playerStates[p.id].score} คะแนน`;
-		list.appendChild(li);
-	});
-
-	let ariaResultText = `${title.textContent} ${winnerText.textContent}. `;
-	players.forEach((p, idx) => {
-		ariaResultText += `อันดับ ${idx+1} ${getPronounName(p)} ${game.playerStates[p.id].score} คะแนน. `;
-	});
-	announce(ariaResultText, true);
-
-	const btnNext = document.getElementById('btn-next-round');
-	if (isHost) {
-		btnNext.style.display = 'inline-block';
-		btnNext.textContent = matchOver ? 'กลับสู่หน้าหลัก' : 'เริ่มรอบถัดไป';
-		btnNext.onclick = () => {
-			playSound('select');
-			if (matchOver) {
-				leaveLobby();
-			} else {
-				connections.forEach(c => { if(c.open) c.send({ type: 'startAnim' }); });
-				doStartAnimation(() => {
-					initUNOGame();
-					setTimeout(() => {
-						playSound('bgm');
-						connections.forEach(c => { if(c.open) c.send({ type: 'playSound', soundName: 'bgm' }); });
-					}, 200);
-				});
+	if (e.altKey && e.key === 'x') {
+		const btnPass = document.getElementById('btn-pass');
+		if(btnPass && !btnPass.disabled && game.status === 'playing') btnPass.click();
+	}
+	if (e.altKey && e.key === 'u') {
+		const btnUno = document.getElementById('btn-uno');
+		if(btnUno && !btnUno.disabled && game.status === 'playing') btnUno.click();
+	}
+	if (e.altKey && e.key.toLowerCase() === 'c') {
+		e.preventDefault();
+		if(game.status === 'playing') {
+			const ariaLabel = document.getElementById('discard-aria-label');
+			if (ariaLabel && ariaLabel.textContent) {
+				announce(ariaLabel.textContent);
 			}
-		};
-	} else {
-		btnNext.style.display = 'none';
+		}
 	}
-}
+	if (e.altKey && e.key === 't') {
+		if(game.status === 'playing') {
+			const elapsed = Math.floor((Date.now() - game.currentTurnStartTime) / 1000);
+			let rem = 40 - elapsed;
+			if(rem < 0) rem = 0;
+			announce(`เหลือเวลา ${rem} วินาที`);
+		}
+	}
+});
