@@ -1148,22 +1148,52 @@ function processBotTurn() {
 }
 
 function updateVisualPlayers() {
-    // ยกเลิกการสร้างตัวละครเรียงซ้ายขวาตามที่ได้รับมอบหมาย (ปิดการแสดงผล Visual Players Layer)
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const layer = document.getElementById('visual-players-layer');
-    if (layer) {
-        layer.innerHTML = '';
+    if (!layer) return;
+    layer.innerHTML = '';
+    
+    const isMobile = window.innerWidth < 600;
+    const radiusX = window.innerWidth / 2.5;
+    const radiusY = window.innerHeight / 3;
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2 - 50;
+
+    let meIndex = players.findIndex(p => p.peerId === myPeerId);
+    if (meIndex === -1) meIndex = 0;
+
+    let arrangedPlayers = [];
+    for (let i = 0; i < players.length; i++) {
+        arrangedPlayers.push(players[(meIndex + i) % players.length]);
     }
-    return;
+
+    arrangedPlayers.forEach((p, index) => {
+        const isTurn = (players[game.turnIndex] && players[game.turnIndex].id === p.id);
+        const avatar = document.createElement('div');
+        avatar.className = `visual-avatar ${isTurn ? 'is-turn' : ''}`;
+        avatar.id = `vis-avatar-${p.id}`;
+        avatar.style.backgroundColor = p.color.hex;
+        avatar.innerHTML = '<span aria-hidden="true">^ᴗ^</span>';
+        
+        if (index === 0) {
+            avatar.style.display = 'none'; // I hide ME from here because HUD handles it.
+        } else {
+            if (isMobile) {
+                const step = window.innerWidth / arrangedPlayers.length;
+                avatar.style.left = `${(index * step) - (step/2)}px`;
+                avatar.style.top = `40px`;
+            } else {
+                const angle = Math.PI + (index / arrangedPlayers.length) * Math.PI; 
+                avatar.style.left = `${centerX + Math.cos(angle) * radiusX}px`;
+                avatar.style.top = `${centerY + Math.sin(angle) * radiusY}px`;
+            }
+        }
+        layer.appendChild(avatar);
+    });
 }
 
 function updateGameUI() {
     const currentPlayer = players[game.turnIndex];
-    
-    // --- ปรับสี Turn Banner ตามผู้เล่นปัจจุบัน ---
-    const turnBanner = document.querySelector('.turn-banner');
-    if (turnBanner && currentPlayer && currentPlayer.color) {
-        turnBanner.setAttribute('data-color', currentPlayer.color.id);
-    }
     
     document.getElementById('title-game').textContent = `รอบของ${getPronoun(currentPlayer)}`;
 
@@ -1537,9 +1567,6 @@ function leaveRoom() {
     if (turnAnnounceTimeout) { clearTimeout(turnAnnounceTimeout); turnAnnounceTimeout = null; }
     visualStateMap.coins = -1;
     visualStateMap.cards = null;
-    
-    const turnBanner = document.querySelector('.turn-banner');
-    if (turnBanner) turnBanner.removeAttribute('data-color');
     
     switchScreen('screen-main', 'title-main');
     initRoomListener(); 
