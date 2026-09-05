@@ -9,10 +9,6 @@ const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip',
 let turnAudioEnqueued = 0; // ติดตามจำนวนคิวของเสียง turn ที่กำลังจะเล่น/กำลังเล่นอยู่
 let pendingABC = false; // ร้องขอการเล่น abc รอไว้
 
-// --- Global Audio Queue ---
-const audioQueue = [];
-let isAudioPlaying = false;
-
 async function initAudio() {
 	for (let name of soundNames) {
 		try {
@@ -25,15 +21,11 @@ async function initAudio() {
 initAudio();
 
 let bgmNode = null;
+function playSound(name, onEndedCb = null) {
+	if(audioCtx.state === 'suspended') audioCtx.resume();
 
-function processAudioQueue() {
-	if (isAudioPlaying || audioQueue.length === 0) return;
-	isAudioPlaying = true;
-
-	const task = audioQueue.shift();
-
-	const handleEnd = () => {
-		if (task.name === 'turn') {
+	const handleTurnEnded = () => {
+		if (name === 'turn') {
 			turnAudioEnqueued = Math.max(0, turnAudioEnqueued - 1);
 			// หากไม่มีคิวเสียง turn ค้างอยู่ และมีคำสั่งขอเล่น abc ล่วงหน้า
 			if (turnAudioEnqueued === 0 && pendingABC) {
@@ -45,51 +37,29 @@ function processAudioQueue() {
 				}
 			}
 		}
-		if (task.onEndedCb) task.onEndedCb();
-		isAudioPlaying = false;
-		processAudioQueue();
 	};
 
-	if (!soundBuffers[task.name]) {
-		handleEnd();
-		return;
+	if(!soundBuffers[name]) {
+		handleTurnEnded();
+		if(onEndedCb) onEndedCb();
+		return null;
 	}
-
 	const source = audioCtx.createBufferSource();
-	source.buffer = soundBuffers[task.name];
+	source.buffer = soundBuffers[name];
 	source.connect(audioCtx.destination);
+	source.start(0);
 	
-	source.onended = handleEnd;
-
-	try {
-		source.start(0);
-	} catch (e) {
-		console.warn('Audio start failed:', e);
-		handleEnd();
-	}
-}
-
-function playSound(name, onEndedCb = null) {
-	if(audioCtx.state === 'suspended') audioCtx.resume();
-
-	if (name === 'bgm') {
-		if(!soundBuffers[name]) {
-			if(onEndedCb) onEndedCb();
-			return null;
+	source.onended = () => {
+		handleTurnEnded();
+		if (onEndedCb) {
+			onEndedCb();
 		}
-		const source = audioCtx.createBufferSource();
-		source.buffer = soundBuffers[name];
-		source.connect(audioCtx.destination);
+	};
+	if (name === 'bgm') {
 		source.loop = true;
-		source.onended = () => { if (onEndedCb) onEndedCb(); };
-		source.start(0);
 		bgmNode = source;
-		return source;
 	}
-
-	audioQueue.push({ name, onEndedCb });
-	processAudioQueue();
-	return null; 
+	return source;
 }
 
 function stopBGM() {
@@ -108,8 +78,7 @@ function broadcastSound(soundName, playSelectFirst = false) {
 
 function playSoundEvent(soundName, playSelectFirst = false) {
 	if (playSelectFirst) {
-		playSound('select');
-		playSound(soundName);
+		playSound('select', () => playSound(soundName));
 	} else {
 		playSound(soundName);
 	}
@@ -1140,7 +1109,7 @@ function handleGameEvent(data) {
 			const p = players.find(x => x.id === data.playerId);
 			if (p) {
 				msg = `${getPronounName(p)} จั่วการ์ด 1 ใบ`;
-				playSound('jua');
+				if (p.isBot || data.isAuto) playSound('jua');
 			}
 			if (data.playerId === myPeerId) {
 				animateLocalDraw();
@@ -1178,7 +1147,7 @@ function handleGameEvent(data) {
 			}
 
 			const sequence = [];
-			sequence.push('select');
+			if (p.isBot || data.isAuto) sequence.push('select');
 
 			if (data.effect === 'skip') {
 				sequence.push('skip');
@@ -1202,7 +1171,13 @@ function handleGameEvent(data) {
 				turnAudioEnqueued++;
 			}
 
-			sequence.forEach(s => playSound(s));
+			const playSeq = (arr) => {
+				if (!arr || arr.length === 0) return;
+				const s = arr.shift();
+				playSound(s, () => playSeq(arr));
+			};
+			playSeq(sequence);
+
 			break;
 		}
 		case 'playerJoined': {
@@ -1565,6 +1540,7 @@ function renderGame(gameState) {
 		const headingEl = document.getElementById('current-turn-heading');
 		headingEl.textContent = `ถึงรอบ${getPronounName(turnPlayerObj)}`;
 		
+		// Color heading visual based on turn player's color
 		const cDef = COLORS.find(c => c.id === turnPlayerObj.colorId);
 		if (cDef) {
 			headingEl.style.backgroundColor = cDef.hex;
@@ -1708,11 +1684,11 @@ function renderGame(gameState) {
 		} else if (myState && myState.hasDrawn) {
 			btnDraw.disabled = true;
 			btnPass.disabled = false;
-			btnPass.onclick = () => { sendAction('pass'); };
+			btnPass.onclick = () => { turnAudioEnqueued++; playSound('turn'); sendAction('pass'); };
 		} else {
 			btnDraw.disabled = false;
 			btnPass.disabled = true;
-			btnDraw.onclick = () => { sendAction('draw'); };
+			btnDraw.onclick = () => { playSound('jua'); sendAction('draw'); };
 		}
 	} else {
 		btnDraw.disabled = true;
@@ -1732,6 +1708,7 @@ function renderGame(gameState) {
 
 let pendingPlayCardIndex = -1;
 window.selectWildColor = function(color) {
+	broadcastSound('select');
 	document.getElementById('color-picker-modal').style.display = 'none';
 	toggleMainGameUI(true);
 	if (pendingPlayCardIndex !== -1) {
@@ -1741,8 +1718,8 @@ window.selectWildColor = function(color) {
 };
 
 function onCardClicked(index, card) {
+	broadcastSound('select');
 	if (card.color === 'wild') {
-		playSound('select'); 
 		pendingPlayCardIndex = index;
 		const modal = document.getElementById('color-picker-modal');
 		modal.style.display = 'flex';
