@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOMINO</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0b1320; --surface-dark: #1e293b; --primary: #4CAF50; --primary-hover: #45a049;
+            --danger: #f44336; --danger-hover: #da190b; --text-main: #ffffff; --text-muted: #94a3b8;
+            --focus-ring: #ffc107; --uno-red: #f56462; --uno-blue: #00c3e5; --uno-green: #2ecc71;
+            --uno-yellow: #f7e018; --uno-purple: #9b59b6; --uno-orange: #e67e22; --uno-wild: #1e293b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-main); line-height: 1.6; padding: 10px; background: radial-gradient(circle at center, #1b382b 0%, #0d2116 50%, #050e09 100%); min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden; position: relative; }
+        body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.75) 100%); pointer-events: none; z-index: 1; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+        *:focus-visible { outline: 4px solid var(--focus-ring); outline-offset: 4px; border-radius: 4px; }
+        .screen { display: none; width: 100%; max-width: 1000px; margin: 0 auto; background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(16px); padding: 24px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.12); position: relative; z-index: 2; flex: 1; }
+        .screen.active { display: flex; flex-direction: column; animation: fadeIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        h1, h2, h3 { color: var(--focus-ring); text-shadow: 0 2px 6px rgba(0,0,0,0.6); margin-bottom: 20px; }
+        button { background: linear-gradient(180deg, var(--primary), #2e7d32); color: white; border: none; border-bottom: 4px solid #1b5e20; padding: 12px 18px; font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; border-radius: 10px; cursor: pointer; width: 100%; max-width: 300px; box-shadow: 0 6px 12px rgba(0,0,0,0.4); transition: all 0.15s ease; }
+        button:active:not(:disabled) { transform: translateY(4px); border-bottom: 0 solid transparent; box-shadow: none; }
+        button:hover:not(:disabled) { filter: brightness(1.12); }
+        button:disabled { background: #475569; border-bottom-color: #334155; cursor: not-allowed; opacity: 0.65; transform: none; }
+        button.danger { background: linear-gradient(180deg, var(--danger), #c62828); border-bottom: 4px solid #b71c1c; }
+        button.info { background: linear-gradient(180deg, #0284c7, #0369a1); border-bottom: 4px solid #075985; }
+        .btn-home-main { position: absolute; top: 12px; left: 12px; width: auto; font-size: 20px; padding: 6px 12px; border-radius: 8px; }
+        
+        .domino-tile { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 60px; height: 120px; border-radius: 8px; border: 2px solid #333; background: #fff; text-align: center; font-size: 24px; font-weight: 800; color: #111; cursor: pointer; box-shadow: 0 8px 16px rgba(0,0,0,0.5), inset 0 0 10px rgba(0,0,0,0.1); user-select: none; transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.25s ease; position: relative; overflow: hidden; }
+        .domino-tile .half { flex: 1; display: flex; justify-content: center; align-items: center; width: 100%; position: relative; }
+        .domino-tile .divider { width: 90%; height: 2px; background: #333; }
+        .domino-tile.horizontal { flex-direction: row; width: 120px; height: 60px; }
+        .domino-tile.horizontal .divider { width: 2px; height: 90%; }
+        .domino-tile:hover:not(.disabled) { transform: translateY(-12px) scale(1.06); box-shadow: 0 14px 24px rgba(0,0,0,0.6); }
+        .domino-tile:focus-visible { transform: translateY(-12px) scale(1.06); outline: 4px solid var(--focus-ring); outline-offset: 4px; }
+        .domino-tile.disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(50%); transform: none !important; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
+        .domino-tile.special { background: linear-gradient(135deg, #ffe0b2, #ffb74d); }
+        
+        .card-special-text { font-size: 14px; font-weight: 800; line-height: 1.1; word-wrap: break-word; overflow-wrap: break-word; color: #d84315; }
+        
+        #top-status-bar { display: flex; align-items: center; gap: 15px; padding: 12px 18px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; margin-bottom: 20px; overflow-x: auto; white-space: nowrap; width: 100%; position: relative; box-shadow: inset 0 2px 6px rgba(0,0,0,0.6); }
+        .direction-indicator { font-size: 32px; font-weight: bold; color: var(--focus-ring); padding-right: 15px; border-right: 2px solid rgba(255,255,255,0.2); display: inline-block; transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .character-card { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 80px; padding: 6px 10px; border-radius: 12px; border: 2px solid transparent; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); background: rgba(255,255,255,0.05); }
+        .character-card.is-turn { border-color: var(--focus-ring); background: rgba(255, 193, 7, 0.22); transform: scale(1.08); box-shadow: 0 0 20px rgba(255, 193, 7, 0.4); }
+        .char-cards-count { font-size: 13px; font-weight: 800; color: #fff; margin-bottom: 4px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 10px; }
+        .char-avatar { width: 44px; height: 44px; border-radius: 50%; border: 3px solid white; display: flex; justify-content: center; align-items: center; font-size: 22px; box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.4); position: relative; transition: transform 0.3s; }
+        .character-card.is-turn .char-avatar { animation: mascotPulse 1.8s infinite ease-in-out; }
+        @keyframes mascotPulse { 0%, 100% { transform: scale(1.05); box-shadow: 0 0 12px var(--focus-ring); } 50% { transform: scale(1.18); box-shadow: 0 0 22px var(--focus-ring), 0 0 30px rgba(255,255,255,0.8); } }
+        .char-score { font-size: 12px; color: var(--focus-ring); margin-top: 4px; font-weight: bold; }
+        
+        .middle-area { display: flex; justify-content: center; align-items: center; gap: 40px; margin: 20px 0; flex: 1; perspective: 800px; }
+        .deck-pile { background: linear-gradient(145deg, #2b1f1d, #1a1210); border: 3px solid #e2d8ce; color: white; border-radius: 8px; box-shadow: 3px 3px 0 #111, 6px 6px 0 #222, 9px 9px 0 #000, 0 10px 20px rgba(0,0,0,0.6); padding: 10px; }
+        .board-ends { display: flex; gap: 40px; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
+        .end-slot { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .end-label { font-size: 14px; color: var(--focus-ring); font-weight: bold; text-transform: uppercase; }
+        
+        #my-cards-container { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; width: 100%; margin-bottom: 20px; padding: 14px 8px 8px; }
+        .bottom-actions { display: flex; justify-content: space-between; gap: 12px; width: 100%; margin-top: auto; }
+        .bottom-actions button { flex: 1; margin: 0; max-width: none; font-size: 15px; padding: 12px 6px; }
+        
+        .bot-controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px; }
+        .bot-controls button { width: auto; padding: 10px 18px; font-size: 18px; }
+        .bot-controls span { font-size: 24px; font-weight: bold; width: 40px; text-align: center; color: var(--focus-ring); }
+        
+        .anim-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; pointer-events: none; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px); }
+        .anim-text { font-size: 3.5rem; font-weight: 900; color: var(--focus-ring); text-shadow: 0 0 25px #000; animation: popIn 1s forwards; text-align: center; }
+        .anim-domino { font-size: 5.5rem; font-weight: 900; color: var(--uno-yellow); text-shadow: 0 0 20px #000, 0 0 40px var(--focus-ring); animation: unoPopIn 1.5s ease-in-out forwards; text-align: center; }
+        
+        @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+        @keyframes unoPopIn { 0% { transform: scale(0.1) rotate(-10deg); opacity: 0; } 50% { transform: scale(1.4) rotate(5deg); opacity: 1; } 80% { transform: scale(1.1) rotate(0deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 0; } }
+        
+        #visual-fx-layer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 9990; overflow: hidden; }
+        
+        /* Modal for Left/Right Choice */
+        #choice-modal { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(11, 19, 32, 0.92); backdrop-filter: blur(8px); z-index: 100; display: none; justify-content: center; align-items: center; flex-direction: column; border-radius: 20px; }
+        .choice-btn { margin: 10px; width: 150px; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div id="aria-polite" aria-live="polite" class="sr-only"></div>
+    <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
+    <div id="anim-overlay" class="anim-overlay" style="display: none;" aria-hidden="true"><div id="anim-text" class="anim-text"></div></div>
+    <div id="visual-fx-layer" aria-hidden="true"></div>
+
+    <main id="screen-main" class="screen active">
+        <h1 tabindex="-1" id="title-main" style="text-align: center; font-size: 36px; margin-top: 20px; letter-spacing: 2px;">DOMINO Online</h1>
+        <p style="text-align: center; font-size: 16px; color: var(--text-muted); margin-top: -10px;">การพัฒนาต่อยอดสถาปัตยกรรมสู่เกมโดมิโน่</p>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 20px;">
+            <button id="btn-create-room"><span aria-hidden="true">➕</span> สร้างห้องใหม่</button>
+            <button id="btn-show-rules"><span aria-hidden="true">📖</span> วิธีเล่นและกติกา</button>
+        </div>
+        <h2 style="margin-top: 30px; font-size: 20px;">ห้องที่เปิดอยู่</h2>
+        <ul id="room-list" role="list" style="list-style: none; padding: 0;">
+            <li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">กำลังโหลดรายการห้อง...</li>
+        </ul>
+    </main>
+
+    <main id="screen-rules" class="screen">
+        <h2 tabindex="-1" id="title-rules">วิธีเล่นและกติกา DOMINO</h2>
+        <div style="overflow-y: auto; flex: 1; padding-right: 10px; margin-bottom: 20px;" tabindex="0">
+            <p><strong>🎯 เป้าหมาย:</strong> ทิ้งโดมิโน่ให้หมดมือ ผู้ที่มีคะแนนสะสมครบ 200 คะแนนก่อนเป็นผู้ชนะ [cite: 4, 12, 19]</p>
+            <h3 style="font-size: 15px; color: var(--focus-ring); margin: 12px 0 6px;">🃏 กติกาการเล่น</h3>
+            <ul style="margin-left: 20px; margin-bottom: 12px;">
+                <li>ใช้โดมิโน่แบบ Double-Nine (0-0 ถึง 9-9) จำนวน 55 แผ่น และการ์ดพิเศษ 20 แผ่น (รวม 75 แผ่น) [cite: 1, 2, 14, 19]</li>
+                <li>โดมิโน่จะวางได้เมื่อแต้มตรงกับปลายซ้ายหรือขวาบนโต๊ะ [cite: 1, 14, 19]</li>
+                <li>หากลงได้หลายฝั่ง ระบบจะให้เลือกว่าจะวางฝั่งซ้ายหรือขวา [cite: 1, 15, 19]</li>
+                <li>หากไม่มีตัวลง ระบบจะ <strong>จั่วอัตโนมัติ (Auto Draw)</strong> จนกว่าจะมีตัวลงได้ [cite: 1, 8, 15, 19]</li>
+                <li>หากลงแล้วยังมีตัวลงได้อีก <strong>สามารถลงต่อได้ในเทิร์นเดียวกัน</strong> [cite: 17, 19]</li>
+                <li>เมื่อเหลือ 2 ตัว ต้องกดปุ่ม <strong>DOMINO!</strong> [cite: 16, 19]</li>
+            </ul>
+        </div>
+        <button id="btn-close-rules" style="margin: 0 auto;">กลับหน้าหลัก</button>
+    </main>
+
+    <main id="screen-lobby" class="screen">
+        <h2 tabindex="-1" id="title-lobby">ล็อบบี้: <span id="lobby-room-id"></span></h2>
+        <h3 style="font-size: 16px;">ผู้เล่นในห้อง (<span id="lobby-player-count">1</span>/6)</h3>
+        <ul id="lobby-player-list" style="list-style: none; margin-bottom: 20px;" role="list"></ul>
+        <div id="host-controls" style="display: none; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+            <h3 style="text-align: center; font-size: 16px; margin-bottom: 10px;">การจัดการ Bot</h3>
+            <div class="bot-controls">
+                <button id="btn-remove-bot" class="danger" aria-label="ลดบอท"><span aria-hidden="true">-</span></button>
+                <span id="bot-count-display" aria-hidden="true">0</span>
+                <button id="btn-add-bot" aria-label="เพิ่มบอท"><span aria-hidden="true">+</span></button>
+            </div>
+            <button id="btn-start-game" style="margin: 0 auto; display: block;"><span aria-hidden="true">🚀</span> เริ่มเกม</button>
+        </div>
+        <button id="btn-leave-lobby" class="danger" style="margin: 20px auto 0 auto;">ออกจากห้อง</button>
+    </main>
+
+    <main id="screen-game" class="screen">
+        <div id="top-status-bar" tabindex="0"></div>
+        <h2 id="current-turn-heading" tabindex="-1" style="text-align: center; color: var(--focus-ring); font-size: 20px; margin: 0 0 15px 0; padding: 8px; background: rgba(0,0,0,0.4); border-radius: 10px;"></h2>
+        <div id="event-log" aria-live="polite" style="text-align: center; color: var(--text-muted); font-size: 14px; margin-bottom: 10px; height: 20px;"></div>
+
+        <div class="middle-area">
+            <div id="deck-container">
+                <div class="domino-tile deck-pile horizontal" aria-hidden="true" style="color:var(--focus-ring); font-size:16px;">
+                    DOMINO<br><span id="deck-count-visual">75</span>
+                </div>
+                <div class="sr-only" id="deck-aria-label">กองจั่วเหลือ 75 ตัว</div>
+            </div>
+
+            <div class="board-ends">
+                <div class="end-slot">
+                    <span class="end-label">ซ้าย</span>
+                    <div id="left-end-container"></div>
+                </div>
+                <div class="end-slot">
+                    <span class="end-label">ขวา</span>
+                    <div id="right-end-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 10px; flex: 1; display: flex; flex-direction: column;">
+            <div id="my-cards-container" role="group" aria-label="โดมิโน่ในมือ"></div>
+            <div class="bottom-actions">
+                <button id="btn-pass" style="background: #757575; border-color: #424242;">จบตา</button>
+                <button id="btn-domino-call" class="danger" disabled>DOMINO!</button>
+            </div>
+        </div>
+
+        <div id="choice-modal">
+            <h2 style="color: white; margin-bottom: 20px;">เลือกว่าจะวางฝั่งไหน</h2>
+            <div style="display: flex; gap: 20px;">
+                <button class="choice-btn info" id="btn-choice-left">ฝั่งซ้าย</button>
+                <button class="choice-btn info" id="btn-choice-right">ฝั่งขวา</button>
+                <button class="choice-btn danger" id="btn-choice-cancel">ยกเลิก</button>
+            </div>
+        </div>
+    </main>
+
+    <main id="screen-result" class="screen" style="text-align: center; justify-content: center;">
+        <div id="result-status-bar" style="display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap; width: 100%; margin-bottom: 30px;"></div>
+        <h1 tabindex="-1" id="title-result" style="font-size: 40px; color: var(--primary);">จบเกม!</h1>
+        <h2 id="winner-text" style="font-size: 24px; margin-bottom: 30px;"></h2>
+        <div id="result-host-controls" style="display: none; margin-top: 30px; gap: 10px; justify-content: center;">
+            <button id="btn-play-again" style="width: auto;"><span aria-hidden="true">🔄</span> เล่นรอบใหม่</button>
+        </div>
+        <button class="danger" style="margin: 20px auto; display: block;" onclick="location.reload()">กลับหน้าหลัก</button>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, update, remove, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
+            authDomain: "xo-game-134ec.firebaseapp.com",
+            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "xo-game-134ec",
+            storageBucket: "xo-game-134ec.firebasestorage.app",
+            messagingSenderId: "318375224157",
+            appId: "1:318375224157:web:6a2bc6432e96e549b77eb4"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const soundBuffers = {};
+        const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc'];
+        let bgmNode = null;
+        let isAudioPlaying = false;
+        const audioQueue = [];
+
+        async function initAudio() {
+            for (let name of soundNames) {
+                try {
+                    const response = await fetch(`audio/${name}.mp3`);
+                    if(response.ok) {
+                        const arrayBuffer = await response.arrayBuffer();
+                        soundBuffers[name] = await audioCtx.decodeAudioData(arrayBuffer);
+                    }
+                } catch (e) { console.warn('Audio load fail:', name); }
+            }
+        }
+        initAudio();
+
+        function processAudioQueue() {
+            if (isAudioPlaying || audioQueue.length === 0) return;
+            isAudioPlaying = true;
+            const task = audioQueue.shift();
+            const handleEnd = () => { if (task.onEndedCb) task.onEndedCb(); isAudioPlaying = false; processAudioQueue(); };
+            if (!soundBuffers[task.name]) { handleEnd(); return; }
+            const source = audioCtx.createBufferSource();
+            source.buffer = soundBuffers[task.name];
+            source.connect(audioCtx.destination);
+            source.onended = handleEnd;
+            try { source.start(0); } catch (e) { handleEnd(); }
+        }
+
+        function playSound(name, onEndedCb = null) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            if (name === 'bgm') {
+                if(!soundBuffers[name]) return null;
+                const source = audioCtx.createBufferSource();
+                source.buffer = soundBuffers[name];
+                source.connect(audioCtx.destination);
+                source.loop = true; source.start(0); bgmNode = source; return source;
+            }
+            audioQueue.push({ name, onEndedCb });
+            processAudioQueue();
+        }
+        function stopBGM() { if (bgmNode) { try { bgmNode.stop(); } catch(e){} bgmNode = null; } }
+
+        let peer = null, myPeerId = null, isHost = false, connections = [], hostConnection = null, currentRoomId = null;
+        let players = [];
+        const MAX_PLAYERS = 6;
+        const BOT_NAMES = ["บอทซุปเปอร์แมน", "บอทแมงมุม", "บอทมาริโอ้", "บอทนารูโตะ", "บอทโซนิค", "บอทปิกาจู", "บอทเบ็นเท็น", "บอทโดราเอมอน", "บอทลูฟี่", "บอทคิริโตะ"];
+        
+        let game = { status: 'waiting', deck: [], leftEnd: null, rightEnd: null, turnIndex: 0, direction: 1, playerStates: {}, log: [] };
+
+        let politeQueue = [], assertiveQueue = [], isAnnouncingPolite = false, isAnnouncingAssertive = false;
+        function processQueue(type) {
+            const isAssertive = type === 'assertive';
+            const queue = isAssertive ? assertiveQueue : politeQueue;
+            if (queue.length === 0) { if (isAssertive) isAnnouncingAssertive = false; else isAnnouncingPolite = false; return; }
+            if (isAssertive) isAnnouncingAssertive = true; else isAnnouncingPolite = true;
+            const text = queue.shift();
+            const el = document.getElementById(isAssertive ? 'aria-assertive' : 'aria-polite');
+            el.textContent = '';
+            setTimeout(() => { el.textContent = text; setTimeout(() => { el.textContent = ''; processQueue(type); }, Math.max(1000, text.length * 60)); }, 50);
+        }
+        function announce(text, assertive = false) {
+            if (!text) return;
+            if (assertive) { assertiveQueue.push(text); if (!isAnnouncingAssertive) processQueue('assertive'); }
+            else { politeQueue.push(text); if (!isAnnouncingPolite) processQueue('polite'); }
+        }
+
+        function switchScreen(screenId, focusId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            if (focusId) setTimeout(() => { const el = document.getElementById(focusId); if (el) el.focus(); }, 100);
+        }
+
+        peer = new Peer({ debug: 2 });
+        peer.on('open', id => { myPeerId = id; });
+        peer.on('connection', conn => {
+            if (isHost) {
+                conn.on('open', () => { connections.push(conn); setupHostConnection(conn); syncLobby(); });
+            }
+        });
+
+        document.getElementById('btn-show-rules').onclick = () => switchScreen('screen-rules', 'title-rules');
+        document.getElementById('btn-close-rules').onclick = () => switchScreen('screen-main', 'btn-show-rules');
+        document.getElementById('btn-leave-lobby').onclick = leaveLobby;
+
+        onValue(ref(db, 'domino_rooms'), (snapshot) => { if (document.getElementById('screen-main').classList.contains('active')) renderRoomList(snapshot.val()); });
+
+        function renderRoomList(rooms) {
+            const list = document.getElementById('room-list');
+            list.innerHTML = '';
+            if (!rooms) { list.innerHTML = '<li style="text-align:center; color:var(--text-muted);">ไม่มีห้องที่เปิดอยู่</li>'; return; }
+            Object.entries(rooms).filter(([id, r]) => Date.now() - r.lastActive < 120000 && r.status === 'waiting' && r.currentPlayers < MAX_PLAYERS).forEach(([id, room]) => {
+                const li = document.createElement('li'); li.style.margin = '10px 0';
+                const btn = document.createElement('button'); btn.style.width = '100%'; btn.style.maxWidth = '100%';
+                btn.innerHTML = `<span style="font-weight:bold;">ห้อง: ${id}</span> <span>ผู้เล่น ${room.currentPlayers}/6</span>`;
+                btn.onclick = () => { btn.disabled = true; joinRoom(id, room.hostPeerId); };
+                li.appendChild(btn); list.appendChild(li);
+            });
+            if(list.children.length===0) list.innerHTML = '<li style="text-align:center; color:var(--text-muted);">ไม่มีห้องที่เปิดอยู่</li>';
+        }
+
+        document.getElementById('btn-create-room').onclick = async () => {
+            if (!myPeerId) return;
+            playSound('1'); document.getElementById('btn-create-room').disabled = true;
+            try {
+                let nextId = 1;
+                const meta = await get(ref(db, 'domino_metadata/last_room_id'));
+                if (meta.exists()) nextId = (meta.val() % 99999) + 1;
+                await update(ref(db, 'domino_metadata'), { last_room_id: nextId });
+                currentRoomId = "domino" + String(nextId).padStart(5, '0');
+                isHost = true;
+                players = [{ id: myPeerId, name: "คุณ (Host)", isBot: false, score: 0 }];
+                await update(ref(db, `domino_rooms/${currentRoomId}`), { hostPeerId: myPeerId, status: 'waiting', currentPlayers: 1, lastActive: Date.now() });
+                setInterval(() => { if (isHost && game.status === 'waiting') update(ref(db, `domino_rooms/${currentRoomId}`), { lastActive: Date.now() }); }, 3000);
+                enterLobby();
+            } catch (err) { console.error(err); document.getElementById('btn-create-room').disabled = false; }
+        };
+
+        function joinRoom(roomId, hostPeerId) {
+            isHost = false; currentRoomId = roomId; announce('กำลังเชื่อมต่อ...');
+            hostConnection = peer.connect(hostPeerId, { reliable: true });
+            hostConnection.on('open', () => { hostConnection.send({ type: 'joinReq', peerId: myPeerId, name: "ผู้เล่น" }); enterLobby(); hostConnection.on('data', handleClientData); });
+        }
+        function leaveLobby() { stopBGM(); if (isHost && currentRoomId) remove(ref(db, `domino_rooms/${currentRoomId}`)); location.reload(); }
+
+        function enterLobby() {
+            switchScreen('screen-lobby', 'title-lobby');
+            document.getElementById('lobby-room-id').textContent = currentRoomId;
+            document.getElementById('host-controls').style.display = isHost ? 'block' : 'none';
+            renderLobby();
+        }
+
+        function renderLobby() {
+            const list = document.getElementById('lobby-player-list'); list.innerHTML = '';
+            document.getElementById('lobby-player-count').textContent = players.length;
+            players.forEach(p => {
+                const li = document.createElement('li'); li.style.padding = '10px'; li.style.background = 'rgba(0,0,0,0.3)'; li.style.marginBottom = '8px'; li.style.borderRadius = '8px';
+                li.innerHTML = `<span>${p.isBot?'🤖':'👤'} ${p.name}</span>`;
+                list.appendChild(li);
+            });
+            if(isHost) {
+                document.getElementById('bot-count-display').textContent = players.filter(p=>p.isBot).length;
+                document.getElementById('btn-add-bot').disabled = players.length >= MAX_PLAYERS;
+                document.getElementById('btn-start-game').disabled = players.length < 2;
+            }
+        }
+
+        function setupHostConnection(conn) {
+            conn.on('data', data => {
+                if (data.type === 'joinReq' && players.length < MAX_PLAYERS) {
+                    conn.customPeerId = data.peerId;
+                    players.push({ id: data.peerId, name: `ผู้เล่น${players.length+1}`, isBot: false, score: 0, conn });
+                    syncLobby(); update(ref(db, `domino_rooms/${currentRoomId}`), { currentPlayers: players.length });
+                } else if (data.type === 'action') handlePlayerAction(conn.customPeerId || conn.peer, data.action, data.payload);
+            });
+        }
+
+        document.getElementById('btn-add-bot').onclick = () => {
+            if (players.length < MAX_PLAYERS) {
+                const botName = BOT_NAMES[players.filter(p=>p.isBot).length % BOT_NAMES.length];
+                players.push({ id: 'bot_'+Date.now(), name: botName, isBot: true, score: 0 });
+                syncLobby(); playSound('select');
+            }
+        };
+        document.getElementById('btn-remove-bot').onclick = () => {
+            const botIdx = players.slice().reverse().findIndex(p => p.isBot);
+            if (botIdx !== -1) { players.splice(players.length - 1 - botIdx, 1); syncLobby(); playSound('select'); }
+        };
+
+        function syncLobby() {
+            if(!isHost) return;
+            renderLobby();
+            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, score: p.score }));
+            connections.forEach(c => { if(c.open) c.send({ type: 'lobbySync', players: safePlayers }); });
+        }
+
+        function broadcastGameState() {
+            if (!isHost) return;
+            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, score: p.score }));
+            const safeGame = { status: game.status, deckCount: game.deck.length, leftEnd: game.leftEnd, rightEnd: game.rightEnd, turnIndex: game.turnIndex, direction: game.direction, players: safePlayers, playerStates: {}, log: game.log };
+            players.forEach(p => safeGame.playerStates[p.id] = { cardCount: game.playerStates[p.id].hand.length, declared: game.playerStates[p.id].declared });
+            connections.forEach(c => {
+                const tid = c.customPeerId || c.peer;
+                if(game.playerStates[tid]) c.send({ type: 'gameSync', game: { ...safeGame, myHand: [...game.playerStates[tid].hand] } });
+            });
+            renderGame({ ...safeGame, myHand: [...game.playerStates[myPeerId].hand] });
+            processTurnLogic();
+        }
+
+        function handleClientData(data) {
+            if (data.type === 'lobbySync') { players = data.players; renderLobby(); }
+            else if (data.type === 'gameSync') {
+                if(game.status==='waiting' && data.game.status==='playing') switchScreen('screen-game', 'top-status-bar');
+                game = { ...game, ...data.game }; renderGame(data.game);
+            }
+            else if (data.type === 'playSound') playSound(data.name);
+            else if (data.type === 'startAnim') doStartAnimation();
+            else if (data.type === 'endGame') doEndGame(data.winner, data.scores);
+        }
+
+        function doStartAnimation(cb) {
+            stopBGM(); playSound('start');
+            const animDiv = document.createElement('div'); animDiv.className = 'anim-overlay'; animDiv.style.display = 'flex';
+            const text = document.createElement('div'); text.className = 'anim-domino'; text.textContent = 'DOMINO';
+            animDiv.appendChild(text); document.body.appendChild(animDiv);
+            announce("DOMINO เริ่มเกม!", true);
+            setTimeout(() => { animDiv.remove(); if(cb) cb(); }, 3500);
+        }
+
+        document.getElementById('btn-start-game').onclick = () => {
+            if (!isHost || players.length < 2) return;
+            document.getElementById('btn-start-game').style.display = 'none';
+            remove(ref(db, `domino_rooms/${currentRoomId}`));
+            connections.forEach(c => { if(c.open) c.send({ type: 'startAnim' }); });
+            doStartAnimation(() => { initGame(); setTimeout(() => { playSound('bgm'); connections.forEach(c => c.send({ type:'playSound', name:'bgm' })); }, 500); });
+        };
+
+        function getTileName(t) {
+            if(!t) return '';
+            if(t.type === 'number') return `${t.left} กับ ${t.right}`;
+            let spec = {'skip':'หลับ', 'draw2':'2+', 'draw3':'3+', 'reverse':'ย้อนศร'};
+            return `${t.left} กับ ${spec[t.type]}`;
+        }
+
+        function generateDeck() {
+            let deck = [];
+            for (let i = 0; i <= 9; i++) {
+                for (let j = i; j <= 9; j++) deck.push({ type: 'number', left: i, right: j, value: i + j });
+            }
+            for (let i = 0; i < 5; i++) deck.push({ type: 'skip', left: i, right: 'skip', value: 20 });
+            for (let i = 0; i < 5; i++) deck.push({ type: 'draw2', left: i + 5, right: 'draw2', value: 20 });
+            for (let i = 0; i < 5; i++) deck.push({ type: 'draw3', left: (i * 2) % 10, right: 'draw3', value: 20 });
+            for (let i = 0; i < 5; i++) deck.push({ type: 'reverse', left: (i * 2 + 1) % 10, right: 'reverse', value: 20 });
+            return deck.sort(() => Math.random() - 0.5);
+        }
+
+        function initGame() {
+            game.status = 'playing'; game.deck = generateDeck(); game.log = []; game.direction = 1;
+            players.forEach(p => game.playerStates[p.id] = { hand: [], declared: false, playedThisTurn: false });
+            players.forEach(p => { for(let i=0; i<7; i++) game.playerStates[p.id].hand.push(game.deck.pop()); });
+            
+            // Find highest double
+            let highest = -1, starterId = players[0].id;
+            players.forEach(p => {
+                game.playerStates[p.id].hand.forEach(t => {
+                    if (t.type === 'number' && t.left === t.right && t.left > highest) { highest = t.left; starterId = p.id; }
+                });
+            });
+            game.turnIndex = players.findIndex(p => p.id === starterId);
+            
+            let startTile = game.deck.find(t => t.type==='number'); 
+            game.leftEnd = startTile.left; game.rightEnd = startTile.right;
+            addLog(`เริ่มเกม ปลายคือ ${startTile.left} และ ${startTile.right}`);
+            broadcastGameState();
+        }
+
+        function isPlayable(tile) {
+            if(!game.leftEnd && !game.rightEnd) return true;
+            return tile.left === game.leftEnd || tile.left === game.rightEnd || tile.right === game.leftEnd || tile.right === game.rightEnd;
+        }
+
+        function addLog(msg) { game.log.unshift(msg); if(game.log.length > 5) game.log.pop(); announce(msg); }
+
+        function drawAuto(playerId) {
+            if (game.deck.length === 0) return false;
+            playSound('jua'); connections.forEach(c => c.send({type:'playSound', name:'jua'}));
+            game.playerStates[playerId].hand.push(game.deck.pop());
+            game.playerStates[playerId].declared = false;
+            return true;
+        }
+
+        function nextTurn() {
+            game.playerStates[players[game.turnIndex].id].playedThisTurn = false;
+            game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
+            playSound('turn'); connections.forEach(c => c.send({type:'playSound', name:'turn'}));
+            broadcastGameState();
+        }
+
+        function handlePlayerAction(peerId, action, payload) {
+            if (!isHost || game.status !== 'playing') return;
+            const currentPlayer = players[game.turnIndex];
+            const state = game.playerStates[peerId];
+
+            if (action === 'call_domino' && state.hand.length === 2 && !state.declared) {
+                state.declared = true; addLog(`${players.find(p=>p.id===peerId).name} ประกาศ DOMINO!`);
+                playSound('uno'); connections.forEach(c => c.send({type:'playSound', name:'uno'}));
+                broadcastGameState(); return;
+            }
+
+            if (currentPlayer.id !== peerId) return;
+
+            if (action === 'play') {
+                const tile = state.hand[payload.idx];
+                state.hand.splice(payload.idx, 1);
+                state.playedThisTurn = true;
+                
+                let matchLeft = (tile.left === game.leftEnd || tile.right === game.leftEnd);
+                let matchRight = (tile.left === game.rightEnd || tile.right === game.rightEnd);
+                
+                let side = payload.side; // 'left' or 'right'
+                if (side === 'left') game.leftEnd = (tile.left === game.leftEnd) ? tile.right : tile.left;
+                else game.rightEnd = (tile.left === game.rightEnd) ? tile.right : tile.left;
+
+                let tName = getTileName(tile);
+                addLog(`${currentPlayer.name} วาง ${tName} ฝั่ง${side==='left'?'ซ้าย':'ขวา'}`);
+
+                if (state.hand.length === 0) { handleWin(peerId); return; }
+
+                if (tile.type === 'skip') { addLog(`ข้ามตาผู้เล่นถัดไป!`); game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length; playSound('skip'); }
+                else if (tile.type === 'reverse') { addLog(`ย้อนศร!`); game.direction *= -1; playSound('reverse'); }
+                else if (tile.type === 'draw2') { 
+                    let nextId = players[(game.turnIndex + game.direction + players.length) % players.length].id;
+                    drawAuto(nextId); drawAuto(nextId); addLog(`บังคับจั่ว 2!`); playSound('draw2');
+                    game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
+                }
+                else if (tile.type === 'draw3') {
+                    let nextId = players[(game.turnIndex + game.direction + players.length) % players.length].id;
+                    drawAuto(nextId); drawAuto(nextId); drawAuto(nextId); addLog(`บังคับจั่ว 3!`); playSound('draw4');
+                    game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
+                }
+
+                if (state.hand.some(t => isPlayable(t))) {
+                    addLog(`${currentPlayer.name} ได้เล่นต่อในเทิร์นเดียวกัน`);
+                    broadcastGameState();
+                } else { nextTurn(); }
+            } else if (action === 'pass') {
+                if (state.playedThisTurn) nextTurn();
+            }
+        }
+
+        let botTimeout;
+        function processTurnLogic() {
+            if (!isHost || game.status !== 'playing') return;
+            const currentPlayer = players[game.turnIndex];
+            const state = game.playerStates[currentPlayer.id];
+            
+            let validMoves = state.hand.map((t, i) => ({tile: t, idx: i})).filter(x => isPlayable(x.tile));
+            
+            if (validMoves.length === 0) {
+                clearTimeout(botTimeout);
+                botTimeout = setTimeout(() => {
+                    addLog(`${currentPlayer.name} ไม่มีตัวลง กำลังจั่ว...`);
+                    if (drawAuto(currentPlayer.id)) { broadcastGameState(); }
+                    else { addLog(`กองจั่วหมด ${currentPlayer.name} ผ่าน`); nextTurn(); }
+                }, 1500);
+                return;
+            }
+
+            if (currentPlayer.isBot) {
+                clearTimeout(botTimeout);
+                botTimeout = setTimeout(() => {
+                    if (state.hand.length === 2 && !state.declared) handlePlayerAction(currentPlayer.id, 'call_domino');
+                    let move = validMoves[Math.floor(Math.random() * validMoves.length)];
+                    let side = (move.tile.left === game.leftEnd || move.tile.right === game.leftEnd) ? 'left' : 'right';
+                    handlePlayerAction(currentPlayer.id, 'play', { idx: move.idx, side });
+                }, 2000);
+            }
+        }
+
+        function handleWin(winnerId) {
+            let pts = 0;
+            players.forEach(p => { if(p.id !== winnerId) game.playerStates[p.id].hand.forEach(t => pts += t.value); });
+            players.find(p=>p.id===winnerId).score += pts;
+            game.status = 'ended';
+            connections.forEach(c => c.send({ type: 'endGame', winner: players.find(p=>p.id===winnerId).name, scores: players }));
+            doEndGame(players.find(p=>p.id===winnerId).name, players);
+        }
+
+        function doEndGame(winnerName, pList) {
+            stopBGM(); playSound('win');
+            switchScreen('screen-result', 'title-result');
+            let txt = `🏆 ผู้ชนะรอบนี้: ${winnerName}<br><br>คะแนนสะสม:<br>`;
+            pList.forEach(p => txt += `${p.name}: ${p.score} คะแนน<br>`);
+            document.getElementById('winner-text').innerHTML = txt;
+            if(isHost) {
+                document.getElementById('result-host-controls').style.display = 'flex';
+                document.getElementById('btn-play-again').onclick = () => { document.getElementById('btn-start-game').click(); };
+            }
+        }
+
+        let pendingPlayIdx = -1;
+        function renderGame(gameState) {
+            const myState = gameState.playerStates[myPeerId];
+            const isMyTurn = players[gameState.turnIndex].id === myPeerId;
+            
+            document.getElementById('current-turn-heading').textContent = `รอบของ ${players[gameState.turnIndex].name}`;
+            if(gameState.log.length>0) document.getElementById('event-log').textContent = gameState.log[0];
+            
+            document.getElementById('deck-count-visual').textContent = gameState.deckCount;
+            document.getElementById('left-end-container').innerHTML = `<div class="domino-tile"><div class="half">${gameState.leftEnd!==null?gameState.leftEnd:''}</div></div>`;
+            document.getElementById('right-end-container').innerHTML = `<div class="domino-tile"><div class="half">${gameState.rightEnd!==null?gameState.rightEnd:''}</div></div>`;
+
+            const handDiv = document.getElementById('my-cards-container'); handDiv.innerHTML = '';
+            (gameState.myHand || []).forEach((tile, idx) => {
+                let playable = isMyTurn && (tile.left === gameState.leftEnd || tile.right === gameState.leftEnd || tile.left === gameState.rightEnd || tile.right === gameState.rightEnd);
+                let btn = document.createElement('button');
+                btn.className = `domino-tile ${!playable ? 'disabled' : ''} ${tile.type !== 'number' ? 'special' : ''}`;
+                btn.innerHTML = `<div class="half">${tile.left}</div><div class="divider"></div><div class="half">${tile.type==='number'?tile.right: `<span class="card-special-text">${getTileName(tile).split(' ')[2]}</span>`}</div>`;
+                if(playable) {
+                    btn.onclick = () => {
+                        let mLeft = tile.left === gameState.leftEnd || tile.right === gameState.leftEnd;
+                        let mRight = tile.left === gameState.rightEnd || tile.right === gameState.rightEnd;
+                        if(mLeft && mRight && gameState.leftEnd !== gameState.rightEnd) {
+                            pendingPlayIdx = idx; document.getElementById('choice-modal').style.display = 'flex';
+                        } else {
+                            handlePlayerAction(myPeerId, 'play', { idx, side: mLeft ? 'left' : 'right' });
+                        }
+                    };
+                }
+                handDiv.appendChild(btn);
+            });
+
+            document.getElementById('btn-pass').disabled = !(isMyTurn && myState.playedThisTurn);
+            document.getElementById('btn-pass').onclick = () => handlePlayerAction(myPeerId, 'pass');
+            document.getElementById('btn-domino-call').disabled = !(isMyTurn && gameState.myHand.length === 2 && !myState.declared);
+            document.getElementById('btn-domino-call').onclick = () => handlePlayerAction(myPeerId, 'call_domino');
+
+            document.getElementById('top-status-bar').innerHTML = '';
+            players.forEach((p, i) => {
+                let st = gameState.playerStates[p.id];
+                if(st) {
+                    let div = document.createElement('div'); div.className = `character-card ${i===gameState.turnIndex?'is-turn':''}`;
+                    div.innerHTML = `<div class="char-cards-count">${st.cardCount} ตัว</div><div class="char-avatar">${p.isBot?'🤖':'👤'}</div><div class="char-score">${p.score}</div>`;
+                    document.getElementById('top-status-bar').appendChild(div);
+                }
+            });
+        }
+
+        document.getElementById('btn-choice-left').onclick = () => { document.getElementById('choice-modal').style.display='none'; handlePlayerAction(myPeerId, 'play', { idx: pendingPlayIdx, side: 'left' }); pendingPlayIdx = -1; };
+        document.getElementById('btn-choice-right').onclick = () => { document.getElementById('choice-modal').style.display='none'; handlePlayerAction(myPeerId, 'play', { idx: pendingPlayIdx, side: 'right' }); pendingPlayIdx = -1; };
+        document.getElementById('btn-choice-cancel').onclick = () => { document.getElementById('choice-modal').style.display='none'; pendingPlayIdx = -1; };
+
+    </script>
+</body>
+</html>
