@@ -285,12 +285,12 @@
 
             <div class="board-ends">
                 <div class="board-end-zone">
-                    <span class="board-label" aria-hidden="true">ปลายซ้าย</span>
+                    <span class="board-label">ปลายซ้าย</span>
                     <div id="board-left-container" aria-hidden="true"></div>
                     <div class="sr-only" id="board-left-aria">ปลายซ้ายว่าง</div>
                 </div>
                 <div class="board-end-zone">
-                    <span class="board-label" aria-hidden="true">ปลายขวา</span>
+                    <span class="board-label">ปลายขวา</span>
                     <div id="board-right-container" aria-hidden="true"></div>
                     <div class="sr-only" id="board-right-aria">ปลายขวาว่าง</div>
                 </div>
@@ -474,8 +474,7 @@
             direction: 1,
             playerStates: {}, 
             consecutivePasses: 0,
-            matchOver: false,
-            pendingSkips: 0
+            matchOver: false
         };
 
         function initPeer() {
@@ -662,16 +661,13 @@
                 const botName = availableNames[0] || `บอท_${Date.now().toString().slice(-4)}`;
                 players.push({ id: 'bot_' + Date.now(), name: botName, isBot: true, score: 0 });
                 syncLobby(); broadcastSound('select');
-                broadcastAnnounce(`เพิ่ม ${botName} เข้าห้องแล้ว`, true);
             }
         };
         document.getElementById('btn-remove-bot').onclick = () => {
             const botIdx = players.slice().reverse().findIndex(p => p.isBot);
             if (botIdx !== -1) {
-                const botToRemove = players[players.length - 1 - botIdx];
                 players.splice(players.length - 1 - botIdx, 1);
                 syncLobby(); broadcastSound('select');
-                broadcastAnnounce(`ลด ${botToRemove.name} ออกจากห้องแล้ว`, true);
             }
         };
 
@@ -772,7 +768,6 @@
             game.deck = generateDeck();
             game.leftEnd = null; game.rightEnd = null;
             game.direction = 1; game.consecutivePasses = 0;
-            game.pendingSkips = 0;
             
             let highestDoubleVal = -1;
             let starterIdx = 0;
@@ -856,10 +851,10 @@
             gState.players.forEach((p, idx) => {
                 const pState = gState.playerStates[p.id];
                 const isTurn = idx === gState.turnIndex;
-                ariaStatusBarText += `${p.name} มี ${pState.cardCount} ตัว แต้ม ${p.score}. `;
+                ariaStatusBarText += `${p.name} มือ ${pState.cardCount} แต้ม ${p.score}. `;
                 const charDiv = document.createElement('div');
                 charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`; charDiv.setAttribute('aria-hidden', 'true');
-                charDiv.innerHTML = `<div class="char-cards-count">มี ${pState.cardCount} ตัว</div><div class="char-name">${p.isBot?'🤖 ':'👤 '}${p.name}</div><div class="char-score">คะแนน: ${p.score}</div>`;
+                charDiv.innerHTML = `<div class="char-cards-count">${pState.cardCount} ใบ</div><div class="char-name">${p.isBot?'🤖 ':'👤 '}${p.name}</div><div class="char-score">คะแนน: ${p.score}</div>`;
                 statusBar.appendChild(charDiv);
             });
             statusBar.setAttribute('aria-label', ariaStatusBarText);
@@ -886,8 +881,8 @@
                 };
                 lCont.appendChild(renderEnd(gState.leftEnd));
                 rCont.appendChild(renderEnd(gState.rightEnd));
-                lAria.textContent = `ปลายซ้าย ${gState.leftEnd}`;
-                rAria.textContent = `ปลายขวา ${gState.rightEnd}`;
+                lAria.textContent = `ปลายซ้ายคือ ${gState.leftEnd}`;
+                rAria.textContent = `ปลายขวาคือ ${gState.rightEnd}`;
             }
 
             // Render Hand
@@ -988,24 +983,27 @@
 
             if (state.hand.length === 0) { handleWin(peerId); return; }
 
-            // Apply special effect (Pending skips to support comboing correctly without breaking logic)
+            // Apply special effect
             if (tile.type !== 'regular') {
+                const effectEnd = (game.leftEnd === null) ? null : newEnd; 
+                // In dominoes, effect happens instantly based on what was exposed.
+                // For simplicity, playing a special tile triggers its effect immediately.
                 if (tile.type === 'sleep') {
                     const target = players[(game.turnIndex + game.direction + players.length) % players.length];
                     broadcastAnnounce(`${target.name} ถูกข้ามตา`, true); playSound('skip');
-                    game.pendingSkips = (game.pendingSkips || 0) + 1;
+                    game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
                 } else if (tile.type === 'reverse') {
                     game.direction *= -1; broadcastAnnounce(`ทิศทางการเล่นกลับแล้ว`, true); playSound('reverse');
                 } else if (tile.type === 'draw2') {
                     const target = players[(game.turnIndex + game.direction + players.length) % players.length];
                     broadcastAnnounce(`${target.name} โดนจั่ว 2 ตัวและถูกข้ามตา`, true); playSound('draw2');
                     drawTiles(target.id, 2);
-                    game.pendingSkips = (game.pendingSkips || 0) + 1;
+                    game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
                 } else if (tile.type === 'draw3') {
                     const target = players[(game.turnIndex + game.direction + players.length) % players.length];
                     broadcastAnnounce(`${target.name} โดนจั่ว 3 ตัวและถูกข้ามตา`, true); playSound('draw4');
                     drawTiles(target.id, 3);
-                    game.pendingSkips = (game.pendingSkips || 0) + 1;
+                    game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
                 }
             }
 
@@ -1030,9 +1028,7 @@
         }
 
         function advanceTurn() {
-            let steps = 1 + (game.pendingSkips || 0);
-            game.pendingSkips = 0;
-            game.turnIndex = (game.turnIndex + (game.direction * steps) + (players.length * 10)) % players.length;
+            game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
             playSound('turn');
             broadcastGameState();
             processTurnLogic();
@@ -1045,17 +1041,13 @@
             
             clearTimeout(botTimer);
             if (currentPlayer.isBot) {
-                broadcastAnnounce(`รอบของ ${currentPlayer.name} กำลังคิด...`);
-                
                 botTimer = setTimeout(async () => {
                     await handleAutoDrawIfNeeded(currentPlayer);
                     if (game.status !== 'playing') return;
-                    
                     if (state.hand.length === 2 && canPlayAny(state.hand) && !state.declaredDomino) {
                         handlePlayerAction(currentPlayer.id, 'announce_domino');
-                        await new Promise(r => setTimeout(r, 1200));
+                        await new Promise(r => setTimeout(r, 1000));
                     }
-                    
                     if (canPlayAny(state.hand)) {
                         const validPlays = [];
                         state.hand.forEach((t, i) => {
@@ -1068,7 +1060,7 @@
                         const choice = validPlays[Math.floor(Math.random() * validPlays.length)];
                         handlePlayerAction(currentPlayer.id, 'play', choice);
                     }
-                }, 2500);
+                }, 2000);
             } else {
                 handleAutoDrawIfNeeded(currentPlayer);
             }
@@ -1079,25 +1071,22 @@
             if (canPlayAny(state.hand)) return;
 
             broadcastAnnounce(`ถึงรอบ ${player.name} ไม่มีตัวที่วางได้ ระบบกำลังจั่วอัตโนมัติ`);
-            await new Promise(r => setTimeout(r, 1500));
-
             while (game.deck.length > 0 && !canPlayAny(state.hand)) {
+                await new Promise(r => setTimeout(r, 600));
                 state.hand.push(game.deck.pop());
                 broadcastSound('jua');
                 broadcastGameState();
-                await new Promise(r => setTimeout(r, 1000));
             }
-            
-            if (canPlayAny(state.hand)) {
-                broadcastAnnounce(`${player.name} ได้ตัวที่สามารถวางได้แล้ว`);
-                game.consecutivePasses = 0;
-                await new Promise(r => setTimeout(r, 1000));
-            } else {
-                await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 800));
+
+            if (!canPlayAny(state.hand)) {
                 broadcastAnnounce(`กองจั่วหมดแล้ว ${player.name} ผ่านรอบ`, true);
                 game.consecutivePasses++;
                 if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
                 advanceTurn();
+            } else {
+                broadcastAnnounce(`${player.name} ได้ตัวที่สามารถวางได้แล้ว`);
+                game.consecutivePasses = 0;
             }
         }
 
