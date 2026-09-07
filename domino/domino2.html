@@ -143,7 +143,7 @@
         #my-cards-container.compact .special-text { font-size: 10px; }
 
         .bottom-actions { display: flex; justify-content: center; gap: 15px; width: 100%; margin-top: auto; }
-        .bottom-actions button { max-width: 250px; flex: 1; font-size: 18px; padding: 15px; }
+        .bottom-actions button { max-width: 250px; font-size: 18px; padding: 15px; }
 
         .bot-controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px; }
         .bot-controls button { width: auto; padding: 10px 18px; font-size: 18px; }
@@ -231,9 +231,8 @@
             <ul style="margin-left: 20px; margin-bottom: 10px;">
                 <li>โดมิโน่จะวางต่อกันที่ <strong>ปลายซ้าย</strong> หรือ <strong>ปลายขวา</strong></li>
                 <li>เลขด้านใดด้านหนึ่งของโดมิโน่ต้องตรงกับปลายที่จะวาง</li>
-                <li>หากไม่มีตัววางได้ ต้อง <strong>กดปุ่มจั่ว</strong> (สูงสุด 3 ตัวต่อ Turn)</li>
-                <li>เมื่อครบ 3 ตัวแล้วยังไม่มีตัววางได้ ระบบจะ <strong>จบ Turn อัตโนมัติ</strong></li>
-                <li>เมื่อวางโดมิโน่แล้ว จะ <strong>จบ Turn ทันที</strong> (เล่นได้เพียง 1 ตัวต่อ Turn)</li>
+                <li>หากไม่มีตัววางได้ ระบบจะ <strong>จั่วอัตโนมัติ</strong> จนกว่าจะพบตัวที่วางได้</li>
+                <li>เมื่อวางแล้ว หากยังมีโดมิโน่ที่ต่อได้อีก สามารถ <strong>เล่นต่อใน Turn เดียวกัน</strong> ได้</li>
             </ul>
             <h3 style="font-size: 16px; margin-top: 15px;">โดมิโน่พิเศษ</h3>
             <ul style="margin-left: 20px; margin-bottom: 10px;">
@@ -302,7 +301,6 @@
             <div id="my-cards-container" role="group" aria-label="โดมิโน่ในมือ"></div>
             
             <div class="bottom-actions">
-                <button id="btn-draw" class="info" disabled>จั่ว</button>
                 <button id="btn-domino" class="danger" disabled>DOMINO!</button>
             </div>
         </div>
@@ -452,14 +450,6 @@
             setTimeout(() => { overlay.style.display = 'none'; }, 1500);
         }
 
-        function translateTile(val) {
-            if(val === 'sleep') return 'หลับ';
-            if(val === 'draw2') return '2+';
-            if(val === 'draw3') return '3+';
-            if(val === 'reverse') return 'ย้อนศร';
-            return val;
-        }
-
         // --- Game State & Multiplayer ---
         let peer = null;
         let myPeerId = null;
@@ -485,8 +475,7 @@
             playerStates: {}, 
             consecutivePasses: 0,
             matchOver: false,
-            pendingSkips: 0,
-            drawCountThisTurn: 0
+            pendingSkips: 0
         };
 
         function initPeer() {
@@ -643,6 +632,7 @@
                 if (data.type === 'joinReq') {
                     conn.customPeerId = data.peerId; 
                     if (players.length >= MAX_PLAYERS) return;
+                    // Check duplicate name and append number if needed
                     let newName = data.name;
                     let count = 1;
                     while(players.some(p => p.name === newName)) { newName = `${data.name}(${count++})`; }
@@ -696,11 +686,13 @@
         function generateDeck() {
             const deck = [];
             let idCount = 0;
+            // 55 standard tiles
             for (let i = 0; i <= 9; i++) {
                 for (let j = i; j <= 9; j++) {
                     deck.push({ id: idCount++, left: i, right: j, type: 'regular', name: `${i} กับ ${j}` });
                 }
             }
+            // 20 special tiles
             const specials = [
                 { val: 0, effect: 'sleep', name: 'หลับ' }, { val: 2, effect: 'sleep', name: 'หลับ' }, { val: 4, effect: 'sleep', name: 'หลับ' }, { val: 6, effect: 'sleep', name: 'หลับ' }, { val: 8, effect: 'sleep', name: 'หลับ' },
                 { val: 1, effect: 'draw2', name: '2+' }, { val: 3, effect: 'draw2', name: '2+' }, { val: 5, effect: 'draw2', name: '2+' }, { val: 7, effect: 'draw2', name: '2+' }, { val: 9, effect: 'draw2', name: '2+' },
@@ -715,7 +707,7 @@
 
         function getTileScore(tile) {
             if(tile.type === 'regular') return tile.left + tile.right;
-            return 20; 
+            return 20; // 20 points for special tiles
         }
 
         function getTileAria(tile) { return `โดมิโน่ ${tile.name}`; }
@@ -775,26 +767,12 @@
             setTimeout(() => { animDiv.remove(); if(callback) callback(); }, 5000);
         }
 
-        function broadcastTurnStart() {
-            if (!isHost) return;
-            const currentPlayer = players[game.turnIndex];
-            let dirStr = game.direction === 1 ? 'ตามเข็มนาฬิกา' : 'ทวนเข็มนาฬิกา';
-            let msg = `ถึงรอบของ ${currentPlayer.name} ขณะนี้เล่น${dirStr} `;
-            if (game.leftEnd === null) {
-                msg += `กระดานยังว่าง คุณสามารถเริ่มวางโดมิโน่ได้`;
-            } else {
-                msg += `ปลายซ้ายคือ ${translateTile(game.leftEnd)} ปลายขวาคือ ${translateTile(game.rightEnd)}`;
-            }
-            broadcastAnnounce(msg);
-        }
-
         function initGame() {
             game.status = 'playing'; game.matchOver = false;
             game.deck = generateDeck();
             game.leftEnd = null; game.rightEnd = null;
             game.direction = 1; game.consecutivePasses = 0;
             game.pendingSkips = 0;
-            game.drawCountThisTurn = 0;
             
             let highestDoubleVal = -1;
             let starterIdx = 0;
@@ -812,12 +790,9 @@
 
             game.turnIndex = starterIdx;
             switchScreen('screen-game', 'top-status-bar');
+            broadcastAnnounce(`เกมเริ่มแล้ว! ${players[starterIdx].name} มีดับเบิลสูงสุด ได้เริ่มก่อน`, true);
             broadcastGameState();
-            
-            setTimeout(() => {
-                broadcastTurnStart();
-                processTurnLogic();
-            }, 1000);
+            processTurnLogic();
         }
 
         function broadcastGameState() {
@@ -830,7 +805,6 @@
                 rightEnd: game.rightEnd,
                 turnIndex: game.turnIndex,
                 direction: game.direction,
-                drawCountThisTurn: game.drawCountThisTurn,
                 players: safePlayers,
                 playerStates: {}
             };
@@ -874,7 +848,7 @@
 
             const statusBar = document.getElementById('top-status-bar');
             statusBar.innerHTML = '';
-            let ariaStatusBarText = `ทิศทาง ${gState.direction === 1 ? 'ตามเข็ม' : 'ทวนเข็ม'}, `;
+            let ariaStatusBarText = `ทิศทาง ${gState.direction === 1 ? 'ขวา' : 'ซ้าย'}, `;
             const dirDiv = document.createElement('div'); dirDiv.className = 'direction-indicator'; dirDiv.setAttribute('aria-hidden', 'true');
             dirDiv.style.transform = gState.direction === 1 ? 'rotate(0deg)' : 'rotate(180deg)'; dirDiv.textContent = '➡️';
             statusBar.appendChild(dirDiv);
@@ -912,8 +886,8 @@
                 };
                 lCont.appendChild(renderEnd(gState.leftEnd));
                 rCont.appendChild(renderEnd(gState.rightEnd));
-                lAria.textContent = `ปลายซ้าย ${translateTile(gState.leftEnd)}`;
-                rAria.textContent = `ปลายขวา ${translateTile(gState.rightEnd)}`;
+                lAria.textContent = `ปลายซ้าย ${gState.leftEnd}`;
+                rAria.textContent = `ปลายขวา ${gState.rightEnd}`;
             }
 
             // Render Hand
@@ -923,7 +897,6 @@
             
             const isMyTurn = (turnPlayer && turnPlayer.id === myPeerId && gState.status === 'playing');
             
-            let canPlayAtLeastOne = false;
             gState.myHand.forEach((tile, idx) => {
                 let playableL = false, playableR = false;
                 if (isMyTurn) {
@@ -933,23 +906,13 @@
                         if (tile.left === gState.rightEnd || tile.right === gState.rightEnd) playableR = true;
                     }
                 }
-                if (playableL || playableR) canPlayAtLeastOne = true;
                 myContainer.appendChild(renderTileHTML(tile, idx, playableL, playableR));
             });
-
-            // Draw Button
-            const btnDraw = document.getElementById('btn-draw');
-            if (isMyTurn && gState.drawCountThisTurn < 3 && !canPlayAtLeastOne && gState.deckCount > 0) {
-                btnDraw.disabled = false;
-                btnDraw.onclick = () => { btnDraw.disabled = true; sendAction('draw'); };
-            } else {
-                btnDraw.disabled = true;
-            }
 
             // DOMINO Button
             const btnDomino = document.getElementById('btn-domino');
             const myState = gState.playerStates[myPeerId];
-            if (isMyTurn && gState.myHand.length === 2 && myState && !myState.declaredDomino && canPlayAtLeastOne) {
+            if (isMyTurn && gState.myHand.length === 2 && myState && !myState.declaredDomino && (document.querySelectorAll('#my-cards-container .domino-tile:not(.disabled)').length > 0)) {
                 btnDomino.disabled = false;
                 btnDomino.onclick = () => { btnDomino.disabled = true; sendAction('announce_domino'); };
             } else { btnDomino.disabled = true; }
@@ -982,47 +945,11 @@
             if (!isHost || game.status !== 'playing') return;
             const currentPlayer = players[game.turnIndex];
 
-            if (action === 'draw' && peerId === currentPlayer.id) {
-                if (game.drawCountThisTurn >= 3 || game.deck.length === 0) return;
-                
-                const tile = game.deck.pop();
-                game.playerStates[peerId].hand.push(tile);
-                game.drawCountThisTurn++;
-                
-                broadcastSound('jua');
-
-                players.forEach(p => {
-                    if (p.id === peerId) {
-                        const msg = `คุณจั่วได้โดมิโน่ ${translateTile(tile.left)} กับ ${translateTile(tile.right)}`;
-                        if (p.connection && p.connection.open) p.connection.send({ type: 'announce', message: msg });
-                        else if (p.id === myPeerId) announce(msg);
-                    } else {
-                        const msg = `${currentPlayer.name} จั่วโดมิโน่ 1 ตัว`;
-                        if (p.connection && p.connection.open) p.connection.send({ type: 'announce', message: msg });
-                        else if (p.id === myPeerId) announce(msg);
-                    }
-                });
-
-                broadcastGameState();
-
-                if (game.drawCountThisTurn === 3) {
-                    if (!canPlayAny(game.playerStates[peerId].hand)) {
-                        setTimeout(() => {
-                            broadcastAnnounce(`${currentPlayer.name} จั่วครบ 3 ตัวแล้ว แต่ยังไม่มีโดมิโน่ที่วางได้ จบตา`);
-                            game.consecutivePasses++;
-                            if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
-                            setTimeout(() => advanceTurn(), 2500);
-                        }, 1000);
-                    }
-                }
-                return;
-            }
-
             if (action === 'announce_domino' && peerId === currentPlayer.id) {
                 const state = game.playerStates[peerId];
                 if (state.hand.length === 2 && !state.declaredDomino) {
                     state.declaredDomino = true;
-                    broadcastAnnounce(`${currentPlayer.name} ประกาศ DOMINO! เหลือโดมิโน่ 2 ตัว`, true);
+                    broadcastAnnounce(`${currentPlayer.name} ประกาศ DOMINO!`, true);
                     connections.forEach(c => { if(c.open) c.send({ type: 'animDomino' }); });
                     showAnimOverlay('DOMINO!', true); playSound('uno');
                     broadcastGameState();
@@ -1036,7 +963,7 @@
             const tile = state.hand[payload.index];
             if (!tile) return;
 
-            // Penalty Check
+            // Penalty Check for not calling DOMINO!
             if (state.hand.length === 2 && !state.declaredDomino) {
                 broadcastAnnounce(`${currentPlayer.name} ลืมกด DOMINO! ถูกลงโทษ จั่ว 2 ตัว`, true);
                 playSound('wl');
@@ -1046,66 +973,49 @@
 
             state.hand.splice(payload.index, 1);
             let newEnd = null;
-            let playedSideStr = '';
-
-            if (game.leftEnd === null) { 
-                game.leftEnd = tile.left; game.rightEnd = tile.right; 
-                playedSideStr = 'เป็นตัวแรก';
-            }
+            if (game.leftEnd === null) { game.leftEnd = tile.left; game.rightEnd = tile.right; }
             else if (payload.side === 'left') {
                 newEnd = (tile.left === game.leftEnd) ? tile.right : tile.left;
                 game.leftEnd = newEnd;
-                playedSideStr = 'ที่ปลายซ้าย';
             } else {
                 newEnd = (tile.left === game.rightEnd) ? tile.right : tile.left;
                 game.rightEnd = newEnd;
-                playedSideStr = 'ที่ปลายขวา';
             }
 
-            let tileLeftText = translateTile(tile.left);
-            let tileRightText = translateTile(tile.right);
-            if (tile.type === 'regular') {
-                broadcastAnnounce(`${currentPlayer.name} วางโดมิโน่ ${tileLeftText} กับ ${tileRightText} ${playedSideStr}`);
-            } else {
-                broadcastAnnounce(`${currentPlayer.name} วางโดมิโน่ ${tile.name} ${playedSideStr}`);
-            }
-
-            playSound('select'); // Changed from '1' to 'select'
+            broadcastAnnounce(`${currentPlayer.name} วาง ${tile.name}`);
+            playSound('1');
             game.consecutivePasses = 0;
 
-            if (state.hand.length === 1) {
-                setTimeout(() => { broadcastAnnounce(`${currentPlayer.name} เหลือโดมิโน่ 1 ตัว`); }, 1500);
+            if (state.hand.length === 0) { handleWin(peerId); return; }
+
+            // Apply special effect (Pending skips to support comboing correctly without breaking logic)
+            if (tile.type !== 'regular') {
+                if (tile.type === 'sleep') {
+                    const target = players[(game.turnIndex + game.direction + players.length) % players.length];
+                    broadcastAnnounce(`${target.name} ถูกข้ามตา`, true); playSound('skip');
+                    game.pendingSkips = (game.pendingSkips || 0) + 1;
+                } else if (tile.type === 'reverse') {
+                    game.direction *= -1; broadcastAnnounce(`ทิศทางการเล่นกลับแล้ว`, true); playSound('reverse');
+                } else if (tile.type === 'draw2') {
+                    const target = players[(game.turnIndex + game.direction + players.length) % players.length];
+                    broadcastAnnounce(`${target.name} โดนจั่ว 2 ตัวและถูกข้ามตา`, true); playSound('draw2');
+                    drawTiles(target.id, 2);
+                    game.pendingSkips = (game.pendingSkips || 0) + 1;
+                } else if (tile.type === 'draw3') {
+                    const target = players[(game.turnIndex + game.direction + players.length) % players.length];
+                    broadcastAnnounce(`${target.name} โดนจั่ว 3 ตัวและถูกข้ามตา`, true); playSound('draw4');
+                    drawTiles(target.id, 3);
+                    game.pendingSkips = (game.pendingSkips || 0) + 1;
+                }
             }
 
-            if (state.hand.length === 0) { setTimeout(() => handleWin(peerId), 1500); return; }
-
-            // Apply special effect
-            if (tile.type !== 'regular') {
-                setTimeout(() => {
-                    if (tile.type === 'sleep') {
-                        const target = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        broadcastAnnounce(`${target.name} ถูกข้ามตา`, true); playSound('skip');
-                        game.pendingSkips = (game.pendingSkips || 0) + 1;
-                    } else if (tile.type === 'reverse') {
-                        game.direction *= -1; 
-                        broadcastAnnounce(`ทิศทางการเล่นเปลี่ยนเป็น${game.direction === 1 ? 'ตามเข็มนาฬิกา' : 'ทวนเข็มนาฬิกา'}`, true); playSound('reverse');
-                    } else if (tile.type === 'draw2') {
-                        const target = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        broadcastAnnounce(`${target.name} ต้องจั่ว 2 ตัวและถูกข้ามตา`, true); playSound('draw2');
-                        drawTiles(target.id, 2);
-                        game.pendingSkips = (game.pendingSkips || 0) + 1;
-                    } else if (tile.type === 'draw3') {
-                        const target = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        broadcastAnnounce(`${target.name} ต้องจั่ว 3 ตัวและถูกข้ามตา`, true); playSound('draw4');
-                        drawTiles(target.id, 3);
-                        game.pendingSkips = (game.pendingSkips || 0) + 1;
-                    }
-                }, 1500); // Wait for play text
-                
-                setTimeout(() => { advanceTurn(); }, 4000); // Allow time for special announcement
+            // Check if can play again
+            if (canPlayAny(state.hand)) {
+                broadcastAnnounce(`${currentPlayer.name} สามารถเล่นต่อได้`);
+                broadcastGameState();
+                if(currentPlayer.isBot) processTurnLogic();
             } else {
-                // End turn immediately after 1 normal play
-                setTimeout(() => { advanceTurn(); }, 2000);
+                setTimeout(() => { advanceTurn(); }, 800);
             }
         }
 
@@ -1122,56 +1032,10 @@
         function advanceTurn() {
             let steps = 1 + (game.pendingSkips || 0);
             game.pendingSkips = 0;
-            game.drawCountThisTurn = 0;
             game.turnIndex = (game.turnIndex + (game.direction * steps) + (players.length * 10)) % players.length;
             playSound('turn');
             broadcastGameState();
-            
-            setTimeout(() => {
-                broadcastTurnStart();
-                processTurnLogic();
-            }, 800);
-        }
-
-        async function runBotTurn(botPlayer, state) {
-            await new Promise(r => setTimeout(r, 2000)); // wait for turn announcement
-
-            while (game.drawCountThisTurn < 3 && !canPlayAny(state.hand) && game.deck.length > 0) {
-                const tile = game.deck.pop();
-                state.hand.push(tile);
-                game.drawCountThisTurn++;
-                broadcastSound('jua');
-                broadcastAnnounce(`${botPlayer.name} จั่วโดมิโน่ 1 ตัว`);
-                broadcastGameState();
-                await new Promise(r => setTimeout(r, 1500));
-            }
-
-            if (game.status !== 'playing') return;
-
-            if (state.hand.length === 2 && canPlayAny(state.hand) && !state.declaredDomino) {
-                handlePlayerAction(botPlayer.id, 'announce_domino');
-                await new Promise(r => setTimeout(r, 1500));
-            }
-            
-            if (canPlayAny(state.hand)) {
-                const validPlays = [];
-                state.hand.forEach((t, i) => {
-                    if (game.leftEnd === null) { validPlays.push({ index: i, side: 'left' }); }
-                    else {
-                        if (t.left === game.leftEnd || t.right === game.leftEnd) validPlays.push({ index: i, side: 'left' });
-                        if (t.left === game.rightEnd || t.right === game.rightEnd) validPlays.push({ index: i, side: 'right' });
-                    }
-                });
-                const choice = validPlays[Math.floor(Math.random() * validPlays.length)];
-                handlePlayerAction(botPlayer.id, 'play', choice);
-            } else {
-                if (game.drawCountThisTurn === 3 || game.deck.length === 0) {
-                    broadcastAnnounce(`${botPlayer.name} จั่วครบ 3 ตัวแล้ว แต่ยังไม่มีโดมิโน่ที่วางได้ จบตา`);
-                    game.consecutivePasses++;
-                    if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
-                    setTimeout(() => advanceTurn(), 2000);
-                }
-            }
+            processTurnLogic();
         }
 
         function processTurnLogic() {
@@ -1181,17 +1045,59 @@
             
             clearTimeout(botTimer);
             if (currentPlayer.isBot) {
-                runBotTurn(currentPlayer, state);
+                broadcastAnnounce(`รอบของ ${currentPlayer.name} กำลังคิด...`);
+                
+                botTimer = setTimeout(async () => {
+                    await handleAutoDrawIfNeeded(currentPlayer);
+                    if (game.status !== 'playing') return;
+                    
+                    if (state.hand.length === 2 && canPlayAny(state.hand) && !state.declaredDomino) {
+                        handlePlayerAction(currentPlayer.id, 'announce_domino');
+                        await new Promise(r => setTimeout(r, 1200));
+                    }
+                    
+                    if (canPlayAny(state.hand)) {
+                        const validPlays = [];
+                        state.hand.forEach((t, i) => {
+                            if (game.leftEnd === null) { validPlays.push({ index: i, side: 'left' }); }
+                            else {
+                                if (t.left === game.leftEnd || t.right === game.leftEnd) validPlays.push({ index: i, side: 'left' });
+                                if (t.left === game.rightEnd || t.right === game.rightEnd) validPlays.push({ index: i, side: 'right' });
+                            }
+                        });
+                        const choice = validPlays[Math.floor(Math.random() * validPlays.length)];
+                        handlePlayerAction(currentPlayer.id, 'play', choice);
+                    }
+                }, 2500);
             } else {
-                // Auto-pass human if deck is empty and cannot play anything
-                if (!canPlayAny(state.hand) && game.deck.length === 0) {
-                    setTimeout(() => {
-                        broadcastAnnounce(`กองจั่วหมดแล้ว ${currentPlayer.name} ผ่านรอบ`, true);
-                        game.consecutivePasses++;
-                        if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
-                        setTimeout(() => advanceTurn(), 2000);
-                    }, 2500);
-                }
+                handleAutoDrawIfNeeded(currentPlayer);
+            }
+        }
+
+        async function handleAutoDrawIfNeeded(player) {
+            const state = game.playerStates[player.id];
+            if (canPlayAny(state.hand)) return;
+
+            broadcastAnnounce(`ถึงรอบ ${player.name} ไม่มีตัวที่วางได้ ระบบกำลังจั่วอัตโนมัติ`);
+            await new Promise(r => setTimeout(r, 1500));
+
+            while (game.deck.length > 0 && !canPlayAny(state.hand)) {
+                state.hand.push(game.deck.pop());
+                broadcastSound('jua');
+                broadcastGameState();
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            
+            if (canPlayAny(state.hand)) {
+                broadcastAnnounce(`${player.name} ได้ตัวที่สามารถวางได้แล้ว`);
+                game.consecutivePasses = 0;
+                await new Promise(r => setTimeout(r, 1000));
+            } else {
+                await new Promise(r => setTimeout(r, 500));
+                broadcastAnnounce(`กองจั่วหมดแล้ว ${player.name} ผ่านรอบ`, true);
+                game.consecutivePasses++;
+                if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
+                advanceTurn();
             }
         }
 
@@ -1202,7 +1108,7 @@
                 let s = 0; game.playerStates[p.id].hand.forEach(t => s += getTileScore(t));
                 if(s < minScore) { minScore = s; winnerId = p.id; }
             });
-            setTimeout(() => handleWin(winnerId), 2000);
+            handleWin(winnerId);
         }
 
         function handleWin(winnerId) {
