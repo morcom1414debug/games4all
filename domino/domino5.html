@@ -252,7 +252,6 @@
 
     <main id="screen-lobby" class="screen">
         <h2 tabindex="-1" id="title-lobby">ล็อบบี้: <span id="lobby-room-id"></span></h2>
-        <div id="lobby-ready-msg" style="display: none; text-align: center; color: var(--primary); font-size: 16px; margin-bottom: 15px; font-weight: bold; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">ห้องโดมิโน่พร้อมแล้ว รอเพื่อนหรือเพิ่มบอทได้ทันที</div>
         
         <h3 style="font-size: 16px;">ผู้เล่นในห้อง (<span id="lobby-player-count">1</span>/6)</h3>
         <ul id="lobby-player-list" style="list-style: none; margin-bottom: 20px;" role="list"></ul>
@@ -345,7 +344,7 @@
         // --- Audio System ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const soundBuffers = {};
-        const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc', 'hit', 'sleep'];
+        const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc', 'hit'];
         const audioQueue = [];
         let isAudioPlaying = false;
         let bgmNode = null;
@@ -469,12 +468,7 @@
         let isCreatingRoom = false;
 
         const MAX_PLAYERS = 6;
-        const BOT_NAMES = [
-            'บอทซุปเปอร์แมน', 'บอทแมงมุม', 'บอทมาริโอ้', 'บอทนารูโตะ', 'บอทโซนิค', 
-            'บอทปิกาจู', 'บอทเบ็นเท็น', 'บอทโดราเอมอน', 'บอทลูฟี่', 'บอทคิริโตะ',
-            'บอทไอรอนแมน', 'บอทแบทแมน', 'บอทกัปตัน', 'บอทชินจัง', 'บอทโคนัน', 
-            'บอทอุลตร้าแมน', 'บอทก็อดซิลล่า', 'บอทเซเลอร์มูน', 'บอทซากุระ', 'บอทดราก้อนบอล'
-        ];
+        const BOT_NAMES = ['บอทซุปเปอร์แมน', 'บอทแมงมุม', 'บอทมาริโอ้', 'บอทนารูโตะ', 'บอทโซนิค', 'บอทปิกาจู', 'บอทเบ็นเท็น', 'บอทโดราเอมอน', 'บอทลูฟี่', 'บอทคิริโตะ'];
 
         let players = [];
         let game = {
@@ -562,7 +556,7 @@
                 btn.setAttribute('aria-label', `เข้าร่วมห้อง ${id} มีผู้เล่น ${room.currentPlayers} จาก ${MAX_PLAYERS} คน`);
                 btn.onclick = () => {
                     if (isJoiningRoom) return;
-                    isJoiningRoom = true; btn.disabled = true; playSound('1');
+                    isJoiningRoom = true; btn.disabled = true; playSound('select');
                     joinRoom(id, room.hostPeerId);
                 };
                 li.appendChild(btn); list.appendChild(li);
@@ -592,8 +586,6 @@
 
                 setInterval(() => { if (isHost && currentRoomId && game.status === 'waiting') update(ref(db, `domino_rooms/${currentRoomId}`), { lastActive: Date.now() }); }, 3000);
                 enterLobby();
-                document.getElementById('lobby-ready-msg').style.display = 'block';
-                announce('ห้องโดมิโน่พร้อมแล้ว รอเพื่อนหรือเพิ่มบอทได้ทันที');
             } catch (err) {
                 isCreatingRoom = false; document.getElementById('btn-create-room').disabled = false; announce('สร้างห้องไม่สำเร็จ');
             }
@@ -620,7 +612,6 @@
             currentRoomId = null; isHost = false; players = []; game.status = 'waiting';
             isJoiningRoom = false; isCreatingRoom = false;
             document.getElementById('btn-create-room').disabled = false;
-            document.getElementById('lobby-ready-msg').style.display = 'none';
             switchScreen('screen-main', 'title-main');
             announce('ออกจากห้องแล้ว');
         }
@@ -665,7 +656,7 @@
                     syncLobby();
                     update(ref(db, `domino_rooms/${currentRoomId}`), { currentPlayers: players.length });
                     broadcastSound('select');
-                    broadcastAnnounce(`${newName} เข้าร่วมห้องสำเร็จ`);
+                    broadcastAnnounce(`${newName} เข้าร่วมห้อง`);
                 } else if (data.type === 'action') {
                     handlePlayerAction(conn.customPeerId || conn.peer, data.action, data.payload);
                 }
@@ -684,8 +675,7 @@
         document.getElementById('btn-add-bot').onclick = () => {
             if (players.length < MAX_PLAYERS) {
                 const availableNames = BOT_NAMES.filter(n => !players.some(p => p.name === n));
-                const randomIdx = Math.floor(Math.random() * availableNames.length);
-                const botName = availableNames[randomIdx] || `บอท_${Date.now().toString().slice(-4)}`;
+                const botName = availableNames[0] || `บอท_${Date.now().toString().slice(-4)}`;
                 players.push({ id: 'bot_' + Date.now(), name: botName, isBot: true });
                 syncLobby(); broadcastSound('select');
                 broadcastAnnounce(`เพิ่ม ${botName} เข้าห้องแล้ว`, true);
@@ -1110,7 +1100,7 @@
                     if (tile.type === 'sleep') {
                         const target = players[(game.turnIndex + game.direction + players.length) % players.length];
                         broadcastAnnounce(`${target.name} ถูกข้ามตา`); 
-                        broadcastSound('sleep');
+                        playSound('skip');
                         game.pendingSkips = (game.pendingSkips || 0) + 1;
                     } else if (tile.type === 'reverse') {
                         game.direction *= -1; 
