@@ -116,6 +116,7 @@
         .character-card.is-turn { border-color: var(--focus-ring); background: rgba(255, 193, 7, 0.22); transform: scale(1.08); box-shadow: 0 0 20px rgba(255, 193, 7, 0.4); }
         .char-cards-count { font-size: 13px; font-weight: 800; color: #fff; margin-bottom: 4px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 10px; }
         .char-name { font-size: 14px; font-weight: bold; color: #fff; text-shadow: 1px 1px 2px #000; margin-top: 4px; }
+        .char-score { font-size: 12px; color: var(--focus-ring); margin-top: 2px; font-weight: bold; }
 
         .middle-area {
             display: flex; justify-content: center; align-items: center; gap: 30px; margin: 30px 0; flex: 1; perspective: 800px;
@@ -225,7 +226,7 @@
     <main id="screen-rules" class="screen">
         <h2 tabindex="-1" id="title-rules">คู่มือการเล่น DOMINO</h2>
         <div style="overflow-y: auto; flex: 1; padding-right: 10px; margin-bottom: 20px;" tabindex="0" aria-label="เนื้อหาคู่มือ">
-            <p><strong>🎯 เป้าหมาย:</strong> วางโดมิโน่ให้หมดมือเป็นคนแรก เพื่อเป็นผู้ชนะในรอบนั้น</p>
+            <p><strong>🎯 เป้าหมาย:</strong> วางโดมิโน่ให้หมดมือเป็นคนแรก ใครถึง 200 คะแนนก่อนเป็นผู้ชนะเกม</p>
             <h3 style="font-size: 16px; margin-top: 15px;">กติกาการวาง</h3>
             <ul style="margin-left: 20px; margin-bottom: 10px;">
                 <li>โดมิโน่จะวางต่อกันที่ <strong>ปลายซ้าย</strong> หรือ <strong>ปลายขวา</strong></li>
@@ -320,9 +321,12 @@
         <div id="result-status-bar" style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 15px; background: rgba(0,0,0,0.4); border-radius: 12px; margin-bottom: 20px; flex-wrap: wrap; width: 100%;"></div>
 
         <h1 tabindex="-1" id="title-result" style="font-size: 36px;">ผลการแข่งขัน</h1>
-        <div id="winner-text" style="font-size: 24px; margin-bottom: 30px; font-weight: normal;"></div>
+        <h2 id="winner-text" style="font-size: 24px; margin-bottom: 30px; font-weight: normal;"></h2>
         
-        <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="position: static; margin: 20px auto 0 auto; display: block;"><span aria-hidden="true">🏠</span></button>
+        <div id="result-host-controls" style="display: none; margin-top: 20px; justify-content: center;">
+            <button id="btn-play-again">🔄 เล่นรอบใหม่</button>
+        </div>
+        <button class="danger" aria-label="ออกจากห้อง" onclick="leaveLobby()" style="margin: 20px auto; display: block;">🚪 ออกจากห้อง</button>
     </main>
 
     <script type="module">
@@ -344,7 +348,7 @@
         // --- Audio System ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const soundBuffers = {};
-        const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc', 'hit'];
+        const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc'];
         const audioQueue = [];
         let isAudioPlaying = false;
         let bgmNode = null;
@@ -505,19 +509,9 @@
 
         const nameInput = document.getElementById('player-name-input');
         const btnConfirmName = document.getElementById('btn-confirm-name');
-        
         nameInput.addEventListener('input', () => {
             if (nameInput.value.trim().length > 0) { btnConfirmName.disabled = false; }
             else { btnConfirmName.disabled = true; }
-        });
-
-        nameInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                if (nameInput.value.trim().length > 0) {
-                    btnConfirmName.click();
-                }
-            }
         });
         
         btnConfirmName.onclick = () => {
@@ -580,7 +574,7 @@
                 
                 currentRoomId = "domino" + String(nextIdNum).padStart(5, '0');
                 isHost = true;
-                players = [{ id: myPeerId, name: myName, isBot: false }];
+                players = [{ id: myPeerId, name: myName, isBot: false, score: 0 }];
                 
                 await update(ref(db, `domino_rooms/${currentRoomId}`), { hostPeerId: myPeerId, status: 'waiting', currentPlayers: 1, lastActive: Date.now() });
 
@@ -652,7 +646,7 @@
                     let newName = data.name;
                     let count = 1;
                     while(players.some(p => p.name === newName)) { newName = `${data.name}(${count++})`; }
-                    players.push({ id: data.peerId, name: newName, isBot: false, connection: conn });
+                    players.push({ id: data.peerId, name: newName, isBot: false, score: 0, connection: conn });
                     syncLobby();
                     update(ref(db, `domino_rooms/${currentRoomId}`), { currentPlayers: players.length });
                     broadcastSound('select');
@@ -676,7 +670,7 @@
             if (players.length < MAX_PLAYERS) {
                 const availableNames = BOT_NAMES.filter(n => !players.some(p => p.name === n));
                 const botName = availableNames[0] || `บอท_${Date.now().toString().slice(-4)}`;
-                players.push({ id: 'bot_' + Date.now(), name: botName, isBot: true });
+                players.push({ id: 'bot_' + Date.now(), name: botName, isBot: true, score: 0 });
                 syncLobby(); broadcastSound('select');
                 broadcastAnnounce(`เพิ่ม ${botName} เข้าห้องแล้ว`, true);
             }
@@ -694,7 +688,7 @@
         function syncLobby() {
             if (!isHost) return;
             renderLobby();
-            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot }));
+            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, score: p.score }));
             connections.forEach(c => { if(c.open) c.send({ type: 'lobbySync', players: safePlayers }); });
         }
 
@@ -828,7 +822,7 @@
 
         function broadcastGameState() {
             if (!isHost) return;
-            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot }));
+            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, score: p.score }));
             const safeGame = {
                 status: game.status,
                 deckCount: game.deck.length,
@@ -861,7 +855,7 @@
             }
             else if (data.type === 'announce') { announce(data.message, data.assertive); logEvent(data.message); }
             else if (data.type === 'animDomino') { showAnimOverlay('DOMINO!', true); playSound('uno'); }
-            else if (data.type === 'endGame') { showResult(data.winnerName, data.resultStats); }
+            else if (data.type === 'endGame') { showResult(data.winnerName, data.scores, data.matchOver); }
             else if (data.type === 'playSound') { playSound(data.soundName); }
             else if (data.type === 'startAnim') { doStartAnimation(() => {}); }
         }
@@ -888,10 +882,10 @@
             gState.players.forEach((p, idx) => {
                 const pState = gState.playerStates[p.id];
                 const isTurn = idx === gState.turnIndex;
-                ariaStatusBarText += `${p.name} มี ${pState.cardCount} ตัว. `;
+                ariaStatusBarText += `${p.name} มี ${pState.cardCount} ตัว แต้ม ${p.score}. `;
                 const charDiv = document.createElement('div');
                 charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`; charDiv.setAttribute('aria-hidden', 'true');
-                charDiv.innerHTML = `<div class="char-cards-count">มี ${pState.cardCount} ตัว</div><div class="char-name">${p.isBot?'🤖 ':'👤 '}${p.name}</div>`;
+                charDiv.innerHTML = `<div class="char-cards-count">มี ${pState.cardCount} ตัว</div><div class="char-name">${p.isBot?'🤖 ':'👤 '}${p.name}</div><div class="char-score">คะแนน: ${p.score}</div>`;
                 statusBar.appendChild(charDiv);
             });
             statusBar.setAttribute('aria-label', ariaStatusBarText);
@@ -1108,16 +1102,14 @@
                         playSound('reverse');
                     } else if (tile.type === 'draw2') {
                         const target = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        broadcastAnnounce(`ตัวละคร${target.name}โดน 2+ ต้องจั่วเพิ่ม 2 ตัวและถูกข้ามตา`); 
+                        broadcastAnnounce(`${target.name} ต้องจั่ว 2 ตัวและถูกข้ามตา`); 
                         playSound('draw2');
-                        playSound('hit');
                         drawTiles(target.id, 2);
                         game.pendingSkips = (game.pendingSkips || 0) + 1;
                     } else if (tile.type === 'draw3') {
                         const target = players[(game.turnIndex + game.direction + players.length) % players.length];
-                        broadcastAnnounce(`ตัวละคร${target.name}โดน 3+ ต้องจั่วเพิ่ม 3 ตัวและถูกข้ามตา`); 
+                        broadcastAnnounce(`${target.name} ต้องจั่ว 3 ตัวและถูกข้ามตา`); 
                         playSound('draw4');
-                        playSound('hit');
                         drawTiles(target.id, 3);
                         game.pendingSkips = (game.pendingSkips || 0) + 1;
                     }
@@ -1218,7 +1210,7 @@
         }
 
         function handleStuckGame() {
-            broadcastAnnounce('เกมตัน! ทำการรวมแต้มเพื่อหาผู้ชนะ', true);
+            broadcastAnnounce('เกมตัน! ทำการรวมคะแนนเพื่อหาผู้ชนะ', true);
             let minScore = Infinity; let winnerId = null;
             players.forEach(p => {
                 let s = 0; game.playerStates[p.id].hand.forEach(t => s += getTileScore(t));
@@ -1230,47 +1222,45 @@
         function handleWin(winnerId) {
             game.status = 'ended';
             const winner = players.find(p => p.id === winnerId);
-            
-            let resultStats = [];
+            let earnedScore = 0;
             players.forEach(p => {
-                let pts = 0;
-                game.playerStates[p.id].hand.forEach(t => pts += getTileScore(t));
-                resultStats.push({ id: p.id, name: p.name, points: pts, isWinner: p.id === winnerId });
+                if(p.id !== winnerId) { game.playerStates[p.id].hand.forEach(t => earnedScore += getTileScore(t)); }
             });
+            winner.score += earnedScore;
+            game.matchOver = (winner.score >= 200);
 
             broadcastGameState();
-            
-            let winnerStat = resultStats.find(r => r.id === winnerId);
-            let announceMsg = `การแข่งขันจบแล้ว ตัวละคร${winner.name}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม. `;
-            let losers = resultStats.filter(r => r.id !== winnerId);
-            losers.forEach(l => {
-                announceMsg += `ตัวละคร${l.name}เหลือ ${l.points} แต้ม แพ้. `;
-            });
-
-            broadcastAnnounce(announceMsg, true);
+            broadcastAnnounce(`จบเกม! ผู้ชนะรอบนี้คือ ${winner.name}`, true);
             playSound('win');
 
             connections.forEach(c => {
-                if(c.open) c.send({ type: 'endGame', winnerName: winner.name, resultStats: resultStats });
+                if(c.open) c.send({ type: 'endGame', winnerName: winner.name, scores: earnedScore, matchOver: game.matchOver });
             });
-            showResult(winner.name, resultStats);
+            showResult(winner.name, earnedScore, game.matchOver);
         }
 
-        function showResult(winnerName, resultStats) {
+        function showResult(winnerName, score, matchOver) {
             switchScreen('screen-result', 'title-result');
             stopBGM();
-            
-            let winnerStat = resultStats.find(r => r.isWinner) || resultStats[0];
-            let losers = resultStats.filter(r => !r.isWinner);
-            
-            let html = `<div style="font-size: 24px; font-weight: bold; margin-bottom: 20px;">ผลการแข่งขัน</div>`;
-            html += `<div style="color: var(--primary); margin-bottom: 10px;">ตัวละคร${winnerName}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม</div>`;
-            losers.forEach(l => {
-                html += `<div style="color: var(--danger); margin-bottom: 10px;">ตัวละคร${l.name}เหลือ ${l.points} แต้ม แพ้</div>`;
-            });
-            
+            let html = `<span aria-hidden="true">🏆</span> ผู้ชนะ: ${winnerName} (ได้แต้มเพิ่ม ${score})`;
+            if (matchOver) html += `<br><span style="color:var(--focus-ring); font-weight:bold; font-size:28px; display:block; margin-top:15px;">ยินดีด้วย! ${winnerName} คะแนนถึงเป้าหมายและชนะเกมนี้!</span>`;
             document.getElementById('winner-text').innerHTML = html;
-            document.getElementById('result-status-bar').innerHTML = '';
+
+            const resBar = document.getElementById('result-status-bar');
+            resBar.innerHTML = '';
+            players.forEach(p => {
+                const charDiv = document.createElement('div'); charDiv.className = `character-card`; charDiv.setAttribute('aria-hidden', 'true');
+                charDiv.innerHTML = `<div class="char-name">${p.isBot?'🤖 ':'👤 '}${p.name}</div><div class="char-score">คะแนนรวม: ${p.score}</div>`;
+                resBar.appendChild(charDiv);
+            });
+
+            if (isHost) {
+                document.getElementById('result-host-controls').style.display = matchOver ? 'none' : 'flex';
+                document.getElementById('btn-play-again').onclick = () => {
+                    connections.forEach(c => { if(c.open) c.send({ type: 'startAnim' }); });
+                    doStartAnimation(() => { initGame(); setTimeout(() => broadcastSound('bgm'), 500); });
+                };
+            }
         }
     </script>
 </body>
