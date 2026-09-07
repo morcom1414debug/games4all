@@ -832,12 +832,6 @@
             
             setTimeout(() => {
                 broadcastTurnStart();
-                const firstPlayer = players[game.turnIndex];
-                if (firstPlayer.id === myPeerId && !firstPlayer.isBot) {
-                    playSound('turn', () => { playSound('abc'); });
-                } else if (!firstPlayer.isBot && firstPlayer.connection && firstPlayer.connection.open) {
-                    firstPlayer.connection.send({ type: 'playTurnAlert' });
-                }
                 processTurnLogic();
             }, 1000);
         }
@@ -880,7 +874,6 @@
             else if (data.type === 'endGame') { showResult(data.winnerName, data.resultStats); }
             else if (data.type === 'playSound') { playSound(data.soundName); }
             else if (data.type === 'startAnim') { doStartAnimation(() => {}); }
-            else if (data.type === 'playTurnAlert') { playSound('turn', () => { playSound('abc'); }); }
         }
 
         function renderGame(gState) {
@@ -1161,17 +1154,7 @@
             game.pendingSkips = 0;
             game.drawCountThisTurn = 0;
             game.turnIndex = (game.turnIndex + (game.direction * steps) + (players.length * 10)) % players.length;
-            
-            const nextPlayer = players[game.turnIndex];
-            if (nextPlayer.id === myPeerId && !nextPlayer.isBot) {
-                playSound('turn', () => { playSound('abc'); });
-            } else {
-                playSound('turn');
-                if (!nextPlayer.isBot && nextPlayer.connection && nextPlayer.connection.open) {
-                    nextPlayer.connection.send({ type: 'playTurnAlert' });
-                }
-            }
-            
+            playSound('turn');
             broadcastGameState();
             
             setTimeout(() => {
@@ -1229,60 +1212,9 @@
             const state = game.playerStates[currentPlayer.id];
             
             clearTimeout(botTimer);
-
-            if (game.deck.length === 0 && !canPlayAny(state.hand)) {
-                broadcastAnnounce('กองจั่วหมดและไม่มีผู้เล่นสามารถดำเนินเกมต่อได้', true);
-                let minScore = Infinity; let winnerId = null;
-                players.forEach(p => {
-                    let s = 0; game.playerStates[p.id].hand.forEach(t => s += getTileScore(t));
-                    if(s < minScore) { minScore = s; winnerId = p.id; }
-                });
-                setTimeout(() => handleWin(winnerId), 2000);
-                return;
-            }
-            
             if (currentPlayer.isBot) {
                 runBotTurn(currentPlayer, state);
             } else {
-                botTimer = setTimeout(() => {
-                    if (game.status === 'playing' && players[game.turnIndex].id === currentPlayer.id) {
-                        const attemptAutoPlay = () => {
-                            if (game.status !== 'playing' || players[game.turnIndex].id !== currentPlayer.id) return;
-                            const st = game.playerStates[currentPlayer.id];
-                            if (canPlayAny(st.hand)) {
-                                if (st.hand.length === 2 && !st.declaredDomino) {
-                                    handlePlayerAction(currentPlayer.id, 'announce_domino');
-                                }
-                                setTimeout(() => {
-                                    if (game.status !== 'playing' || players[game.turnIndex].id !== currentPlayer.id) return;
-                                    for (let i = 0; i < st.hand.length; i++) {
-                                        const t = st.hand[i];
-                                        let side = null;
-                                        if (game.leftEnd === null) { side = 'left'; }
-                                        else if (t.left === game.leftEnd || t.right === game.leftEnd) { side = 'left'; }
-                                        else if (t.left === game.rightEnd || t.right === game.rightEnd) { side = 'right'; }
-                                        if (side) {
-                                            handlePlayerAction(currentPlayer.id, 'play', { index: i, side: side });
-                                            return;
-                                        }
-                                    }
-                                }, 500);
-                            } else if (game.deck.length > 0 && game.drawCountThisTurn < 3) {
-                                handlePlayerAction(currentPlayer.id, 'draw');
-                                setTimeout(attemptAutoPlay, 1500);
-                            } else {
-                                if (game.drawCountThisTurn < 3 && game.deck.length === 0 && !canPlayAny(st.hand)) {
-                                    broadcastAnnounce(`กองจั่วหมดแล้ว ${currentPlayer.name} ผ่านรอบ`);
-                                    game.consecutivePasses++;
-                                    if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
-                                    setTimeout(() => advanceTurn(), 2000);
-                                }
-                            }
-                        };
-                        attemptAutoPlay();
-                    }
-                }, 60000);
-
                 // Auto-pass human if deck is empty and cannot play anything
                 if (!canPlayAny(state.hand) && game.deck.length === 0) {
                     setTimeout(() => {
