@@ -724,7 +724,7 @@ function renderGame(gState) {
 	document.getElementById('deck-count-visual').textContent = gState.deckCount;
 	document.getElementById('deck-aria-label').textContent = `กองจั่วเหลือ ${gState.deckCount} ตัว`;
 
-	// Render Board Ends visually (Half Domino / Single Face only)
+	// Render Board Ends visually
 	const lCont = document.getElementById('board-left-container');
 	const rCont = document.getElementById('board-right-container');
 	const lAria = document.getElementById('board-left-aria');
@@ -739,32 +739,23 @@ function renderGame(gState) {
 	} else {
 		const renderEndVisual = (val) => {
 			const d = document.createElement('div');
-			const isSpecial = typeof val === 'string';
-			let spClass = '';
-			if (val === 'sleep') spClass = 'sp-sleep';
-			else if (val === 'draw2') spClass = 'sp-draw2';
-			else if (val === 'draw3') spClass = 'sp-draw3';
-			else if (val === 'reverse') spClass = 'sp-reverse';
-
-			d.className = `domino-tile domino-half-tile ${isSpecial ? 'special-tile ' + spClass : ''}`;
+			d.className = 'domino-end-tile domino-half';
 			d.setAttribute('aria-hidden', 'true');
-
-			const formatHalf = (v) => {
-				if (v === 'sleep') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">หลับ<br>💤</div>`;
-				if (v === 'draw2') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">2+<br>⚡</div>`;
-				if (v === 'draw3') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">3+<br>💥</div>`;
-				if (v === 'reverse') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">ย้อนศร<br>🔄</div>`;
-				return `<div class="domino-half" style="height:100%;width:100%;display:flex;justify-content:center;align-items:center;">${getPipLayoutHTML(v)}</div>`;
-			};
-
-			d.innerHTML = formatHalf(val);
-			d.style.width = 'clamp(45px, 10vw, 55px)';
-			d.style.height = 'clamp(45px, 10vw, 55px)';
-			d.style.display = 'flex';
-			d.style.justifyContent = 'center';
-			d.style.alignItems = 'center';
-			d.style.padding = '0';
-			d.style.boxSizing = 'border-box';
+			if (val === 'sleep') {
+				d.classList.add('special-tile', 'sp-sleep');
+				d.innerHTML = `<div class="special-text">หลับ<br>💤</div>`;
+			} else if (val === 'draw2') {
+				d.classList.add('special-tile', 'sp-draw2');
+				d.innerHTML = `<div class="special-text">2+<br>⚡</div>`;
+			} else if (val === 'draw3') {
+				d.classList.add('special-tile', 'sp-draw3');
+				d.innerHTML = `<div class="special-text">3+<br>💥</div>`;
+			} else if (val === 'reverse') {
+				d.classList.add('special-tile', 'sp-reverse');
+				d.innerHTML = `<div class="special-text">ย้อนศร<br>🔄</div>`;
+			} else {
+				d.innerHTML = getPipLayoutHTML(val);
+			}
 			return d;
 		};
 		lCont.appendChild(renderEndVisual(gState.leftEnd));
