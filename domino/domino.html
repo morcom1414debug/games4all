@@ -832,11 +832,12 @@
             
             setTimeout(() => {
                 broadcastTurnStart();
+                broadcastSound('turn');
                 const firstPlayer = players[game.turnIndex];
                 if (firstPlayer.id === myPeerId && !firstPlayer.isBot) {
-                    playSound('turn', () => { playSound('abc'); });
+                    playSound('abc');
                 } else if (!firstPlayer.isBot && firstPlayer.connection && firstPlayer.connection.open) {
-                    firstPlayer.connection.send({ type: 'playTurnAlert' });
+                    firstPlayer.connection.send({ type: 'playAbc' });
                 }
                 processTurnLogic();
             }, 1000);
@@ -876,11 +877,11 @@
                 game = { ...game, ...data.game }; renderGame(data.game);
             }
             else if (data.type === 'announce') { announce(data.message, data.assertive); logEvent(data.message); }
-            else if (data.type === 'animDomino') { showAnimOverlay('DOMINO!', true); playSound('uno'); }
+            else if (data.type === 'animDomino') { showAnimOverlay('DOMINO!', true); }
             else if (data.type === 'endGame') { showResult(data.winnerName, data.resultStats); }
             else if (data.type === 'playSound') { playSound(data.soundName); }
             else if (data.type === 'startAnim') { doStartAnimation(() => {}); }
-            else if (data.type === 'playTurnAlert') { playSound('turn', () => { playSound('abc'); }); }
+            else if (data.type === 'playAbc') { playSound('abc'); }
         }
 
         function renderGame(gState) {
@@ -1046,22 +1047,28 @@
                     state.declaredDomino = true;
                     broadcastAnnounce(`${currentPlayer.name} ประกาศ DOMINO! เหลือ 2 ตัว`);
                     connections.forEach(c => { if(c.open) c.send({ type: 'animDomino' }); });
-                    showAnimOverlay('DOMINO!', true); playSound('uno');
+                    showAnimOverlay('DOMINO!', true); 
+                    broadcastSound('uno');
                     broadcastGameState();
                 }
                 return;
             }
 
             if (peerId !== currentPlayer.id || action !== 'play') return;
-
+            
             const state = game.playerStates[peerId];
+            if (state.isProcessing) return;
+            
+            clearTimeout(botTimer);
+            state.isProcessing = true;
+
             const tile = state.hand[payload.index];
-            if (!tile) return;
+            if (!tile) { state.isProcessing = false; return; }
 
             // Penalty Check
             if (state.hand.length === 2 && !state.declaredDomino) {
                 broadcastAnnounce(`${currentPlayer.name} ลืมกด DOMINO! ถูกลงโทษ จั่ว 2 ตัว`);
-                playSound('wl');
+                broadcastSound('wl');
                 drawTiles(peerId, 2);
                 state.declaredDomino = false;
             }
@@ -1098,6 +1105,7 @@
             broadcastSound('select');
 
             game.consecutivePasses = 0;
+            broadcastGameState(); // อัปเดตกระดานให้ทุกคนเห็นทันที
 
             let delayBeforeEffect = 2000;
 
@@ -1107,9 +1115,23 @@
             }
 
             if (state.hand.length === 0) { 
-                setTimeout(() => handleWin(peerId), delayBeforeEffect); 
+                setTimeout(() => { state.isProcessing = false; handleWin(peerId); }, delayBeforeEffect); 
                 return; 
             }
+
+            const finishPlay = () => {
+                state.isProcessing = false;
+                if (game.status !== 'playing' || players[game.turnIndex].id !== peerId) return;
+                
+                const st = game.playerStates[peerId];
+                if (st && st.hand.length > 0 && canPlayAny(st.hand)) {
+                    broadcastAnnounce(`${currentPlayer.name} สามารถวางโดมิโน่ต่อเนื่องได้`);
+                    broadcastGameState();
+                    processTurnLogic(); 
+                } else {
+                    advanceTurn();
+                }
+            };
 
             // Apply special effect
             if (tile.type !== 'regular') {
@@ -1122,27 +1144,27 @@
                     } else if (tile.type === 'reverse') {
                         game.direction *= -1; 
                         broadcastAnnounce(`ทิศทางการเล่นเปลี่ยนเป็น${game.direction === 1 ? 'ตามเข็มนาฬิกา' : 'ทวนเข็มนาฬิกา'}`); 
-                        playSound('reverse');
+                        broadcastSound('reverse');
                     } else if (tile.type === 'draw2') {
                         const target = players[(game.turnIndex + game.direction + players.length) % players.length];
                         broadcastAnnounce(`${target.name}โดน 2+ ต้องจั่วเพิ่ม 2 ตัวและถูกข้ามตา`); 
-                        playSound('draw2');
-                        playSound('hit');
+                        broadcastSound('draw2');
+                        broadcastSound('hit');
                         drawTiles(target.id, 2);
                         game.pendingSkips = (game.pendingSkips || 0) + 1;
                     } else if (tile.type === 'draw3') {
                         const target = players[(game.turnIndex + game.direction + players.length) % players.length];
                         broadcastAnnounce(`${target.name}โดน 3+ ต้องจั่วเพิ่ม 3 ตัวและถูกข้ามตา`); 
-                        playSound('draw4');
-                        playSound('hit');
+                        broadcastSound('draw4');
+                        broadcastSound('hit');
                         drawTiles(target.id, 3);
                         game.pendingSkips = (game.pendingSkips || 0) + 1;
                     }
                 }, delayBeforeEffect);
                 
-                setTimeout(() => { advanceTurn(); }, delayBeforeEffect + 2500); 
+                setTimeout(finishPlay, delayBeforeEffect + 2500); 
             } else {
-                setTimeout(() => { advanceTurn(); }, delayBeforeEffect);
+                setTimeout(finishPlay, delayBeforeEffect);
             }
         }
 
@@ -1163,13 +1185,11 @@
             game.turnIndex = (game.turnIndex + (game.direction * steps) + (players.length * 10)) % players.length;
             
             const nextPlayer = players[game.turnIndex];
+            broadcastSound('turn');
             if (nextPlayer.id === myPeerId && !nextPlayer.isBot) {
-                playSound('turn', () => { playSound('abc'); });
-            } else {
-                playSound('turn');
-                if (!nextPlayer.isBot && nextPlayer.connection && nextPlayer.connection.open) {
-                    nextPlayer.connection.send({ type: 'playTurnAlert' });
-                }
+                playSound('abc');
+            } else if (!nextPlayer.isBot && nextPlayer.connection && nextPlayer.connection.open) {
+                nextPlayer.connection.send({ type: 'playAbc' });
             }
             
             broadcastGameState();
@@ -1326,7 +1346,7 @@
             });
 
             broadcastAnnounce(announceMsg, true);
-            playSound('win');
+            broadcastSound('win');
 
             connections.forEach(c => {
                 if(c.open) c.send({ type: 'endGame', winnerName: winner.name, resultStats: resultStats });
@@ -1341,7 +1361,7 @@
             let winnerStat = resultStats.find(r => r.isWinner) || resultStats[0];
             let losers = resultStats.filter(r => !r.isWinner);
             
-let html = `<div style="color: var(--primary); margin-bottom: 10px;">${winnerName}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม</div>`;
+            let html = `<div style="color: var(--primary); margin-bottom: 10px;">${winnerName}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม</div>`;
             losers.forEach(l => {
                 html += `<div style="color: var(--danger); margin-bottom: 10px;">${l.name}เหลือ ${l.points} แต้ม แพ้</div>`;
             });
@@ -1349,6 +1369,46 @@ let html = `<div style="color: var(--primary); margin-bottom: 10px;">${winnerNam
             document.getElementById('winner-text').innerHTML = html;
             document.getElementById('result-status-bar').innerHTML = '';
         }
+
+        // --- Keyboard Shortcuts ---
+        document.addEventListener('keydown', (e) => {
+            if (!document.getElementById('screen-game').classList.contains('active')) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.altKey && e.code === 'KeyC') {
+                e.preventDefault();
+                const lAria = document.getElementById('board-left-aria').textContent;
+                const rAria = document.getElementById('board-right-aria').textContent;
+                announce(`${lAria} ${rAria}`);
+            }
+            else if (e.altKey && e.code === 'KeyK') {
+                e.preventDefault();
+                const deckAria = document.getElementById('deck-aria-label').textContent;
+                announce(deckAria);
+            }
+            else if (e.altKey && e.code === 'KeyP') {
+                e.preventDefault();
+                const btnDraw = document.getElementById('btn-draw');
+                if (!btnDraw.disabled) btnDraw.click();
+            }
+            else if (e.altKey && e.code === 'KeyO') {
+                e.preventDefault();
+                const btnDomino = document.getElementById('btn-domino');
+                if (!btnDomino.disabled) btnDomino.click();
+            }
+            else if (e.altKey && e.code === 'KeyA') {
+                e.preventDefault();
+                let msg = "สถานะตัวละครทั้งหมด: ";
+                const chars = document.querySelectorAll('#top-status-bar .character-card');
+                let parts = [];
+                chars.forEach(c => {
+                    const countText = c.querySelector('.char-cards-count').textContent.replace('มี ', ''); 
+                    const nameText = c.querySelector('.char-name').textContent.replace(/[🤖👤]/g, '').trim();
+                    parts.push(`${nameText}เหลือ ${countText}`);
+                });
+                announce(msg + parts.join(' '));
+            }
+        });
     </script>
 </body>
 </html>
