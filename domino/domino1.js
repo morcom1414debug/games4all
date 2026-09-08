@@ -191,7 +191,7 @@ function fxDrawTile(targetPeerId) {
 
 	const fxEl = document.createElement('div');
 	fxEl.className = 'fx-tile domino-tile';
-	fxEl.style.background = 'linear-gradient(145deg, #1f2937, #111827)'; // back of tile matching dark deck
+	fxEl.style.background = '#b8b0a1'; // back of tile
 	
 	const startX = deckRect.left; const startY = deckRect.top;
 	const endX = targetRect.left + targetRect.width/2; const endY = targetRect.top + targetRect.height/2;
@@ -690,13 +690,10 @@ function renderGame(gState) {
 	if (turnPlayer) {
 		const headingEl = document.getElementById('current-turn-heading');
 		headingEl.textContent = `รอบของ ${turnPlayer.name}`;
-		headingEl.style.color = '#ffffff';
 		if(turnPlayer.id === myPeerId) {
-			headingEl.style.background = 'rgba(46, 125, 50, 0.85)';
-			headingEl.style.borderColor = 'var(--primary)';
+			headingEl.style.color = '#fff'; headingEl.style.background = 'linear-gradient(90deg, transparent, var(--primary), transparent)';
 		} else {
-			headingEl.style.background = 'rgba(15, 23, 42, 0.85)';
-			headingEl.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+			headingEl.style.color = 'var(--focus-ring)'; headingEl.style.background = 'linear-gradient(90deg, transparent, rgba(0,0,0,0.8), transparent)';
 		}
 	}
 
