@@ -555,6 +555,36 @@ function renderTileHTML(tile, index = -1, playableLeft = false, playableRight = 
 	return btn;
 }
 
+function renderBoardEndVisual(val) {
+	const isSpecial = typeof val === 'string';
+	const container = document.createElement('div');
+	
+	let spClass = '';
+	if (val === 'sleep') spClass = 'sp-sleep';
+	else if (val === 'draw2') spClass = 'sp-draw2';
+	else if (val === 'draw3') spClass = 'sp-draw3';
+	else if (val === 'reverse') spClass = 'sp-reverse';
+
+	container.className = `domino-tile ${isSpecial ? 'special-tile ' + spClass : ''}`;
+	container.setAttribute('aria-hidden', 'true');
+	container.style.width = 'clamp(40px, 10vw, 55px)';
+	container.style.height = 'clamp(75px, 20vw, 100px)';
+
+	if (val === 'sleep') {
+		container.innerHTML = `<div class="domino-half special-text" style="width:100%;height:100%;">หลับ<br>💤</div>`;
+	} else if (val === 'draw2') {
+		container.innerHTML = `<div class="domino-half special-text" style="width:100%;height:100%;">2+<br>⚡</div>`;
+	} else if (val === 'draw3') {
+		container.innerHTML = `<div class="domino-half special-text" style="width:100%;height:100%;">3+<br>💥</div>`;
+	} else if (val === 'reverse') {
+		container.innerHTML = `<div class="domino-half special-text" style="width:100%;height:100%;">ย้อนศร<br>🔄</div>`;
+	} else {
+		container.innerHTML = `<div class="domino-half" style="width:100%;height:100%;">${getPipLayoutHTML(val)}</div>`;
+	}
+
+	return container;
+}
+
 document.getElementById('btn-start-game').onclick = () => {
 	document.getElementById('btn-start-game').disabled = true;
 	if (isHost && players.length >= 2) {
@@ -737,17 +767,8 @@ function renderGame(gState) {
 	if (gState.leftEnd === null) {
 		lAria.textContent = 'กระดานว่างเปล่า'; rAria.textContent = 'กระดานว่างเปล่า';
 	} else {
-		const renderEndVisual = (val) => {
-			// Create a mock full tile to look consistent, displaying only the required half
-			const pseudoTile = { left: val, right: val, type: typeof val === 'string' ? val : 'regular', name: '' };
-			const d = renderTileHTML(pseudoTile, -1, false, false, true);
-			d.setAttribute('aria-hidden', 'true');
-			// Force size to match board space
-			d.style.width = 'clamp(40px, 10vw, 55px)'; d.style.height = 'clamp(75px, 20vw, 100px)';
-			return d;
-		};
-		lCont.appendChild(renderEndVisual(gState.leftEnd));
-		rCont.appendChild(renderEndVisual(gState.rightEnd));
+		lCont.appendChild(renderBoardEndVisual(gState.leftEnd));
+		rCont.appendChild(renderBoardEndVisual(gState.rightEnd));
 		lAria.textContent = `ปลายซ้าย ${translateTile(gState.leftEnd)}`;
 		rAria.textContent = `ปลายขวา ${translateTile(gState.rightEnd)}`;
 	}
@@ -1201,9 +1222,9 @@ function handleWin(winnerId) {
 
 	broadcastGameState();
 	
-	let winnerStat = resultStats.find(r => r.id === winnerId);
+	let winnerStat = resultStats.find(r => r.isWinner) || resultStats[0];
 	let announceMsg = `การแข่งขันจบแล้ว ${winner.name}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม. `;
-	let losers = resultStats.filter(r => r.id !== winnerId);
+	let losers = resultStats.filter(r => !r.isWinner);
 	losers.forEach(l => {
 		announceMsg += `${l.name}เหลือ ${l.points} แต้ม แพ้. `;
 	});
