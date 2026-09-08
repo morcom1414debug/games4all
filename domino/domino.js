@@ -555,34 +555,6 @@ function renderTileHTML(tile, index = -1, playableLeft = false, playableRight = 
 	return btn;
 }
 
-function renderBoardEndVisual(val) {
-	const isSpecial = typeof val === 'string';
-	const container = document.createElement('div');
-	
-	let spClass = '';
-	if (val === 'sleep') spClass = 'sp-sleep';
-	else if (val === 'draw2') spClass = 'sp-draw2';
-	else if (val === 'draw3') spClass = 'sp-draw3';
-	else if (val === 'reverse') spClass = 'sp-reverse';
-
-	container.className = `domino-tile board-end-tile ${isSpecial ? 'special-tile ' + spClass : ''}`;
-	container.setAttribute('aria-hidden', 'true');
-
-	if (val === 'sleep') {
-		container.innerHTML = `<div class="domino-half special-text">หลับ<br>💤</div>`;
-	} else if (val === 'draw2') {
-		container.innerHTML = `<div class="domino-half special-text">2+<br>⚡</div>`;
-	} else if (val === 'draw3') {
-		container.innerHTML = `<div class="domino-half special-text">3+<br>💥</div>`;
-	} else if (val === 'reverse') {
-		container.innerHTML = `<div class="domino-half special-text">ย้อนศร<br>🔄</div>`;
-	} else {
-		container.innerHTML = `<div class="domino-half">${getPipLayoutHTML(val)}</div>`;
-	}
-
-	return container;
-}
-
 document.getElementById('btn-start-game').onclick = () => {
 	document.getElementById('btn-start-game').disabled = true;
 	if (isHost && players.length >= 2) {
@@ -765,8 +737,36 @@ function renderGame(gState) {
 	if (gState.leftEnd === null) {
 		lAria.textContent = 'กระดานว่างเปล่า'; rAria.textContent = 'กระดานว่างเปล่า';
 	} else {
-		lCont.appendChild(renderBoardEndVisual(gState.leftEnd));
-		rCont.appendChild(renderBoardEndVisual(gState.rightEnd));
+		const renderEndVisual = (val) => {
+			const d = document.createElement('div');
+			const isSpecial = typeof val === 'string';
+			let spClass = '';
+			if (val === 'sleep') spClass = 'sp-sleep';
+			else if (val === 'draw2') spClass = 'sp-draw2';
+			else if (val === 'draw3') spClass = 'sp-draw3';
+			else if (val === 'reverse') spClass = 'sp-reverse';
+
+			d.className = `domino-tile ${isSpecial ? 'special-tile ' + spClass : ''}`;
+			d.setAttribute('aria-hidden', 'true');
+
+			const formatHalf = (v) => {
+				if (v === 'sleep') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">หลับ<br>💤</div>`;
+				if (v === 'draw2') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">2+<br>⚡</div>`;
+				if (v === 'draw3') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">3+<br>💥</div>`;
+				if (v === 'reverse') return `<div class="domino-half special-text" style="height:100%;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;">ย้อนศร<br>🔄</div>`;
+				return `<div class="domino-half" style="height:100%;width:100%;display:flex;justify-content:center;align-items:center;">${getPipLayoutHTML(v)}</div>`;
+			};
+
+			d.innerHTML = formatHalf(val);
+			d.style.width = 'clamp(40px, 10vw, 55px)';
+			d.style.height = 'clamp(50px, 12vw, 65px)';
+			d.style.display = 'flex';
+			d.style.justifyContent = 'center';
+			d.style.alignItems = 'center';
+			return d;
+		};
+		lCont.appendChild(renderEndVisual(gState.leftEnd));
+		rCont.appendChild(renderEndVisual(gState.rightEnd));
 		lAria.textContent = `ปลายซ้าย ${translateTile(gState.leftEnd)}`;
 		rAria.textContent = `ปลายขวา ${translateTile(gState.rightEnd)}`;
 	}
@@ -1220,9 +1220,9 @@ function handleWin(winnerId) {
 
 	broadcastGameState();
 	
-	let winnerStat = resultStats.find(r => r.isWinner) || resultStats[0];
+	let winnerStat = resultStats.find(r => r.id === winnerId);
 	let announceMsg = `การแข่งขันจบแล้ว ${winner.name}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม. `;
-	let losers = resultStats.filter(r => !r.isWinner);
+	let losers = resultStats.filter(r => r.id !== winnerId);
 	losers.forEach(l => {
 		announceMsg += `${l.name}เหลือ ${l.points} แต้ม แพ้. `;
 	});
