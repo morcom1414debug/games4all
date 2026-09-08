@@ -488,8 +488,7 @@
             consecutivePasses: 0,
             matchOver: false,
             pendingSkips: 0,
-            drawCountThisTurn: 0,
-            doubleChainSide: null
+            drawCountThisTurn: 0
         };
 
         function initPeer() {
@@ -739,7 +738,7 @@
 
         function renderTileHTML(tile, index = -1, playableLeft = false, playableRight = false) {
             const isSpecial = tile.type !== 'regular';
-            const isDouble = tile.left === tile.right && tile.type === 'regular';
+            const isDouble = tile.left === tile.right;
             const btn = document.createElement(index >= 0 ? 'button' : 'div');
             btn.className = `domino-tile ${isDouble ? '' : 'horizontal'} ${isSpecial ? 'special-tile' : ''} ${(index >= 0 && !playableLeft && !playableRight) ? 'disabled' : ''}`;
             
@@ -802,9 +801,6 @@
             } else {
                 msg += `ปลายซ้ายคือ ${translateTile(game.leftEnd)} ปลายขวาคือ ${translateTile(game.rightEnd)}`;
             }
-            if (game.doubleChainSide) {
-                msg += ` (มีการล็อกฝั่งเล่นต่อที่ปลาย${game.doubleChainSide === 'left' ? 'ซ้าย' : 'ขวา'})`;
-            }
             broadcastAnnounce(msg);
         }
 
@@ -812,11 +808,9 @@
             game.status = 'playing'; game.matchOver = false;
             game.deck = generateDeck();
             game.leftEnd = null; game.rightEnd = null;
-            game.turnIndex = 0;
             game.direction = 1; game.consecutivePasses = 0;
             game.pendingSkips = 0;
             game.drawCountThisTurn = 0;
-            game.doubleChainSide = null;
             
             let highestDoubleVal = -1;
             let starterIdx = 0;
@@ -860,7 +854,6 @@
                 turnIndex: game.turnIndex,
                 direction: game.direction,
                 drawCountThisTurn: game.drawCountThisTurn,
-                doubleChainSide: game.doubleChainSide,
                 players: safePlayers,
                 playerStates: {}
             };
@@ -960,12 +953,8 @@
                 if (isMyTurn) {
                     if (gState.leftEnd === null) { playableL = true; playableR = true; }
                     else {
-                        if (!gState.doubleChainSide || gState.doubleChainSide === 'left') {
-                            if (tile.left === gState.leftEnd || tile.right === gState.leftEnd) playableL = true;
-                        }
-                        if (!gState.doubleChainSide || gState.doubleChainSide === 'right') {
-                            if (tile.left === gState.rightEnd || tile.right === gState.rightEnd) playableR = true;
-                        }
+                        if (tile.left === gState.leftEnd || tile.right === gState.leftEnd) playableL = true;
+                        if (tile.left === gState.rightEnd || tile.right === gState.rightEnd) playableR = true;
                     }
                 }
                 if (playableL || playableR) canPlayAtLeastOne = true;
@@ -1021,7 +1010,6 @@
                 
                 const tile = game.deck.pop();
                 game.playerStates[peerId].hand.push(tile);
-                game.playerStates[peerId].declaredDomino = false;
                 game.drawCountThisTurn++;
                 
                 broadcastSound('jua');
@@ -1041,10 +1029,9 @@
                 broadcastGameState();
 
                 if (game.drawCountThisTurn === 3) {
-                    if (!canPlayAny(game.playerStates[peerId].hand, game.doubleChainSide)) {
+                    if (!canPlayAny(game.playerStates[peerId].hand)) {
                         setTimeout(() => {
                             broadcastAnnounce(`${currentPlayer.name} จั่วครบ 3 ตัวแล้ว แต่ยังไม่มีตัวที่วางได้ จบตา`);
-                            game.playerStates[peerId].declaredDomino = false;
                             game.consecutivePasses++;
                             if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
                             setTimeout(() => advanceTurn(), 2500);
@@ -1072,8 +1059,6 @@
             const state = game.playerStates[peerId];
             if (state.isProcessing) return;
             
-            if (game.doubleChainSide && game.doubleChainSide !== payload.side) return;
-
             clearTimeout(botTimer);
             state.isProcessing = true;
 
@@ -1091,7 +1076,6 @@
             state.hand.splice(payload.index, 1);
             let newEnd = null;
             let playedSideStr = '';
-            let playedSide = null;
 
             if (game.leftEnd === null) { 
                 game.leftEnd = tile.left; game.rightEnd = tile.right; 
@@ -1101,17 +1085,10 @@
                 newEnd = (tile.left === game.leftEnd) ? tile.right : tile.left;
                 game.leftEnd = newEnd;
                 playedSideStr = 'ที่ปลายซ้าย';
-                playedSide = 'left';
             } else {
                 newEnd = (tile.left === game.rightEnd) ? tile.right : tile.left;
                 game.rightEnd = newEnd;
                 playedSideStr = 'ที่ปลายขวา';
-                playedSide = 'right';
-            }
-
-            let isDouble = (tile.type === 'regular' && tile.left === tile.right);
-            if (isDouble && playedSide) {
-                game.doubleChainSide = playedSide;
             }
 
             let tileLeftText = translateTile(tile.left);
@@ -1147,8 +1124,8 @@
                 if (game.status !== 'playing' || players[game.turnIndex].id !== peerId) return;
                 
                 const st = game.playerStates[peerId];
-                if (isDouble && st && st.hand.length > 0 && canPlayAny(st.hand, game.doubleChainSide)) {
-                    broadcastAnnounce(`${currentPlayer.name} วาง Double สามารถเล่นต่อเนื่องได้ที่ฝั่งเดิม`);
+                if (st && st.hand.length > 0 && canPlayAny(st.hand)) {
+                    broadcastAnnounce(`${currentPlayer.name} สามารถวางโดมิโน่ต่อเนื่องได้`);
                     broadcastGameState();
                     processTurnLogic(); 
                 } else {
@@ -1194,17 +1171,10 @@
         function drawTiles(playerId, count) {
             const st = game.playerStates[playerId];
             for(let i=0; i<count; i++) { if(game.deck.length > 0) st.hand.push(game.deck.pop()); }
-            st.declaredDomino = false;
         }
 
-        function canPlayAny(hand, lockedSide = null) {
+        function canPlayAny(hand) {
             if (game.leftEnd === null) return hand.length > 0;
-            if (lockedSide === 'left') {
-                return hand.some(t => t.left === game.leftEnd || t.right === game.leftEnd);
-            }
-            if (lockedSide === 'right') {
-                return hand.some(t => t.left === game.rightEnd || t.right === game.rightEnd);
-            }
             return hand.some(t => t.left === game.leftEnd || t.right === game.leftEnd || t.left === game.rightEnd || t.right === game.rightEnd);
         }
 
@@ -1212,7 +1182,6 @@
             let steps = 1 + (game.pendingSkips || 0);
             game.pendingSkips = 0;
             game.drawCountThisTurn = 0;
-            game.doubleChainSide = null;
             game.turnIndex = (game.turnIndex + (game.direction * steps) + (players.length * 10)) % players.length;
             
             const nextPlayer = players[game.turnIndex];
@@ -1234,10 +1203,9 @@
         async function runBotTurn(botPlayer, state) {
             await new Promise(r => setTimeout(r, 2000)); // wait for turn announcement
 
-            while (game.drawCountThisTurn < 3 && !canPlayAny(state.hand, game.doubleChainSide) && game.deck.length > 0) {
+            while (game.drawCountThisTurn < 3 && !canPlayAny(state.hand) && game.deck.length > 0) {
                 const tile = game.deck.pop();
                 state.hand.push(tile);
-                state.declaredDomino = false;
                 game.drawCountThisTurn++;
                 broadcastSound('jua');
                 broadcastAnnounce(`${botPlayer.name} จั่ว 1 ตัว`);
@@ -1247,20 +1215,20 @@
 
             if (game.status !== 'playing') return;
 
-            if (state.hand.length === 2 && canPlayAny(state.hand, game.doubleChainSide) && !state.declaredDomino) {
+            if (state.hand.length === 2 && canPlayAny(state.hand) && !state.declaredDomino) {
                 handlePlayerAction(botPlayer.id, 'announce_domino');
                 await new Promise(r => setTimeout(r, 1500));
             }
             
-            if (canPlayAny(state.hand, game.doubleChainSide)) {
+            if (canPlayAny(state.hand)) {
                 await new Promise(r => setTimeout(r, 1000));
                 
                 const validPlays = [];
                 state.hand.forEach((t, i) => {
                     if (game.leftEnd === null) { validPlays.push({ index: i, side: 'left' }); }
                     else {
-                        if ((!game.doubleChainSide || game.doubleChainSide === 'left') && (t.left === game.leftEnd || t.right === game.leftEnd)) validPlays.push({ index: i, side: 'left' });
-                        if ((!game.doubleChainSide || game.doubleChainSide === 'right') && (t.left === game.rightEnd || t.right === game.rightEnd)) validPlays.push({ index: i, side: 'right' });
+                        if (t.left === game.leftEnd || t.right === game.leftEnd) validPlays.push({ index: i, side: 'left' });
+                        if (t.left === game.rightEnd || t.right === game.rightEnd) validPlays.push({ index: i, side: 'right' });
                     }
                 });
                 const choice = validPlays[Math.floor(Math.random() * validPlays.length)];
@@ -1268,7 +1236,6 @@
             } else {
                 if (game.drawCountThisTurn === 3 || game.deck.length === 0) {
                     broadcastAnnounce(`${botPlayer.name} จั่วครบ 3 ตัวแล้ว แต่ยังไม่มีตัวที่วางได้ จบตา`);
-                    state.declaredDomino = false;
                     game.consecutivePasses++;
                     if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
                     setTimeout(() => advanceTurn(), 2000);
@@ -1283,7 +1250,7 @@
             
             clearTimeout(botTimer);
 
-            if (game.deck.length === 0 && !canPlayAny(state.hand, game.doubleChainSide)) {
+            if (game.deck.length === 0 && !canPlayAny(state.hand)) {
                 broadcastAnnounce('กองจั่วหมดและไม่มีผู้เล่นสามารถดำเนินเกมต่อได้', true);
                 let minScore = Infinity; let winnerId = null;
                 players.forEach(p => {
@@ -1302,7 +1269,7 @@
                         const attemptAutoPlay = () => {
                             if (game.status !== 'playing' || players[game.turnIndex].id !== currentPlayer.id) return;
                             const st = game.playerStates[currentPlayer.id];
-                            if (canPlayAny(st.hand, game.doubleChainSide)) {
+                            if (canPlayAny(st.hand)) {
                                 if (st.hand.length === 2 && !st.declaredDomino) {
                                     handlePlayerAction(currentPlayer.id, 'announce_domino');
                                 }
@@ -1312,9 +1279,8 @@
                                         const t = st.hand[i];
                                         let side = null;
                                         if (game.leftEnd === null) { side = 'left'; }
-                                        else if ((!game.doubleChainSide || game.doubleChainSide === 'left') && (t.left === game.leftEnd || t.right === game.leftEnd)) { side = 'left'; }
-                                        else if ((!game.doubleChainSide || game.doubleChainSide === 'right') && (t.left === game.rightEnd || t.right === game.rightEnd)) { side = 'right'; }
-                                        
+                                        else if (t.left === game.leftEnd || t.right === game.leftEnd) { side = 'left'; }
+                                        else if (t.left === game.rightEnd || t.right === game.rightEnd) { side = 'right'; }
                                         if (side) {
                                             handlePlayerAction(currentPlayer.id, 'play', { index: i, side: side });
                                             return;
@@ -1325,9 +1291,8 @@
                                 handlePlayerAction(currentPlayer.id, 'draw');
                                 setTimeout(attemptAutoPlay, 1500);
                             } else {
-                                if (game.drawCountThisTurn < 3 && game.deck.length === 0 && !canPlayAny(st.hand, game.doubleChainSide)) {
+                                if (game.drawCountThisTurn < 3 && game.deck.length === 0 && !canPlayAny(st.hand)) {
                                     broadcastAnnounce(`กองจั่วหมดแล้ว ${currentPlayer.name} ผ่านรอบ`);
-                                    st.declaredDomino = false;
                                     game.consecutivePasses++;
                                     if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
                                     setTimeout(() => advanceTurn(), 2000);
@@ -1339,10 +1304,9 @@
                 }, 60000);
 
                 // Auto-pass human if deck is empty and cannot play anything
-                if (!canPlayAny(state.hand, game.doubleChainSide) && game.deck.length === 0) {
+                if (!canPlayAny(state.hand) && game.deck.length === 0) {
                     setTimeout(() => {
                         broadcastAnnounce(`กองจั่วหมดแล้ว ${currentPlayer.name} ผ่านรอบ`);
-                        state.declaredDomino = false;
                         game.consecutivePasses++;
                         if (game.consecutivePasses >= players.length) { handleStuckGame(); return; }
                         setTimeout(() => advanceTurn(), 2000);
