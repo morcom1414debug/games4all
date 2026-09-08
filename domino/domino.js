@@ -724,7 +724,7 @@ function renderGame(gState) {
 	document.getElementById('deck-count-visual').textContent = gState.deckCount;
 	document.getElementById('deck-aria-label').textContent = `กองจั่วเหลือ ${gState.deckCount} ตัว`;
 
-	// Render Board Ends visually
+	// Render Board Ends visually (Half Domino / Single Face only)
 	const lCont = document.getElementById('board-left-container');
 	const rCont = document.getElementById('board-right-container');
 	const lAria = document.getElementById('board-left-aria');
@@ -746,7 +746,7 @@ function renderGame(gState) {
 			else if (val === 'draw3') spClass = 'sp-draw3';
 			else if (val === 'reverse') spClass = 'sp-reverse';
 
-			d.className = `domino-tile ${isSpecial ? 'special-tile ' + spClass : ''}`;
+			d.className = `domino-tile domino-half-tile ${isSpecial ? 'special-tile ' + spClass : ''}`;
 			d.setAttribute('aria-hidden', 'true');
 
 			const formatHalf = (v) => {
@@ -758,11 +758,13 @@ function renderGame(gState) {
 			};
 
 			d.innerHTML = formatHalf(val);
-			d.style.width = 'clamp(40px, 10vw, 55px)';
-			d.style.height = 'clamp(50px, 12vw, 65px)';
+			d.style.width = 'clamp(45px, 10vw, 55px)';
+			d.style.height = 'clamp(45px, 10vw, 55px)';
 			d.style.display = 'flex';
 			d.style.justifyContent = 'center';
 			d.style.alignItems = 'center';
+			d.style.padding = '0';
+			d.style.boxSizing = 'border-box';
 			return d;
 		};
 		lCont.appendChild(renderEndVisual(gState.leftEnd));
