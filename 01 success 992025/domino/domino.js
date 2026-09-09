@@ -1218,7 +1218,7 @@ function handleWin(winnerId) {
 	let announceMsg = `การแข่งขันจบแล้ว ${winner.name}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม. `;
 	let losers = resultStats.filter(r => r.id !== winnerId);
 	losers.forEach(l => {
-		announceMsg += `${l.name}เหลือ ${l.points} แต้ม แพ้. `;
+		announceMsg += `${l.name}ได้ ${l.points} แต้ม แพ้. `;
 	});
 
 	broadcastAnnounce(announceMsg, true);
@@ -1243,7 +1243,7 @@ function showResult(winnerName, resultStats) {
 	
 	let html = `<div style="color: var(--focus-ring); margin-bottom: 10px;">👑 ${winnerName}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม</div>`;
 	losers.forEach(l => {
-		html += `<div style="color: #ffcdd2; margin-bottom: 10px;">❌ ${l.name}เหลือ ${l.points} แต้ม แพ้</div>`;
+		html += `<div style="color: #ffcdd2; margin-bottom: 10px;">❌ ${l.name}ได้ ${l.points} แต้ม แพ้</div>`;
 	});
 	
 	document.getElementById('winner-text').innerHTML = html;
