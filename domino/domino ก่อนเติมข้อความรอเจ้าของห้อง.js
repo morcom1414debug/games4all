@@ -412,7 +412,6 @@ function enterLobby() {
 	switchScreen('screen-lobby', 'title-lobby');
 	document.getElementById('lobby-room-id').textContent = currentRoomId;
 	document.getElementById('host-controls').style.display = isHost ? 'block' : 'none';
-document.getElementById('lobby-ready-msg').innerText = 'รอสักครู่ ให้เจ้าของห้องกดเริ่มเกมเพื่อสนุกกัน';document.getElementById('lobby-ready-msg').style.display = 'block';
 	renderLobby();
 }
 
