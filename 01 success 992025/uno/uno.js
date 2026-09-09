@@ -6,6 +6,13 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const soundBuffers = {};
 const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'skip', 'reverse', 'draw2', 'draw4', 'll', 'ww', 'wl', 'win', 'abc'];
 
+let turnAudioEnqueued = 0; // ติดตามจำนวนคิวของเสียง turn ที่กำลังจะเล่น/กำลังเล่นอยู่
+let pendingABC = false; // ร้องขอการเล่น abc รอไว้
+
+// --- Global Audio Queue ---
+const audioQueue = [];
+let isAudioPlaying = false;
+
 async function initAudio() {
 	for (let name of soundNames) {
 		try {
@@ -18,106 +25,71 @@ async function initAudio() {
 initAudio();
 
 let bgmNode = null;
-const globalAudioQueue = [];
-let isPlayingAudioQueue = false;
-let currentlyPlayingSound = null;
-let pendingABC = false; 
-
-let lastEnqueuedSound = null;
-let lastEnqueuedTime = 0;
 
 function processAudioQueue() {
-	if (isPlayingAudioQueue) return;
-	if (globalAudioQueue.length === 0) {
-		checkPendingABC();
-		return;
-	}
-	
-	isPlayingAudioQueue = true;
-	const task = globalAudioQueue.shift();
-	currentlyPlayingSound = task.name;
-	
-	if (audioCtx.state === 'suspended') audioCtx.resume();
-	
+	if (isAudioPlaying || audioQueue.length === 0) return;
+	isAudioPlaying = true;
+
+	const task = audioQueue.shift();
+
+	const handleEnd = () => {
+		if (task.name === 'turn') {
+			turnAudioEnqueued = Math.max(0, turnAudioEnqueued - 1);
+			// หากไม่มีคิวเสียง turn ค้างอยู่ และมีคำสั่งขอเล่น abc ล่วงหน้า
+			if (turnAudioEnqueued === 0 && pendingABC) {
+				pendingABC = false;
+				// ยืนยันอีกครั้งว่ารอบปัจจุบันยังคงเป็นของตัวผู้เล่นเองจริงๆ
+				const currentPlayer = players[game.turnIndex];
+				if (currentPlayer && currentPlayer.id === myPeerId && !currentPlayer.isBot) {
+					playSound('abc');
+				}
+			}
+		}
+		if (task.onEndedCb) task.onEndedCb();
+		isAudioPlaying = false;
+		processAudioQueue();
+	};
+
 	if (!soundBuffers[task.name]) {
-		finishCurrentSound(task);
+		handleEnd();
 		return;
 	}
+
+	const source = audioCtx.createBufferSource();
+	source.buffer = soundBuffers[task.name];
+	source.connect(audioCtx.destination);
+	
+	source.onended = handleEnd;
 
 	try {
-		const source = audioCtx.createBufferSource();
-		source.buffer = soundBuffers[task.name];
-		source.connect(audioCtx.destination);
 		source.start(0);
-		
-		source.onended = () => {
-			finishCurrentSound(task);
-		};
-	} catch(e) {
-		console.error(e);
-		finishCurrentSound(task);
+	} catch (e) {
+		console.warn('Audio start failed:', e);
+		handleEnd();
 	}
-}
-
-function finishCurrentSound(task) {
-	isPlayingAudioQueue = false;
-	currentlyPlayingSound = null;
-	if (task.onEndedCb) task.onEndedCb();
-	
-	if (task.name === 'turn') {
-		checkPendingABC();
-	}
-	processAudioQueue();
-}
-
-function checkPendingABC() {
-	if (!pendingABC) return;
-	if (game && game.status === 'playing') {
-		const currentPlayer = players[game.turnIndex];
-		if (currentPlayer && currentPlayer.id === myPeerId && !currentPlayer.isBot) {
-			pendingABC = false; 
-			if (!globalAudioQueue.some(t => t.name === 'abc')) {
-				enqueueSound('abc');
-			}
-		} else {
-			pendingABC = false; 
-		}
-	}
-}
-
-function enqueueSound(name, onEndedCb = null) {
-	if (name === 'bgm') {
-		if (audioCtx.state === 'suspended') audioCtx.resume();
-		if (!soundBuffers['bgm']) {
-			if(onEndedCb) onEndedCb();
-			return null;
-		}
-		if (!bgmNode) {
-			const source = audioCtx.createBufferSource();
-			source.buffer = soundBuffers['bgm'];
-			source.connect(audioCtx.destination);
-			source.loop = true;
-			source.start(0);
-			bgmNode = source;
-		}
-		if(onEndedCb) onEndedCb();
-		return bgmNode;
-	}
-
-	const now = Date.now();
-	if (name === lastEnqueuedSound && (now - lastEnqueuedTime) < 50) {
-		if (onEndedCb) onEndedCb();
-		return;
-	}
-	lastEnqueuedSound = name;
-	lastEnqueuedTime = now;
-
-	globalAudioQueue.push({ name, onEndedCb });
-	processAudioQueue();
 }
 
 function playSound(name, onEndedCb = null) {
-	enqueueSound(name, onEndedCb);
+	if(audioCtx.state === 'suspended') audioCtx.resume();
+
+	if (name === 'bgm') {
+		if(!soundBuffers[name]) {
+			if(onEndedCb) onEndedCb();
+			return null;
+		}
+		const source = audioCtx.createBufferSource();
+		source.buffer = soundBuffers[name];
+		source.connect(audioCtx.destination);
+		source.loop = true;
+		source.onended = () => { if (onEndedCb) onEndedCb(); };
+		source.start(0);
+		bgmNode = source;
+		return source;
+	}
+
+	audioQueue.push({ name, onEndedCb });
+	processAudioQueue();
+	return null; 
 }
 
 function stopBGM() {
@@ -137,8 +109,10 @@ function broadcastSound(soundName, playSelectFirst = false) {
 function playSoundEvent(soundName, playSelectFirst = false) {
 	if (playSelectFirst) {
 		playSound('select');
+		playSound(soundName);
+	} else {
+		playSound(soundName);
 	}
-	playSound(soundName);
 }
 // -----------------------------
 
@@ -1166,7 +1140,7 @@ function handleGameEvent(data) {
 			const p = players.find(x => x.id === data.playerId);
 			if (p) {
 				msg = `${getPronounName(p)} จั่วการ์ด 1 ใบ`;
-				if (data.playerId !== myPeerId || data.isAuto || (p && p.isBot)) playSound('jua');
+				playSound('jua');
 			}
 			if (data.playerId === myPeerId) {
 				animateLocalDraw();
@@ -1178,9 +1152,8 @@ function handleGameEvent(data) {
 		case 'passTurn': {
 			const p = players.find(x => x.id === data.playerId);
 			if (p) msg = `${getPronounName(p)} จบตา`;
-			if (data.playerId !== myPeerId || data.isAuto || (p && p.isBot)) {
-				playSound('turn');
-			}
+			turnAudioEnqueued++;
+			playSound('turn');
 			break;
 		}
 		case 'winGame': {
@@ -1205,9 +1178,7 @@ function handleGameEvent(data) {
 			}
 
 			const sequence = [];
-			if (data.playerId !== myPeerId || data.isAuto || (p && p.isBot)) {
-				sequence.push('select');
-			}
+			sequence.push('select');
 
 			if (data.effect === 'skip') {
 				sequence.push('skip');
@@ -1228,6 +1199,7 @@ function handleGameEvent(data) {
 			
 			if (!data.isWin) {
 				sequence.push('turn');
+				turnAudioEnqueued++;
 			}
 
 			sequence.forEach(s => playSound(s));
@@ -1612,9 +1584,10 @@ function renderGame(gameState) {
 		const currentPlayer = players[gameState.turnIndex];
 		if (currentPlayer) {
 			if (currentPlayer.id === myPeerId && !currentPlayer.isBot) {
-				pendingABC = true;
-				if (!isPlayingAudioQueue && globalAudioQueue.length === 0) {
-					checkPendingABC();
+				if (turnAudioEnqueued > 0) {
+					pendingABC = true;
+				} else {
+					playSound('abc');
 				}
 			} else {
 				pendingABC = false;
@@ -1735,11 +1708,11 @@ function renderGame(gameState) {
 		} else if (myState && myState.hasDrawn) {
 			btnDraw.disabled = true;
 			btnPass.disabled = false;
-			btnPass.onclick = () => { playSound('turn'); sendAction('pass'); };
+			btnPass.onclick = () => { sendAction('pass'); };
 		} else {
 			btnDraw.disabled = false;
 			btnPass.disabled = true;
-			btnDraw.onclick = () => { playSound('jua'); sendAction('draw'); };
+			btnDraw.onclick = () => { sendAction('draw'); };
 		}
 	} else {
 		btnDraw.disabled = true;
@@ -1759,7 +1732,6 @@ function renderGame(gameState) {
 
 let pendingPlayCardIndex = -1;
 window.selectWildColor = function(color) {
-	broadcastSound('select');
 	document.getElementById('color-picker-modal').style.display = 'none';
 	toggleMainGameUI(true);
 	if (pendingPlayCardIndex !== -1) {
@@ -1769,8 +1741,8 @@ window.selectWildColor = function(color) {
 };
 
 function onCardClicked(index, card) {
-	broadcastSound('select');
 	if (card.color === 'wild') {
+		playSound('select'); 
 		pendingPlayCardIndex = index;
 		const modal = document.getElementById('color-picker-modal');
 		modal.style.display = 'flex';
