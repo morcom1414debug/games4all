@@ -382,20 +382,7 @@ document.getElementById('btn-create-room').onclick = async () => {
 };
 
 function joinRoom(roomId, hostPeerId) {
-	if (!myPeerId) { 
-		announce('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่ กำลังดำเนินการเข้าร่วมห้อง...');
-		const waitReady = setInterval(() => {
-			if (!isJoiningRoom) {
-				clearInterval(waitReady);
-				return;
-			}
-			if (myPeerId) {
-				clearInterval(waitReady);
-				joinRoom(roomId, hostPeerId);
-			}
-		}, 250);
-		return; 
-	}
+	if (!myPeerId) { announce('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่'); isJoiningRoom = false; return; }
 	isHost = false; currentRoomId = roomId;
 	announce('กำลังเชื่อมต่อไปยัง Host...');
 	hostConnection = peer.connect(hostPeerId, { reliable: true });
@@ -472,14 +459,7 @@ function setupHostConnection(conn) {
 		if (p && !p.isBot) {
 			p.isBot = true; p.name = `บอท${p.name}`;
 			broadcastAnnounce(`${p.name} หลุดการเชื่อมต่อ เปลี่ยนเป็นบอทแล้ว`, true);
-			syncLobby(); 
-			if (game.status === 'playing') {
-				broadcastGameState();
-				if (players[game.turnIndex] && players[game.turnIndex].id === peerId) {
-					clearTimeout(botTimer);
-					processTurnLogic();
-				}
-			}
+			syncLobby(); if (game.status === 'playing') broadcastGameState();
 		}
 	});
 }
@@ -550,7 +530,7 @@ function renderTileHTML(tile, index = -1, playableLeft = false, playableRight = 
 	else if(tile.type === 'draw3') spClass = 'sp-draw3';
 	else if(tile.type === 'reverse') spClass = 'sp-reverse';
 	
-	btn.className = `domino-tile ${isDouble ? '' : 'horizontal'} ${isSpecial ? 'special-tile ' + spClass : ''} ${(index >= 0 && !forceVisualOnly && !playableLeft && !playableRight) ? 'disabled' : ''}`;
+	btn.className = `domino-tile ${isDouble ? '' : 'horizontal'} ${isSpecial ? 'special-tile ' + spClass : ''} ${(index >= 0 && !playableLeft && !playableRight && !forceVisualOnly) ? 'disabled' : ''}`;
 	
 	const formatHalf = (val) => {
 		if(val === 'sleep') return `<div class="domino-half special-text">หลับ<br>💤</div>`;
@@ -1238,7 +1218,7 @@ function handleWin(winnerId) {
 	let announceMsg = `การแข่งขันจบแล้ว ${winner.name}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม. `;
 	let losers = resultStats.filter(r => r.id !== winnerId);
 	losers.forEach(l => {
-		announceMsg += `${l.name}ได้ ${l.points} แต้ม แพ้. `;
+		announceMsg += `${l.name}เหลือ ${l.points} แต้ม แพ้. `;
 	});
 
 	broadcastAnnounce(announceMsg, true);
@@ -1263,7 +1243,7 @@ function showResult(winnerName, resultStats) {
 	
 	let html = `<div style="color: var(--focus-ring); margin-bottom: 10px;">👑 ${winnerName}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม</div>`;
 	losers.forEach(l => {
-		html += `<div style="color: #ffcdd2; margin-bottom: 10px;">❌ ${l.name}ได้ ${l.points} แต้ม แพ้</div>`;
+		html += `<div style="color: #ffcdd2; margin-bottom: 10px;">❌ ${l.name}เหลือ ${l.points} แต้ม แพ้</div>`;
 	});
 	
 	document.getElementById('winner-text').innerHTML = html;
