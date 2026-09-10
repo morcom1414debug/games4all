@@ -326,28 +326,57 @@ onValue(roomsRef, (snapshot) => {
 
 function renderRoomList(rooms) {
 	const list = document.getElementById('room-list');
-	list.innerHTML = '';
-	if (!rooms) {
-		list.innerHTML = '<li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">ไม่มีห้องที่เปิดอยู่</li>';
-		return;
-	}
-	const activeRooms = Object.entries(rooms).filter(([id, r]) => Date.now() - r.lastActive < 120000 && r.status === 'waiting' && r.currentPlayers < MAX_PLAYERS);
+	
+	const activeRooms = rooms ? Object.entries(rooms).filter(([id, r]) => Date.now() - r.lastActive < 120000 && r.status === 'waiting' && r.currentPlayers < MAX_PLAYERS) : [];
+
 	if (activeRooms.length === 0) {
 		list.innerHTML = '<li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">ไม่มีห้องที่เปิดอยู่</li>';
 		return;
 	}
+
+	const emptyMsg = document.getElementById('empty-room-msg');
+	if (emptyMsg) {
+		emptyMsg.remove();
+	}
+
+	const existingItems = Array.from(list.querySelectorAll('li[data-room-id]'));
+	const activeRoomIds = activeRooms.map(([id]) => id);
+
+	// Remove rooms that are no longer active
+	existingItems.forEach(li => {
+		const roomId = li.getAttribute('data-room-id');
+		if (!activeRoomIds.includes(roomId)) {
+			li.remove();
+		}
+	});
+
+	// Update or create rooms
 	activeRooms.forEach(([id, room]) => {
-		const li = document.createElement('li'); li.style.margin = '10px 0';
-		const btn = document.createElement('button');
-		btn.style.width = '100%'; btn.style.maxWidth = '100%'; btn.style.display = 'flex'; btn.style.justifyContent = 'space-between';
-		btn.innerHTML = `<span>ห้อง: ${id}</span> <span>${room.currentPlayers}/${MAX_PLAYERS} คน</span>`;
-		btn.setAttribute('aria-label', `เข้าร่วมห้อง ${id} มีผู้เล่น ${room.currentPlayers} จาก ${MAX_PLAYERS} คน`);
-		btn.onclick = () => {
-			if (isJoiningRoom) return;
-			isJoiningRoom = true; btn.disabled = true; playSound('1');
-			joinRoom(id, room.hostPeerId);
-		};
-		li.appendChild(btn); list.appendChild(li);
+		let li = list.querySelector(`li[data-room-id="${id}"]`);
+		if (li) {
+			// Update existing button to maintain accessibility focus
+			const btn = li.querySelector('button');
+			if (btn) {
+				btn.innerHTML = `<span>ห้อง: ${id}</span> <span>${room.currentPlayers}/${MAX_PLAYERS} คน</span>`;
+				btn.setAttribute('aria-label', `เข้าร่วมห้อง ${id} มีผู้เล่น ${room.currentPlayers} จาก ${MAX_PLAYERS} คน`);
+			}
+		} else {
+			// Create new room item
+			li = document.createElement('li'); 
+			li.style.margin = '10px 0';
+			li.setAttribute('data-room-id', id);
+			const btn = document.createElement('button');
+			btn.style.width = '100%'; btn.style.maxWidth = '100%'; btn.style.display = 'flex'; btn.style.justifyContent = 'space-between';
+			btn.innerHTML = `<span>ห้อง: ${id}</span> <span>${room.currentPlayers}/${MAX_PLAYERS} คน</span>`;
+			btn.setAttribute('aria-label', `เข้าร่วมห้อง ${id} มีผู้เล่น ${room.currentPlayers} จาก ${MAX_PLAYERS} คน`);
+			btn.onclick = () => {
+				if (isJoiningRoom) return;
+				isJoiningRoom = true; btn.disabled = true; playSound('1');
+				joinRoom(id, room.hostPeerId);
+			};
+			li.appendChild(btn); 
+			list.appendChild(li);
+		}
 	});
 }
 
@@ -472,6 +501,7 @@ document.getElementById('btn-add-bot').onclick = () => {
 		players.push({ id: 'bot_' + Date.now(), name: botName, isBot: true });
 		syncLobby(); broadcastSound('select');
 		broadcastAnnounce(`เพิ่ม ${botName} เข้าห้องแล้ว`, true);
+		if (currentRoomId) update(ref(db, `domino_rooms/${currentRoomId}`), { currentPlayers: players.length });
 	}
 };
 document.getElementById('btn-remove-bot').onclick = () => {
@@ -481,6 +511,7 @@ document.getElementById('btn-remove-bot').onclick = () => {
 		players.splice(players.length - 1 - botIdx, 1);
 		syncLobby(); broadcastSound('select');
 		broadcastAnnounce(`ลด ${botToRemove.name} ออกจากห้องแล้ว`, true);
+		if (currentRoomId) update(ref(db, `domino_rooms/${currentRoomId}`), { currentPlayers: players.length });
 	}
 };
 
