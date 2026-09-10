@@ -250,8 +250,6 @@ function initPeer() {
 	peer.on('connection', conn => {
 		if (isHost) {
 			conn.on('open', () => {
-				conn.lastPong = Date.now();
-				conn._connectedAt = Date.now();
 				connections.push(conn);
 				setupHostConnection(conn);
 				syncLobby();
@@ -487,13 +485,8 @@ function getAvailableColors() {
 }
 
 function setupHostConnection(conn) {
-	conn.lastPong = Date.now();
-	conn._connectedAt = Date.now();
 	conn.on('data', data => {
-		if (data.type === 'pong') {
-			conn.lastPong = Date.now();
-		}
-		else if (data.type === 'joinReq') {
+		if (data.type === 'joinReq') {
 			conn.customPeerId = data.peerId; 
 			if (players.length >= MAX_PLAYERS) return;
 			players.push({ id: data.peerId, name: `Player`, isBot: false, colorId: getAvailableColors()[0], connection: conn });
@@ -514,27 +507,7 @@ function setupHostConnection(conn) {
 		}
 	});
 	conn.on('close', () => handleClientDisconnect(conn.customPeerId || conn.peer));
-	conn.on('error', () => handleClientDisconnect(conn.customPeerId || conn.peer));
 }
-
-setInterval(() => {
-	if (!isHost) return;
-	const now = Date.now();
-	connections.forEach(c => {
-		if (c.open) {
-			try {
-				c.send({ type: 'ping' });
-			} catch (e) {}
-		}
-		const lastPong = c.lastPong || c._connectedAt || now;
-		if (now - lastPong > 12000) {
-			const peerId = c.customPeerId || c.peer;
-			if (peerId) {
-				handleClientDisconnect(peerId);
-			}
-		}
-	});
-}, 3000);
 
 document.getElementById('btn-add-bot').onclick = () => {
 	if (players.length < MAX_PLAYERS) {
@@ -915,11 +888,7 @@ function triggerUnoCinematicAnimation(playerId) {
 }
 
 function handleClientData(data) {
-	if (data.type === 'ping') {
-		if (hostConnection && hostConnection.open) {
-			hostConnection.send({ type: 'pong' });
-		}
-	} else if (data.type === 'lobbySync') {
+	if (data.type === 'lobbySync') {
 		players = data.players;
 		const me = players.find(p => p.id === myPeerId);
 		if (me) myColorId = me.colorId;
