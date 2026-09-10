@@ -464,7 +464,7 @@ function renderCardHTML(card, index = -1, playable = false, isTop = false) {
                     if (gameBoard) {
                         gameBoard.setAttribute('aria-hidden', 'true');
                     }
-                    announce("กรุณาเลือกเปลี่ยนดอกการ์ด");
+                    announce("กรุณาเลือกเปลี่ยนดอกไพ่");
                 } else {
 				    sendAction('play', { index });
                 }
@@ -473,7 +473,7 @@ function renderCardHTML(card, index = -1, playable = false, isTop = false) {
 			btn.setAttribute('aria-disabled', 'true');
 		}
 	} else if (isTop) {
-        btn.setAttribute('aria-label', `การ์ดกองทิ้งคือ ${card.name}`);
+        btn.setAttribute('aria-label', `ไพ่กองทิ้งคือ ${card.name}`);
     }
 	return btn;
 }
@@ -539,7 +539,7 @@ function broadcastTurnStart() {
 	const currentPlayer = players[game.turnIndex];
     let topCard = game.discardPile[game.discardPile.length - 1];
     let cardName = topCard ? topCard.name : '';
-    let msg = `ถึงรอบของ ${currentPlayer.name} การ์ดกองทิ้งคือ ${cardName}`;
+    let msg = `ถึงรอบของ ${currentPlayer.name} ไพ่กองทิ้งคือ ${cardName}`;
 	broadcastAnnounce(msg);
 }
 
@@ -669,19 +669,9 @@ function renderGame(gState) {
 	const centerAria = document.getElementById('board-center-aria');
 	centerCont.innerHTML = '';
     
-    if (gState.topCard) {
-        const displayCard = { ...gState.topCard };
-        if (gState.activeSuit && gState.activeSuit !== gState.topCard.suit) {
-            displayCard.suit = gState.activeSuit;
-        }
-        const activeSuitName = getSuitName(gState.activeSuit);
-        if (gState.topCard.rank === '8' || (gState.activeSuit && gState.activeSuit !== gState.topCard.suit)) {
-            displayCard.name = `${gState.topCard.name} เปลี่ยนดอกเป็น ${activeSuitName}`;
-            centerAria.textContent = `กองทิ้ง: ${gState.topCard.name} เปลี่ยนดอกเป็น ${activeSuitName}`;
-        } else {
-            centerAria.textContent = `กองทิ้ง: ${displayCard.name}`;
-        }
-        centerCont.appendChild(renderCardHTML(displayCard, -1, false, true));
+    if(gState.topCard) {
+        centerCont.appendChild(renderCardHTML(gState.topCard, -1, false, true));
+        centerAria.textContent = `กองทิ้ง: ${gState.topCard.name}`;
     }
 
 	const myContainer = document.getElementById('my-cards-container');
@@ -725,29 +715,7 @@ function handlePlayerAction(peerId, action, payload) {
 		const card = game.deck.pop();
 		game.playerStates[peerId].hand.push(card);
 		broadcastSound('jua');
-
-		const publicMsg = `${currentPlayer.name} จั่วการ์ด 1 ใบ`;
-		const privateMsg = `คุณจั่วได้การ์ด ${card.name}`;
-
-		connections.forEach(c => {
-			if (c.open) {
-				const targetId = c.customPeerId || c.peer;
-				if (targetId === peerId) {
-					c.send({ type: 'announce', message: privateMsg, assertive: true });
-				} else {
-					c.send({ type: 'announce', message: publicMsg, assertive: false });
-				}
-			}
-		});
-
-		if (myPeerId === peerId) {
-			announce(privateMsg, true);
-			logEvent(privateMsg);
-		} else {
-			announce(publicMsg, false);
-			logEvent(publicMsg);
-		}
-
+		broadcastAnnounce(`${currentPlayer.name} จั่วไพ่แล้วจบตา`);
 		broadcastGameState();
         
         setTimeout(() => advanceTurn(), 1500);
@@ -802,7 +770,7 @@ function reshuffleDeck() {
         let top = game.discardPile.pop();
         game.deck = game.discardPile.sort(() => Math.random() - 0.5);
         game.discardPile = [top];
-        broadcastAnnounce('กองจั่วหมด สับการ์ดใหม่เรียบร้อยแล้ว');
+        broadcastAnnounce('กองจั่วหมด สับไพ่ใหม่เรียบร้อยแล้ว');
     }
 }
 
@@ -901,9 +869,9 @@ function showResult(winnerName, resultStats) {
 	stopBGM();
 	let winnerStat = resultStats.find(r => r.isWinner) || resultStats[0];
 	let losers = resultStats.filter(r => !r.isWinner);
-	let html = `<div style="color: var(--focus-ring); margin-bottom: 10px;">👑 ${winnerName} เป็นผู้ชนะ (การ์ดหมดมือ)</div>`;
+	let html = `<div style="color: var(--focus-ring); margin-bottom: 10px;">👑 ${winnerName} เป็นผู้ชนะ (ไพ่หมดมือ)</div>`;
 	losers.forEach(l => {
-		html += `<div style="color: #ffcdd2; margin-bottom: 10px;">❌ ${l.name} เหลือการ์ด ${l.cardsLeft} ใบ</div>`;
+		html += `<div style="color: #ffcdd2; margin-bottom: 10px;">❌ ${l.name} เหลือไพ่ ${l.cardsLeft} ใบ</div>`;
 	});
 	document.getElementById('winner-text').innerHTML = html;
 	document.getElementById('result-status-bar').innerHTML = '';
