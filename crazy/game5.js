@@ -553,7 +553,7 @@ function initGame() {
 	
 	players.forEach((p, i) => {
 		game.playerStates[p.id] = { hand: [] };
-		for(let k=0; k<7; k++) game.playerStates[p.id].hand.push(game.deck.pop());
+		for(let k=0; k<5; k++) game.playerStates[p.id].hand.push(game.deck.pop());
 	});
 
     let top = game.deck.pop();
