@@ -449,22 +449,7 @@ function renderCardHTML(card, index = -1, playable = false, isTop = false) {
                 if (card.rank === '8') {
                     // เปิด Modal เลือกดอก
                     pendingPlayIndex = index;
-                    const modal = document.getElementById('suit-picker-modal');
-                    if (modal) {
-                        modal.style.display = 'flex';
-                        const modalHeading = modal.querySelector('h1, h2, h3, [role="heading"]');
-                        if (modalHeading) {
-                            if (!modalHeading.hasAttribute('tabindex')) {
-                                modalHeading.setAttribute('tabindex', '-1');
-                            }
-                            modalHeading.focus();
-                        }
-                    }
-                    const gameBoard = document.getElementById('screen-game');
-                    if (gameBoard) {
-                        gameBoard.setAttribute('aria-hidden', 'true');
-                    }
-                    announce("กรุณาเลือกเปลี่ยนดอกไพ่");
+                    document.getElementById('suit-picker-modal').style.display = 'flex';
                 } else {
 				    sendAction('play', { index });
                 }
@@ -482,27 +467,10 @@ let pendingPlayIndex = -1;
 
 document.querySelectorAll('.suit-btn').forEach(btn => {
     btn.onclick = (e) => {
-        const selectedSuit = e.currentTarget.getAttribute('data-suit') || e.target.getAttribute('data-suit');
-        const modal = document.getElementById('suit-picker-modal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-        
-        const gameBoard = document.getElementById('screen-game');
-        if (gameBoard) {
-            gameBoard.setAttribute('aria-hidden', 'false');
-        }
-
+        const selectedSuit = e.target.getAttribute('data-suit');
+        document.getElementById('suit-picker-modal').style.display = 'none';
         sendAction('play', { index: pendingPlayIndex, activeSuit: selectedSuit });
         pendingPlayIndex = -1;
-
-        const focusTarget = document.getElementById('top-status-bar') || gameBoard;
-        if (focusTarget) {
-            if (!focusTarget.hasAttribute('tabindex')) {
-                focusTarget.setAttribute('tabindex', '-1');
-            }
-            focusTarget.focus();
-        }
     };
 });
 
