@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getDatabase, ref, update, remove, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-// Firebase Config from provided file
+//[cite: 2] Firebase Config from provided file
 const firebaseConfig = {
 	apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
 	authDomain: "xo-game-134ec.firebaseapp.com",
@@ -14,7 +14,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// --- Audio System (Unchanged Timing & Logic) ---
+// --- Audio System (Unchanged Timing & Logic) ---[cite: 4]
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const soundBuffers = {};
 const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'win', 'hit'];
@@ -73,7 +73,7 @@ function broadcastSound(soundName) {
 	if(isHost) connections.forEach(c => { if(c.open) c.send({ type: 'playSound', soundName }); });
 }
 
-// --- ARIA System (Unchanged Focus & Timing) ---
+// --- ARIA System (Unchanged Focus & Timing) ---[cite: 4]
 let politeQueue = [];
 let assertiveQueue = [];
 let isAnnouncingPolite = false;
@@ -111,7 +111,7 @@ function logEvent(msg) {
 	if (logEl) logEl.textContent = msg;
 }
 
-// --- Game State & Multiplayer ---
+// --- Game State & Multiplayer ---[cite: 4]
 let peer = null;
 let myPeerId = null;
 let myName = "";
@@ -124,7 +124,7 @@ let isCreatingRoom = false;
 let heartbeatInterval = null;
 
 const MAX_PLAYERS = 4;
-// Bot Names Reference from Domino
+//[cite: 1, 4] Bot Names Reference from Domino
 const BOT_NAMES = [
 	'สายฟ้า', 'เจ้าป่า', 'ดาวเหนือ', 'ขุนพล', 'จอมทัพ', 
 	'พายุ', 'ฟีนิกซ์', 'นักรบ', 'เสือดำ', 'ราชัน',
@@ -169,12 +169,6 @@ nameInput.addEventListener('input', () => {
 	else { btnConfirmName.disabled = true; }
 });
 
-nameInput.addEventListener('keydown', (e) => {
-	if ((e.key === 'Enter' || e.key === 'Return') && !btnConfirmName.disabled) {
-		btnConfirmName.onclick();
-	}
-});
-
 btnConfirmName.onclick = () => {
 	myName = nameInput.value.trim();
 	document.getElementById('display-player-name').textContent = myName;
@@ -185,7 +179,7 @@ btnConfirmName.onclick = () => {
 document.getElementById('btn-show-rules').onclick = () => { playSound('select'); switchScreen('screen-rules', 'title-rules'); };
 document.getElementById('btn-close-rules').onclick = () => { playSound('select'); switchScreen('screen-main', 'btn-show-rules'); };
 
-// --- Firebase Rooms ---
+// --- Firebase Rooms ---[cite: 1, 4]
 const roomsRef = ref(db, 'crazy_rooms');
 onValue(roomsRef, (snapshot) => {
 	if (document.getElementById('screen-main').classList.contains('active')) renderRoomList(snapshot.val());
@@ -250,7 +244,7 @@ document.getElementById('btn-create-room').onclick = async () => {
 		}
 		await update(ref(db, 'crazy_metadata'), { last_room_id: nextIdNum });
 		
-        // Room Prefix: Crazy
+        //[cite: 1] Room Prefix: Crazy
 		currentRoomId = "Crazy" + String(nextIdNum).padStart(5, '0');
 		isHost = true;
 		players = [{ id: myPeerId, name: myName, isBot: false }];
@@ -408,7 +402,7 @@ function syncLobby() {
 	connections.forEach(c => { if(c.open) c.send({ type: 'lobbySync', players: safePlayers }); });
 }
 
-// --- CRAZY EIGHTS LOGIC ---
+// --- CRAZY EIGHTS LOGIC ---[cite: 1]
 function generateDeck() {
 	const deck = [];
     const suits = ['♥', '♦', '♣', '♠'];
@@ -421,12 +415,7 @@ function generateDeck() {
             else if(suit === '♦') suitName = 'ข้าวหลามตัด';
             else if(suit === '♣') suitName = 'ดอกจิก';
             else if(suit === '♠') suitName = 'โพดำ';
-            let rankName = rank;
-            if (rank === 'A') rankName = 'เอซ';
-            else if (rank === 'J') rankName = 'แจ็ค';
-            else if (rank === 'Q') rankName = 'แหม่ม';
-            else if (rank === 'K') rankName = 'คิง';
-            deck.push({ id: `${suit}${rank}`, suit, rank, name: `${rankName} ${suitName}` });
+            deck.push({ id: `${suit}${rank}`, suit, rank, name: `${suitName} ${rank}` });
         });
     });
 	return deck.sort(() => Math.random() - 0.5);
@@ -502,7 +491,12 @@ function broadcastTurnStart() {
 	if (!isHost) return;
 	const currentPlayer = players[game.turnIndex];
     let topCard = game.discardPile[game.discardPile.length - 1];
-    let msg = `ถึงรอบของ ${currentPlayer.name === myName ? 'คุณ' + myName : currentPlayer.name}`;
+    let msg = `ถึงรอบของ ${currentPlayer.name === myName ? 'คุณ' + myName : currentPlayer.name} `;
+    if (game.activeSuit) {
+        msg += `ดอกที่กำหนดคือ ${game.activeSuit}`;
+    } else {
+        msg += `ไพ่บนสุดคือ ${topCard.name}`;
+    }
 	broadcastAnnounce(msg);
 }
 
@@ -624,7 +618,7 @@ function renderGame(gState) {
     
     if(gState.topCard) {
         centerCont.appendChild(renderCardHTML(gState.topCard, -1, false, true));
-        centerAria.textContent = `กองทิ้ง: ${gState.topCard.name}`;
+        centerAria.textContent = `กองทิ้ง: ${gState.topCard.name}, ดอกปัจจุบันที่ต้องการ: ${gState.activeSuit}`;
     }
 
 	const myContainer = document.getElementById('my-cards-container');
@@ -663,7 +657,7 @@ function handlePlayerAction(peerId, action, payload) {
 	const currentPlayer = players[game.turnIndex];
 
 	if (action === 'draw' && peerId === currentPlayer.id) {
-        // Draw 1 card and pass turn immediately
+        //[cite: 1] Draw 1 card and pass turn immediately
 		if (game.deck.length === 0) return;
 		const card = game.deck.pop();
 		game.playerStates[peerId].hand.push(card);
@@ -688,6 +682,7 @@ function handlePlayerAction(peerId, action, payload) {
 	state.hand.splice(payload.index, 1);
     game.discardPile.push(card);
     
+    //[cite: 1] Handle wild 8 suit choice
     if (card.rank === '8') {
         game.activeSuit = payload.activeSuit;
         broadcastAnnounce(`${currentPlayer.name} ลงไพ่ 8 และเปลี่ยนดอกเป็น ${game.activeSuit}`);
@@ -719,7 +714,7 @@ function handlePlayerAction(peerId, action, payload) {
 
 function reshuffleDeck() {
     if(game.deck.length === 0 && game.discardPile.length > 1) {
-        // Reshuffle discard pile to deck
+        //[cite: 1] Reshuffle discard pile to deck
         let top = game.discardPile.pop();
         game.deck = game.discardPile.sort(() => Math.random() - 0.5);
         game.discardPile = [top];
@@ -755,7 +750,7 @@ async function runBotTurn(botPlayer, state) {
         const card = state.hand[playableIndex];
         let payload = { index: playableIndex };
         if (card.rank === '8') {
-            // Bot chooses random suit when playing 8
+            //[cite: 1] Bot chooses random suit when playing 8
             const suits = ['♥', '♦', '♣', '♠'];
             payload.activeSuit = suits[Math.floor(Math.random() * suits.length)];
         }
