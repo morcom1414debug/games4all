@@ -790,7 +790,7 @@ function processTurnLogic() {
                     handlePlayerAction(currentPlayer.id, 'draw');
                 }
 			}
-		}, 32000);
+		}, 45000);
 	}
 }
 
