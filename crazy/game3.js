@@ -17,7 +17,7 @@ const db = getDatabase(app);
 // --- Audio System (Unchanged Timing & Logic) ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const soundBuffers = {};
-const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'win', 'hit', 'abc'];
+const soundNames = ['1', 'select', 'start', 'bgm', 'jua', 'turn', 'uno', 'win', 'hit'];
 const audioQueue = [];
 let isAudioPlaying = false;
 let bgmNode = null;
@@ -122,7 +122,6 @@ let currentRoomId = null;
 let isJoiningRoom = false;
 let isCreatingRoom = false;
 let heartbeatInterval = null;
-let previousTurnIndex = -1;
 
 const MAX_PLAYERS = 4;
 // Bot Names Reference from Domino
@@ -171,7 +170,7 @@ nameInput.addEventListener('input', () => {
 });
 
 nameInput.addEventListener('keydown', (e) => {
-	if ((e.key === 'Enter' || e.key === 'Return') && !btnConfirmName.disabled && nameInput.value.trim().length >= 1) {
+	if ((e.key === 'Enter' || e.key === 'Return') && !btnConfirmName.disabled) {
 		btnConfirmName.onclick();
 	}
 });
@@ -410,21 +409,18 @@ function syncLobby() {
 }
 
 // --- CRAZY EIGHTS LOGIC ---
-function getSuitName(suit) {
-	if (suit === '♥' || suit === 'โพแดง') return 'โพแดง';
-	if (suit === '♦' || suit === 'ข้าวหลามตัด') return 'ข้าวหลามตัด';
-	if (suit === '♣' || suit === 'ดอกจิก') return 'ดอกจิก';
-	if (suit === '♠' || suit === 'โพดำ') return 'โพดำ';
-	return suit;
-}
-
 function generateDeck() {
 	const deck = [];
     const suits = ['♥', '♦', '♣', '♠'];
     const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
     suits.forEach(suit => {
         ranks.forEach(rank => {
-            let suitName = getSuitName(suit);
+            let colorName = (suit === '♥' || suit === '♦') ? 'แดง' : 'ดำ';
+            let suitName = '';
+            if(suit === '♥') suitName = 'โพแดง';
+            else if(suit === '♦') suitName = 'ข้าวหลามตัด';
+            else if(suit === '♣') suitName = 'ดอกจิก';
+            else if(suit === '♠') suitName = 'โพดำ';
             let rankName = rank;
             if (rank === 'A') rankName = 'เอซ';
             else if (rank === 'J') rankName = 'แจ็ค';
@@ -506,8 +502,7 @@ function broadcastTurnStart() {
 	if (!isHost) return;
 	const currentPlayer = players[game.turnIndex];
     let topCard = game.discardPile[game.discardPile.length - 1];
-    let cardName = topCard ? topCard.name : '';
-    let msg = `ถึงรอบของ ${currentPlayer.name} ไพ่กองทิ้งคือ ${cardName}`;
+    let msg = `ถึงรอบของ ${currentPlayer.name === myName ? 'คุณ' + myName : currentPlayer.name}`;
 	broadcastAnnounce(msg);
 }
 
@@ -517,7 +512,6 @@ function initGame() {
     game.discardPile = [];
 	game.turnIndex = 0;
     game.activeSuit = null;
-    previousTurnIndex = -1;
 	
 	players.forEach((p, i) => {
 		game.playerStates[p.id] = { hand: [] };
@@ -602,15 +596,6 @@ function renderGame(gState) {
 			headingEl.style.background = 'rgba(15, 23, 42, 0.85)';
 			headingEl.style.borderColor = 'rgba(255, 255, 255, 0.2)';
 		}
-	}
-
-	if (gState.status === 'playing') {
-		if (turnPlayer && turnPlayer.id === myPeerId && gState.turnIndex !== previousTurnIndex) {
-			playSound('abc');
-		}
-		previousTurnIndex = gState.turnIndex;
-	} else {
-		previousTurnIndex = -1;
 	}
 
 	const statusBar = document.getElementById('top-status-bar');
@@ -705,7 +690,7 @@ function handlePlayerAction(peerId, action, payload) {
     
     if (card.rank === '8') {
         game.activeSuit = payload.activeSuit;
-        broadcastAnnounce(`${currentPlayer.name} ลง ${card.name} และเปลี่ยนดอกเป็น ${getSuitName(game.activeSuit)}`);
+        broadcastAnnounce(`${currentPlayer.name} ลงไพ่ 8 และเปลี่ยนดอกเป็น ${game.activeSuit}`);
     } else {
         game.activeSuit = card.suit;
         broadcastAnnounce(`${currentPlayer.name} ลง ${card.name}`);
