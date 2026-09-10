@@ -485,7 +485,11 @@ function getAvailableColors() {
 }
 
 function setupHostConnection(conn) {
+	conn.lastSeen = Date.now();
 	conn.on('data', data => {
+		conn.lastSeen = Date.now();
+		if (data.type === 'pong') return;
+		
 		if (data.type === 'joinReq') {
 			conn.customPeerId = data.peerId; 
 			if (players.length >= MAX_PLAYERS) return;
@@ -888,6 +892,12 @@ function triggerUnoCinematicAnimation(playerId) {
 }
 
 function handleClientData(data) {
+	if (data.type === 'ping') {
+		if (hostConnection && hostConnection.open) {
+			hostConnection.send({ type: 'pong' });
+		}
+		return;
+	}
 	if (data.type === 'lobbySync') {
 		players = data.players;
 		const me = players.find(p => p.id === myPeerId);
@@ -936,6 +946,27 @@ function handleClientDisconnect(peerId) {
 		if (game.status === 'playing') broadcastGameState();
 	}
 }
+
+// --- Connection Liveness Heartbeat ---
+setInterval(() => {
+	if (!isHost) return;
+	const now = Date.now();
+	connections.forEach(conn => {
+		if (conn.open) {
+			try {
+				conn.send({ type: 'ping' });
+			} catch(e) {}
+			
+			if (conn.lastSeen && (now - conn.lastSeen > 15000)) {
+				conn.open = false;
+				const peerId = conn.customPeerId || conn.peer;
+				if (peerId) {
+					handleClientDisconnect(peerId);
+				}
+			}
+		}
+	});
+}, 3000);
 
 function doStartAnimation(callback) {
 	stopBGM();
