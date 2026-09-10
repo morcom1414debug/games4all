@@ -460,6 +460,10 @@ function renderCardHTML(card, index = -1, playable = false, isTop = false) {
                             modalHeading.focus();
                         }
                     }
+                    const gameBoard = document.getElementById('screen-game');
+                    if (gameBoard) {
+                        gameBoard.setAttribute('aria-hidden', 'true');
+                    }
                     announce("กรุณาเลือกเปลี่ยนดอกการ์ด");
                 } else {
 				    sendAction('play', { index });
@@ -484,10 +488,15 @@ document.querySelectorAll('.suit-btn').forEach(btn => {
             modal.style.display = 'none';
         }
         
+        const gameBoard = document.getElementById('screen-game');
+        if (gameBoard) {
+            gameBoard.setAttribute('aria-hidden', 'false');
+        }
+
         sendAction('play', { index: pendingPlayIndex, activeSuit: selectedSuit });
         pendingPlayIndex = -1;
 
-        const focusTarget = document.getElementById('top-status-bar') || document.getElementById('screen-game');
+        const focusTarget = document.getElementById('top-status-bar') || gameBoard;
         if (focusTarget) {
             if (!focusTarget.hasAttribute('tabindex')) {
                 focusTarget.setAttribute('tabindex', '-1');
@@ -530,11 +539,6 @@ function broadcastTurnStart() {
 	const currentPlayer = players[game.turnIndex];
     let topCard = game.discardPile[game.discardPile.length - 1];
     let cardName = topCard ? topCard.name : '';
-    
-    if (topCard && game.activeSuit && (topCard.rank === '8' || game.activeSuit !== topCard.suit)) {
-        cardName = `${topCard.name} เปลี่ยนดอกเป็น ${getSuitName(game.activeSuit)}`;
-    }
-    
     let msg = `ถึงรอบของ ${currentPlayer.name} การ์ดกองทิ้งคือ ${cardName}`;
 	broadcastAnnounce(msg);
 }
@@ -716,6 +720,7 @@ function handlePlayerAction(peerId, action, payload) {
 	const currentPlayer = players[game.turnIndex];
 
 	if (action === 'draw' && peerId === currentPlayer.id) {
+        // Draw 1 card and pass turn immediately
 		if (game.deck.length === 0) return;
 		const card = game.deck.pop();
 		game.playerStates[peerId].hand.push(card);
@@ -745,21 +750,7 @@ function handlePlayerAction(peerId, action, payload) {
 
 		broadcastGameState();
         
-        const topCard = game.discardPile[game.discardPile.length - 1];
-        if (canPlayCard(card, game.activeSuit, topCard)) {
-            if (currentPlayer.isBot) {
-                setTimeout(() => {
-                    let playPayload = { index: game.playerStates[peerId].hand.length - 1 };
-                    if (card.rank === '8') {
-                        const suits = ['♥', '♦', '♣', '♠'];
-                        playPayload.activeSuit = suits[Math.floor(Math.random() * suits.length)];
-                    }
-                    handlePlayerAction(peerId, 'play', playPayload);
-                }, 1500);
-            }
-        } else {
-            setTimeout(() => advanceTurn(), 1500);
-        }
+        setTimeout(() => advanceTurn(), 1500);
 		return;
 	}
 
