@@ -248,6 +248,7 @@ let hostConnection = null;
 let currentRoomId = null;
 let isJoiningRoom = false;
 let isCreatingRoom = false;
+let heartbeatInterval = null;
 
 const MAX_PLAYERS = 6;
 const BOT_NAMES = [
@@ -399,6 +400,9 @@ document.getElementById('btn-create-room').onclick = async () => {
 		isHost = true;
 		players = [{ id: myPeerId, name: myName, isBot: false }];
 		
+		clearInterval(heartbeatInterval);
+		heartbeatInterval = setInterval(hostHeartbeatCheck, 3000);
+
 		await update(ref(db, `domino_rooms/${currentRoomId}`), { hostPeerId: myPeerId, status: 'waiting', currentPlayers: 1, lastActive: Date.now() });
 
 		setInterval(() => { if (isHost && currentRoomId && game.status === 'waiting') update(ref(db, `domino_rooms/${currentRoomId}`), { lastActive: Date.now() }); }, 3000);
@@ -426,6 +430,7 @@ function joinRoom(roomId, hostPeerId) {
 
 window.leaveLobby = function() {
 	stopBGM();
+	clearInterval(heartbeatInterval);
 	if (isHost && currentRoomId) { remove(ref(db, `domino_rooms/${currentRoomId}`)); connections.forEach(c => c.close()); }
 	else if (hostConnection) { hostConnection.close(); }
 	currentRoomId = null; isHost = false; players = []; game.status = 'waiting';
@@ -465,9 +470,46 @@ function renderLobby() {
 	}
 }
 
+function handleClientDisconnect(peerId) {
+	const p = players.find(x => x.id === peerId);
+	if (p && !p.isBot) {
+		p.isBot = true; p.name = `บอท${p.name}`;
+		broadcastAnnounce(`${p.name} หลุดการเชื่อมต่อ เปลี่ยนเป็นบอทแล้ว`, true);
+		syncLobby(); 
+		if (game.status === 'playing') {
+			broadcastGameState();
+			if (players[game.turnIndex].id === peerId) {
+				processTurnLogic();
+			}
+		}
+	}
+}
+
+function hostHeartbeatCheck() {
+	if (!isHost) return;
+	const now = Date.now();
+	connections.forEach(conn => {
+		if (!conn.lastPing) conn.lastPing = now;
+		
+		if (conn.open) {
+			conn.send({ type: 'ping' });
+		}
+		
+		if (now - conn.lastPing > 15000) {
+			const peerId = conn.customPeerId || conn.peer;
+			handleClientDisconnect(peerId);
+			if (conn.open) conn.close();
+			conn.lastPing = now; 
+		}
+	});
+}
+
 function setupHostConnection(conn) {
+	conn.lastPing = Date.now();
 	conn.on('data', data => {
-		if (data.type === 'joinReq') {
+		if (data.type === 'pong') {
+			conn.lastPing = Date.now();
+		} else if (data.type === 'joinReq') {
 			conn.customPeerId = data.peerId; 
 			if (players.length >= MAX_PLAYERS) return;
 			let newName = data.name;
@@ -484,12 +526,7 @@ function setupHostConnection(conn) {
 	});
 	conn.on('close', () => {
 		const peerId = conn.customPeerId || conn.peer;
-		const p = players.find(x => x.id === peerId);
-		if (p && !p.isBot) {
-			p.isBot = true; p.name = `บอท${p.name}`;
-			broadcastAnnounce(`${p.name} หลุดการเชื่อมต่อ เปลี่ยนเป็นบอทแล้ว`, true);
-			syncLobby(); if (game.status === 'playing') broadcastGameState();
-		}
+		handleClientDisconnect(peerId);
 	});
 }
 
@@ -701,7 +738,12 @@ function broadcastGameState() {
 }
 
 function handleClientData(data) {
-	if (data.type === 'lobbySync') { players = data.players; renderLobby(); }
+	if (data.type === 'ping') {
+		if (hostConnection && hostConnection.open) {
+			hostConnection.send({ type: 'pong' });
+		}
+	}
+	else if (data.type === 'lobbySync') { players = data.players; renderLobby(); }
 	else if (data.type === 'gameSync') {
 		if ((game.status === 'waiting' || game.status === 'ended') && data.game.status === 'playing') switchScreen('screen-game', 'top-status-bar');
 		game = { ...game, ...data.game }; renderGame(data.game);
