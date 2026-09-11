@@ -127,10 +127,10 @@ let previousTurnIndex = -1;
 const MAX_PLAYERS = 4;
 // Bot Names Reference from Domino
 const BOT_NAMES = [
-	'บอทสายฟ้า', 'บอทเจ้าป่า', 'บอทดาวเหนือ', 'บอทขุนพล', 'บอทจอมทัพ', 
-	'บอทพายุ', 'บอทฟีนิกซ์', 'บอทนักรบ', 'บอทเสือดำ', 'บอทราชัน',
-	'บอทมังกร', 'บอทภูผา', 'บอททะเล', 'บอทวายุ', 'บอทหมอก', 
-	'บอทตะวัน', 'บอทจันทรา', 'บอทแสงดาว', 'บอทเพชร', 'บอทโชคดี'
+	'สายฟ้า', 'เจ้าป่า', 'ดาวเหนือ', 'ขุนพล', 'จอมทัพ', 
+	'พายุ', 'ฟีนิกซ์', 'นักรบ', 'เสือดำ', 'ราชัน',
+	'มังกร', 'ภูผา', 'ทะเล', 'วายุ', 'หมอก', 
+	'ตะวัน', 'จันทรา', 'แสงดาว', 'เพชร', 'โชคดี'
 ];
 
 let players = [];
@@ -329,10 +329,7 @@ function renderLobby() {
 function handleClientDisconnect(peerId) {
 	const p = players.find(x => x.id === peerId);
 	if (p && !p.isBot) {
-		p.isBot = true; 
-		if (!p.name.startsWith('บอท')) {
-			p.name = `บอท${p.name}`;
-		}
+		p.isBot = true; p.name = `บอท${p.name}`;
 		broadcastAnnounce(`เพื่อน${p.name} หลุดการเชื่อมต่อ เปลี่ยนเป็นบอทแล้ว`, true);
 		syncLobby(); 
 		if (game.status === 'playing') {
@@ -727,18 +724,13 @@ function handlePlayerAction(peerId, action, payload) {
 		const publicMsg = `${currentPlayer.name} จั่วการ์ด 1 ใบ`;
 		const privateMsg = `คุณจั่วได้การ์ด ${card.name}`;
 
-        const topCard = game.discardPile[game.discardPile.length - 1];
-        const isPlayable = canPlayCard(card, game.activeSuit, topCard);
-
 		connections.forEach(c => {
 			if (c.open) {
 				const targetId = c.customPeerId || c.peer;
 				if (targetId === peerId) {
 					c.send({ type: 'announce', message: privateMsg, assertive: true });
-					if (!isPlayable) c.send({ type: 'announce', message: 'ไม่มีการ์ดลงได้ จบตา', assertive: true });
 				} else {
 					c.send({ type: 'announce', message: publicMsg, assertive: false });
-					if (!isPlayable) c.send({ type: 'announce', message: 'ไม่มีการ์ดลงได้ จบตา', assertive: false });
 				}
 			}
 		});
@@ -746,22 +738,15 @@ function handlePlayerAction(peerId, action, payload) {
 		if (myPeerId === peerId) {
 			announce(privateMsg, true);
 			logEvent(privateMsg);
-			if (!isPlayable) {
-				announce('ไม่มีการ์ดลงได้ จบตา', true);
-				logEvent('ไม่มีการ์ดลงได้ จบตา');
-			}
 		} else {
 			announce(publicMsg, false);
 			logEvent(publicMsg);
-			if (!isPlayable) {
-				announce('ไม่มีการ์ดลงได้ จบตา', false);
-				logEvent('ไม่มีการ์ดลงได้ จบตา');
-			}
 		}
 
 		broadcastGameState();
         
-        if (isPlayable) {
+        const topCard = game.discardPile[game.discardPile.length - 1];
+        if (canPlayCard(card, game.activeSuit, topCard)) {
             if (currentPlayer.isBot) {
                 setTimeout(() => {
                     let playPayload = { index: game.playerStates[peerId].hand.length - 1 };
