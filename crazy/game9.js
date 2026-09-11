@@ -500,32 +500,6 @@ document.querySelectorAll('.suit-btn').forEach(btn => {
     };
 });
 
-// เพิ่มปุ่มยกเลิกการลงการ์ด 8
-const modalContent = document.querySelector('#suit-picker-modal .modal-content');
-if (modalContent) {
-    const cancelBtn = document.createElement('button');
-    cancelBtn.style.cssText = 'font-size: 24px; padding: 15px; color: white; background: #64748b; border: 2px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer;';
-    cancelBtn.textContent = 'ยกเลิก';
-    cancelBtn.setAttribute('aria-label', 'ยกเลิกการลงการ์ด 8');
-    cancelBtn.onclick = () => {
-        const modal = document.getElementById('suit-picker-modal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-        pendingPlayIndex = -1;
-        announce('ยกเลิกการลงการ์ด 8', true);
-        
-        const focusTarget = document.getElementById('my-cards-container');
-        if (focusTarget) {
-            if (!focusTarget.hasAttribute('tabindex')) {
-                focusTarget.setAttribute('tabindex', '-1');
-            }
-            focusTarget.focus();
-        }
-    };
-    modalContent.appendChild(cancelBtn);
-}
-
 document.getElementById('btn-start-game').onclick = () => {
 	document.getElementById('btn-start-game').disabled = true;
 	if (isHost && players.length >= 2) {
@@ -572,17 +546,9 @@ function initGame() {
 	game.status = 'playing'; game.matchOver = false;
 	game.deck = generateDeck();
     game.discardPile = [];
+	game.turnIndex = 0;
     game.activeSuit = null;
     previousTurnIndex = -1;
-
-    // Randomize Turn Sequence
-    game.turnOrder = [];
-    for(let i = 0; i < players.length; i++) {
-        game.turnOrder.push(i);
-    }
-    game.turnOrder.sort(() => Math.random() - 0.5);
-    game.turnSequenceIndex = 0;
-    game.turnIndex = game.turnOrder[game.turnSequenceIndex];
 	
 	players.forEach((p, i) => {
 		game.playerStates[p.id] = { hand: [] };
@@ -616,8 +582,6 @@ function broadcastGameState() {
         topCard: game.discardPile[game.discardPile.length - 1],
         activeSuit: game.activeSuit,
 		turnIndex: game.turnIndex,
-        turnOrder: game.turnOrder,
-        turnSequenceIndex: game.turnSequenceIndex,
 		players: safePlayers,
 		playerStates: {}
 	};
@@ -868,12 +832,7 @@ function reshuffleDeck() {
 
 function advanceTurn() {
     reshuffleDeck();
-    if (game.turnOrder && game.turnOrder.length === players.length) {
-        game.turnSequenceIndex = (game.turnSequenceIndex + game.direction + players.length) % players.length;
-        game.turnIndex = game.turnOrder[game.turnSequenceIndex];
-    } else {
-        game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
-    }
+	game.turnIndex = (game.turnIndex + game.direction + players.length) % players.length;
 	broadcastSound('turn');
 	broadcastGameState();
 	
@@ -973,39 +932,3 @@ function showResult(winnerName, resultStats) {
 	document.getElementById('winner-text').innerHTML = html;
 	document.getElementById('result-status-bar').innerHTML = '';
 }
-
-// --- Keyboard Shortcuts ---
-document.addEventListener('keydown', (e) => {
-    const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-    if (activeTag === 'input' || activeTag === 'textarea') return;
-
-    if (e.altKey) {
-        const key = e.key.toLowerCase();
-        if (key === 'p') {
-            e.preventDefault();
-            const btnDraw = document.getElementById('btn-draw');
-            if (btnDraw && !btnDraw.disabled) {
-                btnDraw.click();
-            }
-        } else if (key === 'c') {
-            e.preventDefault();
-            const centerAria = document.getElementById('board-center-aria');
-            if (centerAria && centerAria.textContent) {
-                announce(centerAria.textContent, true);
-            }
-        } else if (key === 'k') {
-            e.preventDefault();
-            const deckAria = document.getElementById('deck-aria-label');
-            if (deckAria && deckAria.textContent) {
-                announce(deckAria.textContent, true);
-            }
-        } else if (key === 'a') {
-            e.preventDefault();
-            const statusBar = document.getElementById('top-status-bar');
-            if (statusBar) {
-                const label = statusBar.getAttribute('aria-label');
-                if (label) announce(label, true);
-            }
-        }
-    }
-});
