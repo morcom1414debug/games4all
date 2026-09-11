@@ -1166,31 +1166,15 @@ function processTurnLogic() {
 		runBotTurn(currentPlayer, state);
 	} else {
 		botTimer = setTimeout(() => {
-			if (game.status === 'playing' && players[game.turnIndex].id === currentPlayer.id && !currentPlayer.isBot && !state.isProcessing) {
+			if (game.status === 'playing' && players[game.turnIndex].id === currentPlayer.id) {
+                // Auto-pass/draw logic timeout
                 const topCard = game.discardPile[game.discardPile.length - 1];
-                let playableIndex = -1;
-                
+                let hasPlayable = false;
                 for(let i=0; i<state.hand.length; i++) {
-                    if(canPlayCard(state.hand[i], game.activeSuit, topCard)) {
-                        playableIndex = i;
-                        break;
-                    }
+                    if(canPlayCard(state.hand[i], game.activeSuit, topCard)) hasPlayable = true;
                 }
-                
-                if (playableIndex !== -1) {
-                    const card = state.hand[playableIndex];
-                    let payload = { index: playableIndex };
-                    if (card.rank === '8') {
-                        const suits = ['♥', '♦', '♣', '♠'];
-                        payload.activeSuit = suits[Math.floor(Math.random() * suits.length)];
-                    }
-                    handlePlayerAction(currentPlayer.id, 'play', payload);
-                } else {
-                    if (game.deck.length > 0) {
-                        handlePlayerAction(currentPlayer.id, 'draw');
-                    } else {
-                        advanceTurn();
-                    }
+                if (!hasPlayable && game.deck.length > 0) {
+                    handlePlayerAction(currentPlayer.id, 'draw');
                 }
 			}
 		}, 32000);
