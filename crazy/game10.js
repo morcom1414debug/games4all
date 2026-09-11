@@ -685,13 +685,7 @@ function renderGame(gState) {
 	let ariaStatusBarText = ``;
 
 	const mascots = ['🐱', '🐶', '🐰', '🦊', '🐼', '🐸'];
-	const displayOrder = (gState.turnOrder && gState.turnOrder.length === gState.players.length) 
-		? gState.turnOrder 
-		: gState.players.map((_, i) => i);
-
-	displayOrder.forEach((idx) => {
-		const p = gState.players[idx];
-		if (!p) return;
+	gState.players.forEach((p, idx) => {
 		const pState = gState.playerStates[p.id];
 		const isTurn = idx === gState.turnIndex;
 		ariaStatusBarText += `${p.name} มี ${pState.cardCount} ใบ. `;
