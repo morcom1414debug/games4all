@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crazy Eights : Games4all</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body>
+    <div id="aria-polite" aria-live="polite" class="sr-only"></div>
+    <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
+
+    <div id="anim-overlay" class="anim-overlay" style="display: none;" aria-hidden="true">
+        <div id="anim-text" class="anim-text"></div>
+    </div>
+    <div id="visual-fx-layer" aria-hidden="true"></div>
+
+    <main id="screen-login" class="screen active" style="position: relative; overflow: hidden;">
+        <!-- Visual Decorators -->
+        <div class="visual-deco" aria-hidden="true" style="position: absolute; top: -30px; left: -20px; font-size: 120px; opacity: 0.05; transform: rotate(-20deg); pointer-events: none; color: var(--text-main);">♠</div>
+        <div class="visual-deco" aria-hidden="true" style="position: absolute; bottom: -30px; right: -20px; font-size: 120px; opacity: 0.05; transform: rotate(15deg); pointer-events: none; color: var(--danger);">♥</div>
+
+        <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="position: absolute; top: 15px; left: 15px; z-index: 10;"><span aria-hidden="true">🏠</span></button>
+        
+        <h1 tabindex="-1" id="title-login" style="font-size: clamp(32px, 6vw, 40px); letter-spacing: 4px; margin-top: 40px; text-shadow: 0 4px 15px rgba(255,235,59,0.3);">Crazy Eights : Games4all</h1>
+        <p style="text-align: center; font-size: 16px; color: var(--text-muted); margin-top: -10px;">สำหรับการสันทนาการร่วมกัน</p>
+        
+        <div style="background: rgba(0,0,0,0.3); border-radius: 16px; padding: 15px; margin: 20px auto; max-width: 90%; border: 1px solid rgba(255,255,255,0.1);">
+            <p style="text-align: center; font-size: 15px; color: var(--primary); margin: 0;">เกมนี้ออกแบบให้ผู้ใช้ Screen Reader และผู้เล่นทั่วไป สนุกร่วมกันได้อย่างเท่าเทียม</p>        
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; max-width: 300px; margin: 0 auto; width: 100%; position: relative; z-index: 2;">
+            <label for="player-name-input" class="sr-only">กรอกชื่อเล่นของคุณ</label>
+            <input type="text" id="player-name-input" placeholder="กรอกชื่อเล่นของคุณ" maxlength="15" autocomplete="off">
+            <button id="btn-confirm-name" disabled>ยืนยันชื่อ</button>
+        </div>
+    </main>
+
+    <main id="screen-main" class="screen" style="position: relative; overflow: hidden;">
+        <!-- Visual Decorators -->
+        <div class="visual-deco" aria-hidden="true" style="position: absolute; top: 10%; right: -20px; font-size: 100px; opacity: 0.03; transform: rotate(25deg); pointer-events: none;">♣</div>
+        
+        <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="position: absolute; top: 15px; left: 15px; z-index: 10;"><span aria-hidden="true">🏠</span></button>
+        
+        <h1 tabindex="-1" id="title-main" style="margin-top: 30px;">Crazy Eights : Games4all</h1>
+        
+        <p style="text-align: center; color: var(--primary); margin-bottom: 30px; font-size: 18px; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">
+            สวัสดี <strong style="background: rgba(255,255,255,0.1); padding: 4px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); display: inline-block; margin-left: 8px;"><span id="display-player-name" style="color: #fff;"></span></strong>
+        </p>
+        
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; position: relative; z-index: 2;">
+            <button id="btn-create-room"><span aria-hidden="true">➕</span> สร้างห้องใหม่</button>
+            <button id="btn-show-rules" class="info"><span aria-hidden="true">📖</span> คู่มือการเล่น</button>
+        </div>
+
+        <div style="margin-top: 40px; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); flex: 1;">
+            <h2 style="font-size: 20px; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 15px;">ห้องที่เปิดอยู่</h2>
+            <ul id="room-list" style="list-style: none; padding: 0; display: grid; gap: 10px;" role="list">
+                <li id="empty-room-msg" style="text-align: center; color: var(--text-muted); padding: 20px 0;">กำลังโหลดรายการห้อง...</li>
+            </ul>
+        </div>
+    </main>
+
+    <main id="screen-rules" class="screen" style="position: relative;">
+        <h2 tabindex="-1" id="title-rules" style="margin-top: 10px;">คู่มือการเล่น Crazy Eights</h2>
+        <div style="overflow-y: auto; flex: 1; padding-right: 10px; margin-bottom: 20px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 16px;" tabindex="0" aria-label="เนื้อหาคู่มือ">
+            <p style="font-size: 16px; margin-bottom: 20px; background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px;"><strong>🎯 เป้าหมาย:</strong> ทิ้งการ์ดให้หมดมือเป็นคนแรก เพื่อเป็นผู้ชนะ</p>
+            
+            <h3 style="font-size: 16px; margin-top: 15px; text-align: left; border-left: 4px solid var(--primary); padding-left: 12px;">กติกาการวางการ์ด</h3>
+            <ul style="margin-left: 20px; margin-bottom: 25px; color: var(--text-muted); line-height: 1.8;">
+                <li>ผู้เล่นลงการ์ดที่มี <strong style="color:#fff;">ดอก (Suit)</strong> หรือ <strong style="color:#fff;">ค่า (Rank)</strong> ตรงกับการ์ดบนสุดของกองทิ้ง</li>
+                <li>หากไม่มีการ์ดลง ต้อง <strong style="color:var(--info);">กดปุ่มจั่ว</strong> (จั่ว 1 ใบต่อเทิร์น แล้วข้ามตาอัตโนมัติ)</li>
+                <li>การ์ด <strong style="color:var(--focus-ring);">เลข 8</strong> สามารถลงทับการ์ดใดก็ได้ทุกกรณี</li>
+                <li>เมื่อลงเลข 8 ผู้เล่นสามารถประกาศ <strong style="color:#fff;">เปลี่ยนดอกการ์ด</strong> เป็นดอกใดก็ได้</li>
+            </ul>
+            
+            <h3 style="font-size: 16px; margin-top: 15px; text-align: left; border-left: 4px solid var(--info); padding-left: 12px;">คีย์ลัด (Keyboard Shortcuts)</h3>
+            <ul style="margin-left: 20px; margin-bottom: 15px; color: var(--text-muted); line-height: 1.8;">
+                <li><strong style="color:#fff; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px;">Alt+P</strong> = จั่ว</li>
+                <li><strong style="color:#fff; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px;">Alt+C</strong> = ฟังข้อมูลการ์ดบนกองทิ้ง</li>
+                <li><strong style="color:#fff; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px;">Alt+K</strong> = ฟังจำนวนการ์ดที่เหลือในกองจั่ว</li>
+                <li><strong style="color:#fff; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px;">Alt+A</strong> = ฟังจำนวนการ์ดที่เหลือของผู้เล่นแต่ละคน</li>
+            </ul>
+        </div>
+        <button id="btn-close-rules" style="margin: 0 auto; display: block;">กลับหน้าหลัก</button>
+    </main>
+
+    <main id="screen-lobby" class="screen" style="position: relative; overflow: hidden;">
+        <!-- Visual Decorators -->
+        <div class="visual-deco" aria-hidden="true" style="position: absolute; bottom: 10%; left: -20px; font-size: 100px; opacity: 0.03; transform: rotate(-15deg); pointer-events: none; color: var(--danger);">♦</div>
+
+        <h2 tabindex="-1" id="title-lobby" style="font-size: clamp(24px, 5vw, 32px);">ล็อบบี้: <span id="lobby-room-id" style="color:var(--focus-ring);"></span></h2>
+        
+        <div id="lobby-ready-msg" style="display: none; text-align: center; color: var(--focus-ring); font-size: 16px; margin-bottom: 20px; font-weight: bold; background: rgba(0,0,0,0.5); padding: 12px; border-radius: 12px; border: 1px solid rgba(253, 224, 71, 0.3); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+            ห้องพร้อมแล้ว รอเพื่อนหรือเพิ่มบอทได้ทันที
+        </div>
+        
+        <div style="background: rgba(0,0,0,0.2); border-radius: 16px; padding: 20px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px; flex: 1;">
+            <h3 style="font-size: 18px; text-align: left; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;">
+                ผู้เล่นในห้อง
+                <span style="background: var(--primary); color: #fff; padding: 4px 12px; border-radius: 12px; font-size: 14px;"><span id="lobby-player-count">1</span>/4</span>
+            </h3>
+            <ul id="lobby-player-list" style="list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;" role="list"></ul>
+        </div>
+
+        <div id="host-controls" style="display: none; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); box-shadow: inset 0 2px 6px rgba(0,0,0,0.3); position: relative; z-index: 2;">
+            <h3 style="font-size: 18px; margin-bottom: 15px;">การจัดการ Bot</h3>
+            <div class="bot-controls">
+                <button id="btn-remove-bot" class="danger" aria-label="ลดบอท">ลดบอท</button>
+                <span id="bot-count-display">0</span>
+                <button id="btn-add-bot" aria-label="เพิ่มบอท">เพิ่มบอท</button>
+            </div>
+            <button id="btn-start-game" style="margin: 25px auto 0 auto; display: block; font-size: 20px; padding: 15px;">🚀 เริ่มเกม</button>
+        </div>
+        
+        <button id="btn-leave-lobby" class="danger" style="margin: 20px auto 0 auto; max-width: 200px; display: block; position: relative; z-index: 2;">ออกจากห้อง</button>
+    </main>
+
+    <main id="screen-game" class="screen" style="position: relative;">
+        <!-- Audio Refresh Button -->
+        <button id="btn-refresh-audio" class="btn-home-main" style="position: absolute; top: 15px; right: 15px; z-index: 10; font-size: 12px; padding: 8px 12px; background: rgba(0,0,0,0.5); border-bottom: none;" aria-label="รีเฟรชเสียง">
+            <span aria-hidden="true">🔊</span> รีเฟรช
+        </button>
+        
+        <!-- Status Bar -->
+        <div id="top-status-bar" tabindex="0"></div>
+
+        <!-- Turn Indicator -->
+        <h2 id="current-turn-heading" tabindex="-1" style="font-size: clamp(16px, 3vw, 20px); margin: 0 0 5px 0; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 12px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.8);"></h2>
+        <div id="recent-event-log" style="text-align: center; font-size: 14px; color: var(--text-muted); margin-bottom: 10px; min-height: 20px;" aria-hidden="true"></div>
+
+        <!-- Visual Table Center Anchor (Decorative only) -->
+        <div class="board-table-deco" aria-hidden="true" style="position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); width: clamp(280px, 80vw, 450px); height: clamp(280px, 80vw, 450px); background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 65%); border-radius: 50%; pointer-events: none; z-index: -1;"></div>
+
+        <!-- Board Middle -->
+        <div class="middle-area" style="flex: 1;">
+            <div class="deck-pile" aria-hidden="true" id="ui-deck-pile">
+                <span class="deck-pile-top">CRAZY</span>
+                <span class="deck-pile-mid" id="deck-count-visual">52</span>
+            </div>
+            <div class="sr-only" id="deck-aria-label">กองจั่วเหลือ 52 ใบ</div>
+
+            <div class="board-ends">
+                <div class="board-end-zone discard-pile" id="board-center-container" aria-hidden="true" style="display: flex; flex-direction: column; align-items: center;">
+                    <!-- Visual Card Injected Here -->
+                </div>
+                <div class="sr-only" id="board-center-aria">กองทิ้งว่าง</div>
+            </div>
+        </div>
+
+        <!-- Player Hand -->
+        <div style="display: flex; flex-direction: column; justify-content: flex-end; padding-top: 15px;">
+            <div id="my-cards-container" role="group" aria-label="การ์ดในมือ"></div>
+            
+            <div class="bottom-actions">
+                <button id="btn-draw" class="info" disabled style="max-width: 250px;">จั่ว <span aria-hidden="true">👆</span></button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals สำหรับเปลี่ยนดอกเมื่อลงเลข 8 (Removed inline styles that fought style_4.css) -->
+    <div id="suit-picker-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="suit-picker-title" style="display:none;">
+        <h2 tabindex="-1" id="suit-picker-title">เลือกดอกถัดไป</h2>
+        <div class="modal-content">
+            <button class="suit-btn red-suit" data-suit="♥" aria-label="เปลี่ยนเป็นดอก โพแดง"><span aria-hidden="true">♥</span></button>
+            <button class="suit-btn red-suit" data-suit="♦" aria-label="เปลี่ยนเป็นดอก ข้าวหลามตัด"><span aria-hidden="true">♦</span></button>
+            <button class="suit-btn black-suit" data-suit="♣" aria-label="เปลี่ยนเป็นดอก ดอกจิก"><span aria-hidden="true">♣</span></button>
+            <button class="suit-btn black-suit" data-suit="♠" aria-label="เปลี่ยนเป็นดอก โพดำ"><span aria-hidden="true">♠</span></button>
+        </div>
+    </div>
+
+    <main id="screen-result" class="screen" style="text-align: center; justify-content: center; position: relative;">
+        <!-- Visual Decorators -->
+        <div class="visual-deco" aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(circle at center, rgba(253, 224, 71, 0.1) 0%, transparent 70%); pointer-events: none; z-index: -1;"></div>
+        
+        <h1 tabindex="-1" id="title-result" style="font-size: clamp(32px, 6vw, 48px); margin-bottom: 15px; text-shadow: 0 0 25px var(--focus-ring);">ผลการแข่งขัน</h1>
+        
+        <div id="winner-text" style="font-size: clamp(20px, 4vw, 28px); margin-bottom: 30px; font-weight: bold; background: rgba(0,0,0,0.6); padding: 25px; border-radius: 20px; border: 3px solid var(--primary); box-shadow: 0 10px 25px rgba(0,0,0,0.4);"></div>
+        
+        <div id="result-status-bar" style="display: flex; flex-direction: column; gap: 12px; padding: 20px; background: rgba(0,0,0,0.4); border-radius: 16px; margin-bottom: 30px; width: 100%; max-width: 500px; margin-left: auto; margin-right: auto; box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);"></div>
+
+        <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'" style="margin: 0 auto; display: block; width: 80px; height: 55px; border-radius: 16px;"><span aria-hidden="true">🏠</span></button>
+    </main>
+    
+    <script src="game.js" type="module"></script>
+</body>
+</html>
