@@ -1,0 +1,1501 @@
+PROMPT สำหรับสั่ง AI พัฒนาเกมผจญภัย 80 ช่อง
+
+## กฎเหล็ก — ต้องปฏิบัติตามทุกข้อ
+
+คุณได้รับมอบหมายให้พัฒนาเกม Multiplayer Web Game ใหม่สำหรับชุมชน Games4All
+
+เกมนี้เป็น **เกมกระดานผจญภัยทอยลูกเต๋า 80 ช่อง**
+
+ฉันจะส่งไฟล์ต้นแบบของเกมที่มีอยู่ให้คุณทั้งหมด 4 ไฟล์ ได้แก่:
+
+1. `snakesix(4).html`
+2. `domino(20260916-074221).html`
+3. `domino(10).js`
+4. `style(20260916-074223).css`
+
+**ต้องศึกษาทั้ง 4 ไฟล์ก่อนเริ่มเขียนโค้ด**
+
+ห้ามเลือกดูเพียงบางไฟล์แล้วเริ่มทำทันที
+
+---
+
+# กฎเหล็กข้อ 1 — ห้ามแก้ไขไฟล์ต้นฉบับ
+
+ไฟล์ Snake และ Domino ที่ฉันส่งให้มีไว้เป็น **Reference Architecture เท่านั้น**
+
+ห้ามแก้ไขไฟล์ต้นฉบับที่ฉันส่งให้
+
+ห้ามเขียนทับ
+
+ห้ามดัดแปลง
+
+ห้ามลบ
+
+ห้ามเปลี่ยนชื่อ
+
+ห้ามนำไฟล์ต้นฉบับกลับมาเป็นไฟล์เกมใหม่โดยตรงแล้วแก้แบบสุ่ม ๆ
+
+ให้สร้างไฟล์ของเกมใหม่แยกต่างหาก
+
+---
+
+# กฎเหล็กข้อ 2 — ต้องศึกษาจุดแข็งของทั้ง Snake และ Domino
+
+ต้องนำข้อดีที่เหมาะสมจากทั้งสองเกมมาใช้ให้มากที่สุด
+
+## จาก Snake ให้ศึกษาและนำแนวคิดที่เหมาะสมมาใช้
+
+โดยเฉพาะ:
+
+* ระบบกระดาน
+* ระบบช่อง
+* การเดินตามลำดับช่อง
+* การทอยลูกเต๋า
+* Animation การเดิน
+* Pawn/Character movement
+* เอฟเฟกต์ของช่อง
+* Visual FX
+* Goal/Finish
+* แนวคิดการ synchronize event
+* การจัดการ Animation ที่ไม่ทำลาย Accessibility
+
+แต่:
+
+**ห้ามนำระบบการ์ดของ Snake มาใช้**
+
+---
+
+# กฎเหล็กข้อ 3 — จาก Domino ให้นำ Architecture ที่ดีมาใช้
+
+ต้องศึกษาและนำแนวคิดต่อไปนี้มาปรับใช้:
+
+* หน้า Login
+* การกรอกชื่อ
+* Main Menu
+* Lobby
+* Room List
+* Create Room
+* Join Room
+* Host
+* Client
+* PeerJS
+* Firebase
+* Game State Synchronization
+* Event Synchronization
+* Bot
+* การตรวจจับ Client Disconnect
+* Player Status
+* Screen Transition
+* Focus Management
+* ARIA
+* polite/assertive announcement queue
+* Sound Synchronization
+* Visual FX
+* Result Screen
+* Responsive UI
+* Mobile/desktop accessibility
+
+ระบบ Room List ของ Domino มีแนวทางที่ดีเรื่องการรักษา Focus ของปุ่มเมื่อข้อมูลห้องเปลี่ยน ห้ามสร้าง Room List ใหม่แบบทำลาย Focus โดยไม่จำเป็น
+
+---
+
+# กฎเหล็กข้อ 4 — ห้ามนำกติกาเก่าที่ไม่เกี่ยวข้องเข้ามา
+
+เกมใหม่นี้ **ไม่ใช่ Domino**
+
+เกมใหม่นี้ **ไม่ใช่ Snake**
+
+เกมใหม่นี้ **ไม่ใช่ UNO**
+
+ดังนั้นห้ามนำ:
+
+* การ์ด
+* ไพ่
+* โดมิโน
+* กองจั่ว
+* การเลือกปลายซ้าย/ขวา
+* Domino Call
+* Reverse
+* Draw 2
+* Draw 3
+* Skip แบบ Domino
+* ระบบคะแนน Domino
+* ระบบการ์ดของ Snake
+* ระบบมินิเกมการ์ด Snake
+
+เข้ามาในเกมใหม่
+
+---
+
+# กฎเหล็กข้อ 5 — ต้องสร้างเกมตามกติกาฉบับนี้
+
+ใช้กติกาหลักต่อไปนี้เป็น Source of Truth:
+
+## กระดาน
+
+มี 80 ช่อง
+
+* START = 1
+* FINISH = 80
+
+Logical Path:
+
+> 1 → 2 → 3 → ... → 80
+
+สามารถออกแบบ Visual Board เป็น 8 × 10 แบบ Serpentine ได้
+
+แต่ Screen Reader ต้องเน้น:
+
+> ช่อง X จาก 80
+
+---
+
+# กฎเหล็กข้อ 6 — ผู้เล่นสูงสุด 6 คน
+
+รองรับสูงสุด:
+
+> 6 คนต่อห้อง
+
+เริ่มเกมได้เมื่อมี:
+
+> อย่างน้อย 2 คน
+
+Bot นับรวมใน 6 คน
+
+Host ต้องสามารถ:
+
+* เพิ่ม Bot
+* ลด Bot
+* เริ่มเกม
+
+โดยใช้แนวทางจากระบบ Lobby ที่มีอยู่
+
+---
+
+# กฎเหล็กข้อ 7 — ผู้เล่นไม่เลือกสัตว์
+
+ห้ามสร้างหน้าเลือกสัตว์
+
+ระบบต้องสุ่มสัตว์ให้ผู้เล่นอัตโนมัติ
+
+ใช้ Pool ประมาณ 12–20 ตัว เช่น:
+
+* จิ้งจอก
+* แพนด้า
+* กระต่าย
+* โคอาลา
+* เสือ
+* สิงโต
+* กบ
+* ลิง
+* เพนกวิน
+* หมี
+* แร็กคูน
+* ยูนิคอร์น
+* แฮมสเตอร์
+* แมว
+* สุนัข
+* แพนด้าแดง
+
+ควรหลีกเลี่ยงสัตว์ซ้ำภายในห้อง หาก Pool เพียงพอ
+
+สัตว์ต้องถูกกำหนดโดย Host
+
+Client ห้ามสุ่มสัตว์ของตัวเองใหม่
+
+ทุกเครื่องต้องเห็นคู่:
+
+> สัตว์ + ชื่อผู้เล่น
+
+เหมือนกัน
+
+---
+
+# กฎเหล็กข้อ 8 — สร้าง Random Board จาก Host เท่านั้น
+
+นี่เป็นข้อสำคัญมาก
+
+เมื่อเริ่มเกม:
+
+Host ต้องสร้าง:
+
+* Seed
+* Special Space Configuration
+* Special Effect Values
+* Key/Door Pairing
+* Door Destination
+* Player Animal Assignment
+* Initial Player State
+
+แล้ว Synchronize ไปยัง Client
+
+ห้าม Client สุ่มข้อมูลเหล่านี้เอง
+
+ห้ามเกิดกรณี:
+
+Host เห็นช่อง 25 เป็น Treasure
+
+แต่ Client เห็นช่อง 25 เป็น Trap
+
+ทุกอุปกรณ์ต้องเห็นกระดานเดียวกัน 100%
+
+---
+
+# กฎเหล็กข้อ 9 — Special Space Configuration
+
+สุ่มตามจำนวนนี้:
+
+* Treasure 8
+* Forward 6
+* Trap 7
+* Water 5
+* Ghost 5
+* Warp 4
+* Key 6
+* Door 6
+
+รวม 47 ช่อง
+
+ที่เหลือเป็น Normal
+
+ข้อกำหนด:
+
+* ช่อง 1 ห้ามเป็น Special
+* ช่อง 80 ห้ามเป็น Special
+* Special ห้ามซ้อนกัน
+* แต่ละช่องมี Special Type เดียว
+* ต้องตรวจสอบ Constraint
+* หากสุ่มไม่ผ่าน ให้สุ่มใหม่
+* ต้องเก็บ Configuration ใน Game State
+* ทุก Client ต้องใช้ Configuration เดียวกัน
+
+---
+
+# กฎเหล็กข้อ 10 — Treasure
+
+มี 8 ช่อง
+
+เมื่อผู้เล่นลง:
+
+> ได้ Holy Armor 1 ชิ้น
+
+ไม่มีเหรียญ
+
+เกราะสูงสุด:
+
+> 3 ชิ้น
+
+หากมี 3 ชิ้นแล้ว ให้คงไว้ 3 ชิ้น
+
+ห้ามเกิด Item มากกว่า 3
+
+ต้องมี Visual Effect เช่น:
+
+* เปิดกล่อง
+* Sparkle
+* Glow
+
+และเสียงตามระบบ Audio ของเกม
+
+---
+
+# กฎเหล็กข้อ 11 — Holy Armor
+
+เกราะใช้ป้องกัน Bad Event ที่ป้องกันได้
+
+เมื่อมีสิทธิ์ใช้:
+
+แสดง UI ที่เข้าถึงได้ด้วย Keyboard และ VoiceOver:
+
+> ใช้เกราะศักดิ์สิทธิ์ป้องกันหรือไม่?
+
+ปุ่ม:
+
+> ใช้เกราะ
+
+และ:
+
+> ไม่ใช้
+
+หากใช้:
+
+* Armor -1
+* ยกเลิกผลเสีย
+* ไปยัง State ถัดไปอย่างถูกต้อง
+
+หากไม่ใช้:
+
+* ดำเนิน Event ปกติ
+
+ห้ามใช้เกราะกับการทอยลูกเต๋าปกติ
+
+---
+
+# กฎเหล็กข้อ 12 — Forward
+
+มี 6 ช่อง
+
+สุ่มผล:
+
+> +2 ถึง +6
+
+Host เป็นผู้สุ่ม
+
+เมื่อเกิด:
+
+* แสดง Animation
+* อัปเดตตำแหน่ง
+* ประกาศผล
+
+หากเกิน 80 ให้ใช้ Bounce Back
+
+---
+
+# กฎเหล็กข้อ 13 — Trap
+
+มี 7 ช่อง
+
+สุ่มผล:
+
+> -2 ถึง -6
+
+Host เป็นผู้สุ่ม
+
+สามารถป้องกันด้วย Holy Armor
+
+ต้องแสดง Visual FX เช่น:
+
+* หลุม
+* ตัวละครตก
+* สั่น
+* Shake
+
+แต่ Visual FX ต้องเป็น `aria-hidden="true"` หากไม่มีข้อมูลที่ผู้ใช้ Screen Reader จำเป็นต้องรับรู้
+
+---
+
+# กฎเหล็กข้อ 14 — Water
+
+มี 5 ช่อง
+
+สุ่มผล:
+
+> -1 ถึง -5
+
+แสดง Visual/Audio ให้รู้สึกเหมือนกระแสน้ำพัดตัวละคร
+
+ต้องไม่ทำให้ตัวละครออกนอกกระดาน
+
+---
+
+# กฎเหล็กข้อ 15 — Ghost
+
+มี 5 ช่อง
+
+Ghost ต้องเป็นเหตุการณ์เชิงลบที่ไม่ใช่การถอยหลังแบบ Trap/Water
+
+สามารถใช้ผลเช่น:
+
+> เสียเทิร์นถัดไป
+
+อย่างน้อยผลเสียบางประเภทต้องป้องกันด้วย Holy Armor
+
+ต้องมี Ghost Animation และ Sound
+
+ห้ามใช้ Ghost เป็นเหตุให้เกิด Loop ไม่รู้จบ
+
+---
+
+# กฎเหล็กข้อ 16 — Warp
+
+มี 4 ช่อง
+
+เมื่อผู้เล่นลง:
+
+สุ่มเป็น:
+
+### Lucky Warp
+
+เดินหน้า:
+
+> 10–20 ช่อง
+
+หรือ
+
+### Unlucky Warp
+
+ถอยหลัง:
+
+> 10–20 ช่อง
+
+Unlucky Warp สามารถป้องกันด้วย Holy Armor
+
+ทุกค่าต้องมาจาก Host
+
+---
+
+# กฎเหล็กข้อ 17 — Key
+
+มี 6 ช่อง
+
+เมื่อผู้เล่นลง:
+
+> ได้กุญแจ 1 ดอก
+
+Key เป็น Inventory
+
+ไม่ต้องใช้ทันที
+
+ผู้เล่นสามารถสะสมได้
+
+---
+
+# กฎเหล็กข้อ 18 — Door
+
+มี 6 ช่อง
+
+ข้อกำหนด:
+
+* Door ห้ามอยู่ก่อนช่อง 10
+* Door ต้องมี Destination ที่อยู่ข้างหน้า
+* Door ใช้ Key 1 ดอก
+* Key และ Door ต้องจับคู่กัน
+* Key ต้องอยู่ก่อน Door อย่างน้อย 6 ช่อง
+
+ตัวอย่างที่ถูกต้อง:
+
+> Key 14 → Door 23
+
+ตัวอย่างที่ผิด:
+
+> Key 18 → Door 21
+
+เพราะห่างไม่ถึง 6 ช่อง
+
+---
+
+# กฎเหล็กข้อ 19 — Door ไม่มี Key
+
+หากลง Door แต่ไม่มี Key:
+
+ไม่เกิดโทษ
+
+ประกาศ:
+
+> คุณพบประตู แต่ไม่มีกุญแจ ประตูยังเปิดไม่ได้
+
+จากนั้นเทิร์นดำเนินต่อไปตามปกติ
+
+---
+
+# กฎเหล็กข้อ 20 — Special Chain
+
+ห้ามสร้าง Recursive Special Chain
+
+ตัวอย่าง:
+
+ผู้เล่นลงช่อง 20 เป็น Forward
+
+Forward ส่งไป 25
+
+หากช่อง 25 เป็น Trap:
+
+**Trap ต้องไม่ทำงานทันที**
+
+ให้ถือว่า Special Event ปัจจุบันจบแล้ว
+
+Special Destination จะทำงานเมื่อผู้เล่นมาลงช่องนั้นจากการทอยลูกเต๋าในเทิร์นอื่น
+
+เหตุผล:
+
+* ป้องกัน Loop
+* ป้องกัน Event ซ้อน
+* ลด Race Condition
+* ลดความซับซ้อนของ Network Sync
+* ทำให้ Screen Reader เข้าใจง่าย
+* ทำให้ Animation จบเป็นลำดับ
+
+---
+
+# กฎเหล็กข้อ 21 — Bounce Back
+
+ผู้เล่นต้องอยู่ในช่วง 1–80 เสมอ
+
+ถ้าเดินเกิน 80 ให้สะท้อนกลับ
+
+ตัวอย่าง:
+
+78 + 5:
+
+> 78 → 79 → 80 → 79 → 78 → 77
+
+จบที่:
+
+> 77
+
+ต้องสร้าง Function กลางสำหรับการคำนวณตำแหน่ง
+
+ห้ามมี Bounce Logic หลายแบบกระจายอยู่ทั่ว Code
+
+---
+
+# กฎเหล็กข้อ 22 — ตัวละครบนกระดาน
+
+สัตว์ของผู้เล่นต้องเป็นตัวละครจริงที่เคลื่อนที่บนกระดาน
+
+ชื่อผู้เล่นแสดงเหนือหัว เช่น:
+
+> น้องฟ้า
+> 🐰
+
+ตัวละครต้อง:
+
+* เดินทีละช่อง
+* ไม่บังหมายเลขช่องมากเกินไป
+* รองรับมือถือ
+* รองรับ Desktop
+* รองรับหลายคนในช่องเดียว
+
+ขนาดประมาณ 28–36px เป็นแนวทางได้
+
+ชื่อประมาณ 9–11px เป็นแนวทางได้
+
+แต่ต้องปรับ Responsive ให้เหมาะสม
+
+---
+
+# กฎเหล็กข้อ 23 — หลายคนอยู่ช่องเดียวกัน
+
+ห้ามมี Collision Gameplay
+
+ห้าม:
+
+* ผลัก
+* ชน
+* แย่งช่อง
+* ลงโทษ
+* Priority
+* เปลี่ยนตำแหน่งเพราะมีคนอื่นอยู่
+
+ให้จัดตำแหน่งทางภาพเท่านั้น
+
+---
+
+# กฎเหล็กข้อ 24 — Player Status
+
+ด้านบนต้องมี Player Status Cards
+
+แสดง:
+
+* Animal
+* Name
+* Position
+* Key Count
+* Holy Armor Count
+* Turn State
+
+ข้อมูลต้องมาจาก Game State เดียวกับ Board Token
+
+ห้ามสร้างข้อมูลซ้ำที่สามารถ Desync ได้
+
+---
+
+# กฎเหล็กข้อ 25 — Turn System
+
+แต่ละ Turn:
+
+1. ระบุผู้เล่นปัจจุบัน
+2. เปิด Roll Button เฉพาะผู้เล่นนั้น
+3. ผู้เล่นกด Roll
+4. Host สุ่มลูกเต๋า
+5. Broadcast Roll Event
+6. แสดงลูกเต๋า
+7. เดินตัวละคร
+8. Resolve Special
+9. Update State
+10. ตรวจสอบ Win
+11. ถ้ายังไม่ชนะ เปลี่ยน Turn
+
+ปุ่ม Roll ต้องถูก Disable หลังเริ่มการทอย เพื่อป้องกัน Double Click
+
+---
+
+# กฎเหล็กข้อ 26 — Animation และ ARIA ต้องไม่ตีกัน
+
+Animation ต้องไม่ทำให้ Screen Reader อ่านซ้ำทุก Frame
+
+ห้ามประกาศ:
+
+> ช่อง 28
+> ช่อง 29
+> ช่อง 30
+> ช่อง 31
+
+ให้ประกาศ:
+
+> น้องฟ้าเดินจากช่อง 27 ไปช่อง 32
+
+จากนั้นประกาศ Event:
+
+> ช่อง 32 เป็นกล่องสมบัติ คุณได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น
+
+---
+
+# กฎเหล็กข้อ 27 — ARIA
+
+ต้องมีอย่างน้อย:
+
+* polite live region
+* assertive live region
+
+ใช้ Queue แบบมีระบบ
+
+ห้ามเขียน `textContent` ลง Live Region หลายแห่งพร้อมกันจนเกิดเสียงซ้อน
+
+ควรใช้แนวคิด Queue ของ Domino เป็น Reference
+
+ข้อความสำคัญ เช่น:
+
+* ถึงเทิร์นของฉัน
+* ลูกเต๋า
+* เหตุการณ์สำคัญ
+* การเลือกใช้ Armor
+* ประตู
+* ชนะ
+
+ต้องประกาศอย่างเหมาะสม
+
+---
+
+# กฎเหล็กข้อ 28 — Focus
+
+เมื่อเปลี่ยน Screen:
+
+ต้องย้าย Focus ไป Heading หรือ Element ที่เหมาะสม
+
+เช่น:
+
+Login → Main
+
+Main → Lobby
+
+Lobby → Game
+
+Game → Result
+
+ต้องไม่ปล่อย Focus ไปยัง Element ที่ซ่อนอยู่
+
+เมื่อเปิด Modal เช่น Armor หรือ Door:
+
+* Focus เข้า Modal
+* Keyboard ใช้งานได้
+* Screen Reader รู้ว่าต้องเลือกอะไร
+* หลังปิด Modal ให้คืน Focus ไปยัง Element ที่เหมาะสม
+
+---
+
+# กฎเหล็กข้อ 29 — VoiceOver
+
+ต้องทดสอบเป็นพิเศษบน iOS Safari + VoiceOver
+
+ห้ามออกแบบ Interaction ที่อาศัยเพียง:
+
+* mouse hover
+* pointer event อย่างเดียว
+* click ที่เกิดจาก visual element แต่ไม่ใช่ปุ่ม
+* DOM ที่ถูกซ่อนด้วยวิธีที่ VoiceOver มองไม่เห็น
+
+ทุก Action สำคัญต้องเป็น `<button>` หรือ Control ที่เข้าถึงได้
+
+---
+
+# กฎเหล็กข้อ 30 — Mobile
+
+เกมต้องเล่นได้บน:
+
+* iPhone Safari
+* Android Browser
+* Desktop Chrome
+* Desktop Edge
+
+ต้องรองรับ:
+
+* Touch
+* Keyboard
+* Screen Reader
+
+กระดานต้อง Responsive
+
+ตัวละครต้องไม่ล้นช่อง
+
+ชื่อผู้เล่นต้องไม่ทับกันจนอ่านไม่ได้
+
+---
+
+# กฎเหล็กข้อ 31 — Visual Design
+
+เกมต้องมีความรู้สึก:
+
+> Fantasy Adventure
+
+ไม่ใช่ตารางตัวเลขธรรมดา
+
+ควรทำให้แต่ละ Special Space มี Visual Identity
+
+เช่น:
+
+START:
+
+* 🏕️
+* 🔥
+* 🚩
+
+Treasure:
+
+* 📦
+* ✨
+
+Key:
+
+* 🔑
+
+Door:
+
+* 🚪
+
+Forward:
+
+* 🚀
+
+Trap:
+
+* 🕳️
+
+Water:
+
+* 🌊
+
+Ghost:
+
+* 👻
+
+Warp:
+
+* 🌀
+
+Finish:
+
+* 🏰
+* 🏆
+* ✨
+
+สีต้องสดใส แต่ Contrast ต้องสูง
+
+ห้ามใช้สีอ่อนจนผู้เล่นมองไม่เห็น
+
+---
+
+# กฎเหล็กข้อ 32 — Visual FX
+
+นำแนวคิด Visual FX จาก Snake และ Domino มาประยุกต์ใช้
+
+สามารถมี:
+
+* Glow
+* Sparkle
+* Shake
+* Bounce
+* Flash
+* Portal
+* Explosion แบบน่ารัก
+* Character Jump
+* Treasure Opening
+* Door Opening
+* Water Movement
+* Ghost Appearance
+* Finish Celebration
+
+แต่ FX ที่เป็นเพียงภาพต้องไม่รบกวน Screen Reader
+
+ให้ใช้:
+
+> `aria-hidden="true"`
+
+สำหรับ Decorative FX ที่ไม่ใช่ข้อมูลเกม
+
+---
+
+# กฎเหล็กข้อ 33 — Reduced Motion
+
+ต้องรองรับ:
+
+> `prefers-reduced-motion: reduce`
+
+ถ้าผู้เล่นเปิด Reduced Motion:
+
+* ลดหรือปิด Animation ที่ไม่จำเป็น
+* ห้ามทำให้ Logic เกมเสีย
+* ห้ามทำให้ Event หาย
+* ห้ามทำให้ State Sync เสีย
+
+Animation ต้องเป็น Presentation เท่านั้น
+
+---
+
+# กฎเหล็กข้อ 34 — Firebase
+
+สร้าง Namespace/Path ของเกมใหม่แยกจาก:
+
+* Snake
+* Domino
+* UNO
+* Crazy Eights
+
+ห้ามเขียนข้อมูลลง Path ของเกมอื่น
+
+ควรมี Game ID เฉพาะของเกมใหม่นี้
+
+Room แต่ละห้องต้องแยก State กัน
+
+Events ต้องแยกตาม Room
+
+---
+
+# กฎเหล็กข้อ 35 — Host Authority
+
+ข้อมูลสำคัญต้องตัดสินโดย Host
+
+อย่างน้อย:
+
+* Dice Roll
+* Board Randomization
+* Special Configuration
+* Special Effect Values
+* Key/Door Pairing
+* Door Destination
+* Animal Assignment
+* Position State
+* Inventory
+* Turn
+* Win State
+
+Client ไม่ควรตัดสินผลเกมเอง
+
+---
+
+# กฎเหล็กข้อ 36 — Synchronization
+
+Client ต้องสามารถรับ:
+
+* Lobby Sync
+* Game Sync
+* Event
+* Announcement
+* Sound
+* Animation/FX
+* End Game
+
+ให้ใช้แนวคิด Event Sync ที่มีอยู่ในไฟล์ต้นแบบ
+
+แต่ต้องออกแบบ Event Type สำหรับเกมใหม่นี้เอง
+
+ห้ามเอา Event ของ Domino มาใช้โดยตรงถ้าไม่ตรงกับ Game Logic
+
+---
+
+# กฎเหล็กข้อ 37 — Disconnect
+
+ระบบ Client Disconnect ต้องแยกจากการไม่กดเล่น
+
+**การไม่กดปุ่มไม่ควรถูกตีความว่า Disconnect**
+
+Bot Conversion ต้องเกิดจากการตรวจพบการหลุดการเชื่อมต่อจริงตามระบบ Network
+
+ห้ามนำ Timeout-to-Bot แบบเก่าของ Snake มาใช้โดยอัตโนมัติ
+
+ถ้าผู้เล่นยังเชื่อมต่ออยู่:
+
+> ยังคงเป็นผู้เล่นจริง
+
+---
+
+# กฎเหล็กข้อ 38 — Bot
+
+Bot ต้องเล่นตามกติกาเดียวกับ Human
+
+Bot ต้อง:
+
+* ทอยลูกเต๋า
+* เดิน
+* Resolve Special
+* ใช้ Key ได้ตาม Logic
+* ตัดสินใจเรื่อง Armor
+* ชนะได้
+* ถูกแสดงเป็น Player Status
+* มี Animal
+* มี Name
+
+Bot ห้ามได้รับสิทธิ์พิเศษที่ Human ไม่มี
+
+---
+
+# กฎเหล็กข้อ 39 — Bot Name
+
+หากใช้ Bot ให้ชื่อแสดงชัดเจนว่าเป็น Bot เช่น:
+
+> บอทจอมทัพ
+> บอทน้ำพุ
+> บอทสายรุ้ง
+
+คำว่า `บอท` ต้องอยู่ในชื่อที่แสดงและข้อมูล Accessibility ด้วย
+
+---
+
+# กฎเหล็กข้อ 40 — Audio
+
+นำระบบ Audio Architecture ที่ดีจากเกมต้นแบบมาปรับใช้
+
+เสียงต้อง:
+
+* Synchronize ตาม Event สำคัญ
+* ไม่เล่นซ้ำจาก Race Condition
+* ไม่ใช้ Timer เดาสุ่มแทน Event จริงในจุดสำคัญ
+* มีวิธี Unlock Audio สำหรับ Browser
+* ไม่บังคับให้ผู้เล่นอนุญาต Permission แปลก ๆ
+
+ตัวอย่าง Sound:
+
+* roll
+* move
+* treasure
+* key
+* door
+* trap
+* water
+* ghost
+* warp
+* armor
+* win
+
+สามารถตั้งชื่อไฟล์ตามความเหมาะสมได้ แต่ต้องจัดระบบให้ชัดเจน
+
+---
+
+# กฎเหล็กข้อ 41 — ห้ามใช้ setTimeout เป็นตัวตัดสิน Game State
+
+`setTimeout()` สามารถใช้เพื่อ Presentation เช่น:
+
+* ซ่อน Overlay
+* Animation
+* เอฟเฟกต์
+
+แต่ห้ามใช้ Timer แบบเดาสุ่มเพื่อเป็น Source of Truth ของ Game State
+
+Game State ต้องเปลี่ยนจาก Logic/Event ที่แน่นอน
+
+โดยเฉพาะ:
+
+* Position
+* Turn
+* Win
+* Inventory
+* Special Event
+* Network Sync
+
+---
+
+# กฎเหล็กข้อ 42 — ห้ามเกิด Race Condition
+
+ต้องป้องกันกรณี:
+
+* กด Roll สองครั้ง
+* Event เดิมประมวลผลสองครั้ง
+* Client รับ Event ซ้ำ
+* Animation ซ้อน
+* Special ซ้ำ
+* Win ซ้ำ
+* Turn เปลี่ยนสองครั้ง
+* Inventory ถูกเพิ่มสองครั้ง
+
+Event ควรมี Identifier/Sequence ที่เหมาะสมเมื่อจำเป็น
+
+---
+
+# กฎเหล็กข้อ 43 — Game State ต้องเป็น Source of Truth เดียว
+
+อย่างน้อยต้องมีข้อมูล:
+
+* status
+* players
+* turnIndex
+* positions
+* animals
+* keys
+* armor
+* board configuration
+* special effects
+* seed
+* winner
+
+ห้ามมี State สำคัญหลายชุดที่สามารถขัดแย้งกัน
+
+---
+
+# กฎเหล็กข้อ 44 — Win ต้องตรวจจาก Host
+
+เมื่อผู้เล่นถึง 80:
+
+Host ตรวจทันที
+
+ถ้าเป็น 80:
+
+* `status = ended`
+* `winnerId = ...`
+* Broadcast Game State
+* Broadcast Announcement
+* Broadcast Sound
+* Broadcast Celebration
+* แสดง Result Screen
+
+ห้าม Client คนหนึ่งประกาศชนะเองก่อน Host
+
+---
+
+# กฎเหล็กข้อ 45 — ห้ามแก้ปัญหาด้วยการตัด Feature
+
+ถ้าพบปัญหา:
+
+* VoiceOver
+* Firebase
+* PeerJS
+* Animation
+* Focus
+* Mobile
+* Synchronization
+
+ห้ามแก้ด้วยการลบ Feature โดยไม่จำเป็น
+
+ต้องแก้ที่ต้นเหตุ
+
+ห้ามบอกว่า:
+
+> ปิด Animation ไปเลย
+
+> ไม่ต้องใช้ PeerJS
+
+> ไม่ต้องใช้ ARIA
+
+> ไม่ต้องสุ่ม
+
+เพียงเพื่อหลบ Bug
+
+---
+
+# กฎเหล็กข้อ 46 — ห้ามลดคุณภาพ Accessibility
+
+ห้ามเปลี่ยนเกมให้เล่นได้เฉพาะ Mouse
+
+ห้ามทำ UI ที่ Screen Reader มองไม่เห็น
+
+ห้ามใช้ Emoji เป็นข้อมูล Accessibility เพียงอย่างเดียว
+
+เช่นอย่าประกาศแค่:
+
+> 🐰
+
+ต้องประกาศ:
+
+> น้องฟ้าอยู่ช่อง 32
+
+หากสัตว์เป็นเพียงภาพ ไม่จำเป็นต้องอ่านชื่อสัตว์ซ้ำทุกครั้ง
+
+---
+
+# กฎเหล็กข้อ 47 — ต้องใช้ชื่อภาษาไทยของเกมอย่างสม่ำเสมอ
+
+ใช้คำเหล่านี้:
+
+* ช่อง
+* กล่องสมบัติ
+* เกราะศักดิ์สิทธิ์
+* กุญแจ
+* ประตู
+* กับดัก
+* กระแสน้ำ
+* ผี
+* วาร์ป
+* ช่องพุ่งไปข้างหน้า
+* ทอยลูกเต๋า
+* ผู้เล่น
+* บอท
+
+ห้ามเรียกสิ่งของผิดเป็น:
+
+* ไพ่
+* การ์ด
+* โดมิโน
+* กองจั่ว
+
+---
+
+# กฎเหล็กข้อ 48 — ห้ามเปลี่ยนกติกาเอง
+
+หากเจอจุดที่กติกาไม่ชัดเจน:
+
+**ห้ามเดาแล้วเปลี่ยนกติกาหลักเอง**
+
+ให้รักษากติกาตาม Prompt นี้
+
+ถ้าจำเป็นต้องตัดสินใจเรื่อง Implementation ให้เลือกวิธีที่:
+
+1. ไม่เปลี่ยนกติกา
+2. ไม่ลด Accessibility
+3. ไม่ทำลาย Multiplayer
+4. ไม่สร้าง Race Condition
+5. ไม่ทำให้ Feature เดิมหาย
+
+---
+
+# กฎเหล็กข้อ 49 — ต้องสร้างเกมใหม่แบบพร้อมใช้งานจริง
+
+ห้ามส่ง:
+
+* Pseudocode
+* Demo ครึ่งเดียว
+* Snippet
+* โค้ดบางส่วน
+* `...`
+* `TODO`
+* `implement this`
+* `same as previous code`
+* Placeholder ที่ทำให้เกมเปิดแล้วเล่นไม่ได้
+
+ต้องเป็นไฟล์จริงที่เปิดใช้งานได้
+
+---
+
+# กฎเหล็กข้อ 50 — ต้องส่งไฟล์เต็มทุกไฟล์
+
+นี่เป็นข้อบังคับที่สำคัญที่สุดข้อหนึ่ง
+
+เมื่อพัฒนาเสร็จ ต้องส่งกลับมา:
+
+> **ไฟล์เต็ม 100%**
+
+ทุกไฟล์ที่สร้างหรือแก้ไขต้องส่งเนื้อหาครบตั้งแต่บรรทัดแรกจนบรรทัดสุดท้าย
+
+ห้าม:
+
+* ตัดหัวไฟล์
+* ตัดท้ายไฟล์
+* ตัด CSS
+* ตัด JavaScript
+* ตัด HTML
+* ใส่ `...`
+* เขียนว่า “ส่วนที่เหลือเหมือนเดิม”
+* เขียนเฉพาะส่วนที่แก้
+* ส่ง Patch อย่างเดียว
+* ส่ง Diff อย่างเดียว
+
+ต้องสามารถ Copy ไฟล์ที่ส่งกลับไปวางใช้งานได้ทันที
+
+---
+
+# กฎเหล็กข้อ 51 — ต้องไม่ดัดแปลงส่วนอื่นโดยไม่มีเหตุผล
+
+ถ้าพบว่าต้องแก้ไฟล์ใด:
+
+ให้แก้เฉพาะสิ่งที่เกี่ยวข้องกับเกมใหม่นี้
+
+ห้ามเพิ่ม Feature ที่ไม่ได้ร้องขอ
+
+ห้ามเปลี่ยนกติกา
+
+ห้ามเปลี่ยน UI แบบสุ่ม
+
+ห้ามเปลี่ยนชื่อ Function ที่ไม่จำเป็น
+
+ห้ามลบระบบ Accessibility ที่ดี
+
+ห้ามลบ Network Logic ที่ใช้งานได้
+
+ห้ามลบ Audio System ที่ใช้งานได้
+
+---
+
+# กฎเหล็กข้อ 52 — ต้องตรวจสอบก่อนส่ง
+
+ก่อนตอบกลับ ต้องตรวจสอบอย่างน้อย:
+
+## Game Logic
+
+* [ ] 80 ช่อง
+* [ ] START 1
+* [ ] FINISH 80
+* [ ] Dice 1–6
+* [ ] Bounce Back
+* [ ] Exact 80 = Win
+* [ ] Special Random
+* [ ] Treasure 8
+* [ ] Forward 6
+* [ ] Trap 7
+* [ ] Water 5
+* [ ] Ghost 5
+* [ ] Warp 4
+* [ ] Key 6
+* [ ] Door 6
+* [ ] Key/door distance >= 6
+* [ ] Door > 10
+* [ ] Door moves forward
+* [ ] Armor max 3
+* [ ] Special Chain ไม่เกิด
+
+## Multiplayer
+
+* [ ] Firebase
+* [ ] PeerJS
+* [ ] Lobby
+* [ ] Room
+* [ ] Host
+* [ ] Client
+* [ ] Bot
+* [ ] Disconnect Handling
+* [ ] Game Sync
+* [ ] Event Sync
+
+## Accessibility
+
+* [ ] NVDA
+* [ ] JAWS
+* [ ] VoiceOver
+* [ ] Keyboard
+* [ ] Touch
+* [ ] ARIA polite
+* [ ] ARIA assertive
+* [ ] Announcement Queue
+* [ ] Focus Management
+* [ ] Modal Focus
+* [ ] ไม่มี Screen Reader Chatter จาก Animation
+
+## Responsive
+
+* [ ] Desktop
+* [ ] Windows Edge
+* [ ] Windows Chrome
+* [ ] Android
+* [ ] iPhone Safari
+* [ ] Portrait
+* [ ] Landscape
+
+## Visual
+
+* [ ] Animal Token
+* [ ] Player Name
+* [ ] Status Card
+* [ ] Treasure FX
+* [ ] Key FX
+* [ ] Door FX
+* [ ] Trap FX
+* [ ] Water FX
+* [ ] Ghost FX
+* [ ] Warp FX
+* [ ] Finish FX
+* [ ] High Contrast
+* [ ] Reduced Motion
+
+---
+
+# กฎเหล็กข้อ 53 — ห้ามตอบเพียงว่า “ทำเสร็จแล้ว”
+
+หลังพัฒนาเสร็จ ต้องส่งกลับมาเป็นลำดับ:
+
+## 1. สรุปสั้น ๆ
+
+บอกว่าไฟล์ใดถูกสร้างขึ้น
+
+## 2. รายการไฟล์
+
+เช่น:
+
+* `adventure80.html`
+* `adventure80.js`
+* `adventure80.css`
+
+## 3. ไฟล์เต็มทุกไฟล์
+
+ส่ง Source Code แบบเต็ม 100%
+
+## 4. ตรวจสอบกติกา
+
+สรุปว่าระบบแต่ละข้อทำงานอย่างไร
+
+## 5. จุดที่ควรทดสอบ
+
+ระบุ Test Case สำคัญ เช่น:
+
+* 78 + 5
+* 79 + 1
+* Treasure ตอน Armor = 3
+* Trap + Armor
+* Door ไม่มี Key
+* Door มี Key
+* Key/door ห่าง 6 ช่องพอดี
+* ผู้เล่น 2 คนอยู่ช่องเดียวกัน
+* ผู้เล่น 6 คนอยู่ช่องเดียวกัน
+* Client Disconnect
+* Host Disconnect
+* VoiceOver กด Roll
+* VoiceOver เลือก Armor
+* iPhone Safari
+* Android
+* NVDA
+
+---
+
+# กฎเหล็กข้อ 54 — หากต้องเลือกระหว่าง Reference กับกติกาเกมนี้
+
+ให้ลำดับความสำคัญดังนี้:
+
+1. **กติกาใน Prompt นี้**
+2. Accessibility ของเกมใหม่
+3. Multiplayer correctness
+4. Host authoritative State
+5. Network synchronization
+6. แนวทาง Architecture ที่ดีจาก Domino
+7. แนวทาง Board/Animation ที่ดีจาก Snake
+8. Visual Polish
+
+ห้ามเอาพฤติกรรมเก่าของ Reference มา override กติกาเกมนี้
+
+---
+
+# กฎเหล็กข้อ 55 — เป้าหมายของงาน
+
+ฉันไม่ได้ต้องการเพียง Demo ที่ “ดูเหมือนเกม”
+
+ฉันต้องการเกมที่:
+
+* เล่นได้จริง
+* Multiplayer ได้จริง
+* Host/Client เห็น State ตรงกัน
+* Bot เล่นได้
+* Firebase ทำงาน
+* PeerJS ทำงาน
+* Random Board ทำงาน
+* Animation ทำงาน
+* Audio ทำงาน
+* Screen Reader เล่นได้
+* VoiceOver เล่นได้
+* Keyboard เล่นได้
+* Mobile เล่นได้
+* Desktop เล่นได้
+* มี Result Screen
+* ไม่มี Race Condition ที่ทำให้เกมค้าง
+* ไม่มี State Desync ที่ทำให้ผู้เล่นแต่ละคนเห็นตำแหน่งต่างกัน
+
+---
+
+# ขั้นตอนการทำงานที่ต้องปฏิบัติตาม
+
+## ขั้นที่ 1
+
+อ่านไฟล์ต้นแบบทั้ง 4 ไฟล์ให้ครบก่อน
+
+## ขั้นที่ 2
+
+วิเคราะห์ Architecture ของ Snake และ Domino
+
+แยกให้ออกว่า:
+
+* ส่วนไหนนำมาใช้ได้
+* ส่วนไหนห้ามนำมาใช้
+
+## ขั้นที่ 3
+
+สร้าง Architecture ของเกมใหม่
+
+## ขั้นที่ 4
+
+สร้าง Firebase Namespace ใหม่
+
+## ขั้นที่ 5
+
+สร้าง Lobby/Room/Host/Client/Bot
+
+## ขั้นที่ 6
+
+สร้าง Board 80 ช่อง
+
+## ขั้นที่ 7
+
+สร้าง Random Board Generator
+
+## ขั้นที่ 8
+
+สร้าง Dice/Movement
+
+## ขั้นที่ 9
+
+สร้าง Special Events
+
+## ขั้นที่ 10
+
+สร้าง Inventory
+
+## ขั้นที่ 11
+
+สร้าง Player Status
+
+## ขั้นที่ 12
+
+สร้าง Accessibility
+
+## ขั้นที่ 13
+
+สร้าง Animation/Audio
+
+## ขั้นที่ 14
+
+สร้าง Win/Result
+
+## ขั้นที่ 15
+
+ตรวจสอบ Multiplayer Synchronization
+
+## ขั้นที่ 16
+
+ตรวจสอบ Mobile/VoiceOver
+
+## ขั้นที่ 17
+
+ตรวจสอบทุกกฎอีกครั้ง
+
+## ขั้นที่ 18
+
+ส่งไฟล์เต็มทุกไฟล์
+
+---
+
+# คำสั่งสุดท้าย
+
+**ห้ามเริ่มจากการ Copy เกม Snake หรือ Domino แล้วเปลี่ยนชื่อ**
+
+ให้ใช้ทั้งสองเกมเป็น Reference Architecture แล้วสร้างเกมใหม่อย่างเป็นระบบ
+
+**นำข้อดีของทั้งสองเกมมาใช้ให้มากที่สุด แต่ห้ามนำข้อเสียหรือกติกาที่ไม่เกี่ยวข้องเข้ามา**
+
+โดยเฉพาะ:
+
+> Snake = Reference สำหรับ Board / Dice / Movement / Character / Animation / Special FX
+
+และ:
+
+> Domino = Reference สำหรับ Lobby / Room / Firebase / PeerJS / Host / Client / Bot / Sync / ARIA / Focus / Audio / Player Status / Result / Responsive UI
+
+จากนั้นผสานทั้งสองแนวทางให้กลายเป็น:
+
+> **เกมผจญภัย 80 ช่อง Multiplayer ที่เล่นได้จริงและ Accessible อย่างสมบูรณ์**
+
+และเมื่อเสร็จแล้ว:
+
+> **ส่ง Source Code ทุกไฟล์กลับมาแบบเต็ม 100% ห้ามตัดทอน ห้ามใช้ `...` ห้ามส่งเฉพาะส่วนที่แก้ ห้ามเปลี่ยนแปลงสิ่งที่ไม่เกี่ยวข้อง และห้ามส่งงานที่เป็นเพียงตัวอย่างหรือ Pseudocode**
