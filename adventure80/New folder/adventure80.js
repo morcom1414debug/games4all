@@ -225,8 +225,7 @@ function generateBoardConfiguration() {
         const idx = available.indexOf(doorSpace);
         if (idx !== -1) available.splice(idx, 1);
 
-        // กำหนดระยะทางเดินหน้าสุ่ม 5-18 ช่อง และไม่ให้เกินช่อง 79
-        const dest = Math.min(79, doorSpace + Math.floor(Math.random() * 14) + 5);
+        const dest = Math.min(79, doorSpace + Math.floor(Math.random() * 8) + 3);
         keys.push(keySpace);
         doors.push({ space: doorSpace, dest });
     }
@@ -235,14 +234,13 @@ function generateBoardConfiguration() {
     for(let k = 0; k < 2; k++) {
         if (available.length > 0) {
             const extraDoor = available.pop();
-            // กำหนดระยะทางเดินหน้าสุ่ม 5-18 ช่อง และไม่ให้เกินช่อง 79
-            const dest = Math.min(79, extraDoor + Math.floor(Math.random() * 14) + 5);
+            const dest = Math.min(79, extraDoor + Math.floor(Math.random() * 8) + 3);
             doors.push({ space: extraDoor, dest });
         }
     }
 
     const layout = {};
-    keys.forEach(k => layout[k] = { type: 'key', charges: 3 });
+    keys.forEach(k => layout[k] = { type: 'key', opened: false });
     doors.forEach(d => layout[d.space] = { type: 'door', dest: d.dest });
 
     const specialTypes = [
@@ -260,7 +258,7 @@ function generateBoardConfiguration() {
             if (available.length > 0) {
                 const sp = available.pop();
                 if (st.type === 'treasure') {
-                    layout[sp] = { type: st.type, charges: 3 };
+                    layout[sp] = { type: st.type, opened: false };
                 } else {
                     layout[sp] = { type: st.type };
                 }
@@ -700,27 +698,27 @@ async function executeTurnAsync(pId) {
         let movedToNewSpace = false;
 
         if (sp.type === 'treasure') {
-            if (sp.charges > 0) {
-                sp.charges--;
-                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
+            if (!sp.opened) {
+                sp.opened = true;
+                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/opened`]: true });
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
                 playSynthSound('treasure');
                 await syncActionEmit(`พบหีบสมบัติ เปิดหีบ พบเกราะศักดิ์สิทธิ์ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
             } else {
-                await syncActionEmit(`พบหีบสมบัติ แต่ของหมดแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
+                await syncActionEmit(`พบหีบสมบัติ แต่หีบถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
             }
             break; // Event chain ends as player did not change location
         } else if (sp.type === 'key') {
-            if (sp.charges > 0) {
-                sp.charges--;
-                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
+            if (!sp.opened) {
+                sp.opened = true;
+                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/opened`]: true });
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
                 playSynthSound('key');
                 await syncActionEmit(`พบกล่องลึกลับ เปิดกล่อง พบกุญแจโบราณ ได้รับกุญแจโบราณ 1 ดอก`);
             } else {
-                await syncActionEmit(`พบกล่องลึกลับ แต่ของหมดแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
+                await syncActionEmit(`พบกล่องลึกลับ แต่กล่องถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
             }
             break; // Does not change location
         } else if (sp.type === 'door') {
