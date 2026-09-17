@@ -1,11 +1,11 @@
-import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js)";
-import { getDatabase, ref, set, onValue, update, runTransaction, remove, onDisconnect } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js)";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getDatabase, ref, set, onValue, update, runTransaction, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 // Exact Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
-    databaseURL: "[https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app](https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app)",
+    databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "xo-game-134ec",
     storageBucket: "xo-game-134ec.firebasestorage.app",
     messagingSenderId: "318375224157",
@@ -28,14 +28,12 @@ const ANIMAL_POOL = [
 ];
 
 // Global Game States
-let myPlayerName = '';
 let myPlayerId = null;
 let currentRoomId = null;
 let isHost = false;
 let gameState = null;
 let roomListener = null;
 let roomListListener = null;
-let localLastActionTs = 0;
 let speechQueue = [];
 let isSpeaking = false;
 
@@ -89,7 +87,7 @@ function playSynthSound(type) {
     }
 }
 
-// ARIA Queue Announcement Manager (Local sequence handler)
+// ARIA Queue Announcement Manager
 function announceSR(text, priority = 'polite') {
     speechQueue.push({ text, priority });
     processSpeechQueue();
@@ -104,21 +102,14 @@ function processSpeechQueue() {
         targetEl.textContent = '';
         setTimeout(() => {
             targetEl.textContent = item.text;
-            // ให้ระยะเวลาการพูดตามความยาวของข้อความคร่าวๆ (อย่างน้อย 1500ms ป้องกันการทับกัน)
-            const duration = Math.max(1500, item.text.length * 50);
             setTimeout(() => {
                 isSpeaking = false;
                 processSpeechQueue();
-            }, duration);
-        }, 100);
+            }, 800);
+        }, 50);
     } else {
         isSpeaking = false;
     }
-}
-
-// Helper: Delay Async execution
-function delayAsync(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Focus Management Screen Switcher
@@ -136,31 +127,6 @@ function switchScreen(screenId, focusHeadingId = null) {
         }
     }
 }
-
-// Name and Navigation
-window.confirmNameAndEnterLobby = function() {
-    const nameInput = document.getElementById('player-name-input');
-    myPlayerName = nameInput.value.trim() || 'ผู้เล่นใหม่';
-    switchScreen('screen-lobby', 'lobby-heading');
-    announceSR(`ยินดีต้อนรับ ${myPlayerName} เข้าสู่ล็อบบี้การผจญภัย`);
-};
-
-window.leaveRoomAndGoHome = function() {
-    if (currentRoomId) window.leaveRoom();
-    switchScreen('screen-welcome', 'welcome-title');
-};
-
-window.toggleManual = function() {
-    const m = document.getElementById('manual-section');
-    if (m.style.display === 'none') {
-        m.style.display = 'block';
-        m.focus();
-        announceSR("เปิดคู่มือการเล่นแล้ว");
-    } else {
-        m.style.display = 'none';
-        announceSR("ปิดคู่มือการเล่นแล้ว");
-    }
-};
 
 // Initialize Room Listener for Main Menu
 function initRoomListListener() {
@@ -189,8 +155,9 @@ function initRoomListListener() {
     });
 }
 
-// Board Random Generator (Host Authoritative - with High Density Requirements)
+// Board Random Generator (Host Authoritative)
 function generateBoardConfiguration() {
+    const totalSpaces = 80;
     const available = [];
     for (let i = 2; i <= 79; i++) available.push(i);
 
@@ -205,9 +172,10 @@ function generateBoardConfiguration() {
 
     const keys = [];
     const doors = [];
-    
-    // Select 10 Keys and 12 Doors (More doors and keys as per prompt)
-    for (let k = 0; k < 10; k++) {
+    const usedSpaces = new Set();
+
+    // Select 6 Keys and 6 Doors with constraints (Door > 10, Door - Key >= 6)
+    for (let k = 0; k < 6; k++) {
         let keySpace = available.pop();
         while (keySpace >= 70 && available.length > 0) {
             available.unshift(keySpace);
@@ -216,7 +184,7 @@ function generateBoardConfiguration() {
 
         let possibleDoorSpaces = available.filter(s => s > 10 && (s - keySpace) >= 6);
         if (possibleDoorSpaces.length === 0) {
-            keySpace = 12 + k * 2; // fallback
+            keySpace = 12 + k * 2;
             possibleDoorSpaces = [keySpace + 7];
         }
         const doorSpace = possibleDoorSpaces[Math.floor(Math.random() * possibleDoorSpaces.length)];
@@ -224,48 +192,38 @@ function generateBoardConfiguration() {
         const idx = available.indexOf(doorSpace);
         if (idx !== -1) available.splice(idx, 1);
 
+        usedSpaces.add(keySpace);
+        usedSpaces.add(doorSpace);
+
         const dest = Math.min(79, doorSpace + Math.floor(Math.random() * 8) + 3);
         keys.push(keySpace);
         doors.push({ space: doorSpace, dest });
     }
-    
-    // Add 2 extra standalone doors just to increase density
-    for(let k = 0; k < 2; k++) {
-        if (available.length > 0) {
-            const extraDoor = available.pop();
-            const dest = Math.min(79, extraDoor + Math.floor(Math.random() * 8) + 3);
-            doors.push({ space: extraDoor, dest });
-        }
-    }
 
+    // Allocate remaining special spaces
     const layout = {};
     keys.forEach(k => layout[k] = { type: 'key' });
     doors.forEach(d => layout[d.space] = { type: 'door', dest: d.dest });
 
-    // New Rules applied here: Forward less than Backward, specific random values, add Rest.
     const specialTypes = [
-        { type: 'treasure', count: 10 },
-        { type: 'forward', count: 8 },  // Random +3 to +12
-        { type: 'trap', count: 9 },     // Random -2 to -6
-        { type: 'water', count: 9 },    // Random -2 to -6
-        { type: 'ghost', count: 7 },    // Random -2 to -6
-        { type: 'warp', count: 4 },     // Mixed
-        { type: 'rest', count: 12 }     // New type: Rest space
+        { type: 'treasure', count: 8 },
+        { type: 'forward', count: 6 },
+        { type: 'trap', count: 7 },
+        { type: 'water', count: 5 },
+        { type: 'ghost', count: 5 },
+        { type: 'warp', count: 4 }
     ];
 
     specialTypes.forEach(st => {
         for (let c = 0; c < st.count; c++) {
             if (available.length > 0) {
                 const sp = available.pop();
+                usedSpaces.add(sp);
                 let effectVal = 0;
-                
-                if (st.type === 'forward') {
-                    effectVal = Math.floor(Math.random() * 10) + 3; // +3 to +12
-                } else if (['trap', 'water', 'ghost'].includes(st.type)) {
-                    effectVal = -(Math.floor(Math.random() * 5) + 2); // -2 to -6
-                } else if (st.type === 'warp') {
-                    effectVal = Math.random() > 0.5 ? (Math.floor(Math.random() * 10) + 3) : -(Math.floor(Math.random() * 5) + 2);
-                }
+                if (st.type === 'forward') effectVal = Math.floor(Math.random() * 5) + 2; // +2..+6
+                else if (st.type === 'trap') effectVal = -(Math.floor(Math.random() * 5) + 2); // -2..-6
+                else if (st.type === 'water') effectVal = -(Math.floor(Math.random() * 5) + 1); // -1..-5
+                else if (st.type === 'warp') effectVal = Math.random() > 0.5 ? (Math.floor(Math.random() * 11) + 10) : -(Math.floor(Math.random() * 11) + 10);
                 
                 layout[sp] = { type: st.type, val: effectVal };
             }
@@ -277,7 +235,8 @@ function generateBoardConfiguration() {
 
 // Create Room Handler
 window.createAdventureRoom = function() {
-    if (!myPlayerName) myPlayerName = 'ผู้เล่น 1';
+    const nameInput = document.getElementById('player-name-input');
+    const pName = nameInput.value.trim() || 'ผู้เล่น 1';
 
     const counterRef = ref(db, 'games/Adventure80/room_counter');
     runTransaction(counterRef, (cur) => (cur || 0) + 1).then((res) => {
@@ -291,7 +250,7 @@ window.createAdventureRoom = function() {
             onDisconnect(roomRef).remove();
 
             const initialPlayers = {
-                p1: { name: myPlayerName, animal: ANIMAL_POOL[0], isBot: false, pos: 1, keys: 0, armor: 0 }
+                p1: { name: pName, animal: ANIMAL_POOL[0], isBot: false, pos: 1, keys: 0, armor: 0 }
             };
 
             set(roomRef, {
@@ -299,13 +258,11 @@ window.createAdventureRoom = function() {
                 players: initialPlayers,
                 botCount: 0,
                 turnIndex: 0,
-                boardConfig: null,
-                lastAction: { msg: '', ts: 0 }
+                boardConfig: null
             });
 
-            document.getElementById('lobby-menu-section').style.display = 'none';
-            document.getElementById('lobby-room-section').style.display = 'block';
             setupRoomListener();
+            switchScreen('screen-lobby', 'lobby-room-title');
             announceSR(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId}`);
         }
     });
@@ -313,7 +270,8 @@ window.createAdventureRoom = function() {
 
 // Join Room Handler
 window.joinAdventureRoom = function(rId) {
-    if (!myPlayerName) myPlayerName = 'ผู้เล่นเข้าใหม่';
+    const nameInput = document.getElementById('player-name-input');
+    const pName = nameInput.value.trim() || 'ผู้เล่นเข้าใหม่';
 
     currentRoomId = rId;
     isHost = false;
@@ -338,7 +296,7 @@ window.joinAdventureRoom = function(rId) {
 
         if (!roomData.players) roomData.players = {};
         roomData.players[nextSlot] = {
-            name: myPlayerName,
+            name: pName,
             animal: assignedAnimal,
             isBot: false,
             pos: 1,
@@ -351,13 +309,9 @@ window.joinAdventureRoom = function(rId) {
     }).then((res) => {
         if (res.committed) {
             onDisconnect(ref(db, `games/Adventure80/rooms/${currentRoomId}/players/${myPlayerId}`)).remove();
-            
-            document.getElementById('lobby-menu-section').style.display = 'none';
-            document.getElementById('lobby-room-section').style.display = 'block';
-            
             setupRoomListener();
+            switchScreen('screen-lobby', 'lobby-room-title');
             announceSR(`เข้าร่วมห้อง ${currentRoomId} เรียบร้อยแล้ว`);
-            document.getElementById('lobby-room-title').focus();
         }
     });
 };
@@ -414,35 +368,16 @@ function setupRoomListener() {
 
         updateLobbyUI();
 
-        // Synced Actions Announcements Listener
-        if (gameState.lastAction && gameState.lastAction.ts > localLastActionTs) {
-            localLastActionTs = gameState.lastAction.ts;
-            announceSR(gameState.lastAction.msg, 'polite');
-        }
-
         if (gameState.status === 'playing') {
             if (document.getElementById('screen-game').classList.contains('active-screen') === false) {
-                showStartGameAnimation();
-            } else {
-                updateGameUI();
+                switchScreen('screen-game', 'game-status-bar');
+                renderBoardGrid();
             }
+            updateGameUI();
         } else if (gameState.status === 'ended') {
             showResultScreen();
         }
     });
-}
-
-function showStartGameAnimation() {
-    const overlay = document.getElementById('anim-start-overlay');
-    overlay.style.display = 'flex';
-    announceSR('การผจญภัยเริ่มต้นขึ้นแล้ว เตรียมตัวให้พร้อม!', 'assertive');
-    
-    setTimeout(() => {
-        overlay.style.display = 'none';
-        switchScreen('screen-game', 'game-status-bar');
-        renderBoardGrid();
-        updateGameUI();
-    }, 2500);
 }
 
 // Update Lobby Interface
@@ -489,12 +424,13 @@ window.startAdventureGame = function() {
     });
 };
 
-// Render Serpentine Board Grid 8x10 with Accessible ARIA Names
+// Render Serpentine Board Grid 8x10
 function renderBoardGrid() {
     const grid = document.getElementById('adventure-board');
     grid.innerHTML = '';
     const config = gameState.boardConfig || {};
 
+    // 8 rows, 10 cols serpentine path
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 10; col++) {
             let num;
@@ -508,34 +444,28 @@ function renderBoardGrid() {
             cell.className = 'cell';
             cell.id = `cell-${num}`;
             cell.setAttribute('role', 'gridcell');
+            cell.setAttribute('aria-label', `ช่อง ${num}`);
 
             let iconHtml = '';
-            let accessibleName = `ช่อง ${num}`;
-
             if (num === 1) {
                 cell.classList.add('cell-start');
                 iconHtml = '🏕️';
-                accessibleName += ' จุดเริ่มต้น';
             } else if (num === 80) {
                 cell.classList.add('cell-finish');
                 iconHtml = '🏰';
-                accessibleName += ' เส้นชัยปราสาท';
             } else if (config[num]) {
                 const sp = config[num];
                 cell.classList.add(`cell-${sp.type}`);
-                
-                if (sp.type === 'rest') { iconHtml = '⛺'; accessibleName += ' จุดพักผ่อน ไม่มีเหตุการณ์'; }
-                else if (sp.type === 'treasure') { iconHtml = '📦'; accessibleName += ' หีบสมบัติ'; }
-                else if (sp.type === 'forward') { iconHtml = '🚀'; accessibleName += ` เดินหน้า ${sp.val} ช่อง`; }
-                else if (sp.type === 'trap') { iconHtml = '🕳️'; accessibleName += ` หลุมพราง ถอยหลัง ${Math.abs(sp.val)} ช่อง`; }
-                else if (sp.type === 'water') { iconHtml = '🌊'; accessibleName += ` น้ำเชี่ยว ถอยหลัง ${Math.abs(sp.val)} ช่อง`; }
-                else if (sp.type === 'ghost') { iconHtml = '👻'; accessibleName += ` ผีหลอก ถอยหลัง ${Math.abs(sp.val)} ช่อง`; }
-                else if (sp.type === 'warp') { iconHtml = '🌀'; accessibleName += ` วาร์ป ${sp.val > 0 ? 'เดินหน้า' : 'ถอยหลัง'} ${Math.abs(sp.val)} ช่อง`; }
-                else if (sp.type === 'key') { iconHtml = '🔑'; accessibleName += ' กุญแจ'; }
-                else if (sp.type === 'door') { iconHtml = '🚪'; accessibleName += ` ประตูทางลัด ไปช่อง ${sp.dest}`; }
+                if (sp.type === 'treasure') iconHtml = '📦';
+                else if (sp.type === 'forward') iconHtml = '🚀';
+                else if (sp.type === 'trap') iconHtml = '🕳️';
+                else if (sp.type === 'water') iconHtml = '🌊';
+                else if (sp.type === 'ghost') iconHtml = '👻';
+                else if (sp.type === 'warp') iconHtml = '🌀';
+                else if (sp.type === 'key') iconHtml = '🔑';
+                else if (sp.type === 'door') iconHtml = '🚪';
             }
 
-            cell.setAttribute('aria-label', accessibleName);
             cell.innerHTML = `<span class="cell-num">${num}</span> <span class="cell-icon">${iconHtml}</span> <div class="pawns-holder" id="pawns-holder-${num}"></div>`;
             grid.appendChild(cell);
         }
@@ -550,8 +480,10 @@ function updateGameUI() {
     const currentTurnKey = playersArr[gameState.turnIndex][0];
     const currentTurnPlayer = playersArr[gameState.turnIndex][1];
 
+    // Status bar update
     document.getElementById('game-status-bar').textContent = `ถึงเทิร์นของ: ${currentTurnPlayer.animal.icon} ${currentTurnPlayer.name}`;
 
+    // Update Player Cards
     const cardsContainer = document.getElementById('player-status-cards');
     cardsContainer.innerHTML = '';
     playersArr.forEach(([pId, p]) => {
@@ -559,12 +491,13 @@ function updateGameUI() {
         card.className = `p-status-card ${pId === currentTurnKey ? 'active-turn' : ''}`;
         card.innerHTML = `
             <div><strong>${p.animal.icon} ${p.name}</strong></div>
-            <div aria-label="อยู่ที่ช่อง ${p.pos} จาก 80">ช่อง ${p.pos}/80</div>
-            <div aria-label="มีกุญแจ ${p.keys} ดอก มีเกราะ ${p.armor} ชิ้น">🔑 ${p.keys} | 🛡️ ${p.armor}</div>
+            <div>ช่อง ${p.pos}/80</div>
+            <div>🔑 ${p.keys} | 🛡️ ${p.armor}</div>
         `;
         cardsContainer.appendChild(card);
     });
 
+    // Render Pawns on board
     document.querySelectorAll('.pawns-holder').forEach(h => h.innerHTML = '');
     playersArr.forEach(([pId, p]) => {
         const holder = document.getElementById(`pawns-holder-${p.pos}`);
@@ -576,236 +509,173 @@ function updateGameUI() {
         }
     });
 
+    // Roll button authority check
     const rollBtn = document.getElementById('btn-roll-dice');
-    if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot && !gameState.turnExecuting) {
+    if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot) {
         rollBtn.disabled = false;
     } else {
         rollBtn.disabled = true;
     }
 
-    // Host Bot Turn Engine
-    if (isHost && currentTurnPlayer.isBot && gameState.status === 'playing' && !gameState.turnExecuting) {
-        // Lock executing flag
-        update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/turnExecuting`]: true });
-        setTimeout(() => { executeTurnAsync(currentTurnKey); }, 1500);
+    // Host Bot Turn Handler
+    if (isHost && currentTurnPlayer.isBot && gameState.status === 'playing') {
+        setTimeout(() => {
+            executeTurnRoll(currentTurnKey);
+        }, 1800);
     }
 }
 
-// Emits an action and pauses briefly so all clients process audio sequentially
-async function syncActionEmit(msg) {
-    const ts = Date.now() + Math.random();
-    await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/lastAction`]: { msg, ts } });
-    await delayAsync(2200); // Wait long enough for Screen Readers to speak out the sequence
-}
-
-async function syncStateDB(pId, updatesObj) {
-    const dbUpdates = {};
-    for (const [k, v] of Object.entries(updatesObj)) {
-        dbUpdates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/${k}`] = v;
-    }
-    await update(ref(db), dbUpdates);
-}
-
-// Handle Roll Dice Button Click (Human)
+// Handle Roll Dice Button Click
 window.handleRollDice = function() {
     document.getElementById('btn-roll-dice').disabled = true;
-    update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/turnExecuting`]: true });
     playSynthSound('roll');
-    executeTurnAsync(myPlayerId);
+    executeTurnRoll(myPlayerId);
 };
 
-// Event Chain Engine (Core Game Logic Refactored)
-async function executeTurnAsync(pId) {
+// Execute Turn Roll & Movement Logic
+function executeTurnRoll(pId) {
+    const playersArr = Object.entries(gameState.players);
     const pData = gameState.players[pId];
     const diceRoll = Math.floor(Math.random() * 6) + 1;
+
     document.getElementById('dice-visual').textContent = diceRoll;
-    
-    await syncActionEmit(`ผู้เล่น ${pData.name} ทอยลูกเต๋าได้ ${diceRoll}`);
-    
-    let currentPos = pData.pos;
-    let targetPos = currentPos + diceRoll;
-    if (targetPos > 80) targetPos = 80 - (targetPos - 80); // Bounce back rule
+    announceSR(`${pData.name} ทอยลูกเต๋าได้ ${diceRoll}`);
 
+    // Calculate Bounce Back Position
+    let rawPos = pData.pos + diceRoll;
+    let finalPos = rawPos;
+    if (rawPos > 80) {
+        finalPos = 80 - (rawPos - 80);
+    }
+
+    announceSR(`${pData.name} เดินจากช่อง ${pData.pos} ไปช่อง ${finalPos}`);
     playSynthSound('move');
-    await syncActionEmit(`เดินจากช่อง ${currentPos} ไปยังช่อง ${targetPos}`);
-    
-    currentPos = targetPos;
-    await syncStateDB(pId, { pos: currentPos });
 
-    if (currentPos === 80) {
-        await handleWinGame(pId);
+    // Update position in Firebase
+    const updates = {};
+    updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/pos`] = finalPos;
+
+    // Check Landing Rules
+    if (finalPos === 80) {
+        // WINNER!
+        playSynthSound('win');
+        updates[`games/Adventure80/rooms/${currentRoomId}/status`] = 'ended';
+        updates[`games/Adventure80/rooms/${currentRoomId}/winnerId`] = pId;
+        update(ref(db), updates);
         return;
     }
 
-    let chainCount = 0;
-    let visited = new Set();
-    visited.add(currentPos);
+    // Resolve Special Space (if applicable)
+    const sp = gameState.boardConfig ? gameState.boardConfig[finalPos] : null;
 
-    // Event Chain Loop: Max 3 events limit
-    while (chainCount < 3) {
-        const sp = gameState.boardConfig ? gameState.boardConfig[currentPos] : null;
-        if (!sp) {
-            // ไม่ใช่ช่องพิเศษ จบเทิร์น
-            break;
-        }
-
-        let typeNameTH = 'พิเศษ';
-        if (sp.type === 'rest') typeNameTH = 'จุดพักผ่อน';
-        else if (sp.type === 'forward') typeNameTH = 'เดินหน้า';
-        else if (['trap','water','ghost'].includes(sp.type)) typeNameTH = 'หลุมพรางหรืออันตราย';
-        else if (sp.type === 'warp') typeNameTH = 'วาร์ปปริศนา';
-        else if (sp.type === 'treasure') typeNameTH = 'หีบสมบัติ';
-        else if (sp.type === 'key') typeNameTH = 'กุญแจ';
-        else if (sp.type === 'door') typeNameTH = 'ประตูทางลัด';
-
-        await syncActionEmit(`ตกช่อง ${currentPos} เป็นช่อง ${typeNameTH}`);
-
-        // Handle Effect
-        if (sp.type === 'rest') {
-            await syncActionEmit(`ผู้เล่น ${pData.name} มาถึงจุดพักผ่อน ช่อง ${currentPos} ไม่มีเหตุการณ์พิเศษ จบการเดินทาง`);
-            break; // Rule 5: Ends event chain immediately
-        }
-        
-        let movedToNewSpace = false;
-
+    if (sp) {
         if (sp.type === 'treasure') {
             if (pData.armor < 3) {
-                pData.armor++;
-                await syncStateDB(pId, { armor: pData.armor });
+                pData.armor += 1;
+                updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/armor`] = pData.armor;
+                announceSR(`ช่อง ${finalPos} เป็นกล่องสมบัติ คุณได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
                 playSynthSound('treasure');
-                await syncActionEmit(`เปิดหีบสมบัติ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
-            } else {
-                await syncActionEmit(`พบหีบสมบัติ แต่คุณมีเกราะศักดิ์สิทธิ์เต็มแล้ว`);
             }
-            break; // Event chain ends as player did not change location
         } else if (sp.type === 'key') {
-            pData.keys++;
-            await syncStateDB(pId, { keys: pData.keys });
+            pData.keys += 1;
+            updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/keys`] = pData.keys;
+            announceSR(`คุณพบกุญแจ ได้รับกุญแจ 1 ดอก ตอนนี้มีกุญแจ ${pData.keys} ดอก`);
             playSynthSound('key');
-            await syncActionEmit(`พบกุญแจ ได้รับกุญแจ 1 ดอก ตอนนี้มี ${pData.keys} ดอก`);
-            break; // Does not change location
         } else if (sp.type === 'door') {
             if (pData.keys > 0) {
-                let useKey = true;
                 if (!pData.isBot && pId === myPlayerId) {
-                    useKey = await showModalAsync('พบประตูทางลัด!', 'คุณมีกุญแจ ต้องการใช้กุญแจเปิดประตูไปข้างหน้าหรือไม่?', 'ใช้กุญแจ', 'ไม่ใช้');
-                }
-                if (useKey) {
-                    pData.keys--;
-                    await syncStateDB(pId, { keys: pData.keys });
-                    await syncActionEmit(`ใช้กุญแจเปิดประตูสำเร็จ วาร์ปไปยังช่อง ${sp.dest}`);
-                    currentPos = sp.dest;
-                    movedToNewSpace = true;
-                } else {
-                    await syncActionEmit(`เลือกที่จะไม่ใช้กุญแจ ประตูยังคงปิดอยู่`);
-                    break;
+                    showModal('คุณพบประตู!', 'คุณมีกุญแจ ต้องการใช้กุญแจเปิดประตูไปข้างหน้าหรือไม่?', 'ใช้กุญแจ', 'ไม่ใช้', () => {
+                        pData.keys -= 1;
+                        updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/keys`] = pData.keys;
+                        updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/pos`] = sp.dest;
+                        announceSR(`เปิดประตูสำเร็จ! วาร์ปไปยังช่อง ${sp.dest}`);
+                        advanceTurn(updates);
+                    }, () => {
+                        advanceTurn(updates);
+                    });
+                    return;
+                } else if (pData.isBot) {
+                    pData.keys -= 1;
+                    updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/keys`] = pData.keys;
+                    updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/pos`] = sp.dest;
                 }
             } else {
-                await syncActionEmit(`พบประตู แต่ไม่มีกุญแจ ไม่สามารถเปิดได้`);
-                break;
+                announceSR(`คุณพบประตู แต่ไม่มีกุญแจ ประตูยังเปิดไม่ได้`);
             }
         } else if (['trap', 'water', 'ghost', 'warp'].includes(sp.type)) {
-            let isBad = (sp.val < 0);
+            const isBad = sp.val < 0 || sp.type === 'trap' || sp.type === 'water' || sp.type === 'ghost';
             if (isBad && pData.armor > 0) {
-                let useArmor = true;
                 if (!pData.isBot && pId === myPlayerId) {
-                    useArmor = await showModalAsync('พบอันตราย!', `ช่อง ${currentPos} มีเหตุการณ์ร้าย ใช้เกราะศักดิ์สิทธิ์ป้องกันหรือไม่?`, 'ใช้เกราะป้องกัน', 'ไม่ใช้');
-                }
-                if (useArmor) {
-                    pData.armor--;
-                    await syncStateDB(pId, { armor: pData.armor });
-                    await syncActionEmit(`ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ ปลอดภัยแล้ว!`);
-                    break;
-                } else {
-                    playSynthSound('bad_event');
-                    await syncActionEmit(`รับผลร้าย ถอยหลัง ${Math.abs(sp.val)} ช่อง`);
-                    currentPos = Math.max(1, currentPos + sp.val);
-                    movedToNewSpace = true;
+                    showModal('พบเหตุการณ์อันตราย!', `ช่อง ${finalPos} มีเหตุการณ์ร้าย ใช้เกราะศักดิ์สิทธิ์ป้องกันหรือไม่?`, 'ใช้เกราะ', 'ไม่ใช้', () => {
+                        pData.armor -= 1;
+                        updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/armor`] = pData.armor;
+                        announceSR(`ใช้เกราะศักดิ์สิทธิ์ ป้องกันผลเสียสำเร็จ!`);
+                        advanceTurn(updates);
+                    }, () => {
+                        applyBadEffect(pId, sp, updates);
+                        advanceTurn(updates);
+                    });
+                    return;
+                } else if (pData.isBot) {
+                    pData.armor -= 1;
+                    updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/armor`] = pData.armor;
+                    advanceTurn(updates);
+                    return;
                 }
             } else if (isBad) {
-                playSynthSound('bad_event');
-                await syncActionEmit(`เกิดเหตุการณ์ร้าย ถอยหลัง ${Math.abs(sp.val)} ช่อง`);
-                currentPos = Math.max(1, currentPos + sp.val);
-                movedToNewSpace = true;
+                applyBadEffect(pId, sp, updates);
             } else {
-                await syncActionEmit(`โชคดี เดินหน้าเพิ่ม ${sp.val} ช่อง`);
-                currentPos = Math.min(79, currentPos + sp.val);
-                movedToNewSpace = true;
+                // Positive Forward/Warp
+                let nPos = Math.min(79, Math.max(1, finalPos + sp.val));
+                updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/pos`] = nPos;
+                announceSR(`โชคดี! ได้เคลื่อนที่ไปยังช่อง ${nPos}`);
             }
-        } else if (sp.type === 'forward') {
-            await syncActionEmit(`พลังพิเศษ เดินหน้า ${sp.val} ช่อง`);
-            currentPos = Math.min(79, currentPos + sp.val);
-            movedToNewSpace = true;
-        }
-
-        // Rule 8 & 7: Check newly moved destination, stop if loop, limit 3 chain
-        if (movedToNewSpace) {
-            await syncStateDB(pId, { pos: currentPos });
-            
-            if (currentPos === 80) {
-                await handleWinGame(pId);
-                return;
-            }
-
-            if (visited.has(currentPos)) {
-                await syncActionEmit(`ตรวจสอบช่องใหม่: กลับมาช่อง ${currentPos} ที่เคยผ่านมาแล้ว หยุดการเดินทางเพื่อป้องกันการวนลูป`);
-                break;
-            }
-            
-            visited.add(currentPos);
-            chainCount++;
-            
-            if (chainCount >= 3) {
-                await syncActionEmit(`ตรวจสอบช่องใหม่: ครบขีดจำกัดเหตุการณ์ 3 ครั้งแล้ว จบการเคลื่อนที่สำหรับเทิร์นนี้ทันที`);
-                break; // Stop Chain
-            } else {
-                await syncActionEmit(`ตรวจสอบช่องใหม่: ไปยังช่อง ${currentPos}`);
-                // Loop continues to re-evaluate the new currentPos
-            }
-        } else {
-            // Did not move to a new space, end chain loop
-            break;
         }
     }
 
-    // Finished turn
+    advanceTurn(updates);
+}
+
+// Apply Bad Effects helper
+function applyBadEffect(pId, sp, updates) {
+    const pData = gameState.players[pId];
+    let nPos = Math.max(1, pData.pos + (sp.val || -3));
+    updates[`games/Adventure80/rooms/${currentRoomId}/players/${pId}/pos`] = nPos;
+    announceSR(`เกิดเหตุการณ์ร้าย ถอยหลังไปอยู่ช่อง ${nPos}`);
+    playSynthSound('bad_event');
+}
+
+// Advance Turn Handler
+function advanceTurn(updates) {
     const pKeys = Object.keys(gameState.players);
     const nextTurn = (gameState.turnIndex + 1) % pKeys.length;
-    await update(ref(db), { 
-        [`games/Adventure80/rooms/${currentRoomId}/turnIndex`]: nextTurn,
-        [`games/Adventure80/rooms/${currentRoomId}/turnExecuting`]: false
-    });
+    updates[`games/Adventure80/rooms/${currentRoomId}/turnIndex`] = nextTurn;
+    update(ref(db), updates);
 }
 
-// End Game Process
-async function handleWinGame(pId) {
-    playSynthSound('win');
-    await update(ref(db), { 
-        [`games/Adventure80/rooms/${currentRoomId}/status`]: 'ended',
-        [`games/Adventure80/rooms/${currentRoomId}/winnerId`]: pId,
-        [`games/Adventure80/rooms/${currentRoomId}/turnExecuting`]: false
-    });
-}
+// Accessible Modal Dialog Component
+function showModal(title, desc, confirmText, cancelText, onConfirm, onCancel) {
+    const overlay = document.getElementById('modal-overlay');
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-desc').textContent = desc;
 
-// Accessible Modal Promise wrapper
-function showModalAsync(title, desc, confirmText, cancelText) {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById('modal-overlay');
-        document.getElementById('modal-title').textContent = title;
-        document.getElementById('modal-desc').textContent = desc;
+    const btn1 = document.getElementById('btn-modal-action-1');
+    const btn2 = document.getElementById('btn-modal-action-2');
 
-        const btn1 = document.getElementById('btn-modal-action-1');
-        const btn2 = document.getElementById('btn-modal-action-2');
+    btn1.textContent = confirmText;
+    btn2.textContent = cancelText;
 
-        btn1.textContent = confirmText;
-        btn2.textContent = cancelText;
+    overlay.style.display = 'flex';
+    document.getElementById('modal-title').focus();
 
-        overlay.style.display = 'flex';
-        document.getElementById('modal-title').focus(); // Accessible Focus management
-
-        btn1.onclick = () => { overlay.style.display = 'none'; resolve(true); };
-        btn2.onclick = () => { overlay.style.display = 'none'; resolve(false); };
-    });
+    btn1.onclick = () => {
+        overlay.style.display = 'none';
+        if (onConfirm) onConfirm();
+    };
+    btn2.onclick = () => {
+        overlay.style.display = 'none';
+        if (onCancel) onCancel();
+    };
 }
 
 // Show Result Screen
@@ -815,7 +685,7 @@ function showResultScreen() {
     const winner = gameState.players[winnerId];
 
     document.getElementById('result-winner-text').textContent = `🎉 ${winner.animal.icon} ${winner.name} เข้าสู่ช่อง 80 เป็นคนแรก!`;
-    announceSR(`การผจญภัยสิ้นสุดลง ผู้ชนะคือ ${winner.name} !`, 'assertive');
+    announceSR(`เกมจบแล้ว ${winner.name} เป็นผู้ชนะ!`);
 
     const rankingsBox = document.getElementById('result-rankings');
     rankingsBox.innerHTML = '<h3>อันดับการเดินทาง:</h3>';
@@ -835,13 +705,11 @@ window.leaveRoom = function() {
     currentRoomId = null;
     isHost = false;
     gameState = null;
-    document.getElementById('lobby-room-section').style.display = 'none';
-    document.getElementById('lobby-menu-section').style.display = 'block';
+    switchScreen('screen-welcome');
 };
 
 window.returnToLobbyOrMain = function() {
     window.leaveRoom();
-    switchScreen('screen-lobby', 'lobby-heading');
 };
 
 // Initialize Application on DOM Ready

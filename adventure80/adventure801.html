@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมผจญภัย 80 ช่อง (Adventure 80) - Games4All</title>
+    <link rel="stylesheet" href="adventure80.css">
+</head>
+<body>
+
+    <!-- ARIA Live Regions สำหรับ Screen Reader Announcement Queue -->
+    <div id="sr-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    <div id="sr-assertive" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <!-- หน้าแรก: กรอกชื่อ และ เมนูสร้าง/เข้าร่วมห้อง -->
+    <div id="screen-welcome" class="screen active-screen">
+        <button class="home-btn-hex pos-top-left" aria-label="กลับสู่หน้าหลัก" onclick="window.location.href='../index.html'">🏠</button>
+        
+        <div class="card-main">
+            <h1 class="game-title">🏕️ เกมผจญภัย 80 ช่อง 🏰</h1>
+            <p class="subtitle">มัลติเพลเยอร์ผจญภัยทอยลูกเต๋าสุดมันส์สำหรับทุกคน</p>
+            <hr class="divider">
+            
+            <div id="login-form">
+                <div class="form-group">
+                    <label for="player-name-input" class="form-label">ชื่อผู้เล่นของคุณ:</label>
+                    <input type="text" id="player-name-input" class="text-input" placeholder="กรอกชื่อของคุณที่นี่..." maxlength="15" autocomplete="off">
+                </div>
+
+                <button id="btn-create-room" class="btn-primary" type="button" onclick="window.createAdventureRoom()">
+                    <span aria-hidden="true">🎮</span> สร้างห้องใหม่ (Adventure)
+                </button>
+
+                <div class="room-list-section">
+                    <h2 class="section-title">ห้องที่กำลังรอผู้เล่น:</h2>
+                    <div id="room-list" class="room-list-box" role="region" aria-label="รายการห้องเกม">
+                        <div class="loading-text">กำลังโหลดรายการห้อง...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- หน้า Lobby: จัดการห้องและผู้เล่น/บอท -->
+    <div id="screen-lobby" class="screen">
+        <button class="home-btn-hex pos-top-left" aria-label="ออกจากห้อง" onclick="window.leaveRoom()">🏠</button>
+        
+        <div class="card-main">
+            <h1 id="lobby-room-title" class="game-title" tabindex="-1">ห้องเกม: Adventure00000</h1>
+            <p id="lobby-status-text" class="subtitle">กำลังรอผู้เล่นเข้าร่วม (อย่างน้อย 2 คน)...</p>
+            <hr class="divider">
+
+            <!-- ส่วนควบคุมของ Host -->
+            <div id="host-controls" class="controls-panel" style="display: none;">
+                <p class="panel-label">จัดการบอทในห้อง (รวมสูงสุด 6 คน):</p>
+                <div class="bot-counter-group">
+                    <button id="btn-remove-bot" type="button" class="btn-circle" aria-label="ลดจำนวนบอท" onclick="window.adjustBot(-1)">-</button>
+                    <span id="bot-count-display" class="counter-val">0</span>
+                    <button id="btn-add-bot" type="button" class="btn-circle" aria-label="เพิ่มจำนวนบอท" onclick="window.adjustBot(1)">+</button>
+                </div>
+            </div>
+
+            <div class="participant-section">
+                <h2 class="section-title">รายชื่อผู้เล่นในห้อง (<span id="participant-count">1/6</span>):</h2>
+                <div id="participant-list" class="participant-list-box" role="list"></div>
+            </div>
+
+            <button id="btn-start-game" class="btn-primary" type="button" style="display: none;" disabled onclick="window.startAdventureGame()">
+                🚀 เริ่มเกมผจญภัย
+            </button>
+        </div>
+    </div>
+
+    <!-- หน้ากระดานเกมหลัก -->
+    <div id="screen-game" class="screen">
+        <!-- แถบสถานะกระดาน -->
+        <header class="game-header">
+            <div id="game-status-bar" class="status-bar" aria-live="polite">กำลังเตรียมกระดาน...</div>
+        </header>
+
+        <!-- Player Status Cards ด้านบน -->
+        <section class="status-cards-container" id="player-status-cards" aria-label="สถานะผู้เล่นทุกคน"></section>
+
+        <!-- กระดานผจญภัย 80 ช่อง (Serpentine 8x10 Grid) -->
+        <main class="board-container">
+            <div id="adventure-board" class="board-grid" role="grid" aria-label="กระดานผจญภัย 80 ช่อง"></div>
+        </main>
+
+        <!-- แถบควบคุมการเล่นด้านล่าง -->
+        <footer class="game-controls">
+            <div id="dice-display-area" class="dice-area" aria-hidden="true">
+                <div id="dice-visual" class="dice-box">🎲</div>
+            </div>
+
+            <button id="btn-roll-dice" class="btn-primary btn-roll" type="button" disabled onclick="window.handleRollDice()">
+                🎲 ทอยลูกเต๋า
+            </button>
+        </footer>
+    </div>
+
+    <!-- Modal ตัวเลือกการใช้งานเกราะศักดิ์สิทธิ์ หรือ กุญแจประตู -->
+    <div id="modal-overlay" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc">
+        <div class="modal-card">
+            <h2 id="modal-title" class="modal-title" tabindex="-1">หัวข้อการตัดสินใจ</h2>
+            <p id="modal-desc" class="modal-desc">คำอธิบายเหตุการณ์...</p>
+            <div class="modal-actions">
+                <button id="btn-modal-action-1" class="btn-modal btn-confirm" type="button">ตกลง</button>
+                <button id="btn-modal-action-2" class="btn-modal btn-cancel" type="button">ข้าม</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- หน้าสรุปผลผู้ชนะ -->
+    <div id="screen-result" class="screen">
+        <div class="card-main result-card">
+            <div class="winner-crown" aria-hidden="true">🏆</div>
+            <h1 id="result-title" class="game-title" tabindex="-1">จบการผจญภัย!</h1>
+            <p id="result-winner-text" class="result-highlight">ผู้ชนะคือ...</p>
+            <div id="result-rankings" class="rankings-box"></div>
+            <button class="btn-primary" type="button" onclick="window.returnToLobbyOrMain()">🏠 กลับสู่เมนูหลัก</button>
+        </div>
+    </div>
+
+    <!-- โหลดสคริปต์การทำงานของเกม -->
+    <script type="module" src="adventure80.js"></script>
+</body>
+</html>
