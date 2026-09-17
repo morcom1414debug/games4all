@@ -240,28 +240,35 @@ function generateBoardConfiguration() {
     }
 
     const layout = {};
-    keys.forEach(k => layout[k] = { type: 'key', opened: false });
+    keys.forEach(k => layout[k] = { type: 'key' });
     doors.forEach(d => layout[d.space] = { type: 'door', dest: d.dest });
 
+    // New Rules applied here: Forward less than Backward, specific random values, add Rest.
     const specialTypes = [
         { type: 'treasure', count: 10 },
-        { type: 'forward', count: 8 },  
-        { type: 'trap', count: 9 },     
-        { type: 'water', count: 9 },    
-        { type: 'ghost', count: 7 },    
-        { type: 'warp', count: 4 },     
-        { type: 'rest', count: 12 }     
+        { type: 'forward', count: 8 },  // Random +3 to +12
+        { type: 'trap', count: 9 },     // Random -2 to -6
+        { type: 'water', count: 9 },    // Random -2 to -6
+        { type: 'ghost', count: 7 },    // Random -2 to -6
+        { type: 'warp', count: 4 },     // Mixed
+        { type: 'rest', count: 12 }     // New type: Rest space
     ];
 
     specialTypes.forEach(st => {
         for (let c = 0; c < st.count; c++) {
             if (available.length > 0) {
                 const sp = available.pop();
-                if (st.type === 'treasure') {
-                    layout[sp] = { type: st.type, opened: false };
-                } else {
-                    layout[sp] = { type: st.type };
+                let effectVal = 0;
+                
+                if (st.type === 'forward') {
+                    effectVal = Math.floor(Math.random() * 10) + 3; // +3 to +12
+                } else if (['trap', 'water', 'ghost'].includes(st.type)) {
+                    effectVal = -(Math.floor(Math.random() * 5) + 2); // -2 to -6
+                } else if (st.type === 'warp') {
+                    effectVal = Math.random() > 0.5 ? (Math.floor(Math.random() * 10) + 3) : -(Math.floor(Math.random() * 5) + 2);
                 }
+                
+                layout[sp] = { type: st.type, val: effectVal };
             }
         }
     });
@@ -521,12 +528,12 @@ function renderBoardGrid() {
                 
                 if (sp.type === 'rest') { iconHtml = '⛺'; accessibleName += ' จุดพักผ่อน ไม่มีเหตุการณ์'; }
                 else if (sp.type === 'treasure') { iconHtml = '📦'; accessibleName += ' หีบสมบัติ'; }
-                else if (sp.type === 'forward') { iconHtml = '🚀'; accessibleName += ' เดินหน้า'; }
-                else if (sp.type === 'trap') { iconHtml = '🕳️'; accessibleName += ' หลุมพราง'; }
-                else if (sp.type === 'water') { iconHtml = '🌊'; accessibleName += ' น้ำเชี่ยว'; }
-                else if (sp.type === 'ghost') { iconHtml = '👻'; accessibleName += ' ผีหลอก'; }
-                else if (sp.type === 'warp') { iconHtml = '🌀'; accessibleName += ' วาร์ป'; }
-                else if (sp.type === 'key') { iconHtml = '🔑'; accessibleName += ' กล่องลึกลับ'; }
+                else if (sp.type === 'forward') { iconHtml = '🚀'; accessibleName += ` เดินหน้า ${sp.val} ช่อง`; }
+                else if (sp.type === 'trap') { iconHtml = '🕳️'; accessibleName += ` หลุมพราง ถอยหลัง ${Math.abs(sp.val)} ช่อง`; }
+                else if (sp.type === 'water') { iconHtml = '🌊'; accessibleName += ` น้ำเชี่ยว ถอยหลัง ${Math.abs(sp.val)} ช่อง`; }
+                else if (sp.type === 'ghost') { iconHtml = '👻'; accessibleName += ` ผีหลอก ถอยหลัง ${Math.abs(sp.val)} ช่อง`; }
+                else if (sp.type === 'warp') { iconHtml = '🌀'; accessibleName += ` วาร์ป ${sp.val > 0 ? 'เดินหน้า' : 'ถอยหลัง'} ${Math.abs(sp.val)} ช่อง`; }
+                else if (sp.type === 'key') { iconHtml = '🔑'; accessibleName += ' กุญแจ'; }
                 else if (sp.type === 'door') { iconHtml = '🚪'; accessibleName += ` ประตูทางลัด ไปช่อง ${sp.dest}`; }
             }
 
@@ -660,7 +667,7 @@ async function executeTurnAsync(pId) {
         else if (sp.type === 'water') typeNameTH = 'น้ำเชี่ยว';
         else if (sp.type === 'ghost') typeNameTH = 'ผีหลอก';
         else if (sp.type === 'warp') typeNameTH = 'วาร์ป';
-        else if (sp.type === 'key') typeNameTH = 'กล่องลึกลับ';
+        else if (sp.type === 'key') typeNameTH = 'กุญแจ';
         else if (sp.type === 'door') typeNameTH = 'ประตูทางลัด';
 
         await syncActionEmit(`${pData.name}ตกช่อง ${currentPos} เป็นช่อง${typeNameTH}`);
@@ -674,28 +681,20 @@ async function executeTurnAsync(pId) {
         let movedToNewSpace = false;
 
         if (sp.type === 'treasure') {
-            if (!sp.opened) {
-                sp.opened = true;
-                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/opened`]: true });
+            if (pData.armor < 3) {
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
                 playSynthSound('treasure');
-                await syncActionEmit(`พบหีบสมบัติ เปิดหีบ พบเกราะศักดิ์สิทธิ์ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
+                await syncActionEmit(`เปิดหีบสมบัติ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
             } else {
-                await syncActionEmit(`พบหีบสมบัติ แต่หีบถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
+                await syncActionEmit(`พบหีบสมบัติ แต่คุณมีเกราะศักดิ์สิทธิ์เต็มแล้ว`);
             }
             break; // Event chain ends as player did not change location
         } else if (sp.type === 'key') {
-            if (!sp.opened) {
-                sp.opened = true;
-                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/opened`]: true });
-                pData.keys++;
-                await syncStateDB(pId, { keys: pData.keys });
-                playSynthSound('key');
-                await syncActionEmit(`พบกล่องลึกลับ เปิดกล่อง พบกุญแจโบราณ ได้รับกุญแจโบราณ 1 ดอก`);
-            } else {
-                await syncActionEmit(`พบกล่องลึกลับ แต่กล่องถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
-            }
+            pData.keys++;
+            await syncStateDB(pId, { keys: pData.keys });
+            playSynthSound('key');
+            await syncActionEmit(`พบกุญแจ ได้รับกุญแจ 1 ดอก ตอนนี้มี ${pData.keys} ดอก`);
             break; // Does not change location
         } else if (sp.type === 'door') {
             if (pData.keys > 0) {
@@ -718,10 +717,7 @@ async function executeTurnAsync(pId) {
                 break;
             }
         } else if (['trap', 'water', 'ghost', 'warp'].includes(sp.type)) {
-            let randVal = (sp.type === 'warp') 
-                ? (Math.random() > 0.5 ? (Math.floor(Math.random() * 10) + 3) : -(Math.floor(Math.random() * 5) + 2))
-                : -(Math.floor(Math.random() * 5) + 2);
-            let isBad = (randVal < 0);
+            let isBad = (sp.val < 0);
             if (isBad && pData.armor > 0) {
                 let useArmor = true;
                 if (!pData.isBot && pId === myPlayerId) {
@@ -734,24 +730,23 @@ async function executeTurnAsync(pId) {
                     break;
                 } else {
                     playSynthSound('bad_event');
-                    await syncActionEmit(`รับผลร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`);
-                    currentPos = Math.max(1, currentPos + randVal);
+                    await syncActionEmit(`รับผลร้าย ถอยหลัง ${Math.abs(sp.val)} ช่อง`);
+                    currentPos = Math.max(1, currentPos + sp.val);
                     movedToNewSpace = true;
                 }
             } else if (isBad) {
                 playSynthSound('bad_event');
-                await syncActionEmit(`เกิดเหตุการณ์ร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`);
-                currentPos = Math.max(1, currentPos + randVal);
+                await syncActionEmit(`เกิดเหตุการณ์ร้าย ถอยหลัง ${Math.abs(sp.val)} ช่อง`);
+                currentPos = Math.max(1, currentPos + sp.val);
                 movedToNewSpace = true;
             } else {
-                await syncActionEmit(`โชคดี เดินหน้าเพิ่ม ${randVal} ช่อง`);
-                currentPos = Math.min(79, currentPos + randVal);
+                await syncActionEmit(`โชคดี เดินหน้าเพิ่ม ${sp.val} ช่อง`);
+                currentPos = Math.min(79, currentPos + sp.val);
                 movedToNewSpace = true;
             }
         } else if (sp.type === 'forward') {
-            let randVal = Math.floor(Math.random() * 10) + 3;
-            await syncActionEmit(`พลังพิเศษ เดินหน้า ${randVal} ช่อง`);
-            currentPos = Math.min(79, currentPos + randVal);
+            await syncActionEmit(`พลังพิเศษ เดินหน้า ${sp.val} ช่อง`);
+            currentPos = Math.min(79, currentPos + sp.val);
             movedToNewSpace = true;
         }
 
