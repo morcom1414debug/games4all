@@ -38,7 +38,6 @@ let roomListListener = null;
 let localLastActionTs = 0;
 let speechQueue = [];
 let isSpeaking = false;
-let lastAnnouncedTurnKey = null;
 
 // Audio Context Web Synthesizer
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -480,7 +479,6 @@ function updateLobbyUI() {
 // Start Game Handler (Host Only)
 window.startAdventureGame = function() {
     if (!isHost) return;
-    lastAnnouncedTurnKey = null;
     const boardConfig = generateBoardConfiguration();
     const roomRef = ref(db, `games/Adventure80/rooms/${currentRoomId}`);
 
@@ -554,14 +552,6 @@ function updateGameUI() {
 
     document.getElementById('game-status-bar').textContent = `ถึงเทิร์นของ: ${currentTurnPlayer.animal.icon} ${currentTurnPlayer.name}`;
 
-    if (gameState.status === 'playing' && currentTurnPlayer) {
-        const turnUniqueId = `${currentRoomId}_${gameState.turnIndex}_${currentTurnKey}`;
-        if (lastAnnouncedTurnKey !== turnUniqueId) {
-            lastAnnouncedTurnKey = turnUniqueId;
-            announceSR(`ถึงเทิร์นของ ${currentTurnPlayer.name}`);
-        }
-    }
-
     const cardsContainer = document.getElementById('player-status-cards');
     cardsContainer.innerHTML = '';
     playersArr.forEach(([pId, p]) => {
@@ -630,14 +620,14 @@ async function executeTurnAsync(pId) {
     const diceRoll = Math.floor(Math.random() * 6) + 1;
     document.getElementById('dice-visual').textContent = diceRoll;
     
-    await syncActionEmit(`${pData.name} ทอยลูกเต๋าได้ ${diceRoll}`);
+    await syncActionEmit(`ผู้เล่น ${pData.name} ทอยลูกเต๋าได้ ${diceRoll}`);
     
     let currentPos = pData.pos;
     let targetPos = currentPos + diceRoll;
     if (targetPos > 80) targetPos = 80 - (targetPos - 80); // Bounce back rule
 
     playSynthSound('move');
-    await syncActionEmit(`${pData.name} เดินจากช่อง ${currentPos} ไปยังช่อง ${targetPos}`);
+    await syncActionEmit(`เดินจากช่อง ${currentPos} ไปยังช่อง ${targetPos}`);
     
     currentPos = targetPos;
     await syncStateDB(pId, { pos: currentPos });
@@ -661,20 +651,18 @@ async function executeTurnAsync(pId) {
 
         let typeNameTH = 'พิเศษ';
         if (sp.type === 'rest') typeNameTH = 'จุดพักผ่อน';
-        else if (sp.type === 'treasure') typeNameTH = 'หีบสมบัติ';
         else if (sp.type === 'forward') typeNameTH = 'เดินหน้า';
-        else if (sp.type === 'trap') typeNameTH = 'หลุมพราง';
-        else if (sp.type === 'water') typeNameTH = 'น้ำเชี่ยว';
-        else if (sp.type === 'ghost') typeNameTH = 'ผีหลอก';
-        else if (sp.type === 'warp') typeNameTH = 'วาร์ป';
+        else if (['trap','water','ghost'].includes(sp.type)) typeNameTH = 'หลุมพรางหรืออันตราย';
+        else if (sp.type === 'warp') typeNameTH = 'วาร์ปปริศนา';
+        else if (sp.type === 'treasure') typeNameTH = 'หีบสมบัติ';
         else if (sp.type === 'key') typeNameTH = 'กุญแจ';
         else if (sp.type === 'door') typeNameTH = 'ประตูทางลัด';
 
-        await syncActionEmit(`${pData.name}ตกช่อง ${currentPos} เป็นช่อง${typeNameTH}`);
+        await syncActionEmit(`ตกช่อง ${currentPos} เป็นช่อง ${typeNameTH}`);
 
         // Handle Effect
         if (sp.type === 'rest') {
-            await syncActionEmit(`${pData.name} มาถึงจุดพักผ่อน ช่อง ${currentPos} ไม่มีเหตุการณ์พิเศษ จบการเดินทาง`);
+            await syncActionEmit(`ผู้เล่น ${pData.name} มาถึงจุดพักผ่อน ช่อง ${currentPos} ไม่มีเหตุการณ์พิเศษ จบการเดินทาง`);
             break; // Rule 5: Ends event chain immediately
         }
         
@@ -847,7 +835,6 @@ window.leaveRoom = function() {
     currentRoomId = null;
     isHost = false;
     gameState = null;
-    lastAnnouncedTurnKey = null;
     document.getElementById('lobby-room-section').style.display = 'none';
     document.getElementById('lobby-menu-section').style.display = 'block';
 };
