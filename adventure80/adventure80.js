@@ -1,11 +1,11 @@
-import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js)";
-import { getDatabase, ref, set, onValue, update, runTransaction, remove, onDisconnect } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js)";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getDatabase, ref, set, onValue, update, runTransaction, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
 // Exact Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
-    databaseURL: "[https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app](https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app)",
+    databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "xo-game-134ec",
     storageBucket: "xo-game-134ec.firebasestorage.app",
     messagingSenderId: "318375224157",
@@ -847,4 +847,33 @@ window.returnToLobbyOrMain = function() {
 // Initialize Application on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
     initRoomListListener();
+
+    // ---------------- จุดที่เพิ่มใหม่ ----------------
+    const nameInput = document.getElementById('player-name-input');
+    const confirmBtn = document.getElementById('btn-confirm-name');
+
+    if (nameInput && confirmBtn) {
+        // 1. ตรวจสอบเมื่อมีการพิมพ์ข้อความ
+        nameInput.addEventListener('input', () => {
+            // ถ้ามีการพิมพ์อย่างน้อย 1 ตัวอักษร (ไม่นับการเว้นวรรค) ให้ปลดล็อกปุ่ม
+            if (nameInput.value.trim().length > 0) {
+                confirmBtn.disabled = false;
+            } else {
+                confirmBtn.disabled = true; // ถ้าช่องว่างให้ Dimm ปุ่ม
+            }
+        });
+
+        // 2. ดักจับการกดปุ่ม Enter ในช่องพิมพ์ข้อความ
+        nameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // ป้องกันพฤติกรรมพื้นฐานของการกด Enter
+                
+                // ถ้าปุ่มไม่ได้ถูก disabled อยู่ ให้ทำการกดยืนยัน
+                if (!confirmBtn.disabled) {
+                    window.confirmNameAndEnterLobby();
+                }
+            }
+        });
+    }
+    // ---------------------------------------------
 });
