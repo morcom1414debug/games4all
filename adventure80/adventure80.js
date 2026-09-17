@@ -848,32 +848,25 @@ window.returnToLobbyOrMain = function() {
 document.addEventListener('DOMContentLoaded', () => {
     initRoomListListener();
 
-    // ---------------- จุดที่เพิ่มใหม่ ----------------
     const nameInput = document.getElementById('player-name-input');
     const confirmBtn = document.getElementById('btn-confirm-name');
 
     if (nameInput && confirmBtn) {
-        // 1. ตรวจสอบเมื่อมีการพิมพ์ข้อความ
         nameInput.addEventListener('input', () => {
-            // ถ้ามีการพิมพ์อย่างน้อย 1 ตัวอักษร (ไม่นับการเว้นวรรค) ให้ปลดล็อกปุ่ม
             if (nameInput.value.trim().length > 0) {
                 confirmBtn.disabled = false;
             } else {
-                confirmBtn.disabled = true; // ถ้าช่องว่างให้ Dimm ปุ่ม
+                confirmBtn.disabled = true;
             }
         });
 
-        // 2. ดักจับการกดปุ่ม Enter ในช่องพิมพ์ข้อความ
-        nameInput.addEventListener('keypress', (e) => {
+        nameInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
-                e.preventDefault(); // ป้องกันพฤติกรรมพื้นฐานของการกด Enter
-                
-                // ถ้าปุ่มไม่ได้ถูก disabled อยู่ ให้ทำการกดยืนยัน
-                if (!confirmBtn.disabled) {
+                e.preventDefault();
+                if (nameInput.value.trim().length > 0) {
                     window.confirmNameAndEnterLobby();
                 }
             }
         });
     }
-    // ---------------------------------------------
 });
