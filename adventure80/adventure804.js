@@ -521,11 +521,11 @@ function renderBoardGrid() {
                 
                 if (sp.type === 'rest') { iconHtml = '⛺'; accessibleName += ' จุดพักผ่อน ไม่มีเหตุการณ์'; }
                 else if (sp.type === 'treasure') { iconHtml = '📦'; accessibleName += ' หีบสมบัติ'; }
-                else if (sp.type === 'forward') { iconHtml = '🚀'; accessibleName += ' วาร์ป'; }
+                else if (sp.type === 'forward') { iconHtml = '🚀'; accessibleName += ' เดินหน้า'; }
                 else if (sp.type === 'trap') { iconHtml = '🕳️'; accessibleName += ' หลุมพราง'; }
                 else if (sp.type === 'water') { iconHtml = '🌊'; accessibleName += ' น้ำเชี่ยว'; }
                 else if (sp.type === 'ghost') { iconHtml = '👻'; accessibleName += ' ผีหลอก'; }
-                else if (sp.type === 'warp') { iconHtml = '🌀'; accessibleName += ' ไซโคลน'; }
+                else if (sp.type === 'warp') { iconHtml = '🌀'; accessibleName += ' วาร์ป'; }
                 else if (sp.type === 'key') { iconHtml = '🔑'; accessibleName += ' กล่องลึกลับ'; }
                 else if (sp.type === 'door') { iconHtml = '🚪'; accessibleName += ` ประตูทางลัด ไปช่อง ${sp.dest}`; }
             }
@@ -547,50 +547,19 @@ function updateGameUI() {
 
     document.getElementById('game-status-bar').textContent = `ถึงเทิร์นของ: ${currentTurnPlayer.animal.icon} ${currentTurnPlayer.name}`;
 
-    const rollBtn = document.getElementById('btn-roll-dice');
-    if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot && !gameState.turnExecuting) {
-        rollBtn.disabled = false;
-    } else {
-        rollBtn.disabled = true;
-    }
-
     if (gameState.status === 'playing' && currentTurnPlayer) {
         const turnUniqueId = `${currentRoomId}_${gameState.turnIndex}_${currentTurnKey}`;
         if (lastAnnouncedTurnKey !== turnUniqueId) {
             lastAnnouncedTurnKey = turnUniqueId;
             announceSR(`ถึงเทิร์นของ ${currentTurnPlayer.name}`);
-            
-            // Focus the roll button when it is the local player's turn
-            if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot && !rollBtn.disabled) {
-                setTimeout(() => {
-                    const btn = document.getElementById('btn-roll-dice');
-                    if (btn && !btn.disabled) {
-                        btn.focus();
-                    }
-                }, 100);
-            }
         }
     }
 
     const cardsContainer = document.getElementById('player-status-cards');
     cardsContainer.innerHTML = '';
-    
-    // Group all statuses into a single readable object for Screen Readers
-    let allStatusText = "สถานะผู้เล่นทั้งหมด: ";
-    playersArr.forEach(([pId, p], index) => {
-        allStatusText += `${p.name} อยู่ที่ช่อง ${p.pos} จาก 80 มีกุญแจ ${p.keys} ดอก มีเกราะ ${p.armor} ชิ้น`;
-        if (index < playersArr.length - 1) allStatusText += ", ";
-    });
-    
-    cardsContainer.setAttribute('aria-label', allStatusText);
-    cardsContainer.setAttribute('tabindex', '0');
-    cardsContainer.setAttribute('role', 'group');
-
-    // Render visual cards for sighted users and hide them from screen reader to prevent duplicate reading
     playersArr.forEach(([pId, p]) => {
         const card = document.createElement('div');
         card.className = `p-status-card ${pId === currentTurnKey ? 'active-turn' : ''}`;
-        card.setAttribute('aria-hidden', 'true');
         card.innerHTML = `
             <div><strong>${p.animal.icon} ${p.name}</strong></div>
             <div aria-label="อยู่ที่ช่อง ${p.pos} จาก 80">ช่อง ${p.pos}/80</div>
@@ -609,6 +578,13 @@ function updateGameUI() {
             holder.appendChild(token);
         }
     });
+
+    const rollBtn = document.getElementById('btn-roll-dice');
+    if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot && !gameState.turnExecuting) {
+        rollBtn.disabled = false;
+    } else {
+        rollBtn.disabled = true;
+    }
 
     // Host Bot Turn Engine
     if (isHost && currentTurnPlayer.isBot && gameState.status === 'playing' && !gameState.turnExecuting) {
@@ -679,11 +655,11 @@ async function executeTurnAsync(pId) {
         let typeNameTH = 'พิเศษ';
         if (sp.type === 'rest') typeNameTH = 'จุดพักผ่อน';
         else if (sp.type === 'treasure') typeNameTH = 'หีบสมบัติ';
-        else if (sp.type === 'forward') typeNameTH = 'วาร์ป';
+        else if (sp.type === 'forward') typeNameTH = 'เดินหน้า';
         else if (sp.type === 'trap') typeNameTH = 'หลุมพราง';
         else if (sp.type === 'water') typeNameTH = 'น้ำเชี่ยว';
         else if (sp.type === 'ghost') typeNameTH = 'ผีหลอก';
-        else if (sp.type === 'warp') typeNameTH = 'ไซโคลน';
+        else if (sp.type === 'warp') typeNameTH = 'วาร์ป';
         else if (sp.type === 'key') typeNameTH = 'กล่องลึกลับ';
         else if (sp.type === 'door') typeNameTH = 'ประตูทางลัด';
 
@@ -911,32 +887,4 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
-    // Keyboard Shortcuts
-    document.addEventListener('keydown', (e) => {
-        // Alt + R: Roll Dice Shortcut
-        if (e.altKey && e.key.toLowerCase() === 'r') {
-            const rollBtn = document.getElementById('btn-roll-dice');
-            if (rollBtn && !rollBtn.disabled) {
-                e.preventDefault();
-                if (!e.repeat) {
-                    window.handleRollDice();
-                }
-            }
-        }
-        
-        // Alt + A: Announce All Players' Status
-        if (e.altKey && e.key.toLowerCase() === 'a') {
-            e.preventDefault();
-            if (gameState && gameState.players) {
-                let allStatusText = "สถานะผู้เล่นทั้งหมด: ";
-                const playersArr = Object.values(gameState.players);
-                playersArr.forEach((p, index) => {
-                    allStatusText += `${p.name} อยู่ที่ช่อง ${p.pos} จาก 80 มีกุญแจ ${p.keys} ดอก มีเกราะ ${p.armor} ชิ้น`;
-                    if (index < playersArr.length - 1) allStatusText += ", ";
-                });
-                announceSR(allStatusText, 'polite');
-            }
-        }
-    });
 });
