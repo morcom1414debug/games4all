@@ -225,7 +225,7 @@ function generateBoardConfiguration() {
         const idx = available.indexOf(doorSpace);
         if (idx !== -1) available.splice(idx, 1);
 
-        const dest = Math.min(79, doorSpace + Math.floor(Math.random() * 8) + 3);
+        const dest = Math.min(79, doorSpace + Math.floor(Math.random() * 14) + 5);
         keys.push(keySpace);
         doors.push({ space: doorSpace, dest });
     }
@@ -234,13 +234,13 @@ function generateBoardConfiguration() {
     for(let k = 0; k < 2; k++) {
         if (available.length > 0) {
             const extraDoor = available.pop();
-            const dest = Math.min(79, extraDoor + Math.floor(Math.random() * 8) + 3);
+            const dest = Math.min(79, extraDoor + Math.floor(Math.random() * 14) + 5);
             doors.push({ space: extraDoor, dest });
         }
     }
 
     const layout = {};
-    keys.forEach(k => layout[k] = { type: 'key', opened: false });
+    keys.forEach(k => layout[k] = { type: 'key', charges: 2 });
     doors.forEach(d => layout[d.space] = { type: 'door', dest: d.dest });
 
     const specialTypes = [
@@ -258,7 +258,7 @@ function generateBoardConfiguration() {
             if (available.length > 0) {
                 const sp = available.pop();
                 if (st.type === 'treasure') {
-                    layout[sp] = { type: st.type, opened: false };
+                    layout[sp] = { type: st.type, charges: 2 };
                 } else {
                     layout[sp] = { type: st.type };
                 }
@@ -698,9 +698,9 @@ async function executeTurnAsync(pId) {
         let movedToNewSpace = false;
 
         if (sp.type === 'treasure') {
-            if (!sp.opened) {
-                sp.opened = true;
-                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/opened`]: true });
+            if (sp.charges > 0) {
+                sp.charges--;
+                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
                 playSynthSound('treasure');
@@ -710,9 +710,9 @@ async function executeTurnAsync(pId) {
             }
             break; // Event chain ends as player did not change location
         } else if (sp.type === 'key') {
-            if (!sp.opened) {
-                sp.opened = true;
-                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/opened`]: true });
+            if (sp.charges > 0) {
+                sp.charges--;
+                await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
                 playSynthSound('key');
