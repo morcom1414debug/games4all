@@ -523,10 +523,17 @@ window.startAdventureGame = function() {
     const boardConfig = generateBoardConfiguration();
     const roomRef = ref(db, `games/Adventure80/rooms/${currentRoomId}`);
 
+    const pKeys = Object.keys(gameState.players);
+    for (let i = pKeys.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]];
+    }
+
     update(roomRef, {
         status: 'playing',
         boardConfig,
-        turnIndex: 0
+        turnIndex: 0,
+        playerOrder: pKeys
     });
 };
 
@@ -590,7 +597,8 @@ function renderBoardGrid() {
 function updateGameUI() {
     if (!gameState) return;
 
-    const playersArr = Object.entries(gameState.players);
+    const pOrder = gameState.playerOrder || Object.keys(gameState.players);
+    const playersArr = pOrder.map(pId => [pId, gameState.players[pId]]);
     const currentTurnKey = playersArr[gameState.turnIndex][0];
     const currentTurnPlayer = playersArr[gameState.turnIndex][1];
 
@@ -659,8 +667,7 @@ function updateGameUI() {
         card.setAttribute('aria-hidden', 'true');
         card.innerHTML = `
             <div><strong>${p.animal.icon} ${p.name}</strong></div>
-            <div>ช่อง ${p.pos}/80</div>
-            <div>🔑 ${p.keys} | 🛡️ ${p.armor}</div>
+            <div>ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}</div>
         `;
         cardsContainer.appendChild(card);
     });
@@ -849,13 +856,17 @@ async function executeTurnAsync(pId, isAuto = false) {
                 movedToNewSpace = true;
             } else {
                 await syncActionEmit(`โชคดี เดินหน้าเพิ่ม ${randVal} ช่อง`);
-                currentPos = Math.min(79, currentPos + randVal);
+                let targetPos = currentPos + randVal;
+                if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+                currentPos = targetPos;
                 movedToNewSpace = true;
             }
         } else if (sp.type === 'forward') {
             let randVal = Math.floor(Math.random() * 10) + 3;
             await syncActionEmit(`พลังพิเศษ เดินหน้า ${randVal} ช่อง`);
-            currentPos = Math.min(79, currentPos + randVal);
+            let targetPos = currentPos + randVal;
+            if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+            currentPos = targetPos;
             movedToNewSpace = true;
         } else if (sp.type === 'bonus') {
             const randEffect = Math.floor(Math.random() * 3);
@@ -875,7 +886,9 @@ async function executeTurnAsync(pId, isAuto = false) {
                 let randVal = Math.floor(Math.random() * 10) + 3;
                 let actionDesc = `เดินหน้า ${randVal} ช่อง`;
                 await syncActionEmit(`ลาภลอย! เกิดการวาร์ป ${actionDesc}`);
-                currentPos = Math.min(79, currentPos + randVal);
+                let targetPos = currentPos + randVal;
+                if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+                currentPos = targetPos;
                 movedToNewSpace = true;
             }
         } else if (sp.type === 'secret') {
@@ -884,7 +897,9 @@ async function executeTurnAsync(pId, isAuto = false) {
             let randVal = Math.floor(Math.random() * 10) + 3;
             let actionDesc = `พาเดินหน้า ${randVal} ช่อง`;
             await syncActionEmit(`พบเหตุการณ์ลับ: ${sName} ${actionDesc}`);
-            currentPos = Math.min(79, currentPos + randVal);
+            let targetPos = currentPos + randVal;
+            if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+            currentPos = targetPos;
             movedToNewSpace = true;
         }
 
@@ -919,7 +934,7 @@ async function executeTurnAsync(pId, isAuto = false) {
     }
 
     // Finished turn
-    const pKeys = Object.keys(gameState.players);
+    const pKeys = gameState.playerOrder || Object.keys(gameState.players);
     const nextTurn = (gameState.turnIndex + 1) % pKeys.length;
     await update(ref(db), { 
         [`games/Adventure80/rooms/${currentRoomId}/turnIndex`]: nextTurn,
@@ -969,6 +984,17 @@ function showModalAsync(title, desc, confirmText, cancelText) {
 // Show Result Screen
 function showResultScreen() {
     switchScreen('screen-result', 'result-title');
+    
+    // ล้างข้อความและสถานะ Live Region เพื่อไม่ให้ค้างไปหน้าจบเกม
+    speechQueue = [];
+    const srPolite = document.getElementById('sr-polite');
+    const srAssertive = document.getElementById('sr-assertive');
+    if (srPolite) srPolite.textContent = '';
+    if (srAssertive) srAssertive.textContent = '';
+    
+    const statusBar = document.getElementById('game-status-bar');
+    if (statusBar) statusBar.textContent = '';
+
     const winnerId = gameState.winnerId;
     const winner = gameState.players[winnerId];
 
@@ -1058,10 +1084,11 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             if (gameState && gameState.players) {
                 let allStatusText = "สถานะผู้เล่นทั้งหมด: ";
-                const playersArr = Object.values(gameState.players);
-                playersArr.forEach((p, index) => {
+                const pOrder = gameState.playerOrder || Object.keys(gameState.players);
+                pOrder.forEach((pId, index) => {
+                    const p = gameState.players[pId];
                     allStatusText += `${p.name} ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}`;
-                    if (index < playersArr.length - 1) allStatusText += ", ";
+                    if (index < pOrder.length - 1) allStatusText += ", ";
                 });
                 announceSR(allStatusText, 'polite');
             }

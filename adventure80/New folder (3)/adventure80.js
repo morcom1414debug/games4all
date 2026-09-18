@@ -138,6 +138,17 @@ function switchScreen(screenId, focusHeadingId = null) {
             }
         }
     }
+    
+    // จัดการซ่อนปุ่มกลับสู่ชุมชน/หน้าแรก ในระหว่างการเล่นเกม
+    const homeBtns = document.querySelectorAll('.btn-home, #btn-home');
+    const communityBtns = document.querySelectorAll('.btn-community, #btn-community');
+    
+    homeBtns.forEach(btn => {
+        btn.style.display = (screenId === 'screen-welcome') ? 'block' : 'none';
+    });
+    communityBtns.forEach(btn => {
+        btn.style.display = (screenId === 'screen-result') ? 'block' : 'none';
+    });
 }
 
 // Name and Navigation
@@ -486,6 +497,19 @@ function updateLobbyUI() {
         startBtn.style.display = 'block';
         startBtn.disabled = pList.length < 2;
         document.getElementById('bot-count-display').textContent = gameState.botCount || 0;
+        
+        // จัดการสถานะปุ่มเพิ่ม/ลดบอท
+        const btnAddBot = document.querySelector('button[onclick*="adjustBot(1)"]');
+        const btnRemoveBot = document.querySelector('button[onclick*="adjustBot(-1)"]');
+        
+        if (btnAddBot) {
+            const humanCount = pList.filter(p => !p.isBot).length;
+            const botCount = gameState.botCount || 0;
+            btnAddBot.disabled = (humanCount + botCount >= 6);
+        }
+        if (btnRemoveBot) {
+            btnRemoveBot.disabled = ((gameState.botCount || 0) === 0);
+        }
     } else {
         hostPanel.style.display = 'none';
         startBtn.style.display = 'none';
@@ -509,6 +533,7 @@ window.startAdventureGame = function() {
 // Render Serpentine Board Grid 8x10 with Accessible ARIA Names
 function renderBoardGrid() {
     const grid = document.getElementById('adventure-board');
+    grid.setAttribute('aria-hidden', 'true');
     grid.innerHTML = '';
     const config = gameState.boardConfig || {};
 
@@ -619,7 +644,7 @@ function updateGameUI() {
     // Group all statuses into a single readable object for Screen Readers
     let allStatusText = "สถานะผู้เล่นทั้งหมด: ";
     playersArr.forEach(([pId, p], index) => {
-        allStatusText += `${p.name} อยู่ที่ช่อง ${p.pos} จาก 80 มีกุญแจ ${p.keys} ดอก มีเกราะ ${p.armor} ชิ้น`;
+        allStatusText += `${p.name} ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}`;
         if (index < playersArr.length - 1) allStatusText += ", ";
     });
     
@@ -634,8 +659,8 @@ function updateGameUI() {
         card.setAttribute('aria-hidden', 'true');
         card.innerHTML = `
             <div><strong>${p.animal.icon} ${p.name}</strong></div>
-            <div aria-label="อยู่ที่ช่อง ${p.pos} จาก 80">ช่อง ${p.pos}/80</div>
-            <div aria-label="มีกุญแจ ${p.keys} ดอก มีเกราะ ${p.armor} ชิ้น">🔑 ${p.keys} | 🛡️ ${p.armor}</div>
+            <div>ช่อง ${p.pos}/80</div>
+            <div>🔑 ${p.keys} | 🛡️ ${p.armor}</div>
         `;
         cardsContainer.appendChild(card);
     });
@@ -847,19 +872,19 @@ async function executeTurnAsync(pId, isAuto = false) {
                 await syncActionEmit(`ลาภลอย! ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
                 break;
             } else {
-                let randVal = Math.random() > 0.5 ? (Math.floor(Math.random() * 10) + 3) : -(Math.floor(Math.random() * 5) + 2);
-                let actionDesc = randVal > 0 ? `เดินหน้า ${randVal} ช่อง` : `ถอยหลัง ${Math.abs(randVal)} ช่อง`;
+                let randVal = Math.floor(Math.random() * 10) + 3;
+                let actionDesc = `เดินหน้า ${randVal} ช่อง`;
                 await syncActionEmit(`ลาภลอย! เกิดการวาร์ป ${actionDesc}`);
-                currentPos = Math.max(1, Math.min(79, currentPos + randVal));
+                currentPos = Math.min(79, currentPos + randVal);
                 movedToNewSpace = true;
             }
         } else if (sp.type === 'secret') {
             const secretNames = ["วิญญาณศักดิ์สิทธิ์", "สัตว์เวทย์นำทาง", "ภูตแห่งแสง"];
             const sName = secretNames[Math.floor(Math.random() * secretNames.length)];
-            let randVal = Math.random() > 0.5 ? (Math.floor(Math.random() * 10) + 3) : -(Math.floor(Math.random() * 5) + 2);
-            let actionDesc = randVal > 0 ? `พาเดินหน้า ${randVal} ช่อง` : `พากลับหลัง ${Math.abs(randVal)} ช่อง`;
+            let randVal = Math.floor(Math.random() * 10) + 3;
+            let actionDesc = `พาเดินหน้า ${randVal} ช่อง`;
             await syncActionEmit(`พบเหตุการณ์ลับ: ${sName} ${actionDesc}`);
-            currentPos = Math.max(1, Math.min(79, currentPos + randVal));
+            currentPos = Math.min(79, currentPos + randVal);
             movedToNewSpace = true;
         }
 
@@ -921,6 +946,14 @@ function showModalAsync(title, desc, confirmText, cancelText) {
 
         const btn1 = document.getElementById('btn-modal-action-1');
         const btn2 = document.getElementById('btn-modal-action-2');
+
+        // จัดการลบแอตทริบิวต์เพื่อป้องกันปัญหา VoiceOver อ่านข้อความซ้ำซ้อนบน iOS
+        overlay.removeAttribute('aria-labelledby');
+        overlay.removeAttribute('aria-describedby');
+        btn1.removeAttribute('aria-labelledby');
+        btn1.removeAttribute('aria-describedby');
+        btn2.removeAttribute('aria-labelledby');
+        btn2.removeAttribute('aria-describedby');
 
         btn1.textContent = confirmText;
         btn2.textContent = cancelText;
@@ -1027,7 +1060,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let allStatusText = "สถานะผู้เล่นทั้งหมด: ";
                 const playersArr = Object.values(gameState.players);
                 playersArr.forEach((p, index) => {
-                    allStatusText += `${p.name} อยู่ที่ช่อง ${p.pos} จาก 80 มีกุญแจ ${p.keys} ดอก มีเกราะ ${p.armor} ชิ้น`;
+                    allStatusText += `${p.name} ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}`;
                     if (index < playersArr.length - 1) allStatusText += ", ";
                 });
                 announceSR(allStatusText, 'polite');
