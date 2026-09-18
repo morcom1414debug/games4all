@@ -176,7 +176,6 @@ function switchScreen(screenId, focusHeadingId = null) {
 
 // Name and Navigation
 window.confirmNameAndEnterLobby = function() {
-    playAudio('select.mp3');
     const nameInput = document.getElementById('player-name-input');
     myPlayerName = nameInput.value.trim() || 'ผู้เล่นใหม่';
     switchScreen('screen-lobby', 'lobby-heading');
@@ -189,7 +188,6 @@ window.leaveRoomAndGoHome = function() {
 };
 
 window.toggleManual = function() {
-    playAudio('select.mp3');
     const m = document.getElementById('manual-section');
     if (m.style.display === 'none') {
         m.style.display = 'block';
@@ -388,7 +386,6 @@ window.joinAdventureRoom = function(rId) {
         return roomData;
     }).then((res) => {
         if (res.committed) {
-            playAudio('select.mp3');
             // Client disconnecting turns them into a bot
             onDisconnect(ref(db, `games/Adventure80/rooms/${currentRoomId}/players/${myPlayerId}`)).update({
                 isBot: true,
@@ -875,9 +872,9 @@ async function executeTurnAsync(pId, isAuto = false) {
                 await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
-                await syncActionEmit(`พบหีบสมบัติ เปิดหีบ พบเกราะศักดิ์สิทธิ์ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`, ['akey3.mp3']);
+                await syncActionEmit(`พบหีบสมบัติ เปิดหีบ พบเกราะศักดิ์สิทธิ์ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
             } else {
-                await syncActionEmit(`พบหีบสมบัติ แต่หีบถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`, ['akey2.mp3']);
+                await syncActionEmit(`พบหีบสมบัติ แต่หีบถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
             }
             break; // Event chain ends as player did not change location
         } else if (sp.type === 'key') {
@@ -886,9 +883,9 @@ async function executeTurnAsync(pId, isAuto = false) {
                 await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
-                await syncActionEmit(`พบกล่องลึกลับ เปิดกล่อง พบกุญแจโบราณ ได้รับกุญแจโบราณ 1 ดอก`, ['akey1.mp3']);
+                await syncActionEmit(`พบกล่องลึกลับ เปิดกล่อง พบกุญแจโบราณ ได้รับกุญแจโบราณ 1 ดอก`);
             } else {
-                await syncActionEmit(`พบกล่องลึกลับ แต่กล่องถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`, ['akey2.mp3']);
+                await syncActionEmit(`พบกล่องลึกลับ แต่กล่องถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
             }
             break; // Does not change location
         } else if (sp.type === 'door') {
@@ -959,12 +956,12 @@ async function executeTurnAsync(pId, isAuto = false) {
             if (randEffect === 0) {
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
-                await syncActionEmit(`ลาภลอย! ได้รับกุญแจ 1 ชิ้น`, ['akey1.mp3']);
+                await syncActionEmit(`ลาภลอย! ได้รับกุญแจ 1 ชิ้น`);
                 break;
             } else if (randEffect === 1) {
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
-                await syncActionEmit(`ลาภลอย! ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`, ['akey3.mp3']);
+                await syncActionEmit(`ลาภลอย! ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
                 break;
             } else {
                 let randVal = Math.floor(Math.random() * 10) + 3;
