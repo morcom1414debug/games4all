@@ -42,53 +42,75 @@ let lastAnnouncedTurnKey = null;
 let previousPlayersState = {};
 let myTurnTimer = null;
 
-// Audio Context Web Synthesizer
+// Audio System States
+let bgmSource = null;
+let audioBuffers = {};
+let previousHumanCount = null;
+let previousBotCount = null;
+let isShowingWinnerScene = false;
+
+// Audio Context Web API (Web Audio API)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-function playSynthSound(type) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
+// Auto-resume AudioContext for iOS/Android/Desktop User Interaction Requirement
+const unlockAudio = () => {
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+};
+document.addEventListener('click', unlockAudio, { capture: true });
+document.addEventListener('touchstart', unlockAudio, { capture: true });
+document.addEventListener('keydown', unlockAudio, { capture: true });
 
-    const now = audioCtx.currentTime;
-    if (type === 'roll') {
-        osc.frequency.setValueAtTime(300, now);
-        osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
-        osc.start(now);
-        osc.stop(now + 0.15);
-    } else if (type === 'move') {
-        osc.frequency.setValueAtTime(400, now);
-        osc.frequency.exponentialRampToValueAtTime(600, now + 0.08);
-        gain.gain.setValueAtTime(0.2, now);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
-        osc.start(now);
-        osc.stop(now + 0.08);
-    } else if (type === 'treasure' || type === 'key') {
-        osc.frequency.setValueAtTime(523.25, now);
-        osc.frequency.setValueAtTime(659.25, now + 0.1);
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
-        osc.start(now);
-        osc.stop(now + 0.25);
-    } else if (type === 'bad_event') {
-        osc.frequency.setValueAtTime(200, now);
-        osc.frequency.linearRampToValueAtTime(100, now + 0.3);
-        gain.gain.setValueAtTime(0.4, now);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
-        osc.start(now);
-        osc.stop(now + 0.3);
-    } else if (type === 'win') {
-        osc.frequency.setValueAtTime(523.25, now);
-        osc.frequency.setValueAtTime(659.25, now + 0.15);
-        osc.frequency.setValueAtTime(783.99, now + 0.3);
-        gain.gain.setValueAtTime(0.4, now);
-        gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
-        osc.start(now);
-        osc.stop(now + 0.5);
+async function loadAudio(name) {
+    if (audioBuffers[name]) return audioBuffers[name];
+    try {
+        const response = await fetch(`audio/${name}`);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        audioBuffers[name] = audioBuffer;
+        return audioBuffer;
+    } catch (e) {
+        console.error('Audio load error:', e);
+        return null;
+    }
+}
+
+function playAudio(name, loop = false) {
+    return new Promise(async (resolve) => {
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        const buffer = await loadAudio(name);
+        if (!buffer) {
+            resolve();
+            return;
+        }
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.loop = loop;
+        
+        source.onended = () => resolve(source);
+        source.start(0);
+
+        if (loop && name === 'bgm.mp3') {
+            if (bgmSource) {
+                try { bgmSource.stop(); } catch(e){}
+            }
+            bgmSource = source;
+        }
+    });
+}
+
+async function playAudioSequence(list) {
+    for (const name of list) {
+        await playAudio(name);
+    }
+}
+
+function stopBGM() {
+    if (bgmSource) {
+        try { bgmSource.stop(); } catch(e){}
+        bgmSource = null;
     }
 }
 
@@ -289,6 +311,8 @@ function generateBoardConfiguration() {
 window.createAdventureRoom = function() {
     if (!myPlayerName) myPlayerName = 'ผู้เล่น 1';
 
+    playAudio('1.mp3');
+
     const counterRef = ref(db, 'games/Adventure80/room_counter');
     runTransaction(counterRef, (cur) => (cur || 0) + 1).then((res) => {
         if (res.committed) {
@@ -430,6 +454,22 @@ function setupRoomListener() {
             return;
         }
 
+        // Check for client joined or bot changed for select.mp3
+        if (gameState.status === 'waiting' && gameState.players) {
+            let currentHumanCount = Object.values(gameState.players).filter(p => !p.isBot).length;
+            let currentBotCount = gameState.botCount || 0;
+
+            if (previousHumanCount !== null && currentHumanCount > previousHumanCount) {
+                playAudio('select.mp3');
+            }
+            if (previousBotCount !== null && currentBotCount !== previousBotCount) {
+                playAudio('select.mp3');
+            }
+
+            previousHumanCount = currentHumanCount;
+            previousBotCount = currentBotCount;
+        }
+
         // Check for disconnected players converting to bots
         if (gameState.players) {
             for (const pId in gameState.players) {
@@ -442,10 +482,13 @@ function setupRoomListener() {
 
         updateLobbyUI();
 
-        // Synced Actions Announcements Listener
+        // Synced Actions Announcements Listener & Audio sync
         if (gameState.lastAction && gameState.lastAction.ts > localLastActionTs) {
             localLastActionTs = gameState.lastAction.ts;
             announceSR(gameState.lastAction.msg, 'polite');
+            if (gameState.lastAction.audioKeys && gameState.lastAction.audioKeys.length > 0) {
+                playAudioSequence(gameState.lastAction.audioKeys);
+            }
         }
 
         if (gameState.status === 'playing') {
@@ -455,22 +498,59 @@ function setupRoomListener() {
                 updateGameUI();
             }
         } else if (gameState.status === 'ended') {
-            showResultScreen();
+            if (!isShowingWinnerScene && !document.getElementById('screen-result').classList.contains('active-screen')) {
+                showWinnerAnimationAndResult();
+            }
         }
     });
 }
 
 function showStartGameAnimation() {
+    stopBGM();
     const overlay = document.getElementById('anim-start-overlay');
     overlay.style.display = 'flex';
     announceSR('การผจญภัยเริ่มต้นขึ้นแล้ว เตรียมตัวให้พร้อม!', 'assertive');
     
+    playAudio('start.mp3').then(() => {
+        // Wait 0.2s before playing BGM as requested
+        setTimeout(() => {
+            playAudio('bgm.mp3', true);
+        }, 200);
+    });
+
+    // Start Animation lasts 4.89s (aligned with start.mp3 length)
     setTimeout(() => {
         overlay.style.display = 'none';
         switchScreen('screen-game', 'game-status-bar');
         renderBoardGrid();
         updateGameUI();
-    }, 2500);
+    }, 4890);
+}
+
+function showWinnerAnimationAndResult() {
+    isShowingWinnerScene = true;
+    stopBGM();
+
+    const overlay = document.getElementById('anim-winner-overlay');
+    const winnerId = gameState.winnerId;
+    const winner = gameState.players[winnerId];
+
+    document.getElementById('winner-anim-character').textContent = winner.animal.icon;
+    document.getElementById('winner-anim-name').textContent = winner.name;
+    
+    overlay.style.display = 'flex';
+    overlay.classList.add('active-winner-anim');
+
+    setTimeout(() => {
+        playAudio('win.mp3');
+    }, 100);
+
+    // After 5s animation finishes, transition to Result screen
+    setTimeout(() => {
+        overlay.classList.remove('active-winner-anim');
+        overlay.style.display = 'none';
+        showResultScreen();
+    }, 5000);
 }
 
 // Update Lobby Interface
@@ -634,6 +714,13 @@ function updateGameUI() {
             const turnMsg = `ถึงเทิร์นของ ${currentTurnPlayer.name}`;
             announceSR(turnMsg);
             
+            // Audio System: Sync Turn & ABC Rule
+            playAudio('turn.mp3').then(() => {
+                if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot) {
+                    playAudio('abc.mp3');
+                }
+            });
+            
             // Focus the roll button when it is the local player's turn, after announcement
             if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot && !rollBtn.disabled) {
                 const duration = Math.max(1500, turnMsg.length * 50) + 200;
@@ -693,10 +780,10 @@ function updateGameUI() {
 }
 
 // Emits an action and pauses briefly so all clients process audio sequentially
-async function syncActionEmit(msg) {
+async function syncActionEmit(msg, audioKeys = []) {
     const ts = Date.now() + Math.random();
-    await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/lastAction`]: { msg, ts } });
-    await delayAsync(2200); // Wait long enough for Screen Readers to speak out the sequence
+    await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/lastAction`]: { msg, ts, audioKeys } });
+    await delayAsync(2200); // Wait long enough for Screen Readers and Web Audio to play the sequence
 }
 
 async function syncStateDB(pId, updatesObj) {
@@ -715,7 +802,6 @@ window.handleRollDice = function(isAuto = false) {
         myTurnTimer = null;
     }
     update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/turnExecuting`]: true });
-    playSynthSound('roll');
     executeTurnAsync(myPlayerId, isAuto);
 };
 
@@ -726,14 +812,13 @@ async function executeTurnAsync(pId, isAuto = false) {
     const diceRoll = Math.floor(Math.random() * 6) + 1;
     document.getElementById('dice-visual').textContent = diceRoll;
     
-    await syncActionEmit(`${pData.name} ทอยลูกเต๋าได้ ${diceRoll}`);
+    await syncActionEmit(`${pData.name} ทอยลูกเต๋าได้ ${diceRoll}`, ['dice.mp3']);
     
     let currentPos = pData.pos;
     let targetPos = currentPos + diceRoll;
     if (targetPos > 80) targetPos = 80 - (targetPos - 80); // Bounce back rule
 
-    playSynthSound('move');
-    await syncActionEmit(`${pData.name} เดินจากช่อง ${currentPos} ไปยังช่อง ${targetPos}`);
+    await syncActionEmit(`${pData.name} เดินจากช่อง ${currentPos} ไปยังช่อง ${targetPos}`, ['walk.mp3']);
     
     currentPos = targetPos;
     await syncStateDB(pId, { pos: currentPos });
@@ -756,19 +841,20 @@ async function executeTurnAsync(pId, isAuto = false) {
         }
 
         let typeNameTH = 'พิเศษ';
-        if (sp.type === 'rest') typeNameTH = 'จุดพักผ่อน';
-        else if (sp.type === 'treasure') typeNameTH = 'หีบสมบัติ';
-        else if (sp.type === 'forward') typeNameTH = 'วาร์ป';
-        else if (sp.type === 'trap') typeNameTH = 'หลุมพราง';
-        else if (sp.type === 'water') typeNameTH = 'น้ำเชี่ยว';
-        else if (sp.type === 'ghost') typeNameTH = 'ผีหลอก';
-        else if (sp.type === 'warp') typeNameTH = 'ไซโคลน';
-        else if (sp.type === 'key') typeNameTH = 'กล่องลึกลับ';
-        else if (sp.type === 'door') typeNameTH = 'ประตูทางลัด';
-        else if (sp.type === 'bonus') typeNameTH = 'ลาภลอย';
-        else if (sp.type === 'secret') typeNameTH = 'เหตุการณ์ลับ';
+        let landingAudio = null;
+        if (sp.type === 'rest') { typeNameTH = 'จุดพักผ่อน'; landingAudio = 'sabuy.mp3'; }
+        else if (sp.type === 'treasure') { typeNameTH = 'หีบสมบัติ'; landingAudio = 'box1.mp3'; }
+        else if (sp.type === 'forward') { typeNameTH = 'วาร์ป'; landingAudio = 'forward.mp3'; }
+        else if (sp.type === 'trap') { typeNameTH = 'หลุมพราง'; landingAudio = 'hole.mp3'; }
+        else if (sp.type === 'water') { typeNameTH = 'น้ำเชี่ยว'; landingAudio = 'water.mp3'; }
+        else if (sp.type === 'ghost') { typeNameTH = 'ผีหลอก'; landingAudio = 'ghost.mp3'; }
+        else if (sp.type === 'warp') { typeNameTH = 'ไซโคลน'; landingAudio = 'cyclone.mp3'; }
+        else if (sp.type === 'key') { typeNameTH = 'กล่องลึกลับ'; landingAudio = 'box2.mp3'; }
+        else if (sp.type === 'door') { typeNameTH = 'ประตูทางลัด'; landingAudio = 'door1.mp3'; }
+        else if (sp.type === 'bonus') { typeNameTH = 'ลาภลอย'; landingAudio = 'box4.mp3'; }
+        else if (sp.type === 'secret') { typeNameTH = 'เหตุการณ์ลับ'; landingAudio = 'box3.mp3'; }
 
-        await syncActionEmit(`${pData.name}ตกช่อง ${currentPos} เป็นช่อง${typeNameTH}`);
+        await syncActionEmit(`${pData.name}ตกช่อง ${currentPos} เป็นช่อง${typeNameTH}`, landingAudio ? [landingAudio] : []);
 
         // Handle Effect
         if (sp.type === 'rest') {
@@ -786,7 +872,6 @@ async function executeTurnAsync(pId, isAuto = false) {
                 await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
-                playSynthSound('treasure');
                 await syncActionEmit(`พบหีบสมบัติ เปิดหีบ พบเกราะศักดิ์สิทธิ์ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
             } else {
                 await syncActionEmit(`พบหีบสมบัติ แต่หีบถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
@@ -798,7 +883,6 @@ async function executeTurnAsync(pId, isAuto = false) {
                 await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
-                playSynthSound('key');
                 await syncActionEmit(`พบกล่องลึกลับ เปิดกล่อง พบกุญแจโบราณ ได้รับกุญแจโบราณ 1 ดอก`);
             } else {
                 await syncActionEmit(`พบกล่องลึกลับ แต่กล่องถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`);
@@ -815,11 +899,11 @@ async function executeTurnAsync(pId, isAuto = false) {
                 if (useKey) {
                     pData.keys--;
                     await syncStateDB(pId, { keys: pData.keys });
-                    await syncActionEmit(`ใช้กุญแจเปิด${dName}สำเร็จ วาร์ปไปยังช่อง ${sp.dest}`);
+                    await syncActionEmit(`ใช้กุญแจเปิด${dName}สำเร็จ วาร์ปไปยังช่อง ${sp.dest}`, ['door2.mp3', 'walk.mp3']);
                     currentPos = sp.dest;
                     movedToNewSpace = true;
                 } else {
-                    await syncActionEmit(`เลือกที่จะไม่ใช้กุญแจ ประตูยังคงปิดอยู่`);
+                    await syncActionEmit(`เลือกที่จะไม่ใช้กุญแจ ประตูยังคงปิดอยู่`, ['shieldno.mp3']);
                     break;
                 }
             } else {
@@ -842,21 +926,19 @@ async function executeTurnAsync(pId, isAuto = false) {
                 if (useArmor) {
                     pData.armor--;
                     await syncStateDB(pId, { armor: pData.armor });
-                    await syncActionEmit(`ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ ปลอดภัยแล้ว!`);
+                    await syncActionEmit(`ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ ปลอดภัยแล้ว!`, ['shield.mp3']);
                     break;
                 } else {
-                    playSynthSound('bad_event');
-                    await syncActionEmit(`รับผลร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`);
+                    await syncActionEmit(`เลือกไม่ใช้เกราะศักดิ์สิทธิ์ รับผลร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`, ['shieldno.mp3', 'walk.mp3']);
                     currentPos = Math.max(1, currentPos + randVal);
                     movedToNewSpace = true;
                 }
             } else if (isBad) {
-                playSynthSound('bad_event');
-                await syncActionEmit(`เกิดเหตุการณ์ร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`);
+                await syncActionEmit(`เกิดเหตุการณ์ร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`, ['walk.mp3']);
                 currentPos = Math.max(1, currentPos + randVal);
                 movedToNewSpace = true;
             } else {
-                await syncActionEmit(`โชคดี เดินหน้าเพิ่ม ${randVal} ช่อง`);
+                await syncActionEmit(`โชคดี เดินหน้าเพิ่ม ${randVal} ช่อง`, ['forward.mp3', 'walk.mp3']);
                 let targetPos = currentPos + randVal;
                 if (targetPos > 80) targetPos = 80 - (targetPos - 80);
                 currentPos = targetPos;
@@ -864,7 +946,7 @@ async function executeTurnAsync(pId, isAuto = false) {
             }
         } else if (sp.type === 'forward') {
             let randVal = Math.floor(Math.random() * 10) + 3;
-            await syncActionEmit(`พลังพิเศษ เดินหน้า ${randVal} ช่อง`);
+            await syncActionEmit(`พลังพิเศษ เดินหน้า ${randVal} ช่อง`, ['forward.mp3', 'walk.mp3']);
             let targetPos = currentPos + randVal;
             if (targetPos > 80) targetPos = 80 - (targetPos - 80);
             currentPos = targetPos;
@@ -874,19 +956,17 @@ async function executeTurnAsync(pId, isAuto = false) {
             if (randEffect === 0) {
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
-                playSynthSound('key');
                 await syncActionEmit(`ลาภลอย! ได้รับกุญแจ 1 ชิ้น`);
                 break;
             } else if (randEffect === 1) {
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
-                playSynthSound('treasure');
                 await syncActionEmit(`ลาภลอย! ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`);
                 break;
             } else {
                 let randVal = Math.floor(Math.random() * 10) + 3;
                 let actionDesc = `เดินหน้า ${randVal} ช่อง`;
-                await syncActionEmit(`ลาภลอย! เกิดการวาร์ป ${actionDesc}`);
+                await syncActionEmit(`ลาภลอย! เกิดการวาร์ป ${actionDesc}`, ['forward.mp3', 'walk.mp3']);
                 let targetPos = currentPos + randVal;
                 if (targetPos > 80) targetPos = 80 - (targetPos - 80);
                 currentPos = targetPos;
@@ -897,7 +977,7 @@ async function executeTurnAsync(pId, isAuto = false) {
             const sName = secretNames[Math.floor(Math.random() * secretNames.length)];
             let randVal = Math.floor(Math.random() * 10) + 3;
             let actionDesc = `พาเดินหน้า ${randVal} ช่อง`;
-            await syncActionEmit(`พบเหตุการณ์ลับ: ${sName} ${actionDesc}`);
+            await syncActionEmit(`พบเหตุการณ์ลับ: ${sName} ${actionDesc}`, ['forward.mp3', 'walk.mp3']);
             let targetPos = currentPos + randVal;
             if (targetPos > 80) targetPos = 80 - (targetPos - 80);
             currentPos = targetPos;
@@ -911,6 +991,10 @@ async function executeTurnAsync(pId, isAuto = false) {
             if (currentPos === 80) {
                 await handleWinGame(pId);
                 return;
+            }
+
+            if (currentPos === 1) {
+                await syncActionEmit(`กลับมายังจุดเริ่มต้น`, ['sabuy.mp3']);
             }
 
             if (visited.has(currentPos)) {
@@ -945,7 +1029,6 @@ async function executeTurnAsync(pId, isAuto = false) {
 
 // End Game Process
 async function handleWinGame(pId) {
-    playSynthSound('win');
     await update(ref(db), { 
         [`games/Adventure80/rooms/${currentRoomId}/status`]: 'ended',
         [`games/Adventure80/rooms/${currentRoomId}/winnerId`]: pId,
@@ -1023,11 +1106,15 @@ window.leaveRoom = function() {
             });
         }
     }
+    stopBGM();
     myPlayerId = null;
     currentRoomId = null;
     isHost = false;
     gameState = null;
     lastAnnouncedTurnKey = null;
+    isShowingWinnerScene = false;
+    previousHumanCount = null;
+    previousBotCount = null;
     if (myTurnTimer) {
         clearTimeout(myTurnTimer);
         myTurnTimer = null;
