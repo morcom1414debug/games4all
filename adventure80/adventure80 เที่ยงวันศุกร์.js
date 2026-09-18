@@ -110,7 +110,6 @@ function processSpeechQueue() {
             // ให้ระยะเวลาการพูดตามความยาวของข้อความคร่าวๆ (อย่างน้อย 1500ms ป้องกันการทับกัน)
             const duration = Math.max(1500, item.text.length * 50);
             setTimeout(() => {
-                targetEl.textContent = '';
                 isSpeaking = false;
                 processSpeechQueue();
             }, duration);
