@@ -492,12 +492,6 @@ function setupRoomListener() {
             if (gameState.lastAction.audioKeys && gameState.lastAction.audioKeys.length > 0) {
                 playAudioSequence(gameState.lastAction.audioKeys);
             }
-            
-            // --- VISUAL LAYER: Trigger Event Effect ---
-            const currentTurnKey = gameState.playerOrder ? gameState.playerOrder[gameState.turnIndex] : null;
-            const pData = (currentTurnKey && gameState.players) ? gameState.players[currentTurnKey] : null;
-            VisualController.triggerFromMessage(gameState.lastAction.msg, pData);
-            // ------------------------------------------
         }
 
         if (gameState.status === 'playing') {
@@ -519,10 +513,6 @@ function showStartGameAnimation() {
     const overlay = document.getElementById('anim-start-overlay');
     overlay.style.display = 'flex';
     announceSR('การผจญภัยเริ่มต้นขึ้นแล้ว เตรียมตัวให้พร้อม!', 'assertive');
-    
-    // --- VISUAL LAYER: START EFFECTS ---
-    VisualController.playStartEffects(overlay);
-    // -----------------------------------
     
     playAudio('start.mp3').then(() => {
         // Wait 0.2s before playing BGM as requested
@@ -553,10 +543,6 @@ function showWinnerAnimationAndResult() {
     
     overlay.style.display = 'flex';
     overlay.classList.add('active-winner-anim');
-
-    // --- VISUAL LAYER: WINNER EFFECTS ---
-    VisualController.playWinnerEffects(overlay);
-    // ------------------------------------
 
     setTimeout(() => {
         playAudio('win.mp3');
@@ -787,12 +773,6 @@ function updateGameUI() {
             holder.appendChild(token);
         }
     });
-
-    // --- VISUAL LAYER: HIGHLIGHT CURRENT PLAYER ---
-    if (gameState.status === 'playing' && currentTurnPlayer) {
-        VisualController.highlightCurrentPlayer(currentTurnKey, currentTurnPlayer, currentTurnPlayer.pos);
-    }
-    // ----------------------------------------------
 
     // Host Bot Turn Engine
     if (isHost && currentTurnPlayer.isBot && gameState.status === 'playing' && !gameState.turnExecuting) {
@@ -1115,12 +1095,6 @@ function showResultScreen() {
     sorted.forEach((p) => {
         rankingsBox.innerHTML += `<p>${p.name} ช่อง ${p.pos}</p>`;
     });
-    
-    // --- VISUAL LAYER: RESULT EFFECTS ---
-    setTimeout(() => {
-        VisualController.playResultEffects(document.getElementById('screen-result'));
-    }, 100);
-    // ------------------------------------
 }
 
 // Leave Room / Return to Main Menu
@@ -1157,243 +1131,9 @@ window.returnToLobbyOrMain = function() {
     switchScreen('screen-lobby', 'lobby-heading');
 };
 
-// ==================================================
-// PURE VISUAL CONTROLLER LAYER
-// โดยไม่แตะต้อง Accessibility (ARIA) และ Game Logic เดิม
-// ==================================================
-const VisualController = {
-    isReducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-
-    init: function() {
-        if (document.getElementById('vc-styles')) return;
-        const style = document.createElement('style');
-        style.id = 'vc-styles';
-        style.innerHTML = `
-            .visual-effect {
-                animation-fill-mode: forwards;
-                pointer-events: none;
-            }
-            .effect-walk { animation: vc-fadeUp 1s ease-out; }
-            .effect-forward { color: #0f0; animation: vc-slideRight 1.5s ease-out; }
-            .effect-backward { color: #f00; animation: vc-slideLeft 1.5s ease-out; }
-            .effect-water { animation: vc-wave 2s ease-in-out; }
-            .effect-cyclone { animation: vc-spin 2s linear; }
-            .effect-trap { animation: vc-drop 2s ease-in; }
-            .effect-ghost { animation: vc-float 2s ease-in-out; text-shadow: 0 0 10px purple; }
-            .effect-warp { animation: vc-pulse 2s ease-in-out; }
-            .effect-secret { animation: vc-sparkle 2s ease-in-out; }
-            .effect-bonus { animation: vc-scaleUp 2s ease-out; }
-            .effect-dust { opacity: 0.5; animation: vc-fadeRight 1.5s ease-out; }
-            .effect-armor-fly { animation: vc-flyUp 2s ease-out; text-shadow: 0 0 15px gold; }
-            .effect-key-fly { animation: vc-flyUp 2s ease-out; text-shadow: 0 0 15px gold; }
-            .effect-door-open { animation: vc-flash 2s ease-in-out; }
-            .effect-door-closed { animation: vc-shake 1.5s ease-in-out; }
-            .effect-rest { animation: vc-glow 2.5s ease-in-out; }
-            .effect-holy-shield { animation: vc-shield 2s ease-out; font-size: 3rem; }
-            
-            .visual-dice-anim { animation: vc-diceRoll 0.8s ease-in-out; display: inline-block; }
-            .visual-active-pawn { 
-                box-shadow: 0 0 15px 5px rgba(255, 215, 0, 0.8) !important; 
-                border-radius: 50%; 
-                transform: scale(1.1); 
-                transition: all 0.3s; 
-            }
-            .visual-bounce { animation: vc-bounce 0.5s ease-out; }
-            .visual-scale { animation: vc-scaleUp 1s ease-in-out; }
-            .visual-rotate { animation: vc-spin 1s linear; }
-            .visual-drop { animation: vc-drop 1s ease-in; }
-            .visual-shake { animation: vc-shake 1s ease-in-out; }
-            
-            .visual-confetti {
-                position: absolute; top: -10px; width: 10px; height: 10px; background: gold;
-                animation: vc-fall 3s linear infinite; pointer-events: none; z-index: 2000;
-            }
-            .effect-trophy-huge { font-size: 6rem; position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); animation: vc-scaleUpBounce 2s ease-out; }
-            .effect-sparkle { font-size: 4rem; position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); animation: vc-spin 4s linear infinite; }
-            .effect-fireworks { font-size: 5rem; position: absolute; left: 50%; top: 20%; transform: translateX(-50%); animation: vc-flash 2s infinite; }
-            .visual-stagger-in { opacity: 0; animation: vc-fadeUp 0.5s forwards; }
-            
-            @keyframes vc-fadeUp { 0% { opacity: 0; transform: translateY(20px); } 100% { opacity: 1; transform: translateY(0); } }
-            @keyframes vc-slideRight { 0% { opacity: 0; transform: translateX(-20px); } 100% { opacity: 1; transform: translateX(20px); } }
-            @keyframes vc-slideLeft { 0% { opacity: 0; transform: translateX(20px); } 100% { opacity: 1; transform: translateX(-20px); } }
-            @keyframes vc-fadeRight { 0% { opacity: 0; transform: translateX(0); } 100% { opacity: 0; transform: translateX(20px); } }
-            @keyframes vc-wave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px) scale(1.2); } }
-            @keyframes vc-spin { 100% { transform: rotate(360deg); } }
-            @keyframes vc-drop { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.1) translateY(50px); opacity: 0; } }
-            @keyframes vc-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-            @keyframes vc-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.7; } }
-            @keyframes vc-sparkle { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.3); } }
-            @keyframes vc-scaleUp { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1.2); opacity: 1; } }
-            @keyframes vc-flyUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(-30px); opacity: 1; } }
-            @keyframes vc-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
-            @keyframes vc-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
-            @keyframes vc-glow { 0%, 100% { text-shadow: 0 0 5px orange; } 50% { text-shadow: 0 0 20px red; } }
-            @keyframes vc-shield { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.5); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
-            @keyframes vc-diceRoll { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(180deg) scale(1.2); } 100% { transform: rotate(360deg) scale(1); } }
-            @keyframes vc-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
-            @keyframes vc-scaleUpBounce { 0% { transform: translate(-50%, -50%) scale(0); } 80% { transform: translate(-50%, -50%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); } }
-            @keyframes vc-fall { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(200px) rotate(360deg); opacity: 0; } }
-        `;
-        document.head.appendChild(style);
-    },
-
-    createEffect: function(container, content, className, duration) {
-        if (this.isReducedMotion()) return;
-        const wrapper = document.createElement('div');
-        wrapper.setAttribute('aria-hidden', 'true'); // ACCESSIBILITY: New DOM purely visual
-        wrapper.style.position = 'absolute';
-        wrapper.style.left = '50%';
-        wrapper.style.top = '50%';
-        wrapper.style.pointerEvents = 'none';
-        wrapper.style.zIndex = '1000';
-        
-        const el = document.createElement('div');
-        el.className = 'visual-effect ' + className;
-        el.innerHTML = content;
-        wrapper.style.marginLeft = '-1rem';
-        wrapper.style.marginTop = '-1rem';
-        wrapper.style.width = '2rem';
-        wrapper.style.height = '2rem';
-        wrapper.style.display = 'flex';
-        wrapper.style.alignItems = 'center';
-        wrapper.style.justifyContent = 'center';
-        wrapper.style.fontSize = '2rem';
-
-        wrapper.appendChild(el);
-
-        if (container) container.appendChild(wrapper);
-        if (duration) setTimeout(() => { if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper); }, duration);
-        return wrapper;
-    },
-
-    animateDice: function() {
-        if (this.isReducedMotion()) return;
-        const diceEl = document.getElementById('dice-visual');
-        if (diceEl) {
-            diceEl.classList.remove('visual-dice-anim');
-            void diceEl.offsetWidth; // trigger reflow
-            diceEl.classList.add('visual-dice-anim');
-            setTimeout(() => diceEl.classList.remove('visual-dice-anim'), 800);
-        }
-    },
-
-    highlightCurrentPlayer: function(pId, pData, currentPos) {
-        document.querySelectorAll('.pawn-token').forEach(p => p.classList.remove('visual-active-pawn'));
-        const holder = document.getElementById(`pawns-holder-${currentPos}`);
-        if (holder) {
-            const pawns = holder.querySelectorAll('.pawn-token');
-            pawns.forEach(pawn => {
-                if (pawn.textContent.includes(pData.name)) {
-                    pawn.classList.add('visual-active-pawn');
-                }
-            });
-        }
-    },
-
-    triggerFromMessage: function(msg, pData) {
-        if (this.isReducedMotion()) return;
-        
-        let targetPos = pData ? pData.pos : 1;
-        const match = msg.match(/ช่อง\s*(\d+)/);
-        if (match) targetPos = parseInt(match[1]);
-
-        const cell = document.getElementById(`cell-${targetPos}`);
-        if (!cell) return;
-        
-        let activePawn = null;
-        const pawnHolder = document.getElementById(`pawns-holder-${targetPos}`);
-        if (pawnHolder && pData) {
-            Array.from(pawnHolder.querySelectorAll('.pawn-token')).forEach(p => {
-                if (p.textContent.includes(pData.name)) activePawn = p;
-            });
-        }
-
-        // Event Matching Visuals
-        if (msg.includes('ทอยลูกเต๋าได้')) {
-            this.animateDice();
-        } else if (msg.includes('เดินจากช่อง') || msg.includes('ถอยหลัง') || msg.includes('เดินหน้า') || msg.includes('กลับมายังจุดเริ่มต้น')) {
-            if (msg.includes('ถอยหลัง')) {
-                this.createEffect(cell, '⬅️', 'effect-backward', 1500);
-            } else if (msg.includes('เดินหน้า') || msg.includes('พลังพิเศษ') || msg.includes('พาเดินหน้า')) {
-                this.createEffect(cell, '➡️', 'effect-forward', 1500);
-            } else {
-                this.createEffect(cell, '👣', 'effect-walk', 1000);
-            }
-            if (activePawn) {
-                activePawn.classList.add('visual-bounce');
-                setTimeout(() => activePawn.classList.remove('visual-bounce'), 500);
-            }
-        } else if (msg.includes('น้ำเชี่ยว')) {
-            this.createEffect(cell, '🌊', 'effect-water', 2000);
-            if (activePawn) { activePawn.classList.add('visual-scale'); setTimeout(() => activePawn.classList.remove('visual-scale'), 1000); }
-        } else if (msg.includes('ไซโคลน')) {
-            this.createEffect(cell, '🌪️', 'effect-cyclone', 2000);
-            if (activePawn) { activePawn.classList.add('visual-rotate'); setTimeout(() => activePawn.classList.remove('visual-rotate'), 1000); }
-        } else if (msg.includes('หลุมพราง') || msg.includes('เหตุการณ์ร้าย')) {
-            this.createEffect(cell, '🕳️', 'effect-trap', 2000);
-            if (activePawn) { activePawn.classList.add('visual-drop'); setTimeout(() => activePawn.classList.remove('visual-drop'), 1000); }
-        } else if (msg.includes('ผีหลอก')) {
-            this.createEffect(cell, '👻', 'effect-ghost', 2000);
-            if (activePawn) { activePawn.classList.add('visual-shake'); setTimeout(() => activePawn.classList.remove('visual-shake'), 1000); }
-        } else if (msg.includes('วาร์ปไปยังช่อง')) {
-            this.createEffect(cell, '🌀', 'effect-warp', 2000);
-        } else if (msg.includes('เหตุการณ์ลับ')) {
-            this.createEffect(cell, '✨', 'effect-secret', 2000);
-        } else if (msg.includes('ลาภลอย')) {
-            this.createEffect(cell, '✨✨✨', 'effect-bonus', 2000);
-        } else if (msg.includes('หีบสมบัติ')) {
-            if (msg.includes('เหลือเพียงเศษฝุ่น')) this.createEffect(cell, '💨', 'effect-dust', 1500);
-            else this.createEffect(cell, '🛡️✨', 'effect-armor-fly', 2000);
-        } else if (msg.includes('กล่องลึกลับ')) {
-             if (msg.includes('เหลือเพียงเศษฝุ่น')) this.createEffect(cell, '💨', 'effect-dust', 1500);
-             else this.createEffect(cell, '🔑✨', 'effect-key-fly', 2000);
-        } else if (msg.includes('ประตู')) {
-            if (msg.includes('ใช้กุญแจเปิด')) this.createEffect(cell, '🔑✨🚪', 'effect-door-open', 2000);
-            else if (msg.includes('ไม่มีกุญแจ') || msg.includes('ประตูยังคงปิด')) this.createEffect(cell, '🚪❌', 'effect-door-closed', 1500);
-        } else if (msg.includes('จุดพักผ่อน')) {
-            this.createEffect(cell, '🔥', 'effect-rest', 2500);
-        } else if (msg.includes('ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ')) {
-            this.createEffect(cell, '🛡️✨', 'effect-holy-shield', 2000);
-        }
-    },
-
-    playWinnerEffects: function(container) {
-        if (this.isReducedMotion()) return;
-        this.createEffect(container, '🏆', 'effect-trophy-huge', 5000);
-        this.createEffect(container, '✨', 'effect-sparkle', 5000);
-        for(let i=0; i<30; i++) {
-            const conf = document.createElement('div');
-            conf.className = 'visual-confetti';
-            conf.setAttribute('aria-hidden', 'true');
-            conf.style.left = (Math.random() * 100) + '%';
-            conf.style.animationDelay = (Math.random() * 2) + 's';
-            conf.style.background = ['gold', 'red', 'blue', 'green', 'purple'][Math.floor(Math.random()*5)];
-            container.appendChild(conf);
-            setTimeout(() => { if (conf.parentNode) conf.parentNode.removeChild(conf); }, 5000);
-        }
-    },
-    
-    playResultEffects: function(container) {
-        if (this.isReducedMotion()) return;
-        this.createEffect(container, '🎇', 'effect-fireworks', 4000);
-        const cards = container.querySelectorAll('p');
-        cards.forEach((c, idx) => {
-            c.classList.add('visual-stagger-in');
-            c.style.animationDelay = (idx * 0.2) + 's';
-        });
-    },
-    
-    playStartEffects: function(container) {
-        if (this.isReducedMotion()) return;
-        this.createEffect(container, '🏕️', 'effect-trophy-huge', 4000);
-        this.createEffect(container, '✨', 'effect-sparkle', 4000);
-    }
-};
-
 // Initialize Application on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
     initRoomListListener();
-    VisualController.init(); // Initialize Visual Layer
 
     const nameInput = document.getElementById('player-name-input');
     const confirmBtn = document.getElementById('btn-confirm-name');
