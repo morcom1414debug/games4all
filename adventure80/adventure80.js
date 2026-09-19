@@ -492,6 +492,11 @@ function setupRoomListener() {
             if (gameState.lastAction.audioKeys && gameState.lastAction.audioKeys.length > 0) {
                 playAudioSequence(gameState.lastAction.audioKeys);
             }
+            // --- VISUAL CONTROLLER HOOK ---
+            if (window.adventureVisuals) {
+                window.adventureVisuals.handleEvent(gameState.lastAction.msg, gameState);
+            }
+            // ------------------------------
         }
 
         if (gameState.status === 'playing') {
@@ -513,6 +518,12 @@ function showStartGameAnimation() {
     const overlay = document.getElementById('anim-start-overlay');
     overlay.style.display = 'flex';
     announceSR('การผจญภัยเริ่มต้นขึ้นแล้ว เตรียมตัวให้พร้อม!', 'assertive');
+    
+    // --- VISUAL CONTROLLER HOOK ---
+    if (window.adventureVisuals) {
+        window.adventureVisuals.playStartEvent(overlay);
+    }
+    // ------------------------------
     
     playAudio('start.mp3').then(() => {
         // Wait 0.2s before playing BGM as requested
@@ -547,6 +558,12 @@ function showWinnerAnimationAndResult() {
     setTimeout(() => {
         playAudio('win.mp3');
     }, 100);
+
+    // --- VISUAL CONTROLLER HOOK ---
+    if (window.adventureVisuals) {
+        window.adventureVisuals.playWinEvent(overlay, winner);
+    }
+    // ------------------------------
 
     // After 5s animation finishes, transition to Result screen
     setTimeout(() => {
@@ -770,9 +787,16 @@ function updateGameUI() {
             const token = document.createElement('div');
             token.className = 'pawn-token';
             token.innerHTML = `<span class="pawn-name-tag">${p.name}</span>${p.animal.icon}`;
+            token.setAttribute('data-pid', pId); // Added for Visual Controller
             holder.appendChild(token);
         }
     });
+
+    // --- VISUAL CONTROLLER HOOK ---
+    if (window.adventureVisuals) {
+        window.adventureVisuals.refreshPlayerGlow(currentTurnKey);
+    }
+    // ------------------------------
 
     // Host Bot Turn Engine
     if (isHost && currentTurnPlayer.isBot && gameState.status === 'playing' && !gameState.turnExecuting) {
@@ -1092,9 +1116,17 @@ function showResultScreen() {
     rankingsBox.innerHTML = '<h3>อันดับการเดินทาง:</h3>';
 
     const sorted = Object.values(gameState.players).sort((a, b) => b.pos - a.pos);
-    sorted.forEach((p) => {
-        rankingsBox.innerHTML += `<p>${p.name} ช่อง ${p.pos}</p>`;
-    });
+    
+    // --- VISUAL CONTROLLER HOOK ---
+    if (window.adventureVisuals) {
+        window.adventureVisuals.playResultScreenAnim(rankingsBox, sorted);
+    } else {
+        // Fallback to basic text if visual controller fails
+        sorted.forEach((p) => {
+            rankingsBox.innerHTML += `<p>${p.name} ช่อง ${p.pos}</p>`;
+        });
+    }
+    // ------------------------------
 }
 
 // Leave Room / Return to Main Menu
@@ -1131,8 +1163,235 @@ window.returnToLobbyOrMain = function() {
     switchScreen('screen-lobby', 'lobby-heading');
 };
 
-// Initialize Application on DOM Ready
+// ==========================================
+// VISUAL CONTROLLER LAYER (Non-Intrusive)
+// ==========================================
+class AdventureVisualController {
+    constructor() {
+        this.isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.activeOverlays = [];
+        this.injectStyles();
+        this.initBackground();
+    }
+
+    injectStyles() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .vc-overlay-layer { position: absolute; pointer-events: none; z-index: 9999; }
+            .vc-dice-anim { animation: vc-spin-bounce 0.6s ease-out; display: inline-block; }
+            .vc-cell-glow-dest { box-shadow: inset 0 0 15px #4ade80, 0 0 20px #4ade80 !important; transition: all 0.3s; z-index: 10; border-radius: 12px; }
+            .vc-current-player { filter: drop-shadow(0 0 8px #fbbf24); animation: vc-pulse 1.5s infinite alternate; }
+            
+            /* Reduced Motion specific adjustments */
+            @media (prefers-reduced-motion: reduce) {
+                .vc-dice-anim { animation: none; transform: scale(1.1); }
+                .vc-current-player { animation: none; filter: drop-shadow(0 0 4px #fbbf24); }
+                .vc-anim-float { animation: none !important; }
+            }
+
+            @keyframes vc-spin-bounce {
+                0% { transform: scale(0.5) rotate(0deg); opacity: 0.5; }
+                50% { transform: scale(1.5) rotate(180deg); }
+                100% { transform: scale(1) rotate(360deg); opacity: 1; }
+            }
+            @keyframes vc-pulse {
+                0% { transform: scale(1); }
+                100% { transform: scale(1.15); }
+            }
+            @keyframes vc-shake {
+                0%, 100% { transform: translateX(0); }
+                25% { transform: translateX(-5px); }
+                75% { transform: translateX(5px); }
+            }
+            @keyframes vc-fade-up {
+                0% { opacity: 0; transform: translateY(10px); }
+                100% { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes vc-bg-drift {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+
+            .vc-bg-anim {
+                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                pointer-events: none; z-index: -1;
+                background: radial-gradient(circle at center, rgba(255,255,255,0.05) 0%, transparent 60%);
+                background-size: 200% 200%;
+                animation: vc-bg-drift 40s linear infinite;
+            }
+
+            .vc-result-card-anim { animation: vc-fade-up 0.5s ease-out backwards; }
+            .vc-anim-float { animation: vc-float-up 1.5s ease-out forwards; }
+            @keyframes vc-float-up {
+                0% { opacity: 1; transform: translateY(0) scale(1); }
+                100% { opacity: 0; transform: translateY(-40px) scale(1.5); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    initBackground() {
+        const bg = document.createElement('div');
+        bg.className = 'vc-bg-anim';
+        bg.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(bg);
+    }
+
+    createEffect(emoji, rect, duration = 1500, extraStyle = '') {
+        if (this.isReducedMotion) duration = 500;
+        const el = document.createElement('div');
+        el.className = 'vc-overlay-layer vc-anim-float';
+        el.textContent = emoji;
+        el.setAttribute('aria-hidden', 'true');
+        el.style.cssText = `
+            left: ${rect.left + rect.width / 2}px; 
+            top: ${rect.top + rect.height / 2}px;
+            font-size: 2rem;
+            transform: translate(-50%, -50%);
+            ${extraStyle}
+        `;
+        document.body.appendChild(el);
+        this.activeOverlays.push(el);
+        setTimeout(() => {
+            if(el.parentNode) el.parentNode.removeChild(el);
+            this.activeOverlays = this.activeOverlays.filter(e => e !== el);
+        }, duration);
+        return el;
+    }
+
+    handleEvent(msg, state) {
+        if (!msg) return;
+
+        // Dice roll
+        const diceMatch = msg.match(/ทอยลูกเต๋าได้ (\d+)/);
+        if (diceMatch) this.playDiceAnim(diceMatch[1]);
+
+        // Walk
+        const walkMatch = msg.match(/เดินจากช่อง (\d+) ไปยังช่อง (\d+)/);
+        if (walkMatch) this.playWalkAnim(parseInt(walkMatch[1]), parseInt(walkMatch[2]));
+
+        // Basic effects mappings by parsing messages
+        if (msg.includes("น้ำเชี่ยว")) this.playGlobalEffect('🌊');
+        if (msg.includes("ไซโคลน")) this.playGlobalEffect('🌪️');
+        if (msg.includes("หลุมพราง")) this.playGlobalEffect('🕳️');
+        if (msg.includes("ผีหลอก")) this.playGlobalEffect('👻');
+        
+        // Item events
+        if (msg.includes("ได้รับเกราะ")) this.playGlobalEffect('🛡️✨');
+        if (msg.includes("ได้รับกุญแจ")) this.playGlobalEffect('🔑✨');
+        if (msg.includes("พบหีบสมบัติ") && msg.includes("เศษฝุ่น")) this.playGlobalEffect('💨');
+        if (msg.includes("พบกล่องลึกลับ") && msg.includes("เศษฝุ่น")) this.playGlobalEffect('💨');
+        
+        // Use items
+        if (msg.includes("ใช้กุญแจเปิด")) this.playGlobalEffect('🔑✨🚪');
+        if (msg.includes("เลือกที่จะไม่ใช้กุญแจ")) this.playGlobalEffect('🚪❌');
+        if (msg.includes("ใช้เกราะศักดิ์สิทธิ์ป้องกัน")) this.playGlobalEffect('🛡️✨');
+
+        // Movement results
+        if (msg.includes("ถอยหลัง")) this.playGlobalEffect('⬅️', 'color: red;');
+        if (msg.includes("เดินหน้าเพิ่ม") || msg.includes("พลังพิเศษ เดินหน้า")) this.playGlobalEffect('➡️', 'color: #4ade80;');
+        
+        // Special locations
+        if (msg.includes("พบเหตุการณ์ลับ")) this.playGlobalEffect('🔮✨');
+        if (msg.includes("วาร์ปไปยังช่อง")) this.playGlobalEffect('🌀');
+        if (msg.includes("จุดพักผ่อน")) this.playGlobalEffect('🔥', 'font-size: 3rem;');
+        if (msg.includes("กลับมายังจุดเริ่มต้น")) this.playGlobalEffect('🏕️✨');
+    }
+
+    playDiceAnim(finalNumber) {
+        const diceEl = document.getElementById('dice-visual');
+        if (!diceEl) return;
+        
+        if (this.isReducedMotion) {
+            diceEl.textContent = finalNumber;
+            return;
+        }
+
+        diceEl.classList.add('vc-dice-anim');
+        let counter = 0;
+        const interval = setInterval(() => {
+            diceEl.textContent = Math.floor(Math.random() * 6) + 1;
+            counter++;
+            if (counter > 10) {
+                clearInterval(interval);
+                diceEl.textContent = finalNumber;
+            }
+        }, 50);
+
+        setTimeout(() => {
+            clearInterval(interval);
+            diceEl.textContent = finalNumber;
+            diceEl.classList.remove('vc-dice-anim');
+        }, 600);
+    }
+
+    playWalkAnim(fromNum, toNum) {
+        const destCell = document.getElementById(`cell-${toNum}`);
+        if (destCell) {
+            destCell.classList.add('vc-cell-glow-dest');
+            setTimeout(() => { destCell.classList.remove('vc-cell-glow-dest'); }, 2000);
+        }
+        // Since Logic instant-teleports pawns in DOM, we just show a visual highlight on destination.
+        // Doing full coordinate pathing while DOM is already updated is highly invasive and prone to layout thrashing.
+    }
+
+    playGlobalEffect(emoji, extraStyle = '') {
+        const board = document.getElementById('adventure-board');
+        if (!board) return;
+        const rect = board.getBoundingClientRect();
+        this.createEffect(emoji, rect, 1500, extraStyle + ' font-size: 4rem;');
+    }
+
+    refreshPlayerGlow(currentTurnKey) {
+        document.querySelectorAll('.pawn-token').forEach(pawn => {
+            pawn.classList.remove('vc-current-player');
+            if (pawn.getAttribute('data-pid') === currentTurnKey) {
+                pawn.classList.add('vc-current-player');
+            }
+        });
+    }
+
+    playStartEvent(overlayEl) {
+        const title = overlayEl.querySelector('h2') || document.createElement('h2');
+        title.innerHTML = `🏕️<br>เริ่มการผจญภัย!`;
+        if(!title.parentNode) overlayEl.appendChild(title);
+        
+        if(!this.isReducedMotion) {
+            overlayEl.style.animation = 'vc-fade-up 0.5s ease-out';
+        }
+    }
+
+    playWinEvent(overlayEl, winner) {
+        if(this.isReducedMotion) return;
+        
+        const fireworks = document.createElement('div');
+        fireworks.className = 'vc-overlay-layer';
+        fireworks.setAttribute('aria-hidden', 'true');
+        fireworks.style.cssText = 'top:0; left:0; width:100%; height:100%; background: radial-gradient(circle, transparent 20%, rgba(255,215,0,0.2) 80%);';
+        overlayEl.appendChild(fireworks);
+        
+        setTimeout(() => {
+            if(fireworks.parentNode) fireworks.parentNode.removeChild(fireworks);
+        }, 4800);
+    }
+
+    playResultScreenAnim(container, sortedPlayers) {
+        container.innerHTML = '<h3>อันดับการเดินทาง:</h3>';
+        sortedPlayers.forEach((p, i) => {
+            const row = document.createElement('div');
+            row.className = 'vc-result-card-anim';
+            row.style.animationDelay = `${i * 0.15}s`;
+            row.innerHTML = `<p>${p.animal.icon} <strong>${p.name}</strong> - ช่อง ${p.pos} (กุญแจ: ${p.keys}, เกราะ: ${p.armor})</p>`;
+            container.appendChild(row);
+        });
+    }
+}
+
+// Initialize application and start Visual Controller
 document.addEventListener('DOMContentLoaded', () => {
+    window.adventureVisuals = new AdventureVisualController();
+    
     initRoomListListener();
 
     const nameInput = document.getElementById('player-name-input');
