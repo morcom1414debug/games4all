@@ -158,6 +158,12 @@ function switchScreen(screenId, focusHeadingId = null) {
             if (h) {
                 h.setAttribute('tabindex', '-1');
                 h.focus();
+                // ป้องกัน iOS VoiceOver ดึงโฟกัสกลับมาอ่าน Heading ซ้ำเมื่อมีการเปลี่ยนสถานะโฟกัสในหน้าจอ
+                const cleanupFocus = () => {
+                    h.removeAttribute('tabindex');
+                    h.removeEventListener('blur', cleanupFocus);
+                };
+                h.addEventListener('blur', cleanupFocus);
             }
         }
     }
@@ -743,7 +749,7 @@ function updateGameUI() {
                 const duration = Math.max(1500, turnMsg.length * 50) + 200;
                 setTimeout(() => {
                     const btn = document.getElementById('btn-roll-dice');
-                    if (btn && !btn.disabled) {
+                    if (btn && !btn.disabled && document.activeElement !== btn) {
                         btn.focus();
                     }
                 }, duration);
@@ -772,7 +778,7 @@ function updateGameUI() {
         card.setAttribute('aria-hidden', 'true');
         card.innerHTML = `
             <div><strong>${p.animal.icon} ${p.name}</strong></div>
-            <div>ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}</div>
+            <div>ช่อง ${p.pos} 🔑 ${p.keys} 🛡️ ${p.armor}</div>
         `;
         cardsContainer.appendChild(card);
     });
@@ -819,7 +825,15 @@ async function syncStateDB(pId, updatesObj) {
 
 // Handle Roll Dice Button Click (Human)
 window.handleRollDice = function(isAuto = false) {
-    document.getElementById('btn-roll-dice').disabled = true;
+    const btn = document.getElementById('btn-roll-dice');
+    if (document.activeElement === btn) {
+        const sr = document.getElementById('sr-polite');
+        if (sr) {
+            sr.setAttribute('tabindex', '-1');
+            sr.focus();
+        }
+    }
+    btn.disabled = true;
     if (myTurnTimer) {
         clearTimeout(myTurnTimer);
         myTurnTimer = null;
