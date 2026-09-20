@@ -41,7 +41,6 @@ let isSpeaking = false;
 let lastAnnouncedTurnKey = null;
 let previousPlayersState = {};
 let myTurnTimer = null;
-let isStartingGame = false; // ล็อกสถานะป้องกันการเริ่มเกมซ้ำ
 
 // Audio System States
 let bgmSource = null;
@@ -600,8 +599,7 @@ function updateLobbyUI() {
     if (isHost) {
         hostPanel.style.display = 'block';
         startBtn.style.display = 'block';
-        // ป้องกันการปลดล็อกปุ่มหากกำลังอยู่ในสถานะเชื่อมต่อเริ่มเกม
-        startBtn.disabled = pList.length < 2 || isStartingGame;
+        startBtn.disabled = pList.length < 2;
         document.getElementById('bot-count-display').textContent = gameState.botCount || 0;
         
         // จัดการสถานะปุ่มเพิ่ม/ลดบอท
@@ -624,40 +622,23 @@ function updateLobbyUI() {
 
 // Start Game Handler (Host Only)
 window.startAdventureGame = function() {
-    // เพิ่มการตรวจสอบล็อกการทำงานและสถานะเกม เพื่อป้องกันการกดซ้ำอย่างรวดเร็ว
-    if (!isHost || !gameState || gameState.status !== 'waiting' || isStartingGame) return;
-    
-    isStartingGame = true;
-    
-    const startBtn = document.getElementById('btn-start-game');
-    if (startBtn) startBtn.disabled = true;
+    if (!isHost) return;
+    lastAnnouncedTurnKey = null;
+    const boardConfig = generateBoardConfiguration();
+    const roomRef = ref(db, `games/Adventure80/rooms/${currentRoomId}`);
 
-    try {
-        lastAnnouncedTurnKey = null;
-        const boardConfig = generateBoardConfiguration();
-        const roomRef = ref(db, `games/Adventure80/rooms/${currentRoomId}`);
-
-        const pKeys = Object.keys(gameState.players);
-        for (let i = pKeys.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]];
-        }
-
-        update(roomRef, {
-            status: 'playing',
-            boardConfig,
-            turnIndex: 0,
-            playerOrder: pKeys
-        }).catch(err => {
-            console.error("Failed to start game:", err);
-            isStartingGame = false; // ปลดล็อกหากการส่งข้อมูลไปฐานข้อมูลล้มเหลว
-            if (startBtn) startBtn.disabled = (Object.keys(gameState.players).length < 2);
-        });
-    } catch (err) {
-        console.error("Error initiating game start:", err);
-        isStartingGame = false;
-        if (startBtn) startBtn.disabled = (Object.keys(gameState.players).length < 2);
+    const pKeys = Object.keys(gameState.players);
+    for (let i = pKeys.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]];
     }
+
+    update(roomRef, {
+        status: 'playing',
+        boardConfig,
+        turnIndex: 0,
+        playerOrder: pKeys
+    });
 };
 
 // Render Serpentine Board Grid 8x10 with Accessible ARIA Names
@@ -1174,7 +1155,6 @@ window.leaveRoom = function() {
     isShowingWinnerScene = false;
     previousHumanCount = null;
     previousBotCount = null;
-    isStartingGame = false; // เคลียร์สถานะล็อกเมื่อออกจากห้อง
     if (myTurnTimer) {
         clearTimeout(myTurnTimer);
         myTurnTimer = null;
