@@ -826,6 +826,13 @@ async function syncStateDB(pId, updatesObj) {
 // Handle Roll Dice Button Click (Human)
 window.handleRollDice = function(isAuto = false) {
     const btn = document.getElementById('btn-roll-dice');
+    if (document.activeElement === btn) {
+        const sr = document.getElementById('sr-polite');
+        if (sr) {
+            sr.setAttribute('tabindex', '-1');
+            sr.focus();
+        }
+    }
     btn.disabled = true;
     if (myTurnTimer) {
         clearTimeout(myTurnTimer);
