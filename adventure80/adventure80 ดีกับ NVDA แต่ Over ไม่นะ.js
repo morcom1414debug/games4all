@@ -706,11 +706,7 @@ function updateGameUI() {
     const currentTurnKey = playersArr[gameState.turnIndex][0];
     const currentTurnPlayer = playersArr[gameState.turnIndex][1];
 
-    const statusBar = document.getElementById('game-status-bar');
-    const newStatusText = `ถึงเทิร์นของ: ${currentTurnPlayer.animal.icon} ${currentTurnPlayer.name}`;
-    if (statusBar.textContent !== newStatusText) {
-        statusBar.textContent = newStatusText;
-    }
+    document.getElementById('game-status-bar').textContent = `ถึงเทิร์นของ: ${currentTurnPlayer.animal.icon} ${currentTurnPlayer.name}`;
 
     const rollBtn = document.getElementById('btn-roll-dice');
     if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot && !gameState.turnExecuting) {
