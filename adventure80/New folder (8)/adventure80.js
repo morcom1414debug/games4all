@@ -41,7 +41,6 @@ let isSpeaking = false;
 let lastAnnouncedTurnKey = null;
 let previousPlayersState = {};
 let myTurnTimer = null;
-let isStartingGame = false;
 
 // Audio System States
 let bgmSource = null;
@@ -321,7 +320,6 @@ window.createAdventureRoom = function() {
     if (!myPlayerName) myPlayerName = 'ผู้เล่น 1';
 
     playAudio('1.mp3');
-    isStartingGame = false;
 
     const counterRef = ref(db, 'games/Adventure80/room_counter');
     runTransaction(counterRef, (cur) => (cur || 0) + 1).then((res) => {
@@ -601,7 +599,7 @@ function updateLobbyUI() {
     if (isHost) {
         hostPanel.style.display = 'block';
         startBtn.style.display = 'block';
-        startBtn.disabled = isStartingGame || gameState.status !== 'waiting' || pList.length < 2;
+        startBtn.disabled = pList.length < 2;
         document.getElementById('bot-count-display').textContent = gameState.botCount || 0;
         
         // จัดการสถานะปุ่มเพิ่ม/ลดบอท
@@ -624,45 +622,23 @@ function updateLobbyUI() {
 
 // Start Game Handler (Host Only)
 window.startAdventureGame = function() {
-    if (!isHost || isStartingGame || !gameState || gameState.status !== 'waiting') return;
-
-    isStartingGame = true;
-    const startBtn = document.getElementById('btn-start-game');
-    if (startBtn) startBtn.disabled = true;
-
+    if (!isHost) return;
     lastAnnouncedTurnKey = null;
+    const boardConfig = generateBoardConfiguration();
+    const roomRef = ref(db, `games/Adventure80/rooms/${currentRoomId}`);
 
-    try {
-        const boardConfig = generateBoardConfiguration();
-        const roomRef = ref(db, `games/Adventure80/rooms/${currentRoomId}`);
-
-        const pKeys = Object.keys(gameState.players || {});
-        if (pKeys.length < 2) {
-            isStartingGame = false;
-            if (startBtn) startBtn.disabled = false;
-            return;
-        }
-
-        for (let i = pKeys.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]];
-        }
-
-        update(roomRef, {
-            status: 'playing',
-            boardConfig,
-            turnIndex: 0,
-            playerOrder: pKeys
-        }).catch((err) => {
-            console.error('Error starting game:', err);
-            isStartingGame = false;
-            if (startBtn) startBtn.disabled = false;
-        });
-    } catch (err) {
-        console.error('Error starting game:', err);
-        isStartingGame = false;
-        if (startBtn) startBtn.disabled = false;
+    const pKeys = Object.keys(gameState.players);
+    for (let i = pKeys.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]];
     }
+
+    update(roomRef, {
+        status: 'playing',
+        boardConfig,
+        turnIndex: 0,
+        playerOrder: pKeys
+    });
 };
 
 // Render Serpentine Board Grid 8x10 with Accessible ARIA Names
@@ -1175,7 +1151,6 @@ window.leaveRoom = function() {
     isShowingWinnerScene = false;
     previousHumanCount = null;
     previousBotCount = null;
-    isStartingGame = false;
     if (myTurnTimer) {
         clearTimeout(myTurnTimer);
         myTurnTimer = null;
