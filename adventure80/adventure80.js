@@ -501,6 +501,18 @@ function setupRoomListener() {
                 playAudioSequence(gameState.lastAction.audioKeys);
             }
             
+            // --- SYNC DICE VISUAL: อัปเดตตัวเลขผลลูกเต๋าให้ทุกอุปกรณ์เห็นตรงกันจากการทอยจริง ---
+            if (gameState.lastAction.msg.includes('ทอยลูกเต๋าได้')) {
+                const diceMatch = gameState.lastAction.msg.match(/ทอยลูกเต๋าได้\s*(\d+)/);
+                if (diceMatch) {
+                    const diceEl = document.getElementById('dice-visual');
+                    if (diceEl) {
+                        diceEl.textContent = diceMatch[1];
+                    }
+                }
+            }
+            // -------------------------------------------------------------------------
+
             // --- VISUAL LAYER: Trigger Event Effect ---
             const currentTurnKey = gameState.playerOrder ? gameState.playerOrder[gameState.turnIndex] : null;
             const pData = (currentTurnKey && gameState.players) ? gameState.players[currentTurnKey] : null;
