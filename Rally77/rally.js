@@ -425,6 +425,8 @@ function showStartGameAnimation() {
 function renderBoardGrid() {
     const grid = document.getElementById('rally-board');
     grid.innerHTML = '';
+    grid.setAttribute('aria-hidden', 'true'); // ซ่อนกระดานทั้งหมดจาก Screen Reader เพื่อไม่ให้อ่านทีละช่อง
+
     const config = gameState.boardConfig || {};
 
     for (let row = 0; row < 8; row++) {
@@ -446,7 +448,6 @@ function renderBoardGrid() {
                                   <span class="cell-icon">${sp.icon}</span>
                                   <div class="cell-name">${sp.name}</div>
                                   <div class="pawns-holder" id="pawns-holder-${num}"></div>`;
-                cell.setAttribute('aria-label', `ช่อง ${num} ${sp.name}`);
             }
             grid.appendChild(cell);
         }
@@ -473,17 +474,38 @@ function updateGameUI() {
     if (lastAnnouncedTurnKey !== `${gameState.turnIndex}_${pId}`) {
         lastAnnouncedTurnKey = `${gameState.turnIndex}_${pId}`;
         announceSR(`ถึงเทิร์นของ ${currentP.name}`);
+
+        if (pId === myPlayerId && !currentP.isBot) {
+            setTimeout(() => {
+                const btn = document.getElementById('btn-roll-dice');
+                if (btn && !btn.disabled) btn.focus();
+            }, 300); // ดึง Focus ไปที่ปุ่มทอยลูกเต๋าเมื่อถึงเทิร์นและปุ่มพร้อมใช้งาน
+        }
     }
 
+    // จัดกลุ่มสถานะสำหรับ Screen Reader ตามแนวทางที่กระชับ ไม่ให้รบกวนการแสดงผลจริง
     const cardsContainer = document.getElementById('player-status-cards');
     cardsContainer.innerHTML = '';
+    cardsContainer.setAttribute('role', 'region');
+    cardsContainer.setAttribute('aria-label', 'สถานะนักแข่งทั้งหมด');
+    
+    let srGroupText = 'สรุปสถานะนักแข่ง: ';
+
     pOrder.forEach((k) => {
         const p = gameState.players[k];
         const card = document.createElement('div');
         card.className = `p-status-card ${k === pId ? 'active-turn' : ''}`;
+        card.setAttribute('aria-hidden', 'true'); // ซ่อนการ์ดแต่ละใบจาก SR ไม่ให้อ่านแยกกระจัดกระจาย
         card.innerHTML = `<div><strong>${p.avatar.icon} ${p.name}</strong></div><div>ช่อง ${p.pos} | น้ำมัน ${p.fuel}/10</div>`;
         cardsContainer.appendChild(card);
+        
+        srGroupText += `${p.name} อยู่ช่องที่ ${p.pos} น้ำมัน ${p.fuel} ขีด, `;
     });
+
+    const srGroupElement = document.createElement('div');
+    srGroupElement.className = 'sr-only';
+    srGroupElement.textContent = srGroupText;
+    cardsContainer.appendChild(srGroupElement);
 
     document.querySelectorAll('.pawns-holder').forEach(h => h.innerHTML = '');
     pOrder.forEach((k) => {
@@ -531,13 +553,16 @@ async function executeTurnAsync(pId) {
     await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: newFuel });
     
     const diceRoll = Math.floor(Math.random() * 6) + 1;
-    await syncActionEmit(`${pData.name} ใช้น้ำมัน 3 ขีด ทอยลูกเต๋าได้ ${diceRoll}`, ['dice.mp3']);
     
     let currentPos = pData.pos;
     let targetPos = currentPos + diceRoll;
     if (targetPos > 80) targetPos = 80 - (targetPos - 80); // Bounce Rule
     
-    await syncActionEmit(`${pData.name} ขับรถไปช่อง ${targetPos}`, ['walk.mp3']); // Using walk.mp3 as movement sound based on prompt
+    const targetSp = gameState.boardConfig[targetPos];
+    const cellName = targetSp ? targetSp.name : 'เส้นชัย';
+
+    // ประกาศการทอยลูกเต๋าและการเดินรถพร้อมชื่อสถานที่เพื่อความกระชับ
+    await syncActionEmit(`${pData.name} ใช้น้ำมัน 3 ขีด ทอยลูกเต๋าได้ ${diceRoll} เคลื่อนรถไปช่องที่ ${targetPos} ${cellName}`, ['dice.mp3', 'walk.mp3']);
     
     currentPos = targetPos;
     await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: currentPos });
@@ -559,9 +584,11 @@ async function executeTurnAsync(pId) {
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: fuelGain });
         endTurn();
     } else if (sp.type === 'province') {
-        // Province Question Rule
         const qList = window.rallyQuestionsData[sp.name];
         if (qList && qList.length > 0) {
+            // แจ้งให้ทุกคนทราบเพียงว่ากำลังตอบคำถาม (โดยไม่เห็นโจทย์)
+            await syncActionEmit(`${pData.name} กำลังตอบคำถามจากจังหวัด ${sp.name}`);
+
             const q = qList[Math.floor(Math.random() * qList.length)];
             
             // Shuffle options
@@ -593,6 +620,7 @@ function checkQuestionState() {
     const qState = gameState.questionState;
     const modal = document.getElementById('question-modal-overlay');
     
+    // ผู้เล่นที่เป็นเจ้าของเทิร์นเท่านั้นจะเห็นคำถาม
     if (qState && qState.pId === myPlayerId && !gameState.players[myPlayerId].isBot) {
         if (modal.style.display !== 'flex') {
             document.getElementById('question-province').textContent = `คำถามจังหวัด ${qState.prov}`;
@@ -605,13 +633,26 @@ function checkQuestionState() {
                 btn.textContent = opt.text;
                 btn.onclick = () => {
                     modal.style.display = 'none';
+                    // เมื่อตอบเสร็จ ให้กลับโฟกัสเข้าสู่หน้าหลักของเกมเพื่อเล่นต่อ
+                    const gameHeader = document.getElementById('game-status-bar');
+                    if (gameHeader) {
+                        gameHeader.setAttribute('tabindex', '-1');
+                        gameHeader.focus();
+                    }
                     handleAnswer(myPlayerId, opt.id);
                 };
                 optsContainer.appendChild(btn);
             });
             
             modal.style.display = 'flex';
-            announceSR(`มีคำถามจากจังหวัด ${qState.prov}: ${qState.question}`);
+            announceSR(`มีคำถามจากจังหวัด ${qState.prov}`);
+
+            // ย้ายโฟกัสทันทีเมื่อเปิด Overlay คำถามและล็อคเป้าไว้ที่ Heading
+            const heading = document.getElementById('question-province');
+            if (heading) {
+                heading.setAttribute('tabindex', '-1');
+                heading.focus();
+            }
         }
     } else {
         modal.style.display = 'none';
@@ -639,20 +680,29 @@ async function processAnswer(pId, selectedOptId) {
     if (isCorrect) {
         const fuelGain = Math.min(10, pData.fuel + 2);
         const forwardMove = Math.floor(Math.random() * 4) + 2; // 2-5 spaces
-        await syncActionEmit(`${pData.name} ตอบถูก! เติมน้ำมัน 2 ขีด และโชคดีได้ซิ่งเดินหน้า ${forwardMove} ช่อง`, ['win.mp3']); // Reusing win briefly or forward
-        await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: fuelGain });
-        
         let targetPos = pData.pos + forwardMove;
         if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+
+        const targetSp = gameState.boardConfig[targetPos];
+        const cellName = targetSp ? targetSp.name : 'เส้นชัย';
+
+        // ใช้ walk.mp3 สำหรับการเดินรถปกติแทน win.mp3 ตามที่กำหนด
+        await syncActionEmit(`${pData.name} ตอบถูก! ได้น้ำมัน 2 ขีด และเดินหน้า ${forwardMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['walk.mp3']); 
+        await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: fuelGain });
+        
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
         
         if (targetPos === 80) { await handleWinGame(pId); return; }
         
     } else {
         const backMove = Math.floor(Math.random() * 3) + 1; // 1-3 spaces
-        await syncActionEmit(`${pData.name} ตอบผิด! ไม่ได้น้ำมันเพิ่ม และหลงทางถอยหลัง ${backMove} ช่อง`, ['shieldno.mp3']);
-        
         let targetPos = Math.max(1, pData.pos - backMove);
+        
+        const targetSp = gameState.boardConfig[targetPos];
+        const cellName = targetSp ? targetSp.name : 'จุดเริ่มต้น';
+
+        await syncActionEmit(`${pData.name} ตอบผิด! ถอยหลัง ${backMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shieldno.mp3']);
+        
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
     }
     
