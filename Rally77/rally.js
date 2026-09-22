@@ -674,7 +674,7 @@ function checkQuestionState() {
     // ผู้เล่นที่เป็นเจ้าของเทิร์นเท่านั้นจะเห็นคำถาม
     if (qState && qState.pId === myPlayerId && !gameState.players[myPlayerId].isBot) {
         if (modal.style.display !== 'flex') {
-            document.getElementById('question-province').textContent = `คำถามจังหวัด ${qState.prov}`;
+            document.getElementById('question-province').textContent = `ขับรถมาถึงจังหวัด ${qState.prov}`;
             document.getElementById('question-text').textContent = qState.question;
             const optsContainer = document.getElementById('question-options');
             optsContainer.innerHTML = '';
