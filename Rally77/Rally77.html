@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rally ทั่วไทย</title>
+    <link rel="stylesheet" href="rally.css">
+</head>
+<body>
+    <!-- Live Regions for Screen Reader -->
+    <div aria-live="polite" id="sr-polite" class="sr-only"></div>
+    <div aria-live="assertive" id="sr-assertive" class="sr-only"></div>
+
+    <!-- Screen: Welcome -->
+    <div id="screen-welcome" class="screen active-screen">
+        <h1 id="welcome-title" tabindex="-1">🚗 Rally ทั่วไทย</h1>
+        <p>ยินดีต้อนรับสู่การแข่งขันแรลลี่รอบประเทศไทย!</p>
+        <div style="margin: 20px 0;">
+            <label for="player-name-input">ชื่อนักแข่งของคุณ:</label>
+            <input type="text" id="player-name-input" placeholder="พิมพ์ชื่อที่นี่..." maxlength="15">
+        </div>
+        <button id="btn-confirm-name" onclick="confirmNameAndEnterLobby()" disabled>เข้าสู่เกม</button>
+        <button onclick="toggleManual()" style="margin-top: 10px;">📖 คู่มือการเล่น</button>
+        <div id="manual-section" style="display:none; margin-top:20px; padding:10px; background:var(--card-bg); border-radius:var(--border-radius);" tabindex="-1">
+            <h3>กติกา Rally ทั่วไทย</h3>
+            <p>1. น้ำมันเริ่มต้น 10 ขีด ทอยเต๋าใช้ 3 ขีด หากน้ำมันหมดต้องพัก 1 เทิร์นได้น้ำมัน 3 ขีด<br>
+               2. ตอบคำถามจังหวัดถูก เติมน้ำมัน 2 ขีดและเดินหน้า 2-5 ช่อง / ตอบผิด ถอยหลัง 1-3 ช่อง<br>
+               3. ปั๊มน้ำมัน เติมเต็มถัง 10 ขีด / จุดแวะพัก เติม 1 ขีด<br>
+               4. ใครถึงเส้นชัย (จังหวัดปลายทางช่อง 80) ก่อนเป็นผู้ชนะ!</p>
+        </div>
+    </div>
+
+    <!-- Screen: Lobby -->
+    <div id="screen-lobby" class="screen">
+        <h2 id="lobby-heading" tabindex="-1">🏁 ล็อบบี้ Rally ทั่วไทย</h2>
+        <div id="lobby-menu-section">
+            <button onclick="createRallyRoom()">สร้างห้องแข่งขันใหม่</button>
+            <div style="margin-top: 20px;">
+                <h3>ห้องที่กำลังรอผู้เล่น</h3>
+                <div id="room-list"></div>
+            </div>
+            <button class="btn-danger" style="margin-top:20px;" onclick="switchScreen('screen-welcome', 'welcome-title')">กลับหน้าแรก</button>
+        </div>
+
+        <div id="lobby-room-section" style="display:none;">
+            <h2 id="lobby-room-title" tabindex="-1">ห้องเกม: </h2>
+            <p>ผู้เข้าร่วม: <span id="participant-count">0/6</span></p>
+            <div id="participant-list"></div>
+            <div id="host-controls" style="display:none; margin-top:20px;">
+                <h3>ตั้งค่าบอท (สำหรับเจ้าของห้อง)</h3>
+                <button onclick="adjustBot(-1)">- ลดบอท</button>
+                <span id="bot-count-display" style="margin: 0 15px;">0</span>
+                <button onclick="adjustBot(1)">+ เพิ่มบอท</button>
+            </div>
+            <div style="margin-top:20px; display:flex; gap:10px;">
+                <button id="btn-start-game" onclick="startRallyGame()" style="display:none;" disabled>เริ่มการแข่งขัน!</button>
+                <button class="btn-danger" onclick="leaveRoom()">ออกจากห้อง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen: Game -->
+    <div id="screen-game" class="screen">
+        <h2 id="game-status-bar" tabindex="-1" style="width: 100%; text-align: center; margin-bottom: 10px;"></h2>
+        <div id="player-status-cards" class="status-cards-container"></div>
+        
+        <div class="game-controls">
+            <button id="btn-roll-dice" onclick="handleRollDice()" disabled>🎲 ทอยลูกเต๋า (ใช้ 3 น้ำมัน)</button>
+            <div class="dice-display">ผลทอย: <span id="dice-visual">-</span></div>
+        </div>
+
+        <div class="board-container">
+            <div id="rally-board" class="board-grid"></div>
+        </div>
+    </div>
+
+    <!-- Screen: Result -->
+    <div id="screen-result" class="screen">
+        <h1 id="result-title" tabindex="-1">🏆 จบการแข่งขัน!</h1>
+        <h2 id="result-winner-text" style="color: var(--secondary); margin: 20px 0;"></h2>
+        <div id="result-rankings" class="rankings-box"></div>
+        <button onclick="returnToLobbyOrMain()" style="margin-top: 30px;">กลับล็อบบี้</button>
+    </div>
+
+    <!-- Anim Overlay: Start -->
+    <div id="anim-start-overlay" class="overlay" style="display:none;">
+        <h1 style="font-size: 3rem; color: white; text-shadow: 0 0 20px gold;">🚦 พร้อม... ระวัง... ไป! 🏎️</h1>
+    </div>
+
+    <!-- Anim Overlay: Winner -->
+    <div id="anim-winner-overlay" class="overlay" style="display:none;">
+        <div style="text-align:center;">
+            <h1 style="font-size: 5rem; margin:0;" id="winner-anim-character"></h1>
+            <h2 style="font-size: 3rem; color: white;" id="winner-anim-name"></h2>
+        </div>
+    </div>
+
+    <!-- Question Modal -->
+    <div id="question-modal-overlay" class="overlay" style="display:none; z-index: 2000;">
+        <div class="modal-box" role="dialog" aria-modal="true">
+            <h2 id="question-province" tabindex="-1" style="color: var(--primary);">คำถามจังหวัด...</h2>
+            <p id="question-text" style="margin: 20px 0; font-size: 1.2rem;"></p>
+            <div id="question-options" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+    </div>
+
+    <script type="module" src="rally.js"></script>
+    <script src="RallyQuestions.js"></script>
+</body>
+</html>
