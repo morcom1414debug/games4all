@@ -47,7 +47,6 @@ let previousPlayersState = {};
 let myTurnTimer = null;
 let isStartingGame = false;
 let isShowingWinnerScene = false;
-let isProcessingAnswer = false;
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const unlockAudio = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
@@ -308,8 +307,6 @@ window.joinRallyRoom = function(rId) {
 
 window.adjustBot = function(delta) {
     if (!isHost || !gameState) return;
-    playAudio('select.mp3');
-    
     const curBots = gameState.botCount || 0;
     const humanCount = Object.values(gameState.players).filter(p => !p.isBot).length;
     const newBots = curBots + delta;
@@ -317,8 +314,6 @@ window.adjustBot = function(delta) {
 
     const roomRef = ref(db, `games/RallyThai/rooms/${currentRoomId}`);
     const updatedPlayers = { ...gameState.players };
-
-    let syncMsg = '';
 
     if (delta > 0) {
         const botSlot = 'p' + (humanCount + newBots);
@@ -327,385 +322,9 @@ window.adjustBot = function(delta) {
         updatedPlayers[botSlot] = {
             name: `บอทนักซิ่ง ${newBots}`, avatar: availAvatars[0] || CAR_POOL[1], isBot: true, pos: 1, fuel: 10
         };
-        syncMsg = `เพิ่ม ${updatedPlayers[botSlot].name} เข้าร่วมห้อง`;
     } else {
         const botSlots = Object.keys(updatedPlayers).filter(k => updatedPlayers[k].isBot);
-        if (botSlots.length > 0) {
-            syncMsg = `นำ ${updatedPlayers[botSlots[botSlots.length - 1]].name} ออกจากห้อง`;
-            delete updatedPlayers[botSlots[botSlots.length - 1]];
-        }
-    }
-
-    update(roomRef, { botCount: newBots, players: updatedPlayers }).then(() => {
-        if (syncMsg) {
-            syncActionEmit(syncMsg);
-        }
-    });
-};
-
-function setupRoomListener() {
-    const roomRef = ref(db, `games/RallyThai/rooms/${currentRoomId}`);
-    roomListener = onValue(roomRef, (snapshot) => {
-        gameState = snapshot.val();
-        if (!gameState) {
-            announceSR("เจ้าของห้องปิดเกม", 'assertive');
-            setTimeout(() => { window.location.reload(); }, 2000);
-            return;
-        }
-
-        if (isHost && gameState.status === 'playing' && gameState.questionState && gameState.questionState.answeredBy) {
-            if (!isProcessingAnswer) {
-                isProcessingAnswer = true;
-                processAnswer(gameState.questionState.answeredBy, gameState.questionState.selectedOpt).then(() => {
-                    isProcessingAnswer = false;
-                });
-            }
-        สรุปการแก้ไขที่ได้ดำเนินการ:
-1. **แก้ปัญหา Client ตอบคำถามแล้วเกมค้าง:** ปรับให้ Host รับหน้าที่ตรวจสอบและประมวลผลคำตอบจาก Client ที่ซิงก์ผ่าน Firebase ใน `roomListener` เพื่อให้กติกาและการเดินเกมไหลลื่น ไม่ค้าง
-2. **ระบบเพิ่มและลดบอท:** เพิ่มการซิงก์ประกาศชื่อบอทให้ทุกเครื่องทราบเมื่อมีการเพิ่ม/ลบ เพิ่มการล็อกปุ่มเพิ่ม/ลดบอท (Disabled) ตามสถานะที่ถูกต้อง และเล่นเสียง `select.mp3` เฉพาะเครื่องที่กดโดยไม่ซิงก์เสียงซ้ำ
-3. **ผลการทอยลูกเต๋า:** เพิ่ม `aria-hidden="true"` ที่ตัวเลขลูกเต๋า เพื่อให้มองเห็นได้ปกติ แต่ป้องกันไม่ให้ Screen Reader อ่านผลซ้ำซ้อนกับระบบประกาศเดิม
-4. **การประกาศสถานะผู้เล่น:** ปรับรูปแบบข้อความสำหรับ Screen Reader ให้กระชับตรงตามความต้องการ (เช่น "ล้ง ช่อง 8 น้ำมัน 7 ขีด") โดยตัดคำนำหน้าและส่วนที่ไม่จำเป็นออก
-5. **การประกาศคำถามและเสียง:** เอา `announceSR` ออกในจังหวะโชว์หน้าต่างคำถามเพื่อลดการอ่านซ้ำซ้อนของ VoiceOver (เพราะระบบจะ Focus ไปที่ Heading ให้อ่านอยู่แล้ว) และยืนยันการใช้เสียง `walk.mp3` สำหรับเดินเกมปกติ สงวนเสียง `win.mp3` ไว้สำหรับเหตุการณ์ชนะเท่านั้น
-
-นี่คือไฟล์ `rally.js` ฉบับเต็มที่ได้รับการแก้ไขแล้วครับ:
-
-```javascript
-import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js)";
-import { getDatabase, ref, set, onValue, update, runTransaction, remove, onDisconnect } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js)";
-
-// Exact Firebase Configuration from original
-const firebaseConfig = {
-    apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
-    authDomain: "xo-game-134ec.firebaseapp.com",
-    databaseURL: "[https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app](https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app)",
-    projectId: "xo-game-134ec",
-    storageBucket: "xo-game-134ec.firebasestorage.app",
-    messagingSenderId: "318375224157",
-    appId: "1:318375224157:web:8dfa7c16557b2890b77eb4"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-// Car Avatars Pool
-const CAR_POOL = [
-    { icon: '🚗', name: 'รถเก๋งแดง' }, { icon: '🚕', name: 'แท็กซี่' },
-    { icon: '🚙', name: 'รถจี๊ป' }, { icon: '🚌', name: 'รถบัส' },
-    { icon: '🚎', name: 'รถทัวร์' }, { icon: '🏎️', name: 'รถแข่ง' },
-    { icon: '🚓', name: 'รถตำรวจ' }, { icon: '🚑', name: 'รถพยาบาล' },
-    { icon: '🚒', name: 'รถดับเพลิง' }, { icon: '🚐', name: 'รถตู้' },
-    { icon: '🛻', name: 'กระบะ' }, { icon: '🚚', name: 'รถบรรทุก' }
-];
-
-const REST_TYPES = [
-    { name: "คาเฟ่ริมทาง", icon: "☕" }, { name: "โรงแรมจิ้งหรีด", icon: "🏨" },
-    { name: "ห้องน้ำกลางทุ่ง", icon: "🚽" }, { name: "ร้านข้าวแกง 24 ชั่วโมง", icon: "🍛" },
-    { name: "ร้านตัดผมสุดสยอง", icon: "💈" }, { name: "Car care สกปรก", icon: "🧽" },
-    { name: "อู่ซ่อมรถร้าง", icon: "🛠️" }, { name: "โรงน้ำชา", icon: "🍵" }
-];
-
-let myPlayerName = '';
-let myPlayerId = null;
-let currentRoomId = null;
-let isHost = false;
-let gameState = null;
-let roomListener = null;
-let roomListListener = null;
-let localLastActionTs = 0;
-let speechQueue = [];
-let isSpeaking = false;
-let lastAnnouncedTurnKey = null;
-let previousPlayersState = {};
-let myTurnTimer = null;
-let isStartingGame = false;
-let isShowingWinnerScene = false;
-
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const unlockAudio = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
-document.addEventListener('click', unlockAudio, { capture: true });
-document.addEventListener('touchstart', unlockAudio, { capture: true });
-document.addEventListener('keydown', unlockAudio, { capture: true });
-
-let bgmSource = null;
-let audioBuffers = {};
-
-async function loadAudio(name) {
-    if (audioBuffers[name]) return audioBuffers[name];
-    try {
-        const response = await fetch(`audio/${name}`);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        audioBuffers[name] = audioBuffer;
-        return audioBuffer;
-    } catch (e) {
-        return null;
-    }
-}
-
-function playAudio(name, loop = false) {
-    return new Promise(async (resolve) => {
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        const buffer = await loadAudio(name);
-        if (!buffer) { resolve(); return; }
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioCtx.destination);
-        source.loop = loop;
-        source.onended = () => resolve(source);
-        source.start(0);
-        if (loop && name === 'bgm.mp3') {
-            if (bgmSource) { try { bgmSource.stop(); } catch(e){} }
-            bgmSource = source;
-        }
-    });
-}
-
-async function playAudioSequence(list) {
-    for (const name of list) { await playAudio(name); }
-}
-
-function stopBGM() {
-    if (bgmSource) { try { bgmSource.stop(); } catch(e){} bgmSource = null; }
-}
-
-function announceSR(text, priority = 'polite') {
-    speechQueue.push({ text, priority });
-    processSpeechQueue();
-}
-
-function processSpeechQueue() {
-    if (isSpeaking || speechQueue.length === 0) return;
-    isSpeaking = true;
-    const item = speechQueue.shift();
-    const targetEl = document.getElementById(item.priority === 'assertive' ? 'sr-assertive' : 'sr-polite');
-    if (targetEl) {
-        targetEl.textContent = '';
-        setTimeout(() => {
-            targetEl.textContent = item.text;
-            const duration = Math.max(1500, item.text.length * 50);
-            setTimeout(() => {
-                targetEl.textContent = '';
-                isSpeaking = false;
-                processSpeechQueue();
-            }, duration);
-        }, 100);
-    } else {
-        isSpeaking = false;
-    }
-}
-
-function delayAsync(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
-window.switchScreen = function(screenId, focusHeadingId = null) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
-    const target = document.getElementById(screenId);
-    if (target) {
-        target.classList.add('active-screen');
-        if (focusHeadingId) {
-            const h = document.getElementById(focusHeadingId);
-            if (h) {
-                h.setAttribute('tabindex', '-1');
-                h.focus();
-                const cleanupFocus = () => { h.removeAttribute('tabindex'); h.removeEventListener('blur', cleanupFocus); };
-                h.addEventListener('blur', cleanupFocus);
-            }
-        }
-    }
-};
-
-window.confirmNameAndEnterLobby = function() {
-    playAudio('select.mp3');
-    const nameInput = document.getElementById('player-name-input');
-    myPlayerName = nameInput.value.trim() || 'นักแข่งใหม่';
-    switchScreen('screen-lobby', 'lobby-heading');
-    announceSR(`ยินดีต้อนรับ ${myPlayerName} เข้าสู่ล็อบบี้แรลลี่`);
-};
-
-window.toggleManual = function() {
-    playAudio('select.mp3');
-    const m = document.getElementById('manual-section');
-    if (m.style.display === 'none') {
-        m.style.display = 'block'; m.focus(); announceSR("เปิดคู่มือการเล่นแล้ว");
-    } else {
-        m.style.display = 'none'; announceSR("ปิดคู่มือการเล่นแล้ว");
-    }
-};
-
-function initRoomListListener() {
-    const roomsRef = ref(db, 'games/RallyThai/rooms');
-    roomListListener = onValue(roomsRef, (snapshot) => {
-        const rooms = snapshot.val() || {};
-        const container = document.getElementById('room-list');
-        if (!container || myPlayerId) return;
-        container.innerHTML = '';
-        let count = 0;
-        for (const [rId, rData] of Object.entries(rooms)) {
-            if (rData.status === 'waiting') {
-                count++;
-                const item = document.createElement('div');
-                item.className = 'participant-card';
-                item.style.cursor = 'pointer';
-                const pCount = rData.players ? Object.keys(rData.players).length : 0;
-                item.innerHTML = `<span><strong>ห้อง ${rId}</strong> (${pCount}/6 คน)</span>`;
-                item.onclick = () => window.joinRallyRoom(rId);
-                container.appendChild(item);
-            }
-        }
-        if (count === 0) container.innerHTML = '<div style="color:#bdc3c7; padding:10px;">ไม่มีห้องที่กำลังรอผู้เล่นอยู่...</div>';
-    });
-}
-
-function generateRallyBoard() {
-    const questionsData = window.rallyQuestionsData || {};
-    let allProvinces = Object.keys(questionsData);
-    
-    // Shuffle provinces
-    for (let i = allProvinces.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [allProvinces[i], allProvinces[j]] = [allProvinces[j], allProvinces[i]];
-    }
-    
-    // Fallback if not enough provinces in data
-    while(allProvinces.length < 54 && allProvinces.length > 0) {
-        allProvinces = allProvinces.concat(allProvinces);
-    }
-    const selectedProvs = allProvinces.slice(0, 54);
-    
-    const board = {};
-    board[1] = { type: 'province', name: selectedProvs[0], icon: '🏁' };
-    board[80] = { type: 'province', name: selectedProvs[53], icon: '🏆' };
-    
-    let availableSpaces = [];
-    for (let i = 2; i <= 79; i++) availableSpaces.push(i);
-    for (let i = availableSpaces.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [availableSpaces[i], availableSpaces[j]] = [availableSpaces[j], availableSpaces[i]];
-    }
-
-    // Allocate Gas Stations (10)
-    for(let i=0; i<10; i++) {
-        board[availableSpaces.pop()] = { type: 'gas', name: 'ปั๊มน้ำมัน', icon: '⛽' };
-    }
-    
-    // Allocate Rest Stops (16 total, 2 of each)
-    REST_TYPES.forEach(rest => {
-        for(let i=0; i<2; i++) {
-            board[availableSpaces.pop()] = { type: 'rest', name: rest.name, icon: rest.icon };
-        }
-    });
-
-    // Allocate remaining 52 provinces
-    let provIndex = 1;
-    while(availableSpaces.length > 0) {
-        const sp = availableSpaces.pop();
-        board[sp] = { type: 'province', name: selectedProvs[provIndex], icon: '🏙️' };
-        provIndex++;
-    }
-
-    return board;
-}
-
-window.createRallyRoom = function() {
-    if (!myPlayerName) myPlayerName = 'นักแข่ง 1';
-    playAudio('1.mp3');
-    isStartingGame = false;
-
-    const counterRef = ref(db, 'games/RallyThai/room_counter');
-    runTransaction(counterRef, (cur) => (cur || 0) + 1).then((res) => {
-        if (res.committed) {
-            const count = res.snapshot.val();
-            currentRoomId = 'Rally' + String(count).padStart(5, '0');
-            myPlayerId = 'p1';
-            isHost = true;
-            const roomRef = ref(db, `games/RallyThai/rooms/${currentRoomId}`);
-            onDisconnect(roomRef).remove();
-            
-            set(roomRef, {
-                status: 'waiting',
-                players: {
-                    p1: { name: myPlayerName, avatar: CAR_POOL[0], isBot: false, pos: 1, fuel: 10 }
-                },
-                botCount: 0,
-                turnIndex: 0,
-                boardConfig: null,
-                lastAction: { msg: '', ts: 0 },
-                questionState: null
-            });
-
-            document.getElementById('lobby-menu-section').style.display = 'none';
-            document.getElementById('lobby-room-section').style.display = 'block';
-            setupRoomListener();
-            announceSR(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId}`);
-        }
-    });
-};
-
-window.joinRallyRoom = function(rId) {
-    if (!myPlayerName) myPlayerName = 'นักแข่งใหม่';
-    currentRoomId = rId;
-    isHost = false;
-
-    const roomRef = ref(db, `games/RallyThai/rooms/${currentRoomId}`);
-    runTransaction(roomRef, (roomData) => {
-        if (!roomData || roomData.status !== 'waiting') return;
-        const pKeys = Object.keys(roomData.players || {});
-        if (pKeys.length >= 6) return;
-        let nextSlot = 'p1';
-        for (let i = 1; i <= 6; i++) {
-            if (!pKeys.includes('p' + i)) { nextSlot = 'p' + i; break; }
-        }
-        const usedAvatars = Object.values(roomData.players).map(p => p.avatar.icon);
-        const availAvatars = CAR_POOL.filter(a => !usedAvatars.includes(a.icon));
-        
-        if (!roomData.players) roomData.players = {};
-        roomData.players[nextSlot] = {
-            name: myPlayerName, avatar: availAvatars[0] || CAR_POOL[0], isBot: false, pos: 1, fuel: 10
-        };
-        myPlayerId = nextSlot;
-        return roomData;
-    }).then((res) => {
-        if (res.committed) {
-            playAudio('select.mp3');
-            onDisconnect(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${myPlayerId}`)).update({
-                isBot: true, name: "บอท" + myPlayerName
-            });
-            document.getElementById('lobby-menu-section').style.display = 'none';
-            document.getElementById('lobby-room-section').style.display = 'block';
-            setupRoomListener();
-            announceSR(`เข้าร่วมห้อง ${currentRoomId} เรียบร้อย`);
-        }
-    });
-};
-
-window.adjustBot = function(delta) {
-    if (!isHost || !gameState) return;
-    const curBots = gameState.botCount || 0;
-    const humanCount = Object.values(gameState.players).filter(p => !p.isBot).length;
-    const newBots = curBots + delta;
-    if (newBots < 0 || (humanCount + newBots) > 6) return;
-
-    playAudio('select.mp3');
-
-    const roomRef = ref(db, `games/RallyThai/rooms/${currentRoomId}`);
-    const updatedPlayers = { ...gameState.players };
-
-    if (delta > 0) {
-        const botSlot = 'p' + (humanCount + newBots);
-        const usedAvatars = Object.values(updatedPlayers).map(p => p.avatar.icon);
-        const availAvatars = CAR_POOL.filter(a => !usedAvatars.includes(a.icon));
-        const botName = `บอทนักซิ่ง ${newBots}`;
-        updatedPlayers[botSlot] = {
-            name: botName, avatar: availAvatars[0] || CAR_POOL[1], isBot: true, pos: 1, fuel: 10
-        };
-        syncActionEmit(`เพิ่ม ${botName} เข้าร่วมห้อง`);
-    } else {
-        const botSlots = Object.keys(updatedPlayers).filter(k => updatedPlayers[k].isBot);
-        if (botSlots.length > 0) {
-            const removedSlot = botSlots[botSlots.length - 1];
-            const removedBotName = updatedPlayers[removedSlot].name;
-            delete updatedPlayers[removedSlot];
-            syncActionEmit(`นำ ${removedBotName} ออกจากห้อง`);
-        }
+        if (botSlots.length > 0) delete updatedPlayers[botSlots[botSlots.length - 1]];
     }
 
     update(roomRef, { botCount: newBots, players: updatedPlayers });
@@ -730,13 +349,7 @@ function setupRoomListener() {
             
             if (gameState.lastAction.msg.includes('ทอยลูกเต๋าได้')) {
                 const match = gameState.lastAction.msg.match(/ทอยลูกเต๋าได้\s*(\d+)/);
-                if (match) {
-                    const diceVisual = document.getElementById('dice-visual');
-                    if (diceVisual) {
-                        diceVisual.textContent = match[1];
-                        diceVisual.setAttribute('aria-hidden', 'true');
-                    }
-                }
+                if (match) document.getElementById('dice-visual').textContent = match[1];
             }
         }
 
@@ -746,12 +359,6 @@ function setupRoomListener() {
             } else {
                 updateGameUI();
                 checkQuestionState();
-
-                // ให้ Host คอยประมวลผลคำตอบที่ Client ส่งมา
-                if (isHost && gameState.questionState && gameState.questionState.answeredBy && !gameState.questionState.isProcessing) {
-                    update(ref(db, `games/RallyThai/rooms/${currentRoomId}/questionState`), { isProcessing: true });
-                    processAnswer(gameState.questionState.answeredBy, gameState.questionState.selectedOpt);
-                }
             }
         } else if (gameState.status === 'ended') {
             if (!isShowingWinnerScene) showWinnerAnimationAndResult();
@@ -779,16 +386,7 @@ function updateLobbyUI() {
         const startBtn = document.getElementById('btn-start-game');
         startBtn.style.display = 'block';
         startBtn.disabled = isStartingGame || gameState.status !== 'waiting' || pList.length < 2;
-        
-        const curBots = gameState.botCount || 0;
-        const humanCount = Object.values(gameState.players).filter(p => !p.isBot).length;
-        document.getElementById('bot-count-display').textContent = curBots;
-        
-        const btnAddBot = document.getElementById('btn-add-bot');
-        if (btnAddBot) btnAddBot.disabled = (humanCount + curBots) >= 6;
-        
-        const btnRemoveBot = document.getElementById('btn-remove-bot');
-        if (btnRemoveBot) btnRemoveBot.disabled = curBots <= 0;
+        document.getElementById('bot-count-display').textContent = gameState.botCount || 0;
     }
 }
 
@@ -891,7 +489,7 @@ function updateGameUI() {
     cardsContainer.setAttribute('role', 'region');
     cardsContainer.setAttribute('aria-label', 'สถานะนักแข่งทั้งหมด');
     
-    let srGroupText = '';
+    let srGroupText = 'สรุปสถานะนักแข่ง: ';
 
     pOrder.forEach((k) => {
         const p = gameState.players[k];
@@ -901,12 +499,12 @@ function updateGameUI() {
         card.innerHTML = `<div><strong>${p.avatar.icon} ${p.name}</strong></div><div>ช่อง ${p.pos} | น้ำมัน ${p.fuel}/10</div>`;
         cardsContainer.appendChild(card);
         
-        srGroupText += `${p.name} ช่อง ${p.pos} น้ำมัน ${p.fuel} ขีด, `;
+        srGroupText += `${p.name} อยู่ช่องที่ ${p.pos} น้ำมัน ${p.fuel} ขีด, `;
     });
 
     const srGroupElement = document.createElement('div');
     srGroupElement.className = 'sr-only';
-    srGroupElement.textContent = srGroupText.trim().replace(/,$/, '');
+    srGroupElement.textContent = srGroupText;
     cardsContainer.appendChild(srGroupElement);
 
     document.querySelectorAll('.pawns-holder').forEach(h => h.innerHTML = '');
@@ -1034,7 +632,6 @@ function checkQuestionState() {
                 const btn = document.createElement('button');
                 btn.textContent = opt.text;
                 btn.onclick = () => {
-                    btn.disabled = true;
                     modal.style.display = 'none';
                     // เมื่อตอบเสร็จ ให้กลับโฟกัสเข้าสู่หน้าหลักของเกมเพื่อเล่นต่อ
                     const gameHeader = document.getElementById('game-status-bar');
@@ -1048,9 +645,9 @@ function checkQuestionState() {
             });
             
             modal.style.display = 'flex';
+            announceSR(`มีคำถามจากจังหวัด ${qState.prov}`);
 
             // ย้ายโฟกัสทันทีเมื่อเปิด Overlay คำถามและล็อคเป้าไว้ที่ Heading
-            // ตัด announceSR ออกเพื่อป้องกันการอ่านซ้ำซ้อนกับ Focus Heading บน VoiceOver
             const heading = document.getElementById('question-province');
             if (heading) {
                 heading.setAttribute('tabindex', '-1');
@@ -1067,6 +664,9 @@ window.handleAnswer = async function(pId, selectedOptId) {
     await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/questionState`), {
         answeredBy: pId, selectedOpt: selectedOptId
     });
+    
+    // If we are Host, we process the answer
+    if (isHost) processAnswer(pId, selectedOptId);
 };
 
 async function processAnswer(pId, selectedOptId) {
