@@ -799,6 +799,7 @@ async function processAnswer(pId, selectedOptId) {
 async function endTurn() {
     const pKeys = gameState.playerOrder || Object.keys(gameState.players);
     const nextTurn = (gameState.turnIndex + 1) % pKeys.length;
+await delayAsync(2200);
     await update(ref(db), { 
         [`games/RallyThai/rooms/${currentRoomId}/turnIndex`]: nextTurn,
         [`games/RallyThai/rooms/${currentRoomId}/turnExecuting`]: false
