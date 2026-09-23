@@ -692,7 +692,7 @@ async function executeTurnAsync(pId, isAuto = false) {
             // แจ้งให้ทุกคนทราบเพียงว่ากำลังตอบคำถาม (โดยไม่เห็นโจทย์) เดินถึงจังหวัดปกติเล่น box1.mp3
             await syncActionEmit(`${pData.name} กำลังตอบคำถามจากจังหวัด ${sp.name}`, ['box1.mp3']);
 
-await delayAsync(2000);
+await delayAsync(3000);
             const q = qList[Math.floor(Math.random() * qList.length)];
             
             // Shuffle options
