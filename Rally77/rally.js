@@ -537,6 +537,7 @@ function updateGameUI() {
         (async () => {
             await playAudio('turn.mp3');
             if (pId === myPlayerId) {
+                await playAudio('abc.mp3');
             }
 
             // จัดการดึงโฟกัสหลังจากเสียงจบอย่างเหมาะสม
@@ -544,9 +545,6 @@ function updateGameUI() {
                 const btn = document.getElementById('btn-roll-dice');
                 if (btn && !btn.disabled) btn.focus();
             }
-if (pId === myPlayerId) {
-    playAudio('abc.mp3');
-
         })();
     }
 
