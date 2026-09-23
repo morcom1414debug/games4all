@@ -537,7 +537,7 @@ function updateGameUI() {
         (async () => {
             await playAudio('turn.mp3');
             if (pId === myPlayerId) {
-                playAudio('abc.mp3');
+                await playAudio('abc.mp3');
             }
 
             // จัดการดึงโฟกัสหลังจากเสียงจบอย่างเหมาะสม
