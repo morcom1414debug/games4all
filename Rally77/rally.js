@@ -131,10 +131,7 @@ async function processActionQueue() {
     isProcessingAction = true;
     const action = actionQueue.shift();
     
-    // เล่นเสียงให้จบก่อนค่อยเริ่มประกาศ Screen Reader เพื่อป้องกันการทับซ้อน
-    if (action.audioKeys && action.audioKeys.length > 0) {
-        await playAudioSequence(action.audioKeys);
-    }
+    // ประกาศ Screen Reader ทันทีเพื่อความสอดคล้องกับจังหวะเริ่มเหตุการณ์โดยไม่ต้องรอเสียงจบ
     announceSR(action.msg, 'polite');
     
     if (action.msg.includes('ทอยลูกเต๋าได้')) {
@@ -146,6 +143,11 @@ async function processActionQueue() {
                 diceEl.setAttribute('aria-hidden', 'true');
             }
         }
+    }
+    
+    // รอจนกว่าเสียงที่เกี่ยวข้องกับเหตุการณ์นี้เล่นจบก่อน เพื่อรักษาลำดับเหตุการณ์ถัดไปไม่ให้ทับซ้อน
+    if (action.audioKeys && action.audioKeys.length > 0) {
+        await playAudioSequence(action.audioKeys);
     }
     
     isProcessingAction = false;
@@ -392,7 +394,6 @@ function setupRoomListener() {
 
         updateLobbyUI();
 
-        // นำเข้า Queue เพื่อให้เสียงเล่นจบก่อน แล้วจึงประกาศ SR และทำรายการถัดไปป้องกันทับซ้อน
         if (gameState.lastAction && gameState.lastAction.ts > localLastActionTs) {
             localLastActionTs = gameState.lastAction.ts;
             actionQueue.push(gameState.lastAction);
@@ -462,18 +463,19 @@ window.startRallyGame = function() {
     }
 };
 
-function showStartGameAnimation() {
+async function showStartGameAnimation() {
     stopBGM();
     const overlay = document.getElementById('anim-start-overlay');
     overlay.style.display = 'flex';
     announceSR('การแข่งขันเริ่มขึ้นแล้ว!', 'assertive');
-    playAudio('start.mp3').then(() => { setTimeout(() => { playAudio('bgm.mp3', true); }, 200); });
-    setTimeout(() => {
-        overlay.style.display = 'none';
-        switchScreen('screen-game', 'game-status-bar');
-        renderBoardGrid();
-        updateGameUI();
-    }, 4800);
+    
+    await playAudio('start.mp3');
+    playAudio('bgm.mp3', true);
+    
+    overlay.style.display = 'none';
+    switchScreen('screen-game', 'game-status-bar');
+    renderBoardGrid();
+    updateGameUI();
 }
 
 function renderBoardGrid() {
@@ -528,19 +530,20 @@ function updateGameUI() {
     if (lastAnnouncedTurnKey !== `${gameState.turnIndex}_${pId}`) {
         lastAnnouncedTurnKey = `${gameState.turnIndex}_${pId}`;
         
-        // จัดลำดับเล่นเสียงผู้เล่นทั้งหมด แล้วเล่นเสียงเจ้าของเทิร์น จากนั้นจึงประกาศให้ SR ทำงานหลังเสียงจบ
+        // ประกาศเสียง SR ทันทีโดยไม่ต้องรอเสียงประกอบเพื่อความฉับไว
+        announceSR(`ถึงเทิร์นของ ${currentP.name}`);
+
+        // ดำเนินการเล่นเสียงประกอบคู่ขนานไปพร้อมกัน
         (async () => {
             await playAudio('turn.mp3');
             if (pId === myPlayerId) {
                 await playAudio('abc.mp3');
             }
-            announceSR(`ถึงเทิร์นของ ${currentP.name}`);
 
+            // จัดการดึงโฟกัสหลังจากเสียงจบอย่างเหมาะสม
             if (pId === myPlayerId && !currentP.isBot) {
-                setTimeout(() => {
-                    const btn = document.getElementById('btn-roll-dice');
-                    if (btn && !btn.disabled) btn.focus();
-                }, 200); // ดึง Focus ไปที่ปุ่มทอยลูกเต๋าเมื่อถึงเทิร์นและปุ่มพร้อมใช้งาน
+                const btn = document.getElementById('btn-roll-dice');
+                if (btn && !btn.disabled) btn.focus();
             }
         })();
     }
@@ -600,7 +603,7 @@ function updateGameUI() {
 async function syncActionEmit(msg, audioKeys = []) {
     const ts = Date.now() + Math.random();
     await update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/lastAction`]: { msg, ts, audioKeys } });
-    await delayAsync(2800);
+    await delayAsync(600);
 }
 
 window.handleRollDice = function(isAuto = false) {
@@ -797,9 +800,13 @@ async function processAnswer(pId, selectedOptId) {
 }
 
 async function endTurn() {
+    // ป้องกันการอัปเดตเทิร์นจนกว่าคิวเหตุการณ์ภายในเครื่อง (ทั้งเสียงและ SR) จะทำงานเสร็จ ป้องกัน Race Condition
+    while(isProcessingAction || actionQueue.length > 0) {
+        await delayAsync(200);
+    }
+    
     const pKeys = gameState.playerOrder || Object.keys(gameState.players);
     const nextTurn = (gameState.turnIndex + 1) % pKeys.length;
-await delayAsync(3000);
     await update(ref(db), { 
         [`games/RallyThai/rooms/${currentRoomId}/turnIndex`]: nextTurn,
         [`games/RallyThai/rooms/${currentRoomId}/turnExecuting`]: false
@@ -815,7 +822,7 @@ async function handleWinGame(pId) {
     });
 }
 
-function showWinnerAnimationAndResult() {
+async function showWinnerAnimationAndResult() {
     isShowingWinnerScene = true;
     stopBGM();
     const overlay = document.getElementById('anim-winner-overlay');
@@ -823,19 +830,18 @@ function showWinnerAnimationAndResult() {
     document.getElementById('winner-anim-character').textContent = winner.avatar.icon;
     document.getElementById('winner-anim-name').textContent = winner.name;
     overlay.style.display = 'flex';
-    setTimeout(() => { playAudio('win.mp3'); }, 100);
     
-    setTimeout(() => {
-        overlay.style.display = 'none';
-        switchScreen('screen-result', 'result-title');
-        document.getElementById('result-winner-text').textContent = `🎉 ${winner.avatar.icon} ${winner.name} ถึงเส้นชัยเป็นคนแรก!`;
-        announceSR(`การแข่งขันสิ้นสุด ผู้ชนะคือ ${winner.name}`, 'assertive');
-        
-        const rankingsBox = document.getElementById('result-rankings');
-        rankingsBox.innerHTML = '<h3>อันดับนักแข่ง:</h3>';
-        const sorted = Object.values(gameState.players).sort((a, b) => b.pos - a.pos);
-        sorted.forEach(p => { rankingsBox.innerHTML += `<p>${p.avatar.icon} ${p.name} ช่อง ${p.pos}</p>`; });
-    }, 5000);
+    await playAudio('win.mp3');
+    
+    overlay.style.display = 'none';
+    switchScreen('screen-result', 'result-title');
+    document.getElementById('result-winner-text').textContent = `🎉 ${winner.avatar.icon} ${winner.name} ถึงเส้นชัยเป็นคนแรก!`;
+    announceSR(`การแข่งขันสิ้นสุด ผู้ชนะคือ ${winner.name}`, 'assertive');
+    
+    const rankingsBox = document.getElementById('result-rankings');
+    rankingsBox.innerHTML = '<h3>อันดับนักแข่ง:</h3>';
+    const sorted = Object.values(gameState.players).sort((a, b) => b.pos - a.pos);
+    sorted.forEach(p => { rankingsBox.innerHTML += `<p>${p.avatar.icon} ${p.name} ช่อง ${p.pos}</p>`; });
 }
 
 window.leaveRoom = function() {

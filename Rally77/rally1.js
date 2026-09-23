@@ -48,6 +48,10 @@ let myTurnTimer = null;
 let isStartingGame = false;
 let isShowingWinnerScene = false;
 
+// Queue สำหรับจัดการลำดับเสียงและ action ป้องกันการทับซ้อน
+let isProcessingAction = false;
+let actionQueue = [];
+
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const unlockAudio = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
 document.addEventListener('click', unlockAudio, { capture: true });
@@ -120,6 +124,32 @@ function processSpeechQueue() {
     } else {
         isSpeaking = false;
     }
+}
+
+async function processActionQueue() {
+    if (isProcessingAction || actionQueue.length === 0) return;
+    isProcessingAction = true;
+    const action = actionQueue.shift();
+    
+    // เล่นเสียงให้จบก่อนค่อยเริ่มประกาศ Screen Reader เพื่อป้องกันการทับซ้อน
+    if (action.audioKeys && action.audioKeys.length > 0) {
+        await playAudioSequence(action.audioKeys);
+    }
+    announceSR(action.msg, 'polite');
+    
+    if (action.msg.includes('ทอยลูกเต๋าได้')) {
+        const match = action.msg.match(/ทอยลูกเต๋าได้\s*(\d+)/);
+        if (match) {
+            const diceEl = document.getElementById('dice-visual');
+            if (diceEl) {
+                diceEl.textContent = match[1];
+                diceEl.setAttribute('aria-hidden', 'true');
+            }
+        }
+    }
+    
+    isProcessingAction = false;
+    processActionQueue();
 }
 
 function delayAsync(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -362,21 +392,11 @@ function setupRoomListener() {
 
         updateLobbyUI();
 
+        // นำเข้า Queue เพื่อให้เสียงเล่นจบก่อน แล้วจึงประกาศ SR และทำรายการถัดไปป้องกันทับซ้อน
         if (gameState.lastAction && gameState.lastAction.ts > localLastActionTs) {
             localLastActionTs = gameState.lastAction.ts;
-            announceSR(gameState.lastAction.msg, 'polite');
-            if (gameState.lastAction.audioKeys) playAudioSequence(gameState.lastAction.audioKeys);
-            
-            if (gameState.lastAction.msg.includes('ทอยลูกเต๋าได้')) {
-                const match = gameState.lastAction.msg.match(/ทอยลูกเต๋าได้\s*(\d+)/);
-                if (match) {
-                    const diceEl = document.getElementById('dice-visual');
-                    if (diceEl) {
-                        diceEl.textContent = match[1];
-                        diceEl.setAttribute('aria-hidden', 'true');
-                    }
-                }
-            }
+            actionQueue.push(gameState.lastAction);
+            processActionQueue();
         }
 
         if (gameState.status === 'playing') {
@@ -507,14 +527,22 @@ function updateGameUI() {
 
     if (lastAnnouncedTurnKey !== `${gameState.turnIndex}_${pId}`) {
         lastAnnouncedTurnKey = `${gameState.turnIndex}_${pId}`;
-        announceSR(`ถึงเทิร์นของ ${currentP.name}`);
+        
+        // จัดลำดับเล่นเสียงผู้เล่นทั้งหมด แล้วเล่นเสียงเจ้าของเทิร์น จากนั้นจึงประกาศให้ SR ทำงานหลังเสียงจบ
+        (async () => {
+            await playAudio('turn.mp3');
+            if (pId === myPlayerId) {
+                await playAudio('abc.mp3');
+            }
+            announceSR(`ถึงเทิร์นของ ${currentP.name}`);
 
-        if (pId === myPlayerId && !currentP.isBot) {
-            setTimeout(() => {
-                const btn = document.getElementById('btn-roll-dice');
-                if (btn && !btn.disabled) btn.focus();
-            }, 300); // ดึง Focus ไปที่ปุ่มทอยลูกเต๋าเมื่อถึงเทิร์นและปุ่มพร้อมใช้งาน
-        }
+            if (pId === myPlayerId && !currentP.isBot) {
+                setTimeout(() => {
+                    const btn = document.getElementById('btn-roll-dice');
+                    if (btn && !btn.disabled) btn.focus();
+                }, 200); // ดึง Focus ไปที่ปุ่มทอยลูกเต๋าเมื่อถึงเทิร์นและปุ่มพร้อมใช้งาน
+            }
+        })();
     }
 
     // จัดกลุ่มสถานะสำหรับ Screen Reader ตามแนวทางที่กระชับ ไม่ให้รบกวนการแสดงผลจริง
@@ -572,7 +600,7 @@ function updateGameUI() {
 async function syncActionEmit(msg, audioKeys = []) {
     const ts = Date.now() + Math.random();
     await update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/lastAction`]: { msg, ts, audioKeys } });
-    await delayAsync(2200);
+    await delayAsync(2800);
 }
 
 window.handleRollDice = function(isAuto = false) {
@@ -584,10 +612,10 @@ window.handleRollDice = function(isAuto = false) {
 async function executeTurnAsync(pId) {
     const pData = gameState.players[pId];
     
-    // Check Fuel Rule
+    // Check Fuel Rule - น้ำมันหมดเล่น box3.mp3
     if (pData.fuel < 3) {
         const newFuel = Math.min(10, pData.fuel + 3);
-        await syncActionEmit(`น้ำมันหมด! ${pData.name} ไม่สามารถเดินทางได้ ต้องหยุดพัก 1 เทิร์น และได้รับน้ำมัน 3 ขีด`);
+        await syncActionEmit(`น้ำมันหมด! ${pData.name} ไม่สามารถเดินทางได้ ต้องหยุดพัก 1 เทิร์น และได้รับน้ำมัน 3 ขีด`, ['box3.mp3']);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: newFuel });
         endTurn();
         return;
@@ -619,7 +647,9 @@ async function executeTurnAsync(pId) {
     const sp = gameState.boardConfig[currentPos];
     
     if (sp.type === 'gas') {
-        await syncActionEmit(`${pData.name} เข้าปั๊มน้ำมัน เติมน้ำมันฟรีเต็มถัง 10 ขีด!`, ['sabuy.mp3']);
+        // เล่น box2.mp3 เฉพาะกรณีที่การเติมน้ำมันทำให้เชื้อเพลิงเต็มถังจริง (newFuel < 10)
+        let gasAudio = newFuel < 10 ? ['box2.mp3'] : [];
+        await syncActionEmit(`${pData.name} เข้าปั๊มน้ำมัน เติมน้ำมันฟรีเต็มถัง!`, gasAudio);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: 10 });
         endTurn();
     } else if (sp.type === 'rest') {
@@ -630,8 +660,8 @@ async function executeTurnAsync(pId) {
     } else if (sp.type === 'province') {
         const qList = window.rallyQuestionsData[sp.name];
         if (qList && qList.length > 0) {
-            // แจ้งให้ทุกคนทราบเพียงว่ากำลังตอบคำถาม (โดยไม่เห็นโจทย์)
-            await syncActionEmit(`${pData.name} กำลังตอบคำถามจากจังหวัด ${sp.name}`);
+            // แจ้งให้ทุกคนทราบเพียงว่ากำลังตอบคำถาม (โดยไม่เห็นโจทย์) เดินถึงจังหวัดปกติเล่น box1.mp3
+            await syncActionEmit(`${pData.name} กำลังตอบคำถามจากจังหวัด ${sp.name}`, ['box1.mp3']);
 
             const q = qList[Math.floor(Math.random() * qList.length)];
             
@@ -655,7 +685,8 @@ async function executeTurnAsync(pId) {
                 }, 4000);
             }
         } else {
-            await syncActionEmit(`ถึง ${sp.name} (ไม่มีคำถามในฐานข้อมูล) แวะพักผ่อนเฉยๆ`);
+            // เดินถึงจังหวัดปกติไม่มีคำถามเล่น box1.mp3
+            await syncActionEmit(`ถึง ${sp.name} (ไม่มีคำถามในฐานข้อมูล) แวะพักผ่อนเฉยๆ`, ['box1.mp3']);
             endTurn();
         }
     }
@@ -741,8 +772,8 @@ async function processAnswer(pId, selectedOptId) {
         const targetSp = gameState.boardConfig[targetPos];
         const cellName = targetSp ? targetSp.name : 'เส้นชัย';
 
-        // ใช้ walk.mp3 สำหรับการเดินรถปกติแทน win.mp3 ตามที่กำหนด
-        await syncActionEmit(`${pData.name} ตอบถูก! ได้น้ำมัน 2 ขีด และเดินหน้า ${forwardMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['walk.mp3']); 
+        // ตอบถูก เล่น shield.mp3 ตามด้วย walk.mp3
+        await syncActionEmit(`${pData.name} ตอบถูก! ได้น้ำมัน 2 ขีด และเดินหน้า ${forwardMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shield.mp3', 'walk.mp3']); 
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: fuelGain });
         
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
@@ -756,7 +787,8 @@ async function processAnswer(pId, selectedOptId) {
         const targetSp = gameState.boardConfig[targetPos];
         const cellName = targetSp ? targetSp.name : 'จุดเริ่มต้น';
 
-        await syncActionEmit(`${pData.name} ตอบผิด! ถอยหลัง ${backMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shieldno.mp3']);
+        // ตอบผิด เล่น shieldno.mp3 ตามด้วย walk1.mp3
+        await syncActionEmit(`${pData.name} ตอบผิด! ถอยหลัง ${backMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shieldno.mp3', 'walk1.mp3']);
         
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
     }
@@ -767,6 +799,7 @@ async function processAnswer(pId, selectedOptId) {
 async function endTurn() {
     const pKeys = gameState.playerOrder || Object.keys(gameState.players);
     const nextTurn = (gameState.turnIndex + 1) % pKeys.length;
+await delayAsync(3000);
     await update(ref(db), { 
         [`games/RallyThai/rooms/${currentRoomId}/turnIndex`]: nextTurn,
         [`games/RallyThai/rooms/${currentRoomId}/turnExecuting`]: false
