@@ -540,7 +540,7 @@ function updateGameUI() {
                 setTimeout(() => {
                     const btn = document.getElementById('btn-roll-dice');
                     if (btn && !btn.disabled) btn.focus();
-                }, 300); // ดึง Focus ไปที่ปุ่มทอยลูกเต๋าเมื่อถึงเทิร์นและปุ่มพร้อมใช้งาน
+                }, 200); // ดึง Focus ไปที่ปุ่มทอยลูกเต๋าเมื่อถึงเทิร์นและปุ่มพร้อมใช้งาน
             }
         })();
     }
@@ -600,7 +600,7 @@ function updateGameUI() {
 async function syncActionEmit(msg, audioKeys = []) {
     const ts = Date.now() + Math.random();
     await update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/lastAction`]: { msg, ts, audioKeys } });
-    await delayAsync(2200);
+    await delayAsync(600);
 }
 
 window.handleRollDice = function(isAuto = false) {
@@ -649,7 +649,7 @@ async function executeTurnAsync(pId) {
     if (sp.type === 'gas') {
         // เล่น box2.mp3 เฉพาะกรณีที่การเติมน้ำมันทำให้เชื้อเพลิงเต็มถังจริง (newFuel < 10)
         let gasAudio = newFuel < 10 ? ['box2.mp3'] : [];
-        await syncActionEmit(`${pData.name} เข้าปั๊มน้ำมัน เติมน้ำมันฟรีเต็มถัง 10 ขีด!`, gasAudio);
+        await syncActionEmit(`${pData.name} เข้าปั๊มน้ำมัน เติมน้ำมันฟรีเต็มถัง!`, gasAudio);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: 10 });
         endTurn();
     } else if (sp.type === 'rest') {
