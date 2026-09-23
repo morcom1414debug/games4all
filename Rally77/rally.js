@@ -535,18 +535,18 @@ function updateGameUI() {
 
         // ดำเนินการเล่นเสียงประกอบคู่ขนานไปพร้อมกัน
         (async () => {
-await playAudio('turn.mp3');
+            await playAudio('turn.mp3');
+            if (pId === myPlayerId) {
+            }
 
+            // จัดการดึงโฟกัสหลังจากเสียงจบอย่างเหมาะสม
+            if (pId === myPlayerId && !currentP.isBot) {
+                const btn = document.getElementById('btn-roll-dice');
+                if (btn && !btn.disabled) btn.focus();
+            }
 if (pId === myPlayerId) {
     playAudio('abc.mp3');
-}
 
-// จัดการดึงโฟกัสหลังเสียง turn.mp3 จบ
-if (pId === myPlayerId && !currentP.isBot) {
-    const btn = document.getElementById('btn-roll-dice');
-    if (btn && !btn.disabled) btn.focus();
-}
-            }
         })();
     }
 
