@@ -47,6 +47,7 @@ let previousPlayersState = {};
 let myTurnTimer = null;
 let isStartingGame = false;
 let isShowingWinnerScene = false;
+let myLastCorrectAnswerText = '';
 
 // Queue สำหรับจัดการลำดับเสียงและ action ป้องกันการทับซ้อน
 let isProcessingAction = false;
@@ -322,17 +323,20 @@ window.joinRallyRoom = function(rId) {
             name: myPlayerName, avatar: availAvatars[0] || CAR_POOL[0], isBot: false, pos: 1, fuel: 12
         };
         myPlayerId = nextSlot;
+        roomData.lastAction = {
+            msg: `${myPlayerName} เข้าร่วมห้องสำเร็จ`,
+            audioKeys: ['select.mp3'],
+            ts: Date.now() + Math.random()
+        };
         return roomData;
     }).then((res) => {
         if (res.committed) {
-            playAudio('select.mp3');
             onDisconnect(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${myPlayerId}`)).update({
                 isBot: true, name: "บอท" + myPlayerName
             });
             document.getElementById('lobby-menu-section').style.display = 'none';
             document.getElementById('lobby-room-section').style.display = 'block';
             setupRoomListener();
-            announceSR(`เข้าร่วมห้อง ${currentRoomId} เรียบร้อย`);
         }
     });
 };
@@ -396,7 +400,11 @@ function setupRoomListener() {
 
         if (gameState.lastAction && gameState.lastAction.ts > localLastActionTs) {
             localLastActionTs = gameState.lastAction.ts;
-            actionQueue.push(gameState.lastAction);
+            let actionToQueue = { ...gameState.lastAction };
+            if (actionToQueue.wrongPId && actionToQueue.wrongPId === myPlayerId && myLastCorrectAnswerText) {
+                actionToQueue.msg = actionToQueue.msg.replace('ตอบผิด!', `ตอบผิด! ${myLastCorrectAnswerText} เป็นคำตอบที่ถูกต้องนะ`);
+            }
+            actionQueue.push(actionToQueue);
             processActionQueue();
         }
 
@@ -433,6 +441,10 @@ function updateLobbyUI() {
         const startBtn = document.getElementById('btn-start-game');
         startBtn.style.display = 'block';
         startBtn.disabled = isStartingGame || gameState.status !== 'waiting' || pList.length < 2;
+        if (isStartingGame) {
+            startBtn.classList.add('dim');
+            startBtn.style.opacity = '0.5';
+        }
         
         const botCountDisplay = document.getElementById('bot-count-display');
         if (botCountDisplay) botCountDisplay.textContent = gameState.botCount || 0;
@@ -448,6 +460,12 @@ function updateLobbyUI() {
 window.startRallyGame = function() {
     if (!isHost || isStartingGame) return;
     isStartingGame = true;
+    const startBtn = document.getElementById('btn-start-game');
+    if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.classList.add('dim');
+        startBtn.style.opacity = '0.5';
+    }
     try {
         const boardConfig = generateRallyBoard();
         const pKeys = Object.keys(gameState.players || {});
@@ -460,6 +478,11 @@ window.startRallyGame = function() {
         });
     } catch (err) {
         isStartingGame = false;
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.classList.remove('dim');
+            startBtn.style.opacity = '1';
+        }
     }
 };
 
@@ -600,9 +623,11 @@ function updateGameUI() {
     }
 }
 
-async function syncActionEmit(msg, audioKeys = []) {
+async function syncActionEmit(msg, audioKeys = [], wrongPId = null) {
     const ts = Date.now() + Math.random();
-    await update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/lastAction`]: { msg, ts, audioKeys } });
+    const actionObj = { msg, ts, audioKeys };
+    if (wrongPId) actionObj.wrongPId = wrongPId;
+    await update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/lastAction`]: actionObj });
     await delayAsync(600);
 }
 
@@ -707,6 +732,10 @@ function checkQuestionState() {
     
     // ผู้เล่นที่เป็นเจ้าของเทิร์นเท่านั้นจะเห็นคำถาม
     if (qState && qState.pId === myPlayerId && !gameState.players[myPlayerId].isBot) {
+        const correctOpt = qState.options ? qState.options.find(o => o.id === qState.correctId) : null;
+        if (correctOpt) {
+            myLastCorrectAnswerText = correctOpt.text;
+        }
         if (modal.style.display !== 'flex') {
             document.getElementById('question-province').textContent = `ขับรถมาถึงจังหวัด ${qState.prov}`;
             document.getElementById('question-text').textContent = qState.question;
@@ -791,7 +820,7 @@ async function processAnswer(pId, selectedOptId) {
         const cellName = targetSp ? targetSp.name : 'จุดเริ่มต้น';
 
         // ตอบผิด เล่น shieldno.mp3 ตามด้วย walk1.mp3
-        await syncActionEmit(`${pData.name} ตอบผิด! ถอยหลัง ${backMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shieldno.mp3', 'walk1.mp3']);
+        await syncActionEmit(`${pData.name} ตอบผิด! ถอยหลัง ${backMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shieldno.mp3', 'walk1.mp3'], pId);
         
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
     }
@@ -853,6 +882,7 @@ window.leaveRoom = function() {
     stopBGM();
     myPlayerId = null; currentRoomId = null; isHost = false; gameState = null;
     isShowingWinnerScene = false; isStartingGame = false;
+    myLastCorrectAnswerText = '';
     if (myTurnTimer) { clearTimeout(myTurnTimer); myTurnTimer = null; }
     document.getElementById('lobby-room-section').style.display = 'none';
     document.getElementById('lobby-menu-section').style.display = 'block';
