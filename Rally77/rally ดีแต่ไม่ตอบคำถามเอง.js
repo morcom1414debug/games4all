@@ -45,7 +45,6 @@ let isSpeaking = false;
 let lastAnnouncedTurnKey = null;
 let previousPlayersState = {};
 let myTurnTimer = null;
-let autoAnswerTimer = null;
 let isStartingGame = false;
 let isShowingWinnerScene = false;
 let myLastCorrectAnswerText = '';
@@ -635,10 +634,10 @@ async function syncActionEmit(msg, audioKeys = [], wrongPId = null) {
 window.handleRollDice = function(isAuto = false) {
     document.getElementById('btn-roll-dice').disabled = true;
     update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/turnExecuting`]: true });
-    executeTurnAsync(myPlayerId, isAuto);
+    executeTurnAsync(myPlayerId);
 };
 
-async function executeTurnAsync(pId, isAuto = false) {
+async function executeTurnAsync(pId) {
     const pData = gameState.players[pId];
     
     // Check Fuel Rule - น้ำมันหมดเล่น box3.mp3
@@ -703,7 +702,7 @@ async function executeTurnAsync(pId, isAuto = false) {
             
             await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/questionState`), {
                 pId: pId, prov: sp.name, question: q.question, options: opts, correctId: q.correctOptionId,
-                answeredBy: null, selectedOpt: null, processing: false, isAuto: !!isAuto
+                answeredBy: null, selectedOpt: null, processing: false
             });
             
             if(pData.isBot && isHost) {
@@ -747,7 +746,6 @@ function checkQuestionState() {
                 const btn = document.createElement('button');
                 btn.textContent = opt.text;
                 btn.onclick = () => {
-                    if (autoAnswerTimer) { clearTimeout(autoAnswerTimer); autoAnswerTimer = null; }
                     modal.style.display = 'none';
                     // เมื่อตอบเสร็จ ให้กลับโฟกัสเข้าสู่หน้าหลักของเกมเพื่อเล่นต่อ
                     const gameHeader = document.getElementById('game-status-bar');
@@ -770,35 +768,12 @@ function checkQuestionState() {
                 heading.focus();
             }
         }
-
-        if (qState.isAuto && !qState.answeredBy && !qState.processing && !autoAnswerTimer) {
-            autoAnswerTimer = setTimeout(() => {
-                autoAnswerTimer = null;
-                if (gameState && gameState.questionState && gameState.questionState.pId === myPlayerId && !gameState.questionState.answeredBy) {
-                    modal.style.display = 'none';
-                    const gameHeader = document.getElementById('game-status-bar');
-                    if (gameHeader) {
-                        gameHeader.setAttribute('tabindex', '-1');
-                        gameHeader.focus();
-                    }
-                    const opts = gameState.questionState.options;
-                    if (opts && opts.length > 0) {
-                        const randomOpt = opts[Math.floor(Math.random() * opts.length)];
-                        handleAnswer(myPlayerId, randomOpt.id);
-                    }
-                }
-            }, 1000);
-        }
     } else {
-        if (autoAnswerTimer) { clearTimeout(autoAnswerTimer); autoAnswerTimer = null; }
         modal.style.display = 'none';
     }
 }
 
 window.handleAnswer = async function(pId, selectedOptId) {
-    if (autoAnswerTimer) { clearTimeout(autoAnswerTimer); autoAnswerTimer = null; }
-    if (!gameState || !gameState.questionState || gameState.questionState.answeredBy) return;
-
     // Player answers and sends to Host via DB
     await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/questionState`), {
         answeredBy: pId, selectedOpt: selectedOptId
@@ -900,7 +875,6 @@ async function showWinnerAnimationAndResult() {
 }
 
 window.leaveRoom = function() {
-    if (autoAnswerTimer) { clearTimeout(autoAnswerTimer); autoAnswerTimer = null; }
     if (currentRoomId && myPlayerId) {
         if (isHost) remove(ref(db, `games/RallyThai/rooms/${currentRoomId}`));
         else update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${myPlayerId}`), { isBot: true, name: "บอท" + myPlayerName });
