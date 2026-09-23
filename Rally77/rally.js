@@ -600,7 +600,7 @@ function updateGameUI() {
 async function syncActionEmit(msg, audioKeys = []) {
     const ts = Date.now() + Math.random();
     await update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/lastAction`]: { msg, ts, audioKeys } });
-    await delayAsync(600);
+    await delayAsync(2800);
 }
 
 window.handleRollDice = function(isAuto = false) {
