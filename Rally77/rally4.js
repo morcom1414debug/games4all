@@ -283,7 +283,7 @@ window.createRallyRoom = function() {
             set(roomRef, {
                 status: 'waiting',
                 players: {
-                    p1: { name: myPlayerName, avatar: CAR_POOL[0], isBot: false, pos: 1, fuel: 12 }
+                    p1: { name: myPlayerName, avatar: CAR_POOL[0], isBot: false, pos: 1, fuel: 10 }
                 },
                 botCount: 0,
                 turnIndex: 0,
@@ -319,7 +319,7 @@ window.joinRallyRoom = function(rId) {
         
         if (!roomData.players) roomData.players = {};
         roomData.players[nextSlot] = {
-            name: myPlayerName, avatar: availAvatars[0] || CAR_POOL[0], isBot: false, pos: 1, fuel: 12
+            name: myPlayerName, avatar: availAvatars[0] || CAR_POOL[0], isBot: false, pos: 1, fuel: 10
         };
         myPlayerId = nextSlot;
         return roomData;
@@ -361,7 +361,7 @@ window.adjustBot = function(delta) {
         const usedAvatars = Object.values(updatedPlayers).map(p => p.avatar.icon);
         const availAvatars = CAR_POOL.filter(a => !usedAvatars.includes(a.icon));
         updatedPlayers[botSlot] = {
-            name: botName, avatar: availAvatars[0] || CAR_POOL[1], isBot: true, pos: 1, fuel: 12
+            name: botName, avatar: availAvatars[0] || CAR_POOL[1], isBot: true, pos: 1, fuel: 10
         };
         actionMsg = `เพิ่ม ${botName} เข้าสู่ห้องแข่งแล้ว`;
     } else {
@@ -562,7 +562,7 @@ function updateGameUI() {
         const card = document.createElement('div');
         card.className = `p-status-card ${k === pId ? 'active-turn' : ''}`;
         card.setAttribute('aria-hidden', 'true'); // ซ่อนการ์ดแต่ละใบจาก SR ไม่ให้อ่านแยกกระจัดกระจาย
-        card.innerHTML = `<div><strong>${p.avatar.icon} ${p.name}</strong></div><div>ช่อง ${p.pos} | น้ำมัน ${p.fuel}/12</div>`;
+        card.innerHTML = `<div><strong>${p.avatar.icon} ${p.name}</strong></div><div>ช่อง ${p.pos} | น้ำมัน ${p.fuel}/10</div>`;
         cardsContainer.appendChild(card);
         
         const summaryItem = `${p.name} ช่อง ${p.pos} น้ำมัน ${p.fuel} ขีด`;
@@ -617,7 +617,7 @@ async function executeTurnAsync(pId) {
     
     // Check Fuel Rule - น้ำมันหมดเล่น box3.mp3
     if (pData.fuel < 3) {
-        const newFuel = Math.min(12, pData.fuel + 3);
+        const newFuel = Math.min(10, pData.fuel + 3);
         await syncActionEmit(`น้ำมันหมด! ${pData.name} ไม่สามารถเดินทางได้ ต้องหยุดพัก 1 เทิร์น และได้รับน้ำมัน 3 ขีด`, ['box3.mp3']);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: newFuel });
         endTurn();
@@ -650,13 +650,13 @@ async function executeTurnAsync(pId) {
     const sp = gameState.boardConfig[currentPos];
     
     if (sp.type === 'gas') {
-        // เล่น box2.mp3 เฉพาะกรณีที่การเติมน้ำมันทำให้เชื้อเพลิงเต็มถังจริง (newFuel < 12)
-        let gasAudio = newFuel < 12 ? ['box2.mp3'] : [];
+        // เล่น box2.mp3 เฉพาะกรณีที่การเติมน้ำมันทำให้เชื้อเพลิงเต็มถังจริง (newFuel < 10)
+        let gasAudio = newFuel < 10 ? ['box2.mp3'] : [];
         await syncActionEmit(`${pData.name} เข้าปั๊มน้ำมัน เติมน้ำมันฟรีเต็มถัง!`, gasAudio);
-        await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: 12 });
+        await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: 10 });
         endTurn();
     } else if (sp.type === 'rest') {
-        const fuelGain = Math.min(12, newFuel + 1);
+        const fuelGain = Math.min(10, newFuel + 1);
         await syncActionEmit(`${pData.name} แวะพักที่ ${sp.name} ได้รับน้ำมัน 1 ขีด`, ['sabuy.mp3']);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: fuelGain });
         endTurn();
@@ -767,7 +767,7 @@ async function processAnswer(pId, selectedOptId) {
     await update(ref(db, `games/RallyThai/rooms/${currentRoomId}`), { questionState: null });
 
     if (isCorrect) {
-        const fuelGain = Math.min(12, pData.fuel + 2);
+        const fuelGain = Math.min(10, pData.fuel + 2);
         const forwardMove = Math.floor(Math.random() * 4) + 2; // 2-5 spaces
         let targetPos = pData.pos + forwardMove;
         if (targetPos > 80) targetPos = 80 - (targetPos - 80);
