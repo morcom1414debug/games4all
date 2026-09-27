@@ -50,9 +50,6 @@ let isStartingGame = false;
 let isShowingWinnerScene = false;
 let myLastCorrectAnswerText = '';
 
-// จัดการ Token DOM Elements เพื่อทำ Smooth Visual Movement โดยไม่ถูกล้างระหว่าง State Update
-const playerTokens = {};
-
 // Queue สำหรับจัดการลำดับเสียงและ action ป้องกันการทับซ้อน
 let isProcessingAction = false;
 let actionQueue = [];
@@ -131,136 +128,28 @@ function processSpeechQueue() {
     }
 }
 
-// Visual Animation: Step-by-Step Movement
-async function animateMovement(pId, path, forward) {
-    const token = document.getElementById(`token-${pId}`);
-    if (!token) return;
-    token.dataset.animating = 'true';
-    const animClass = forward ? 'moving-forward' : 'moving-backward';
-    
-    for (const stepPos of path) {
-        const holder = document.getElementById(`pawns-holder-${stepPos}`);
-        if (holder) {
-            holder.appendChild(token);
-            // Trigger reflow to restart CSS Keyframe animation per step
-            token.classList.remove('moving-forward', 'moving-backward');
-            void token.offsetWidth; 
-            token.classList.add(animClass);
-            
-            // Pop effect on the passing cell
-            const cell = document.getElementById(`cell-${stepPos}`);
-            if(cell) {
-                cell.style.transform = 'scale(1.08)';
-                cell.style.filter = 'brightness(1.2)';
-                setTimeout(() => { 
-                    if(cell) { cell.style.transform = ''; cell.style.filter = ''; }
-                }, 200);
-            }
-        }
-        await delayAsync(350); // Delay for visual step
-    }
-    
-    token.classList.remove('moving-forward', 'moving-backward');
-    delete token.dataset.animating;
-}
-
-// Visual Animation: Fuel Empty
-async function animateFuelEmpty(pId) {
-    const token = document.getElementById(`token-${pId}`);
-    if (token) {
-        token.dataset.animating = 'true';
-        token.classList.add('fuel-empty');
-        await delayAsync(1500);
-        token.classList.remove('fuel-empty');
-        delete token.dataset.animating;
-    }
-}
-
-// Visual Animation: Cell Events (Gas, Rest, Province Arrival)
-function triggerCellEvent(pos, eventType) {
-    const cell = document.getElementById(`cell-${pos}`);
-    if (!cell) return;
-    
-    const fx = document.createElement('div');
-    fx.style.position = 'absolute';
-    fx.style.top = '10px';
-    fx.style.left = '50%';
-    fx.style.transform = 'translateX(-50%)';
-    fx.style.fontSize = '1.8rem';
-    fx.style.fontWeight = 'bold';
-    fx.style.pointerEvents = 'none';
-    fx.style.zIndex = '100';
-    fx.style.transition = 'all 1s cubic-bezier(0.25, 1, 0.5, 1)';
-    fx.style.opacity = '1';
-    fx.style.textShadow = '0 2px 5px rgba(0,0,0,0.8)';
-    
-    if (eventType === 'gas') { fx.textContent = '⛽ +MAX'; fx.style.color = '#eccc68'; }
-    else if (eventType === 'rest') { fx.textContent = '☕ +1'; fx.style.color = '#9b59b6'; }
-    else if (eventType === 'province') { fx.textContent = '📍 ถึงแล้ว!'; fx.style.color = '#ffffff'; }
-    else if (eventType === 'finish') { fx.textContent = '🏆 WIN!'; fx.style.color = '#ffd700'; }
-    
-    cell.appendChild(fx);
-    cell.style.boxShadow = `0 0 20px ${fx.style.color}`;
-    
-    setTimeout(() => {
-        fx.style.top = '-50px';
-        fx.style.opacity = '0';
-        fx.style.transform = 'translateX(-50%) scale(1.5)';
-    }, 50);
-    
-    setTimeout(() => {
-        if(fx.parentNode) fx.parentNode.removeChild(fx);
-        cell.style.boxShadow = '';
-    }, 1050);
-}
-
-// Queue Processor ที่รวม Audio, SR และ Visual Animations เข้าด้วยกัน
 async function processActionQueue() {
     if (isProcessingAction || actionQueue.length === 0) return;
     isProcessingAction = true;
     const action = actionQueue.shift();
     
+    // ประกาศ Screen Reader ทันทีเพื่อความสอดคล้องกับจังหวะเริ่มเหตุการณ์โดยไม่ต้องรอเสียงจบ
     announceSR(action.msg, 'polite');
     
-    // Dice Spin Animation
     if (action.msg.includes('ทอยลูกเต๋าได้')) {
         const match = action.msg.match(/ทอยลูกเต๋าได้\s*(\d+)/);
         if (match) {
             const diceEl = document.getElementById('dice-visual');
             if (diceEl) {
+                diceEl.textContent = match[1];
                 diceEl.setAttribute('aria-hidden', 'true');
-                const finalDice = match[1];
-                let spins = 0;
-                const spinInterval = setInterval(() => {
-                    diceEl.textContent = Math.floor(Math.random() * 6) + 1;
-                    diceEl.style.transform = `rotate(${Math.random() * 40 - 20}deg) scale(1.2)`;
-                    spins++;
-                    if (spins > 12) {
-                        clearInterval(spinInterval);
-                        diceEl.textContent = finalDice;
-                        diceEl.style.transform = 'rotate(0) scale(1)';
-                    }
-                }, 50);
             }
         }
     }
     
-    let visualPromise = Promise.resolve();
-    if (action.meta) {
-        if (action.meta.type === 'move') {
-            visualPromise = animateMovement(action.meta.pId, action.meta.path, action.meta.forward);
-        } else if (action.meta.type === 'fuel-empty') {
-            visualPromise = animateFuelEmpty(action.meta.pId);
-        } else if (action.meta.type === 'event') {
-            triggerCellEvent(action.meta.pos, action.meta.eventType);
-        }
-    }
-    
-    // ควบคุมให้เสียงและภาพดำเนินไปพร้อมกัน
+    // รอจนกว่าเสียงที่เกี่ยวข้องกับเหตุการณ์นี้เล่นจบก่อน เพื่อรักษาลำดับเหตุการณ์ถัดไปไม่ให้ทับซ้อน
     if (action.audioKeys && action.audioKeys.length > 0) {
-        await Promise.all([playAudioSequence(action.audioKeys), visualPromise]);
-    } else {
-        await visualPromise;
+        await playAudioSequence(action.audioKeys);
     }
     
     isProcessingAction = false;
@@ -331,6 +220,8 @@ function initRoomListListener() {
 function generateRallyBoard() {
     const questionsData = window.rallyQuestionsData || {};
     const availableInDB = Object.keys(questionsData);
+
+    // ลำดับภูมิศาสตร์คร่าวๆ จากเหนือสุดไปใต้สุด 77 จังหวัด
     const geoOrder = [
         "เชียงราย", "เชียงใหม่", "แม่ฮ่องสอน", "พะเยา", "น่าน", "ลำพูน", "ลำปาง", "แพร่", "อุตรดิตถ์", "สุโขทัย",
         "ตาก", "พิษณุโลก", "กำแพงเพชร", "พิจิตร", "เพชรบูรณ์", "เลย", "หนองคาย", "บึงกาฬ", "หนองบัวลำภู", "อุดรธานี",
@@ -342,21 +233,30 @@ function generateRallyBoard() {
         "ตรัง", "พัทลุง", "สตูล", "สงขลา", "ปัตตานี", "นราธิวาส", "ยะลา"
     ];
 
+    // สุ่มรูปแบบเส้นทาง (Route A = เหนือไปใต้, Route B = ใต้ไปเหนือ)
     const isRouteA = Math.random() < 0.5;
     let startProv = isRouteA ? "เชียงราย" : "ยะลา";
     let endProv = isRouteA ? "ยะลา" : "เชียงราย";
 
+    // กรองเฉพาะจังหวัดที่มีใน DB และไม่ใช่จังหวัดเริ่มต้น/ปลายทาง เพื่อเลือกมาเติมให้ครบอีก 52 จังหวัด
     let validMiddleProvinces = geoOrder.filter(p => p !== "เชียงราย" && p !== "ยะลา" && availableInDB.includes(p));
 
+    // สุ่ม 52 จังหวัด
     for (let i = validMiddleProvinces.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [validMiddleProvinces[i], validMiddleProvinces[j]] = [validMiddleProvinces[j], validMiddleProvinces[i]];
     }
     let selectedMiddle = validMiddleProvinces.slice(0, 52);
 
+    // เรียง 52 จังหวัดตามลำดับภูมิศาสตร์
     selectedMiddle.sort((a, b) => geoOrder.indexOf(a) - geoOrder.indexOf(b));
-    if (!isRouteA) selectedMiddle.reverse();
+
+    // ถ้าเป็น Route B ให้สลับลำดับย้อนกลับเป็นใต้ไปเหนือ
+    if (!isRouteA) {
+        selectedMiddle.reverse();
+    }
     
+    // Failsafe หากฐานข้อมูลมีน้อยกว่า 52 จังหวัด
     while (selectedMiddle.length < 52 && selectedMiddle.length > 0) {
         selectedMiddle = selectedMiddle.concat(selectedMiddle);
     }
@@ -369,17 +269,29 @@ function generateRallyBoard() {
     let availableSpaces = [];
     for (let i = 2; i <= 79; i++) availableSpaces.push(i);
     
+    // สับเปลี่ยนลำดับช่องวางเพื่อสุ่มตำแหน่ง ปั๊ม/จุดพัก
     for (let i = availableSpaces.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [availableSpaces[i], availableSpaces[j]] = [availableSpaces[j], availableSpaces[i]];
     }
 
-    for(let i = 0; i < 10; i++) board[availableSpaces.pop()] = { type: 'gas', name: 'ปั๊มน้ำมัน', icon: '⛽' };
+    // จัดสรรปั๊มน้ำมัน (10 ช่อง)
+    for(let i = 0; i < 10; i++) {
+        board[availableSpaces.pop()] = { type: 'gas', name: 'ปั๊มน้ำมัน', icon: '⛽' };
+    }
+
+    // จัดสรรจุดแวะพัก (16 ช่อง รวม 2 แห่งต่อประเภท)
     REST_TYPES.forEach(rest => {
-        for(let i = 0; i < 2; i++) board[availableSpaces.pop()] = { type: 'rest', name: rest.name, icon: rest.icon };
+        for(let i = 0; i < 2; i++) {
+            board[availableSpaces.pop()] = { type: 'rest', name: rest.name, icon: rest.icon };
+        }
     });
 
+    // ช่องที่เหลือจะถูกใช้สำหรับจังหวัด 
+    // โดยต้องเรียงลำดับช่องจากน้อยไปมาก เพื่อให้ผู้เล่นเดินผ่านจังหวัดตามลำดับทางภูมิศาสตร์
     availableSpaces.sort((a, b) => a - b);
+
+    // นำ 52 จังหวัดที่เรียงลำดับแล้ว วางลงในช่องที่เหลือ
     for (let i = 0; i < availableSpaces.length; i++) {
         const sp = availableSpaces[i];
         board[sp] = { type: 'province', name: selectedMiddle[i], icon: '🏙️' };
@@ -610,13 +522,6 @@ window.startRallyGame = function() {
 
 async function showStartGameAnimation() {
     stopBGM();
-    
-    // รีเซ็ต Tokens เมื่อเริ่มเกมใหม่
-    Object.keys(playerTokens).forEach(k => {
-        if (playerTokens[k].parentNode) playerTokens[k].parentNode.removeChild(playerTokens[k]);
-        delete playerTokens[k];
-    });
-
     const overlay = document.getElementById('anim-start-overlay');
     overlay.style.display = 'flex';
     announceSR('การแข่งขันเริ่มขึ้นแล้ว!', 'assertive');
@@ -633,7 +538,7 @@ async function showStartGameAnimation() {
 function renderBoardGrid() {
     const grid = document.getElementById('rally-board');
     grid.innerHTML = '';
-    grid.setAttribute('aria-hidden', 'true');
+    grid.setAttribute('aria-hidden', 'true'); // ซ่อนกระดานทั้งหมดจาก Screen Reader เพื่อไม่ให้อ่านทีละช่อง
 
     const config = gameState.boardConfig || {};
 
@@ -681,10 +586,18 @@ function updateGameUI() {
 
     if (lastAnnouncedTurnKey !== `${gameState.turnIndex}_${pId}`) {
         lastAnnouncedTurnKey = `${gameState.turnIndex}_${pId}`;
+        
+        // ประกาศเสียง SR ทันทีโดยไม่ต้องรอเสียงประกอบเพื่อความฉับไว
         announceSR(`ถึงเทิร์นของ ${currentP.name}`);
+
+        // ดำเนินการเล่นเสียงประกอบคู่ขนานไปพร้อมกัน
         (async () => {
             await playAudio('turn.mp3');
-            if (pId === myPlayerId) playAudio('abc.mp3');
+            if (pId === myPlayerId) {
+                playAudio('abc.mp3');
+            }
+
+            // จัดการดึงโฟกัสหลังจากเสียงจบอย่างเหมาะสม
             if (pId === myPlayerId && !currentP.isBot) {
                 const btn = document.getElementById('btn-roll-dice');
                 if (btn && !btn.disabled) btn.focus();
@@ -692,6 +605,7 @@ function updateGameUI() {
         })();
     }
 
+    // จัดกลุ่มสถานะสำหรับ Screen Reader ตามแนวทางที่กระชับ ไม่ให้รบกวนการแสดงผลจริง
     const cardsContainer = document.getElementById('player-status-cards');
     cardsContainer.innerHTML = '';
     cardsContainer.setAttribute('role', 'region');
@@ -704,13 +618,16 @@ function updateGameUI() {
         const p = gameState.players[k];
         const card = document.createElement('div');
         card.className = `p-status-card ${k === pId ? 'active-turn' : ''}`;
-        card.setAttribute('aria-hidden', 'true');
+        card.setAttribute('aria-hidden', 'true'); // ซ่อนการ์ดแต่ละใบจาก SR ไม่ให้อ่านแยกกระจัดกระจาย
         card.innerHTML = `<div><strong>${p.avatar.icon} ${p.name}</strong></div><div>ช่อง ${p.pos} | น้ำมัน ${p.fuel}/12</div>`;
         cardsContainer.appendChild(card);
         
         const summaryItem = `${p.name} ช่อง ${p.pos} น้ำมัน ${p.fuel} ขีด`;
-        if (k === myPlayerId) activePlayerSummary = summaryItem;
-        else otherPlayersSummary.push(summaryItem);
+        if (k === myPlayerId) {
+            activePlayerSummary = summaryItem;
+        } else {
+            otherPlayersSummary.push(summaryItem);
+        }
     });
 
     let srTextParts = [];
@@ -722,31 +639,15 @@ function updateGameUI() {
     srGroupElement.textContent = srTextParts.join(' ');
     cardsContainer.appendChild(srGroupElement);
 
-    // เลี่ยงการล้างข้อมูล .pawns-holder เพื่อคง DOM Node สำหรับการทำ Animation CSS
+    document.querySelectorAll('.pawns-holder').forEach(h => h.innerHTML = '');
     pOrder.forEach((k) => {
         const p = gameState.players[k];
-        let token = playerTokens[k];
-        if (!token) {
-            token = document.createElement('div');
+        const holder = document.getElementById(`pawns-holder-${p.pos}`);
+        if (holder) {
+            const token = document.createElement('div');
             token.className = 'pawn-token';
-            token.id = `token-${k}`;
             token.textContent = p.avatar.icon;
-            playerTokens[k] = token;
-        }
-        // ย้าย Token ไปยังตำแหน่งใหม่เฉพาะตอนที่ไม่ได้แสดง Step-by-Step Animation อยู่
-        if (token.dataset.animating !== 'true') {
-            const holder = document.getElementById(`pawns-holder-${p.pos}`);
-            if (holder && token.parentElement !== holder) {
-                holder.appendChild(token);
-            }
-        }
-    });
-
-    // ลบ Token ผู้เล่นที่ออกจากเกม
-    Object.keys(playerTokens).forEach(k => {
-        if (!gameState.players[k]) {
-            if (playerTokens[k].parentNode) playerTokens[k].parentNode.removeChild(playerTokens[k]);
-            delete playerTokens[k];
+            holder.appendChild(token);
         }
     });
 
@@ -756,12 +657,10 @@ function updateGameUI() {
     }
 }
 
-// อัปเดต syncActionEmit ให้รองรับ meta ข้อมูลสำหรับใช้สั่งงาน Visual Animation บนฝั่ง Client
-async function syncActionEmit(msg, audioKeys = [], wrongPId = null, meta = null) {
+async function syncActionEmit(msg, audioKeys = [], wrongPId = null) {
     const ts = Date.now() + Math.random();
     const actionObj = { msg, ts, audioKeys };
     if (wrongPId) actionObj.wrongPId = wrongPId;
-    if (meta) actionObj.meta = meta;
     await update(ref(db), { [`games/RallyThai/rooms/${currentRoomId}/lastAction`]: actionObj });
     await delayAsync(600);
 }
@@ -775,9 +674,10 @@ window.handleRollDice = function(isAuto = false) {
 async function executeTurnAsync(pId, isAuto = false) {
     const pData = gameState.players[pId];
     
+    // Check Fuel Rule - น้ำมันหมดเล่น box3.mp3
     if (pData.fuel < 3) {
         const newFuel = Math.min(12, pData.fuel + 3);
-        await syncActionEmit(`น้ำมันหมด! ${pData.name} ไม่สามารถเดินทางได้ ต้องหยุดพัก 1 เทิร์น และได้รับน้ำมัน 3 ขีด`, ['box3.mp3'], null, { type: 'fuel-empty', pId });
+        await syncActionEmit(`น้ำมันหมด! ${pData.name} ไม่สามารถเดินทางได้ ต้องหยุดพัก 1 เทิร์น และได้รับน้ำมัน 3 ขีด`, ['box3.mp3']);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: newFuel });
         endTurn();
         return;
@@ -788,49 +688,47 @@ async function executeTurnAsync(pId, isAuto = false) {
     
     const diceRoll = Math.floor(Math.random() * 6) + 1;
     
-    // สร้าง Path ของการเดินรถทีละช่องตามกฎ (ถ้าเกิน 80 ให้เด้งถอยหลัง) สำหรับนำไปใช้ Visual Animation
-    let path = [];
-    let tempPos = pData.pos;
-    let direction = 1;
-    for(let i=0; i<diceRoll; i++) {
-        tempPos += direction;
-        if (tempPos > 80) { tempPos = 79; direction = -1; }
-        path.push(tempPos);
-    }
+    let currentPos = pData.pos;
+    let targetPos = currentPos + diceRoll;
+    if (targetPos > 80) targetPos = 80 - (targetPos - 80); // Bounce Rule
     
-    let targetPos = path.length > 0 ? path[path.length - 1] : tempPos;
     const targetSp = gameState.boardConfig[targetPos];
     const cellName = targetSp ? targetSp.name : 'เส้นชัย';
 
-    await syncActionEmit(`${pData.name} ใช้น้ำมัน 3 ขีด ทอยลูกเต๋าได้ ${diceRoll} เคลื่อนรถไปช่องที่ ${targetPos} ${cellName}`, ['dice.mp3', 'walk.mp3'], null, { type: 'move', pId, path, forward: true });
+    // ประกาศการทอยลูกเต๋าและการเดินรถพร้อมชื่อสถานที่เพื่อความกระชับ
+    await syncActionEmit(`${pData.name} ใช้น้ำมัน 3 ขีด ทอยลูกเต๋าได้ ${diceRoll} เคลื่อนรถไปช่องที่ ${targetPos} ${cellName}`, ['dice.mp3', 'walk.mp3']);
     
-    await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
+    currentPos = targetPos;
+    await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: currentPos });
 
-    if (targetPos === 80) {
+    if (currentPos === 80) {
         await handleWinGame(pId);
         return;
     }
 
-    const sp = gameState.boardConfig[targetPos];
+    const sp = gameState.boardConfig[currentPos];
     
     if (sp.type === 'gas') {
+        // เล่น box2.mp3 เฉพาะกรณีที่การเติมน้ำมันทำให้เชื้อเพลิงเต็มถังจริง (newFuel < 12)
         let gasAudio = newFuel < 12 ? ['box2.mp3'] : [];
-        await syncActionEmit(`${pData.name} เข้าปั๊มน้ำมัน เติมน้ำมันฟรีเต็มถัง!`, gasAudio, null, { type: 'event', eventType: 'gas', pId, pos: targetPos });
+        await syncActionEmit(`${pData.name} เข้าปั๊มน้ำมัน เติมน้ำมันฟรีเต็มถัง!`, gasAudio);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: 12 });
         endTurn();
     } else if (sp.type === 'rest') {
         const fuelGain = Math.min(12, newFuel + 1);
-        await syncActionEmit(`${pData.name} แวะพักที่ ${sp.name} ได้รับน้ำมัน 1 ขีด`, ['sabuy.mp3'], null, { type: 'event', eventType: 'rest', pId, pos: targetPos });
+        await syncActionEmit(`${pData.name} แวะพักที่ ${sp.name} ได้รับน้ำมัน 1 ขีด`, ['sabuy.mp3']);
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: fuelGain });
         endTurn();
     } else if (sp.type === 'province') {
         const qList = window.rallyQuestionsData[sp.name];
         if (qList && qList.length > 0) {
-            await syncActionEmit(`${pData.name} กำลังตอบคำถามจากจังหวัด ${sp.name}`, ['box1.mp3'], null, { type: 'event', eventType: 'province', pId, pos: targetPos });
+            // แจ้งให้ทุกคนทราบเพียงว่ากำลังตอบคำถาม (โดยไม่เห็นโจทย์) เดินถึงจังหวัดปกติเล่น box1.mp3
+            await syncActionEmit(`${pData.name} กำลังตอบคำถามจากจังหวัด ${sp.name}`, ['box1.mp3']);
 
-            await delayAsync(3000);
+await delayAsync(3000);
             const q = qList[Math.floor(Math.random() * qList.length)];
             
+            // Shuffle options
             let opts = [...q.options];
             for (let i = opts.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -843,13 +741,15 @@ async function executeTurnAsync(pId, isAuto = false) {
             });
             
             if(pData.isBot && isHost) {
+                // Bot logic: pick random answer
                 setTimeout(() => {
                     const pickedOpt = opts[Math.floor(Math.random() * opts.length)];
                     handleAnswer(pId, pickedOpt.id);
                 }, 4000);
             }
         } else {
-            await syncActionEmit(`ถึง ${sp.name} (ไม่มีคำถามในฐานข้อมูล) แวะพักผ่อนเฉยๆ`, ['box1.mp3'], null, { type: 'event', eventType: 'province', pId, pos: targetPos });
+            // เดินถึงจังหวัดปกติไม่มีคำถามเล่น box1.mp3
+            await syncActionEmit(`ถึง ${sp.name} (ไม่มีคำถามในฐานข้อมูล) แวะพักผ่อนเฉยๆ`, ['box1.mp3']);
             endTurn();
         }
     }
@@ -865,6 +765,7 @@ function checkQuestionState() {
         return;
     }
     
+    // ผู้เล่นที่เป็นเจ้าของเทิร์นเท่านั้นจะเห็นคำถาม
     if (qState && qState.pId === myPlayerId && !gameState.players[myPlayerId].isBot) {
         const correctOpt = qState.options ? qState.options.find(o => o.id === qState.correctId) : null;
         if (correctOpt) {
@@ -882,6 +783,7 @@ function checkQuestionState() {
                 btn.onclick = () => {
                     if (autoAnswerTimer) { clearTimeout(autoAnswerTimer); autoAnswerTimer = null; }
                     modal.style.display = 'none';
+                    // เมื่อตอบเสร็จ ให้กลับโฟกัสเข้าสู่หน้าหลักของเกมเพื่อเล่นต่อ
                     const gameHeader = document.getElementById('game-status-bar');
                     if (gameHeader) {
                         gameHeader.setAttribute('tabindex', '-1');
@@ -895,6 +797,7 @@ function checkQuestionState() {
             modal.style.display = 'flex';
             announceSR(`คำถามจังหวัด ${qState.prov}`);
 
+            // ย้ายโฟกัสทันทีเมื่อเปิด Overlay คำถามและล็อคเป้าไว้ที่ Heading
             const heading = document.getElementById('question-province');
             if (heading) {
                 heading.setAttribute('tabindex', '-1');
@@ -930,10 +833,12 @@ window.handleAnswer = async function(pId, selectedOptId) {
     if (autoAnswerTimer) { clearTimeout(autoAnswerTimer); autoAnswerTimer = null; }
     if (!gameState || !gameState.questionState || gameState.questionState.answeredBy) return;
 
+    // Player answers and sends to Host via DB
     await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/questionState`), {
         answeredBy: pId, selectedOpt: selectedOptId
     });
     
+    // If we are Host, process standard flow
     if (isHost && gameState && gameState.questionState && !gameState.questionState.processing) {
         update(ref(db, `games/RallyThai/rooms/${currentRoomId}/questionState`), { processing: true });
         processAnswer(pId, selectedOptId);
@@ -946,45 +851,36 @@ async function processAnswer(pId, selectedOptId) {
     const pData = gameState.players[pId];
     const isCorrect = (selectedOptId === qState.correctId);
     
+    // Clear question state so UI closes for everyone
     await update(ref(db, `games/RallyThai/rooms/${currentRoomId}`), { questionState: null });
 
     if (isCorrect) {
         const fuelGain = Math.min(12, pData.fuel + 2);
-        const forwardMove = Math.floor(Math.random() * 4) + 2; 
-        
-        let path = [];
-        let tempPos = pData.pos;
-        let direction = 1;
-        for(let i=0; i<forwardMove; i++) {
-            tempPos += direction;
-            if(tempPos > 80) { tempPos = 79; direction = -1; }
-            path.push(tempPos);
-        }
-        let targetPos = path[path.length - 1];
+        const forwardMove = Math.floor(Math.random() * 4) + 2; // 2-5 spaces
+        let targetPos = pData.pos + forwardMove;
+        if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+
         const targetSp = gameState.boardConfig[targetPos];
         const cellName = targetSp ? targetSp.name : 'เส้นชัย';
 
-        await syncActionEmit(`${pData.name} ตอบถูก! ได้น้ำมัน 2 ขีด และเดินหน้า ${forwardMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shield.mp3', 'walk.mp3'], null, { type: 'move', pId, path, forward: true }); 
+        // ตอบถูก เล่น shield.mp3 ตามด้วย walk.mp3
+        await syncActionEmit(`${pData.name} ตอบถูก! ได้น้ำมัน 2 ขีด และเดินหน้า ${forwardMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shield.mp3', 'walk.mp3']); 
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { fuel: fuelGain });
+        
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
         
         if (targetPos === 80) { await handleWinGame(pId); return; }
         
     } else {
-        const backMove = Math.floor(Math.random() * 3) + 1;
+        const backMove = Math.floor(Math.random() * 3) + 1; // 1-3 spaces
+        let targetPos = Math.max(1, pData.pos - backMove);
         
-        let path = [];
-        let tempPos = pData.pos;
-        for(let i=0; i<backMove; i++) {
-            tempPos -= 1;
-            if(tempPos < 1) tempPos = 1;
-            path.push(tempPos);
-        }
-        let targetPos = path[path.length - 1];
         const targetSp = gameState.boardConfig[targetPos];
         const cellName = targetSp ? targetSp.name : 'จุดเริ่มต้น';
 
-        await syncActionEmit(`${pData.name} ตอบผิด! ถอยหลัง ${backMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shieldno.mp3', 'walk1.mp3'], pId, { type: 'move', pId, path, forward: false });
+        // ตอบผิด เล่น shieldno.mp3 ตามด้วย walk1.mp3
+        await syncActionEmit(`${pData.name} ตอบผิด! ถอยหลัง ${backMove} ช่อง ไปยังช่องที่ ${targetPos} ${cellName}`, ['shieldno.mp3', 'walk1.mp3'], pId);
+        
         await update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${pId}`), { pos: targetPos });
     }
     
@@ -992,6 +888,7 @@ async function processAnswer(pId, selectedOptId) {
 }
 
 async function endTurn() {
+    // ป้องกันการอัปเดตเทิร์นจนกว่าคิวเหตุการณ์ภายในเครื่อง (ทั้งเสียงและ SR) จะทำงานเสร็จ ป้องกัน Race Condition
     while(isProcessingAction || actionQueue.length > 0) {
         await delayAsync(200);
     }
@@ -1006,7 +903,6 @@ async function endTurn() {
 }
 
 async function handleWinGame(pId) {
-    await syncActionEmit(`${gameState.players[pId].name} เข้าสู่เส้นชัย!`, [], null, { type: 'event', eventType: 'finish', pId, pos: 80 });
     await update(ref(db), { 
         [`games/RallyThai/rooms/${currentRoomId}/status`]: 'ended',
         [`games/RallyThai/rooms/${currentRoomId}/winnerId`]: pId,
@@ -1044,13 +940,6 @@ window.leaveRoom = function() {
         else update(ref(db, `games/RallyThai/rooms/${currentRoomId}/players/${myPlayerId}`), { isBot: true, name: "บอท" + myPlayerName });
     }
     stopBGM();
-    
-    // เคลียร์ Tokens ที่ลอยอยู่
-    Object.keys(playerTokens).forEach(k => {
-        if (playerTokens[k].parentNode) playerTokens[k].parentNode.removeChild(playerTokens[k]);
-        delete playerTokens[k];
-    });
-
     myPlayerId = null; currentRoomId = null; isHost = false; gameState = null;
     isShowingWinnerScene = false; isStartingGame = false;
     myLastCorrectAnswerText = '';
