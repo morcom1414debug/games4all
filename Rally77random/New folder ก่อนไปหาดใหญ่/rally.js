@@ -219,82 +219,49 @@ function initRoomListListener() {
 
 function generateRallyBoard() {
     const questionsData = window.rallyQuestionsData || {};
-    const availableInDB = Object.keys(questionsData);
-
-    // ลำดับภูมิศาสตร์คร่าวๆ จากเหนือสุดไปใต้สุด 77 จังหวัด
-    const geoOrder = [
-        "เชียงราย", "เชียงใหม่", "แม่ฮ่องสอน", "พะเยา", "น่าน", "ลำพูน", "ลำปาง", "แพร่", "อุตรดิตถ์", "สุโขทัย",
-        "ตาก", "พิษณุโลก", "กำแพงเพชร", "พิจิตร", "เพชรบูรณ์", "เลย", "หนองคาย", "บึงกาฬ", "หนองบัวลำภู", "อุดรธานี",
-        "สกลนคร", "นครพนม", "มุกดาหาร", "กาฬสินธุ์", "ขอนแก่น", "ชัยภูมิ", "มหาสารคาม", "ร้อยเอ็ด", "ยโสธร", "อำนาจเจริญ",
-        "อุบลราชธานี", "ศรีสะเกษ", "สุรินทร์", "บุรีรัมย์", "นครราชสีมา", "นครสวรรค์", "อุทัยธานี", "ชัยนาท", "ลพบุรี", "สิงห์บุรี",
-        "อ่างทอง", "สระบุรี", "พระนครศรีอยุธยา", "สุพรรณบุรี", "กาญจนบุรี", "ราชบุรี", "นครปฐม", "นนทบุรี", "ปทุมธานี", "กรุงเทพมหานคร",
-        "สมุทรปราการ", "สมุทรสาคร", "สมุทรสงคราม", "นครนายก", "ปราจีนบุรี", "สระแก้ว", "ฉะเชิงเทรา", "ชลบุรี", "ระยอง", "จันทบุรี",
-        "ตราด", "เพชรบุรี", "ประจวบคีรีขันธ์", "ชุมพร", "ระนอง", "สุราษฎร์ธานี", "พังงา", "ภูเก็ต", "กระบี่", "นครศรีธรรมราช",
-        "ตรัง", "พัทลุง", "สตูล", "สงขลา", "ปัตตานี", "นราธิวาส", "ยะลา"
-    ];
-
-    // สุ่มรูปแบบเส้นทาง (Route A = เหนือไปใต้, Route B = ใต้ไปเหนือ)
-    const isRouteA = Math.random() < 0.5;
-    let startProv = isRouteA ? "เชียงราย" : "ยะลา";
-    let endProv = isRouteA ? "ยะลา" : "เชียงราย";
-
-    // กรองเฉพาะจังหวัดที่มีใน DB และไม่ใช่จังหวัดเริ่มต้น/ปลายทาง เพื่อเลือกมาเติมให้ครบอีก 52 จังหวัด
-    let validMiddleProvinces = geoOrder.filter(p => p !== "เชียงราย" && p !== "ยะลา" && availableInDB.includes(p));
-
-    // สุ่ม 52 จังหวัด
-    for (let i = validMiddleProvinces.length - 1; i > 0; i--) {
+    let allProvinces = Object.keys(questionsData);
+    
+    // Shuffle provinces
+    for (let i = allProvinces.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [validMiddleProvinces[i], validMiddleProvinces[j]] = [validMiddleProvinces[j], validMiddleProvinces[i]];
-    }
-    let selectedMiddle = validMiddleProvinces.slice(0, 52);
-
-    // เรียง 52 จังหวัดตามลำดับภูมิศาสตร์
-    selectedMiddle.sort((a, b) => geoOrder.indexOf(a) - geoOrder.indexOf(b));
-
-    // ถ้าเป็น Route B ให้สลับลำดับย้อนกลับเป็นใต้ไปเหนือ
-    if (!isRouteA) {
-        selectedMiddle.reverse();
+        [allProvinces[i], allProvinces[j]] = [allProvinces[j], allProvinces[i]];
     }
     
-    // Failsafe หากฐานข้อมูลมีน้อยกว่า 52 จังหวัด
-    while (selectedMiddle.length < 52 && selectedMiddle.length > 0) {
-        selectedMiddle = selectedMiddle.concat(selectedMiddle);
+    // Fallback if not enough provinces in data
+    while(allProvinces.length < 54 && allProvinces.length > 0) {
+        allProvinces = allProvinces.concat(allProvinces);
     }
-    selectedMiddle = selectedMiddle.slice(0, 52);
-
+    const selectedProvs = allProvinces.slice(0, 54);
+    
     const board = {};
-    board[1] = { type: 'province', name: startProv, icon: '🏁' };
-    board[80] = { type: 'province', name: endProv, icon: '🏆' };
-
+    board[1] = { type: 'province', name: selectedProvs[0], icon: '🏁' };
+    board[80] = { type: 'province', name: selectedProvs[53], icon: '🏆' };
+    
     let availableSpaces = [];
     for (let i = 2; i <= 79; i++) availableSpaces.push(i);
-    
-    // สับเปลี่ยนลำดับช่องวางเพื่อสุ่มตำแหน่ง ปั๊ม/จุดพัก
     for (let i = availableSpaces.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [availableSpaces[i], availableSpaces[j]] = [availableSpaces[j], availableSpaces[i]];
     }
 
-    // จัดสรรปั๊มน้ำมัน (10 ช่อง)
-    for(let i = 0; i < 10; i++) {
+    // Allocate Gas Stations (10)
+    for(let i=0; i<10; i++) {
         board[availableSpaces.pop()] = { type: 'gas', name: 'ปั๊มน้ำมัน', icon: '⛽' };
     }
-
-    // จัดสรรจุดแวะพัก (16 ช่อง รวม 2 แห่งต่อประเภท)
+    
+    // Allocate Rest Stops (16 total, 2 of each)
     REST_TYPES.forEach(rest => {
-        for(let i = 0; i < 2; i++) {
+        for(let i=0; i<2; i++) {
             board[availableSpaces.pop()] = { type: 'rest', name: rest.name, icon: rest.icon };
         }
     });
 
-    // ช่องที่เหลือจะถูกใช้สำหรับจังหวัด 
-    // โดยต้องเรียงลำดับช่องจากน้อยไปมาก เพื่อให้ผู้เล่นเดินผ่านจังหวัดตามลำดับทางภูมิศาสตร์
-    availableSpaces.sort((a, b) => a - b);
-
-    // นำ 52 จังหวัดที่เรียงลำดับแล้ว วางลงในช่องที่เหลือ
-    for (let i = 0; i < availableSpaces.length; i++) {
-        const sp = availableSpaces[i];
-        board[sp] = { type: 'province', name: selectedMiddle[i], icon: '🏙️' };
+    // Allocate remaining 52 provinces
+    let provIndex = 1;
+    while(availableSpaces.length > 0) {
+        const sp = availableSpaces.pop();
+        board[sp] = { type: 'province', name: selectedProvs[provIndex], icon: '🏙️' };
+        provIndex++;
     }
 
     return board;
