@@ -198,23 +198,17 @@ function triggerCellEvent(pos, eventType) {
     if (!cell) return;
     
     const fx = document.createElement('div');
-    fx.className = 'cell-event-fx';
     fx.style.position = 'absolute';
-    fx.style.top = '50%';
+    fx.style.top = '10px';
     fx.style.left = '50%';
-    fx.style.transform = 'translate(-50%, -50%) scale(0.9)';
-    fx.style.fontSize = 'clamp(0.95rem, 2.5vw, 1.8rem)';
+    fx.style.transform = 'translateX(-50%)';
+    fx.style.fontSize = '1.8rem';
     fx.style.fontWeight = 'bold';
-    fx.style.lineHeight = '1.5';
-    fx.style.padding = '4px 8px';
-    fx.style.whiteSpace = 'nowrap';
     fx.style.pointerEvents = 'none';
     fx.style.zIndex = '100';
     fx.style.transition = 'all 1s cubic-bezier(0.25, 1, 0.5, 1)';
     fx.style.opacity = '1';
-    fx.style.textShadow = '0 2px 6px rgba(0,0,0,0.9)';
-    fx.style.boxSizing = 'border-box';
-    fx.style.overflow = 'visible';
+    fx.style.textShadow = '0 2px 5px rgba(0,0,0,0.8)';
     
     if (eventType === 'gas') { fx.textContent = '⛽ +MAX'; fx.style.color = '#eccc68'; }
     else if (eventType === 'rest') { fx.textContent = '☕ +1'; fx.style.color = '#9b59b6'; }
@@ -225,9 +219,9 @@ function triggerCellEvent(pos, eventType) {
     cell.style.boxShadow = `0 0 20px ${fx.style.color}`;
     
     setTimeout(() => {
-        fx.style.top = '0%';
+        fx.style.top = '-50px';
         fx.style.opacity = '0';
-        fx.style.transform = 'translate(-50%, -70%) scale(1.3)';
+        fx.style.transform = 'translateX(-50%) scale(1.5)';
     }, 50);
     
     setTimeout(() => {
@@ -459,13 +453,12 @@ window.joinRallyRoom = function(rId) {
         for (let i = 1; i <= 6; i++) {
             if (!pKeys.includes('p' + i)) { nextSlot = 'p' + i; break; }
         }
-        
-        const usedAvatars = Object.values(roomData.players || {}).map(p => p.avatar.icon);
+        const usedAvatars = Object.values(roomData.players).map(p => p.avatar.icon);
         const availAvatars = CAR_POOL.filter(a => !usedAvatars.includes(a.icon));
         
         if (!roomData.players) roomData.players = {};
         roomData.players[nextSlot] = {
-            name: myPlayerName, avatar: availAvatars[0], isBot: false, pos: 1, fuel: 12
+            name: myPlayerName, avatar: availAvatars[0] || CAR_POOL[0], isBot: false, pos: 1, fuel: 12
         };
         myPlayerId = nextSlot;
         roomData.lastAction = {
@@ -510,7 +503,7 @@ window.adjustBot = function(delta) {
         const usedAvatars = Object.values(updatedPlayers).map(p => p.avatar.icon);
         const availAvatars = CAR_POOL.filter(a => !usedAvatars.includes(a.icon));
         updatedPlayers[botSlot] = {
-            name: botName, avatar: availAvatars[0], isBot: true, pos: 1, fuel: 12
+            name: botName, avatar: availAvatars[0] || CAR_POOL[1], isBot: true, pos: 1, fuel: 12
         };
         actionMsg = `เพิ่ม ${botName} เข้าสู่ห้องแข่งแล้ว`;
     } else {
