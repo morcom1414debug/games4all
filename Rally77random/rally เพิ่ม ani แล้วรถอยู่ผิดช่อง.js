@@ -162,14 +162,6 @@ async function animateMovement(pId, path, forward) {
     
     token.classList.remove('moving-forward', 'moving-backward');
     delete token.dataset.animating;
-
-    if (gameState && gameState.players && gameState.players[pId]) {
-        const latestPos = gameState.players[pId].pos;
-        const holder = document.getElementById(`pawns-holder-${latestPos}`);
-        if (holder && token.parentElement !== holder) {
-            holder.appendChild(token);
-        }
-    }
 }
 
 // Visual Animation: Fuel Empty
@@ -181,14 +173,6 @@ async function animateFuelEmpty(pId) {
         await delayAsync(1500);
         token.classList.remove('fuel-empty');
         delete token.dataset.animating;
-
-        if (gameState && gameState.players && gameState.players[pId]) {
-            const latestPos = gameState.players[pId].pos;
-            const holder = document.getElementById(`pawns-holder-${latestPos}`);
-            if (holder && token.parentElement !== holder) {
-                holder.appendChild(token);
-            }
-        }
     }
 }
 
