@@ -632,8 +632,6 @@ async function showStartGameAnimation() {
         if (playerTokens[k].parentNode) playerTokens[k].parentNode.removeChild(playerTokens[k]);
         delete playerTokens[k];
     });
-    // เพิ่มความปลอดภัย: ลบ Token ใน DOM ที่อาจค้างอยู่เพื่อกัน duplicate pawn
-    document.querySelectorAll('.pawn-token').forEach(t => t.parentNode && t.parentNode.removeChild(t));
 
     const overlay = document.getElementById('anim-start-overlay');
     overlay.style.display = 'flex';
@@ -743,77 +741,28 @@ function updateGameUI() {
     // เลี่ยงการล้างข้อมูล .pawns-holder เพื่อคง DOM Node สำหรับการทำ Animation CSS
     pOrder.forEach((k) => {
         const p = gameState.players[k];
-        
-        // ตรวจสอบใน DOM ก่อนเสมอเพื่อป้องกัน duplicate DOM pawn ในกรณี updateGameUI ถูกรันรัวๆ
-        let token = document.getElementById(`token-${k}`);
-        
+        let token = playerTokens[k];
         if (!token) {
             token = document.createElement('div');
             token.className = 'pawn-token';
             token.id = `token-${k}`;
-            token.setAttribute('aria-hidden', 'true'); // ป้องกัน SR อ่านซ้ำซ้อน เพราะกระดานซ่อนอยู่แล้ว
-            
-            // สไตล์ให้รองรับการแสดงผลแบบมีชื่อและไอคอนรถ
-            token.style.position = 'relative';
-            token.style.display = 'inline-flex';
-            token.style.flexDirection = 'column';
-            token.style.alignItems = 'center';
-            token.style.justifyContent = 'center';
-
-            const nameEl = document.createElement('div');
-            nameEl.className = 'pawn-name';
-            nameEl.style.position = 'absolute';
-            nameEl.style.top = '-18px';
-            nameEl.style.left = '50%';
-            nameEl.style.transform = 'translateX(-50%)';
-            nameEl.style.fontSize = '11px';
-            nameEl.style.fontWeight = 'bold';
-            nameEl.style.color = '#ffffff';
-            nameEl.style.textShadow = '1px 1px 2px #000, 0px 0px 3px #000';
-            nameEl.style.whiteSpace = 'nowrap';
-            nameEl.style.pointerEvents = 'none';
-
-            const iconEl = document.createElement('div');
-            iconEl.className = 'pawn-icon';
-
-            token.appendChild(nameEl);
-            token.appendChild(iconEl);
+            token.textContent = p.avatar.icon;
+            playerTokens[k] = token;
         }
-        
-        playerTokens[k] = token;
-
-        // อัปเดตข้อมูลบนรถให้ตรงกับข้อมูลเกมล่าสุดเสมอ
-        const nameEl = token.querySelector('.pawn-name');
-        const iconEl = token.querySelector('.pawn-icon');
-        if (nameEl && nameEl.textContent !== p.name) nameEl.textContent = p.name;
-        if (iconEl && iconEl.textContent !== p.avatar.icon) iconEl.textContent = p.avatar.icon;
-
         // ย้าย Token ไปยังตำแหน่งใหม่เฉพาะตอนที่ไม่ได้แสดง Step-by-Step Animation อยู่
         if (token.dataset.animating !== 'true') {
             const holder = document.getElementById(`pawns-holder-${p.pos}`);
-            // Reuse DOM pawn, ถ้าหลุดไปหรือเปลี่ยนตำแหน่ง ให้นำกลับมา append
             if (holder && token.parentElement !== holder) {
                 holder.appendChild(token);
             }
         }
     });
 
-    // ลบ Token ผู้เล่นที่ออกจากเกมและเคลียร์ DOM อย่างรัดกุม ป้องกันรถค้างหรือรถผี
+    // ลบ Token ผู้เล่นที่ออกจากเกม
     Object.keys(playerTokens).forEach(k => {
         if (!gameState.players[k]) {
-            const token = document.getElementById(`token-${k}`);
-            if (token && token.parentNode) {
-                token.parentNode.removeChild(token);
-            }
+            if (playerTokens[k].parentNode) playerTokens[k].parentNode.removeChild(playerTokens[k]);
             delete playerTokens[k];
-        }
-    });
-
-    document.querySelectorAll('.pawn-token').forEach(domToken => {
-        const domId = domToken.id.replace('token-', '');
-        if (!gameState.players[domId]) {
-            if (domToken.parentNode) domToken.parentNode.removeChild(domToken);
-            delete playerTokens[domId];
         }
     });
 
@@ -1117,8 +1066,6 @@ window.leaveRoom = function() {
         if (playerTokens[k].parentNode) playerTokens[k].parentNode.removeChild(playerTokens[k]);
         delete playerTokens[k];
     });
-    // ล้าง DOM Token ออกให้เกลี้ยงเพื่อป้องกันบัก
-    document.querySelectorAll('.pawn-token').forEach(t => t.parentNode && t.parentNode.removeChild(t));
 
     myPlayerId = null; currentRoomId = null; isHost = false; gameState = null;
     isShowingWinnerScene = false; isStartingGame = false;
