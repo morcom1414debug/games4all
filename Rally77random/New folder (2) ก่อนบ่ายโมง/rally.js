@@ -243,19 +243,6 @@ async function processActionQueue() {
     const action = actionQueue.shift();
     
     announceSR(action.msg, 'polite');
-
-    // อัปเดตข้อความ Visual Event Log สำหรับผู้มองเห็น
-    const visualLogEl = document.getElementById('visual-event-log');
-    if (visualLogEl) {
-        visualLogEl.textContent = action.msg;
-        if (action.msg.length > 60) {
-            visualLogEl.style.fontSize = 'clamp(0.65rem, 1.6vw, 0.8rem)';
-        } else if (action.msg.length > 35) {
-            visualLogEl.style.fontSize = 'clamp(0.72rem, 1.8vw, 0.9rem)';
-        } else {
-            visualLogEl.style.fontSize = 'clamp(0.8rem, 2vw, 1rem)';
-        }
-    }
     
     // Dice Spin Animation
     if (action.msg.includes('ทอยลูกเต๋าได้')) {
