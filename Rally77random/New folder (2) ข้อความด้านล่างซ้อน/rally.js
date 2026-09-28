@@ -248,6 +248,13 @@ async function processActionQueue() {
     const visualLogEl = document.getElementById('visual-event-log');
     if (visualLogEl) {
         visualLogEl.textContent = action.msg;
+        if (action.msg.length > 60) {
+            visualLogEl.style.fontSize = 'clamp(0.65rem, 1.6vw, 0.8rem)';
+        } else if (action.msg.length > 35) {
+            visualLogEl.style.fontSize = 'clamp(0.72rem, 1.8vw, 0.9rem)';
+        } else {
+            visualLogEl.style.fontSize = 'clamp(0.8rem, 2vw, 1rem)';
+        }
     }
     
     // Dice Spin Animation
@@ -1193,7 +1200,7 @@ document.addEventListener('keydown', (e) => {
             e.preventDefault();
             const pOrder = gameState.playerOrder || Object.keys(gameState.players);
             let activePlayerSummary = '';
-            let additionalSummary = [];
+            let otherPlayersSummary = [];
 
             pOrder.forEach((k) => {
                 const p = gameState.players[k];
@@ -1202,14 +1209,14 @@ document.addEventListener('keydown', (e) => {
                     if (k === myPlayerId) {
                         activePlayerSummary = summaryItem;
                     } else {
-                        additionalSummary.push(summaryItem);
+                        otherPlayersSummary.push(summaryItem);
                     }
                 }
             });
 
             let srTextParts = [];
             if (activePlayerSummary) srTextParts.push(activePlayerSummary);
-            if (additionalSummary.length > 0) srTextParts.push(additionalSummary.join(' '));
+            if (otherPlayersSummary.length > 0) srTextParts.push(otherPlayersSummary.join(' '));
 
             const srText = srTextParts.join(' ');
             if (srText) {
