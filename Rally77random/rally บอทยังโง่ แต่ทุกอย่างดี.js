@@ -922,21 +922,12 @@ async function executeTurnAsync(pId, isAuto = false) {
                 answeredBy: null, selectedOpt: null, processing: false, isAuto: !!isAuto
             });
             
-if(pData.isBot && isHost) {
-    setTimeout(() => {
-        const shouldAnswerCorrectly = Math.random() < (2 / 3);
-        let pickedOpt;
-
-        if (shouldAnswerCorrectly) {
-            pickedOpt = opts.find(opt => opt.id === q.correctOptionId);
-        } else {
-            const wrongOpts = opts.filter(opt => opt.id !== q.correctOptionId);
-            pickedOpt = wrongOpts[Math.floor(Math.random() * wrongOpts.length)];
-        }
-
-        handleAnswer(pId, pickedOpt.id);
-    }, 4000);
-}
+            if(pData.isBot && isHost) {
+                setTimeout(() => {
+                    const pickedOpt = opts[Math.floor(Math.random() * opts.length)];
+                    handleAnswer(pId, pickedOpt.id);
+                }, 4000);
+            }
         } else {
             await syncActionEmit(`ถึง ${sp.name} (ไม่มีคำถามในฐานข้อมูล) แวะพักผ่อนเฉยๆ`, ['box1.mp3'], null, { type: 'event', eventType: 'province', pId, pos: targetPos });
             endTurn();
