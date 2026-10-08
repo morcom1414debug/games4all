@@ -117,7 +117,6 @@
 
     <!-- Area สำหรับ Screen Reader -->
     <div id="sr-announcer" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
-    <div id="sr-announcer-alt" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
 
     <!-- Intro Screen -->
     <div id="intro-screen" class="container text-center">
@@ -217,7 +216,6 @@
             const ui = {
                 log: document.getElementById('battle-log'),
                 sr: document.getElementById('sr-announcer'),
-                srAlt: document.getElementById('sr-announcer-alt'),
                 pHP: document.getElementById('p-hp'),
                 eHP: document.getElementById('e-hp'),
                 eName: document.getElementById('e-name'),
@@ -341,39 +339,11 @@
             // window has elapsed. Game logic can await this Promise.
             const announcementQueue = [];
             let isAnnouncing = false;
-            let activeLiveRegion = 0;
-
-            const releaseCurrentFocusForAnnouncement = () => {
-                const active = document.activeElement;
-                if (
-                    active &&
-                    active !== document.body &&
-                    typeof active.blur === 'function'
-                ) {
-                    active.blur();
-                }
-            };
-
-            const clearLiveRegions = () => {
-                ui.sr.textContent = '';
-                ui.srAlt.textContent = '';
-            };
-
-            const setLiveMessage = (message) => {
-                const oldRegion = activeLiveRegion === 0 ? ui.sr : ui.srAlt;
-                activeLiveRegion = activeLiveRegion === 0 ? 1 : 0;
-                const nextRegion = activeLiveRegion === 0 ? ui.sr : ui.srAlt;
-
-                oldRegion.textContent = '';
-                nextRegion.textContent = message;
-
-                return nextRegion;
-            };
 
             const getAnnouncementDuration = (text) => {
-                const base = 1800;
-                const perCharacter = 65;
-                return Math.min(8000, Math.max(base, base + (text.length * perCharacter)));
+                const base = 1400;
+                const perCharacter = 55;
+                return Math.min(6500, Math.max(base, base + (text.length * perCharacter)));
             };
 
             const processAnnouncementQueue = () => {
@@ -389,20 +359,21 @@
                 ui.log.appendChild(logEntry);
                 ui.log.scrollTop = ui.log.scrollHeight;
 
-                releaseCurrentFocusForAnnouncement();
-                clearLiveRegions();
+                ui.sr.textContent = '';
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        ui.sr.textContent = cleanMsg;
 
-                setTimeout(() => {
-                    setLiveMessage(cleanMsg);
+                        const duration = getAnnouncementDuration(cleanMsg);
 
-                    const duration = getAnnouncementDuration(cleanMsg);
-
-                    setTimeout(() => {
-                        item.resolve();
-                        isAnnouncing = false;
-                        setTimeout(processAnnouncementQueue, 100);
-                    }, duration);
-                }, 120);
+                        setTimeout(() => {
+                            item.resolve();
+                            isAnnouncing = false;
+                            ui.sr.textContent = '';
+                            requestAnimationFrame(processAnnouncementQueue);
+                        }, duration);
+                    });
+                });
             };
 
             const announce = (msg) => {
@@ -694,14 +665,10 @@
                 ui.countdownOverlay.textContent = count;
                 
                 const announceCountdown = (value) => {
-                    const oldRegion = activeLiveRegion === 0 ? ui.sr : ui.srAlt;
-                    activeLiveRegion = activeLiveRegion === 0 ? 1 : 0;
-                    const nextRegion = activeLiveRegion === 0 ? ui.sr : ui.srAlt;
-
-                    oldRegion.textContent = '';
+                    ui.sr.textContent = '';
                     requestAnimationFrame(() => {
                         requestAnimationFrame(() => {
-                            nextRegion.textContent = String(value);
+                            ui.sr.textContent = String(value);
                         });
                     });
                 };
@@ -722,7 +689,7 @@
                 setTimeout(() => {
                     ui.countdownOverlay.classList.add('hidden');
                     ui.countdownOverlay.textContent = '';
-                    clearLiveRegions(); // clear aria-live
+                    ui.sr.textContent = ''; // clear aria-live
                     screens.game.setAttribute('aria-hidden', 'false');
                     
                     playBGM();
