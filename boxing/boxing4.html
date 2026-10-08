@@ -332,64 +332,16 @@
 
             const enemyAttackPool = ['punch', 'kick', 'clothesline', 'chair', 'trashcan', 'wood'];
 
-            // Accessible announcement queue:
-            // iOS Safari + VoiceOver can drop an aria-live message when the live
-            // region is updated again before VoiceOver has had time to announce it.
-            // Every announcement is queued and resolved only after a safe reading
-            // window has elapsed. Game logic can await this Promise.
-            const announcementQueue = [];
-            let isAnnouncing = false;
-
-            const getAnnouncementDuration = (text) => {
-                const base = 1400;
-                const perCharacter = 55;
-                return Math.min(6500, Math.max(base, base + (text.length * perCharacter)));
-            };
-
-            const processAnnouncementQueue = () => {
-                if (isAnnouncing || announcementQueue.length === 0) return;
-
-                isAnnouncing = true;
-                const item = announcementQueue.shift();
-                const cleanMsg = item.msg.replace(/[*!>]/g, '');
-
-                const logEntry = document.createElement('p');
-                logEntry.textContent = cleanMsg;
-                logEntry.className = "mb-2 border-b border-gray-800 pb-2";
-                ui.log.appendChild(logEntry);
-                ui.log.scrollTop = ui.log.scrollHeight;
-
-                ui.sr.textContent = '';
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        ui.sr.textContent = cleanMsg;
-
-                        const duration = getAnnouncementDuration(cleanMsg);
-
-                        setTimeout(() => {
-                            item.resolve();
-                            isAnnouncing = false;
-                            ui.sr.textContent = '';
-                            requestAnimationFrame(processAnnouncementQueue);
-                        }, duration);
-                    });
-                });
-            };
-
             const announce = (msg) => {
-                const cleanMsg = String(msg ?? '').replace(/[*!>]/g, '');
-
-                return new Promise((resolve) => {
-                    announcementQueue.push({
-                        msg: cleanMsg,
-                        resolve
-                    });
-                    processAnnouncementQueue();
-                });
-            };
-
-            const announceAndWait = async (msg) => {
-                await announce(msg);
+                const cleanMsg = msg.replace(/[*!>]/g, '');
+                ui.sr.textContent = '';
+                setTimeout(() => { ui.sr.textContent = cleanMsg; }, 50);
+                
+                const p = document.createElement('p');
+                p.textContent = cleanMsg;
+                p.className = "mb-2 border-b border-gray-800 pb-2";
+                ui.log.appendChild(p);
+                ui.log.scrollTop = ui.log.scrollHeight;
             };
 
             const updateUI = () => {
@@ -400,26 +352,25 @@
                 ui.eHP.textContent = state.enemy.hp;
             };
 
-            const checkWinCondition = async () => {
+            const checkWinCondition = () => {
                 if(state.enemy.hp <= 0) {
                     state.match++;
                     if(state.match >= opponents.length) {
-                        await endGame(true);
+                        endGame(true);
                     } else {
                         playSound('win1');
-                        await announceAndWait(`น็อกเอาต์ คุณชนะแมตช์นี้ กำลังเตรียมพบกับผู้ท้าชิงคนต่อไปในอีกสักครู่`);
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        startMatch();
+                        announce(`น็อกเอาต์ คุณชนะแมตช์นี้ กำลังเตรียมพบกับผู้ท้าชิงคนต่อไปในอีกสักครู่`);
+                        setTimeout(startMatch, 4500);
                     }
                     return true;
                 } else if(state.player.hp <= 0) {
-                    await endGame(false);
+                    endGame(false);
                     return true;
                 }
                 return false;
             };
 
-            const startMatch = async () => {
+            const startMatch = () => {
                 const enemy = opponents[state.match];
                 state.player.hp = MAX_HP; 
                 state.enemy.hp = MAX_HP;
@@ -430,30 +381,33 @@
                 ui.log.innerHTML = "";
                 updateUI();
 
-                await announceAndWait(`เริ่มแมตช์ที่ ${state.match + 1} คู่ต่อสู้คือ ${enemy.name}`);
-                await new Promise(resolve => setTimeout(resolve, 700));
-
-                if(Math.random() < 0.5) {
-                    startPlayerTurn();
-                } else {
-                    startEnemyTurn();
-                }
+                announce(`เริ่มแมตช์ที่ ${state.match + 1} คู่ต่อสู้คือ ${enemy.name}`);
+                
+                setTimeout(() => {
+                    if(Math.random() < 0.5) {
+                        startPlayerTurn();
+                    } else {
+                        startEnemyTurn();
+                    }
+                }, 4000);
             };
 
-            const startPlayerTurn = async () => {
-                if(await checkWinCondition()) return;
+            const startPlayerTurn = () => {
+                if(checkWinCondition()) return;
                 state.isPlayerTurn = true;
                 state.isProcessing = false;
                 ui.panelTitle.textContent = "ตาของคุณ เลือกกระบวนท่าโจมตี";
                 ui.defMode.classList.add('hidden');
                 ui.atkMode.classList.remove('hidden');
                 
-                await announceAndWait("ตาของคุณแล้ว เลือกกระบวนท่าโจมตี");
-                const firstBtn = ui.atkMode.querySelector('button');
-                if(firstBtn) firstBtn.focus();
+                announce("ตาของคุณแล้ว เลือกกระบวนท่าโจมตี");
+                setTimeout(() => {
+                    const firstBtn = ui.atkMode.querySelector('button');
+                    if(firstBtn) firstBtn.focus();
+                }, 1600);
             };
 
-            window.playerAction = async (actionKey) => {
+            window.playerAction = (actionKey) => {
                 if(!state.isPlayerTurn || state.isProcessing) return;
                 
                 playSound(actionKey);
@@ -516,14 +470,16 @@
                     finalMsg += `คู่ต่อสู้ยังคงเหลือพลังชีวิต ${Math.max(0, state.enemy.hp)} หน่วย`;
                 }
                 
-                await announceAndWait(finalMsg);
-                await new Promise(resolve => setTimeout(resolve, 500));
-                state.isProcessing = false;
-                startEnemyTurn(); 
+                announce(finalMsg);
+
+                setTimeout(() => {
+                    state.isProcessing = false;
+                    startEnemyTurn();
+                }, 6500); 
             };
 
-            const startEnemyTurn = async () => {
-                if(await checkWinCondition()) return;
+            const startEnemyTurn = () => {
+                if(checkWinCondition()) return;
                 state.isPlayerTurn = false;
                 state.isProcessing = false;
                 
@@ -539,13 +495,15 @@
                 ui.atkMode.classList.add('hidden');
                 ui.defMode.classList.remove('hidden');
 
-                await announceAndWait(`${enemy.name} กำลังจะโจมตี เลือกว่าจะตั้งการ์ด ฉากหลบ สวนกลับ หรือ หลบแล้วสวนกลับ`);
-
-                const firstDef = ui.defMode.querySelector('button');
-                if(firstDef) firstDef.focus();
+                announce(`${enemy.name} กำลังจะโจมตี เลือกว่าจะตั้งการ์ด ฉากหลบ สวนกลับ หรือ หลบแล้วสวนกลับ`);
+                
+                setTimeout(() => {
+                    const firstDef = ui.defMode.querySelector('button');
+                    if(firstDef) firstDef.focus();
+                }, 1600);
             };
 
-            window.playerDefend = async (defType) => {
+            window.playerDefend = (defType) => {
                 if(state.isProcessing) return;
                 
                 playSound(defType);
@@ -614,13 +572,15 @@
                     finalMsg += `คุณไม่ได้รับความเสียหาย คุณเหลือพลังชีวิต ${Math.max(0, state.player.hp)} หน่วย`;
                 }
                 
-                await announceAndWait(finalMsg);
-                await new Promise(resolve => setTimeout(resolve, 500));
-                state.isProcessing = false;
-                startPlayerTurn(); 
+                announce(finalMsg);
+
+                setTimeout(() => {
+                    state.isProcessing = false;
+                    startPlayerTurn();
+                }, 6500); 
             };
 
-            const endGame = async (isWin) => {
+            const endGame = (isWin) => {
                 stopBGM();
                 screens.game.classList.add('hidden');
                 screens.result.classList.remove('hidden');
@@ -637,8 +597,8 @@
                     document.getElementById('result-message').textContent = "คุณถูกอัดจนหมดสภาพ ลองกะจังหวะป้องกันให้ดีกว่านี้ในรอบหน้านะ";
                 }
 
-                await announceAndWait(document.getElementById('result-title').textContent + " " + document.getElementById('result-message').textContent);
-                ui.restartBtn.focus();
+                announce(document.getElementById('result-title').textContent + " " + document.getElementById('result-message').textContent);
+                setTimeout(() => ui.restartBtn.focus(), 1000);
             };
 
             ui.startBtn.addEventListener('click', () => {
@@ -664,22 +624,15 @@
                 let count = 3;
                 ui.countdownOverlay.textContent = count;
                 
-                const announceCountdown = (value) => {
-                    ui.sr.textContent = '';
-                    requestAnimationFrame(() => {
-                        requestAnimationFrame(() => {
-                            ui.sr.textContent = String(value);
-                        });
-                    });
-                };
-
-                announceCountdown(count);
+                ui.sr.textContent = '';
+                setTimeout(() => { ui.sr.textContent = count; }, 50);
 
                 const interval = setInterval(() => {
                     count--;
                     if(count > 0) {
                         ui.countdownOverlay.textContent = count;
-                        announceCountdown(count);
+                        ui.sr.textContent = '';
+                        setTimeout(() => { ui.sr.textContent = count; }, 50);
                     } else {
                         clearInterval(interval);
                     }
@@ -699,7 +652,7 @@
                 }, 5000);
             });
 
-            ui.restartBtn.addEventListener('click', async () => {
+            ui.restartBtn.addEventListener('click', () => {
                 stopBGM();
                 screens.result.classList.add('hidden');
                 screens.intro.classList.remove('hidden');
@@ -710,8 +663,8 @@
                 ui.startBtn.classList.remove('btn-disabled');
                 ui.startBtn.classList.add('bg-green-600', 'hover:bg-green-700');
 
-                await announceAndWait("กลับสู่หน้าจอหลัก");
-                ui.startBtn.focus();
+                announce("กลับสู่หน้าจอหลัก");
+                setTimeout(() => ui.startBtn.focus(), 500);
             });
 
         });
