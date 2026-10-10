@@ -235,7 +235,7 @@ const GameLogic = {
         } else if (payload.method === 'CODE') {
             if (!player.latestClueId) {
                 this.log(`${player.name} ไม่มีคำใบ้ของชั้นนี้ จึงกดรหัสไม่ได้`);
-            } else if (window.EscapeTowerClueBank.checkAnswer(player.latestClueId, payload.code)) {
+            } else if (window.EscapeTowerClueBank && window.EscapeTowerClueBank.checkAnswer(player.latestClueId, payload.code)) {
                 success = true;
                 this.log(`${player.name} กรอกรหัสถูกต้อง! ประตูเปิดออก`);
             } else {
@@ -318,11 +318,21 @@ const GameLogic = {
 
 const BotController = {
     playTurn(bot) {
+        if (!bot || bot.dead || bot.escaped) {
+            GameLogic.nextTurn();
+            return;
+        }
+
         const floorData = GameState.floors[bot.floor];
-        let availableRooms = floorData.rooms.map((r, i) => ({room: r, index: i}))
+        if (!floorData) {
+            GameLogic.generateFloor(bot.floor);
+        }
+        
+        const currentFloorRooms = GameState.floors[bot.floor].rooms;
+        let availableRooms = currentFloorRooms.map((r, i) => ({room: r, index: i}))
                              .filter(item => item.room.exploredBy.length === 0 || item.room.type === 'CLUE');
         
-        // บอทไขกุญแจถ้ามี
+        // บอทเปิดประตูด้วยกุญแจที่มีจริง
         if (bot.inventory.skeletonKeys > 0) {
             MultiplayerAdapter.dispatch('USE_DOOR', { method: 'SKELETON_KEY' });
             return;
@@ -331,14 +341,16 @@ const BotController = {
             return;
         }
 
-        // บอทรู้คำตอบถ้ามี Clue (จำลอง)
-        if (bot.latestClueId) {
+        // บอทไขรหัสประตูหากมีคำใบ้ชั้นนั้น
+        if (bot.latestClueId && window.EscapeTowerClueBank) {
             const clue = window.EscapeTowerClueBank.getClueById(bot.latestClueId);
-            MultiplayerAdapter.dispatch('USE_DOOR', { method: 'CODE', code: clue.answer });
-            return;
+            if (clue && clue.answer) {
+                MultiplayerAdapter.dispatch('USE_DOOR', { method: 'CODE', code: clue.answer });
+                return;
+            }
         }
 
-        // ถ้าเปิดประตูไม่ได้ ให้สุ่มห้องที่เข้าได้
+        // หากไม่สามารถลงชั้นได้ ให้สุ่มสำรวจห้องที่ยังสำรวจได้
         if (availableRooms.length > 0) {
             const choice = availableRooms[Math.floor(Math.random() * availableRooms.length)];
             MultiplayerAdapter.dispatch('EXPLORE', { roomIndex: choice.index });
@@ -353,6 +365,7 @@ const BotController = {
 const UI = {
     currentCode: "",
     localPlayerId: null,
+    announceTimeout: null,
 
     init() {
         document.getElementById('btn-start').addEventListener('click', this.handleLogin.bind(this));
@@ -365,6 +378,22 @@ const UI = {
         document.getElementById('btn-remove-bot').addEventListener('click', this.handleRemoveBot.bind(this));
         document.getElementById('btn-start-game').addEventListener('click', this.handleStartGame.bind(this));
         
+        // ปุ่มดูสถานะผู้เล่นทุกคน & ปุ่มปิด
+        const btnViewAll = document.getElementById('btn-view-all-players');
+        if (btnViewAll) {
+            btnViewAll.addEventListener('click', this.openAllPlayersStatusModal.bind(this));
+        }
+        const btnCloseAll = document.getElementById('btn-close-all-players-status');
+        if (btnCloseAll) {
+            btnCloseAll.addEventListener('click', this.closeAllPlayersStatusModal.bind(this));
+        }
+
+        // ส่วนประตูทางลง (Dropdown Menu Toggle)
+        const btnMainDoor = document.getElementById('btn-main-door');
+        if (btnMainDoor) {
+            btnMainDoor.addEventListener('click', this.toggleDoorControls.bind(this));
+        }
+
         // แผงควบคุมประตู
         document.getElementById('btn-use-key').addEventListener('click', () => {
             MultiplayerAdapter.dispatch('USE_DOOR', { method: 'KEY' });
@@ -390,11 +419,19 @@ const UI = {
             this.updateKeypadDisplay();
         });
         document.getElementById('btn-keypad-cancel').addEventListener('click', () => {
-            document.getElementById('modal-keypad').close();
+            const modalKeypad = document.getElementById('modal-keypad');
+            if (modalKeypad && typeof modalKeypad.close === 'function') {
+                modalKeypad.close();
+            }
+            const btnOpenKeypad = document.getElementById('btn-open-keypad');
+            if (btnOpenKeypad) btnOpenKeypad.focus();
         });
         document.getElementById('btn-keypad-submit').addEventListener('click', () => {
             MultiplayerAdapter.dispatch('USE_DOOR', { method: 'CODE', code: this.currentCode });
-            document.getElementById('modal-keypad').close();
+            const modalKeypad = document.getElementById('modal-keypad');
+            if (modalKeypad && typeof modalKeypad.close === 'function') {
+                modalKeypad.close();
+            }
         });
 
         if (!window.EscapeTowerClueBank) {
@@ -416,11 +453,25 @@ const UI = {
     },
 
     announce(text) {
-        document.getElementById('announcer').innerText = text;
+        const announcer = document.getElementById('announcer');
+        if (announcer) {
+            if (this.announceTimeout) {
+                clearTimeout(this.announceTimeout);
+            }
+            announcer.innerText = text;
+            
+            // ล้างข้อความเพื่อรองรับ Screen Reader อย่างมีจังหวะเวลา
+            this.announceTimeout = setTimeout(() => {
+                announcer.innerText = "";
+            }, 3000);
+        }
+
         const logArea = document.getElementById('event-log');
-        const p = document.createElement('p');
-        p.innerText = text;
-        logArea.prepend(p);
+        if (logArea) {
+            const p = document.createElement('p');
+            p.innerText = text;
+            logArea.prepend(p);
+        }
     },
 
     handleLogin() {
@@ -471,84 +522,202 @@ const UI = {
         MultiplayerAdapter.sync();
     },
 
-    render() {
-        const localPlayer = GameState.players.find(p => p.id === this.localPlayerId);
-        const activePlayer = GameState.players[GameState.currentTurnIndex];
-        const isMyTurn = localPlayer && !localPlayer.dead && !localPlayer.escaped && (localPlayer.id === activePlayer.id);
+    toggleDoorControls() {
+        const doorControls = document.getElementById('door-controls');
+        const btnMainDoor = document.getElementById('btn-main-door');
+        if (doorControls && btnMainDoor) {
+            const isHidden = doorControls.classList.contains('hidden');
+            if (isHidden) {
+                doorControls.classList.remove('hidden');
+                btnMainDoor.setAttribute('aria-expanded', 'true');
+                const firstOption = doorControls.querySelector('button:not(:disabled)');
+                if (firstOption) firstOption.focus();
+            } else {
+                doorControls.classList.add('hidden');
+                btnMainDoor.setAttribute('aria-expanded', 'false');
+                btnMainDoor.focus();
+            }
+        }
+    },
 
-        document.getElementById('current-floor-display').innerText = localPlayer.floor;
-        document.getElementById('turn-indicator').innerText = `เทิร์นของ: ${activePlayer.name}`;
+    openAllPlayersStatusModal() {
+        const modal = document.getElementById('modal-all-players-status');
+        if (modal) {
+            this.renderAllPlayersList();
+            if (typeof modal.showModal === 'function') {
+                modal.showModal();
+            } else {
+                modal.classList.remove('hidden');
+            }
+            const closeBtn = document.getElementById('btn-close-all-players-status');
+            if (closeBtn) closeBtn.focus();
+        }
+    },
 
-        // Render Status Panel
-        const statusPanel = document.getElementById('status-panel');
-        statusPanel.innerHTML = '';
+    closeAllPlayersStatusModal() {
+        const modal = document.getElementById('modal-all-players-status');
+        if (modal) {
+            if (typeof modal.close === 'function') {
+                modal.close();
+            } else {
+                modal.classList.add('hidden');
+            }
+            const btnViewAll = document.getElementById('btn-view-all-players');
+            if (btnViewAll && btnViewAll.offsetWidth > 0 && btnViewAll.offsetHeight > 0) {
+                btnViewAll.focus();
+            }
+        }
+    },
+
+    renderAllPlayersList() {
+        const listContainer = document.getElementById('all-players-list');
+        if (!listContainer) return;
+
+        listContainer.innerHTML = '';
         GameState.players.forEach((p, idx) => {
-            const div = document.createElement('div');
-            div.className = `player-status-card ${idx === GameState.currentTurnIndex ? 'active-turn' : ''}`;
-            div.innerHTML = `
-                <strong>${p.name}</strong> (ชั้น ${p.floor})<br>
-                HP: ${p.hp} ${p.infection > 0 ? `[ติดเชื้อ -\${p.infection}]` : ''} ${p.resting ? '[พักฟื้น]' : ''}<br>
+            const card = document.createElement('div');
+            card.className = `player-status-card ${idx === GameState.currentTurnIndex ? 'active-turn' : ''}`;
+            card.innerHTML = `
+                <strong>${p.name}</strong> ${p.isBot ? '(บอท)' : ''} (ชั้น ${p.floor})<br>
+                HP: ${p.hp} ${p.infection > 0 ? `[ติดเชื้อ -\${p.infection}]` : ''} ${p.resting ? '[พักฟื้น]' : ''} ${p.escaped ? '[รอดชีวิต]' : ''} ${p.dead ? '[เสียชีวิต]' : ''}<br>
                 ไอเท็ม: กุญแจ(${p.inventory.keys}) ผี(${p.inventory.skeletonKeys})<br>
                 ปืนเลเซอร์: ${p.inventory.laserGuns} (กระสุน ${p.inventory.ammo})<br>
                 เกราะ: ${p.inventory.armor} | วัคซีน: ${p.inventory.vaccine} | อาหาร: ${p.inventory.food}
             `;
-            statusPanel.appendChild(div);
+            listContainer.appendChild(card);
         });
+    },
 
-        // Render Board
-        const board = document.getElementById('game-board');
-        board.innerHTML = '';
-        const floorData = GameState.floors[localPlayer.floor];
-        if (floorData) {
-            floorData.rooms.forEach((room, index) => {
-                const btn = document.createElement('button');
-                btn.className = 'room-btn';
-                
-                const isExplored = room.exploredBy.length > 0;
-                if (isExplored && room.type !== 'CLUE') {
-                    btn.classList.add('explored');
-                    btn.disabled = true;
-                    btn.innerText = room.name;
-                    btn.setAttribute('aria-label', `ห้อง ${index + 1} สำรวจแล้ว (${room.name})`);
-                } else if (room.type === 'CLUE' && room.exploredBy.includes(localPlayer.id)) {
-                    btn.classList.add('clue-room');
-                    btn.innerText = "คำใบ้ (อ่านแล้ว)";
-                    btn.setAttribute('aria-label', `ห้องคำใบ้ ${index + 1} อ่านแล้ว กดเพื่ออ่านซ้ำ`);
-                    btn.onclick = () => this.showClueModal(room, isMyTurn, index);
-                } else {
-                    btn.innerText = `ห้อง ${index + 1}`;
-                    btn.disabled = !isMyTurn;
-                    btn.onclick = () => MultiplayerAdapter.dispatch('EXPLORE', { roomIndex: index });
-                }
-                board.appendChild(btn);
+    render() {
+        const localPlayer = GameState.players.find(p => p.id === this.localPlayerId) || GameState.players[0];
+        const activePlayer = GameState.players[GameState.currentTurnIndex];
+        const isMyTurn = localPlayer && !localPlayer.dead && !localPlayer.escaped && activePlayer && (localPlayer.id === activePlayer.id);
+
+        if (localPlayer) {
+            document.getElementById('current-floor-display').innerText = localPlayer.floor;
+        }
+
+        if (activePlayer) {
+            document.getElementById('turn-indicator').innerText = activePlayer.name;
+        }
+
+        // Render Local Player Status Main Panel
+        const localStatusContainer = document.getElementById('local-player-status');
+        if (localStatusContainer && localPlayer) {
+            localStatusContainer.innerHTML = `
+                <strong>คุณ: ${localPlayer.name}</strong> (ชั้น ${localPlayer.floor})<br>
+                HP: ${localPlayer.hp} ${localPlayer.infection > 0 ? `[ติดเชื้อ -\${localPlayer.infection}]` : ''} ${localPlayer.resting ? '[พักฟื้น]' : ''}<br>
+                ไอเท็ม: กุญแจ(${localPlayer.inventory.keys}) ผี(${localPlayer.inventory.skeletonKeys}) | ปืนเลเซอร์: ${localPlayer.inventory.laserGuns} (กระสุน ${localPlayer.inventory.ammo})<br>
+                เกราะ: ${localPlayer.inventory.armor} | วัคซีน: ${localPlayer.inventory.vaccine} | อาหาร: ${localPlayer.inventory.food}
+            `;
+        }
+
+        // Render Complete Status Panel (เพื่อความสอดคล้องเดิม)
+        const statusPanel = document.getElementById('status-panel');
+        if (statusPanel) {
+            statusPanel.innerHTML = '';
+            GameState.players.forEach((p, idx) => {
+                const div = document.createElement('div');
+                div.className = `player-status-card ${idx === GameState.currentTurnIndex ? 'active-turn' : ''}`;
+                div.innerHTML = `
+                    <strong>${p.name}</strong> (ชั้น ${p.floor})<br>
+                    HP: ${p.hp} ${p.infection > 0 ? `[ติดเชื้อ -\${p.infection}]` : ''} ${p.resting ? '[พักฟื้น]' : ''}<br>
+                    ไอเท็ม: กุญแจ(${p.inventory.keys}) ผี(${p.inventory.skeletonKeys})<br>
+                    ปืนเลเซอร์: ${p.inventory.laserGuns} (กระสุน ${p.inventory.ammo})<br>
+                    เกราะ: ${p.inventory.armor} | วัคซีน: ${p.inventory.vaccine} | อาหาร: ${p.inventory.food}
+                `;
+                statusPanel.appendChild(div);
             });
         }
 
+        // Render Modal ผู้เล่นทุกคนเมื่อเปิดค้างไว้
+        const modalAll = document.getElementById('modal-all-players-status');
+        if (modalAll && modalAll.open) {
+            this.renderAllPlayersList();
+        }
+
+        // Render Board
+        const board = document.getElementById('game-board');
+        if (board && localPlayer) {
+            board.innerHTML = '';
+            const floorData = GameState.floors[localPlayer.floor];
+            if (floorData) {
+                floorData.rooms.forEach((room, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'room-btn';
+                    
+                    const isExplored = room.exploredBy.length > 0;
+                    if (isExplored && room.type !== 'CLUE') {
+                        btn.classList.add('explored');
+                        btn.disabled = true;
+                        btn.innerText = room.name;
+                        btn.setAttribute('aria-label', `ห้อง ${index + 1} สำรวจแล้ว (${room.name})`);
+                    } else if (room.type === 'CLUE' && room.exploredBy.includes(localPlayer.id)) {
+                        btn.classList.add('clue-room');
+                        btn.innerText = "คำใบ้ (อ่านแล้ว)";
+                        btn.setAttribute('aria-label', `ห้องคำใบ้ ${index + 1} อ่านแล้ว กดเพื่ออ่านซ้ำ`);
+                        btn.onclick = () => this.showClueModal(room, isMyTurn, index);
+                    } else {
+                        btn.innerText = `ห้อง ${index + 1}`;
+                        btn.disabled = !isMyTurn;
+                        btn.onclick = () => MultiplayerAdapter.dispatch('EXPLORE', { roomIndex: index });
+                    }
+                    board.appendChild(btn);
+                });
+            }
+        }
+
         // Render Door Controls
-        document.getElementById('btn-use-key').disabled = !isMyTurn || localPlayer.inventory.keys === 0;
-        document.getElementById('btn-use-skeleton-key').disabled = !isMyTurn || localPlayer.inventory.skeletonKeys === 0;
-        document.getElementById('btn-open-keypad').disabled = !isMyTurn;
+        const btnMainDoor = document.getElementById('btn-main-door');
+        if (btnMainDoor) {
+            btnMainDoor.disabled = !isMyTurn;
+        }
+
+        const btnUseKey = document.getElementById('btn-use-key');
+        if (btnUseKey && localPlayer) {
+            btnUseKey.disabled = !isMyTurn || localPlayer.inventory.keys === 0;
+            btnUseKey.innerText = `ใช้กุญแจธรรมดา (${localPlayer.inventory.keys})`;
+        }
+
+        const btnUseSkeletonKey = document.getElementById('btn-use-skeleton-key');
+        if (btnUseSkeletonKey && localPlayer) {
+            btnUseSkeletonKey.disabled = !isMyTurn || localPlayer.inventory.skeletonKeys === 0;
+            btnUseSkeletonKey.innerText = `ใช้กุญแจผี (${localPlayer.inventory.skeletonKeys})`;
+        }
+
+        const btnOpenKeypad = document.getElementById('btn-open-keypad');
+        if (btnOpenKeypad) {
+            btnOpenKeypad.disabled = !isMyTurn;
+            btnOpenKeypad.innerText = "ใส่รหัสคำใบ้";
+        }
     },
 
     showClueModal(room, isMyTurn, roomIndex) {
-        const clue = window.EscapeTowerClueBank.getClueById(room.clueId);
-        if(isMyTurn && !room.exploredBy.includes(this.localPlayerId)) {
+        const clue = window.EscapeTowerClueBank ? window.EscapeTowerClueBank.getClueById(room.clueId) : null;
+        if (isMyTurn && !room.exploredBy.includes(this.localPlayerId)) {
             MultiplayerAdapter.dispatch('EXPLORE', { roomIndex: roomIndex });
         }
-        alert(`ปริศนา:\n${clue.question}`); // เพื่อความเรียบง่ายของ UI ใช้ alert สำหรับอ่านซ้ำ
+        if (clue) {
+            alert(`ปริศนา:\n${clue.question}`);
+        }
     },
 
     openKeypad() {
-        const localPlayer = GameState.players.find(p => p.id === this.localPlayerId);
-        if (!localPlayer.latestClueId) {
+        const localPlayer = GameState.players.find(p => p.id === this.localPlayerId) || GameState.players[0];
+        if (!localPlayer || !localPlayer.latestClueId) {
             this.announce("คุณยังไม่มีคำใบ้ของชั้นนี้");
             return;
         }
-        const clue = window.EscapeTowerClueBank.getClueById(localPlayer.latestClueId);
-        document.getElementById('clue-display-area').innerText = `ปริศนาของคุณ: ${clue.question}`;
-        this.currentCode = "";
-        this.updateKeypadDisplay();
-        document.getElementById('modal-keypad').showModal();
+        const clue = window.EscapeTowerClueBank ? window.EscapeTowerClueBank.getClueById(localPlayer.latestClueId) : null;
+        if (clue) {
+            document.getElementById('clue-display-area').innerText = `ปริศนาของคุณ: ${clue.question}`;
+            this.currentCode = "";
+            this.updateKeypadDisplay();
+            const modalKeypad = document.getElementById('modal-keypad');
+            if (modalKeypad && typeof modalKeypad.showModal === 'function') {
+                modalKeypad.showModal();
+            }
+        }
     },
 
     updateKeypadDisplay() {
