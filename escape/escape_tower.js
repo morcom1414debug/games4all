@@ -122,10 +122,14 @@ function processSpeechQueue() {
 
 // Focus Management Screen Switcher
 function switchScreen(screenId, focusHeadingId = null) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
+    document.querySelectorAll('.screen').forEach(s => {
+        s.classList.remove('active-screen');
+        s.setAttribute('hidden', ''); // เพิ่มการจัดการ hidden attribute เพื่อป้องกันการซ้อนของหน้าจอ
+    });
     const target = document.getElementById(screenId);
     if (target) {
         target.classList.add('active-screen');
+        target.removeAttribute('hidden'); // ยกเลิกการซ่อนหน้าจอเป้าหมาย
         if (focusHeadingId) {
             const h = document.getElementById(focusHeadingId);
             if (h) {
@@ -245,7 +249,8 @@ window.joinEscapeRoom = async function (rId) {
     if(nameInput) myPlayerName = nameInput.value.trim() || 'ผู้เข้าใหม่';
     else myPlayerName = 'ผู้เข้าใหม่';
 
-    currentRoomId = (rId || document.getElementById('room-id-input').value).trim();
+    // แก้ไขให้ตรงกับ ID จริงจากหน้า HTML (room-code-input)
+    currentRoomId = (rId || (document.getElementById('room-code-input') ? document.getElementById('room-code-input').value : '')).trim();
     if(!currentRoomId) return;
 
     isHost = false;
@@ -738,3 +743,81 @@ async function advanceBotTurn(botId, playerUpdates, extraDbUpdates = {}) {
     }
     await update(ref(db), updates);
 }
+
+// -----------------------------------------------------------
+// การเชื่อมต่อและเริ่มทำงานเมื่อโหลดหน้า (Initialization)
+// -----------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. ปุ่มกรอกชื่อและเข้าสู่ล็อบบี้
+    const nameInput = document.getElementById('player-name-input');
+    const btnEnterLobby = document.getElementById('btn-enter-lobby');
+    const lobbyPlayerName = document.getElementById('lobby-player-name');
+
+    if (nameInput && btnEnterLobby) {
+        // ตรวจสอบการกรอกชื่อ
+        const validateName = () => {
+            const name = nameInput.value.trim();
+            btnEnterLobby.disabled = name.length === 0;
+        };
+
+        nameInput.addEventListener('input', validateName);
+        validateName();
+
+        // เมื่อกดปุ่มเข้าล็อบบี้
+        btnEnterLobby.addEventListener('click', () => {
+            const name = nameInput.value.trim();
+            if (name.length === 0) {
+                announceSR("กรุณากรอกชื่อผู้เล่นก่อนเข้าสู่ล็อบบี้", "assertive");
+                return;
+            }
+            
+            myPlayerName = name;
+            if (lobbyPlayerName) {
+                lobbyPlayerName.textContent = myPlayerName;
+            }
+            
+            // เปิดให้ปุ่มในล็อบบี้ใช้งานได้
+            const btnCreate = document.getElementById('btn-create-room');
+            const btnJoin = document.getElementById('btn-join-room');
+            if (btnCreate) btnCreate.disabled = false;
+            if (btnJoin) btnJoin.disabled = false;
+            
+            const connStatus = document.getElementById('lobby-connection-status');
+            if (connStatus) {
+                connStatus.textContent = "เชื่อมต่อระบบพร้อมใช้งาน กดปุ่มเพื่อสร้างหรือเข้าร่วมห้อง";
+            }
+            
+            switchScreen('screen-lobby', 'lobby-heading');
+            announceSR(`เข้าสู่ล็อบบี้ในชื่อ ${myPlayerName}`);
+        });
+
+        // รองรับการใช้ปุ่ม Enter
+        nameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !btnEnterLobby.disabled) {
+                btnEnterLobby.click();
+            }
+        });
+    }
+
+    // 2. ปุ่มสร้างห้องและเข้าร่วมห้องในล็อบบี้
+    const btnCreateRoom = document.getElementById('btn-create-room');
+    if (btnCreateRoom) {
+        btnCreateRoom.addEventListener('click', () => {
+            if (!btnCreateRoom.disabled) {
+                window.createEscapeRoom();
+            }
+        });
+    }
+
+    const joinForm = document.getElementById('join-room-form');
+    if (joinForm) {
+        joinForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const joinBtn = document.getElementById('btn-join-room');
+            if (joinBtn && !joinBtn.disabled) {
+                const roomInput = document.getElementById('room-code-input');
+                window.joinEscapeRoom(roomInput ? roomInput.value : null);
+            }
+        });
+    }
+});
