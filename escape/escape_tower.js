@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, set, onValue, update, runTransaction, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// Exact Firebase Configuration สำหรับ Escape Tower
+// Firebase Config
 const firebaseConfig = {
     apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
     authDomain: "xo-game-134ec.firebaseapp.com",
@@ -15,90 +15,44 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Animal Avatars Pool
-const ANIMAL_POOL = [
-    { icon: '🦊', name: 'จิ้งจอก' }, { icon: '🐼', name: 'แพนด้า' },
-    { icon: '🐰', name: 'กระต่าย' }, { icon: '🐨', name: 'โคอาลา' },
-    { icon: '🐯', name: 'เสือ' }, { icon: '🦁', name: 'สิงโต' }
-];
-
-// Global Game States
-let myPlayerName = '';
-let myPlayerId = null;
+// Global State
+let myName = '';
+let myId = null;
 let currentRoomId = null;
 let isHost = false;
 let gameState = null;
 let roomListener = null;
-let localLastActionTs = 0;
 let speechQueue = [];
 let isSpeaking = false;
-let lastAnnouncedTurnKey = null;
-let previousPlayersState = {};
-let hintsData = null; // เก็บข้อมูลคำใบ้
+let lastAnnouncedTurn = null;
 
-// Audio System States
-let bgmSource = null;
-let audioBuffers = {};
-let isShowingWinnerScene = false;
-
-// Audio Context Web API (Web Audio API)
+// Audio System
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const unlockAudio = () => {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-};
+const unlockAudio = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
 document.addEventListener('click', unlockAudio, { capture: true });
-document.addEventListener('touchstart', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
 
-async function loadAudio(name) {
-    if (audioBuffers[name]) return audioBuffers[name];
+function playAudio(name) {
+    // ใช้ Web Audio API โหลดและเล่นเสียงจำลองแบบเดียวกับ Camping
+    // หากไม่มีไฟล์เสียง จะข้ามไปเงียบๆ ไม่ทำให้เกมพัง
     try {
-        const response = await fetch(`audio/${name}`);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        audioBuffers[name] = audioBuffer;
-        return audioBuffer;
-    } catch (e) {
-        console.warn('Audio load error or missing file:', name);
-        return null;
-    }
+        fetch(`audio/${name}`)
+            .then(res => res.arrayBuffer())
+            .then(buf => audioCtx.decodeAudioData(buf))
+            .then(decoded => {
+                const source = audioCtx.createBufferSource();
+                source.buffer = decoded;
+                source.connect(audioCtx.destination);
+                source.start(0);
+            }).catch(() => {});
+    } catch(e){}
 }
 
-function playAudio(name, loop = false) {
-    return new Promise(async (resolve) => {
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        const buffer = await loadAudio(name);
-        if (!buffer) {
-            resolve();
-            return;
-        }
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioCtx.destination);
-        source.loop = loop;
-        source.onended = () => resolve(source);
-        source.start(0);
-
-        if (loop && name === 'bgm.mp3') {
-            if (bgmSource) { try { bgmSource.stop(); } catch (e) { } }
-            bgmSource = source;
-        }
-    });
-}
-
-function stopBGM() {
-    if (bgmSource) {
-        try { bgmSource.stop(); } catch (e) { }
-        bgmSource = null;
-    }
-}
-
-// ARIA Queue Announcement Manager
+// ARIA Announcement
 function announceSR(text, priority = 'polite') {
     speechQueue.push({ text, priority });
     processSpeechQueue();
 }
-
 function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
     isSpeaking = true;
@@ -109,715 +63,646 @@ function processSpeechQueue() {
         setTimeout(() => {
             targetEl.textContent = item.text;
             const duration = Math.max(1500, item.text.length * 50);
-            setTimeout(() => {
-                targetEl.textContent = '';
-                isSpeaking = false;
-                processSpeechQueue();
-            }, duration);
+            setTimeout(() => { targetEl.textContent = ''; isSpeaking = false; processSpeechQueue(); }, duration);
         }, 100);
-    } else {
-        isSpeaking = false;
-    }
+    } else { isSpeaking = false; }
 }
 
-// Focus Management Screen Switcher
-function switchScreen(screenId, focusHeadingId = null) {
-    document.querySelectorAll('.screen').forEach(s => {
-        s.classList.remove('active-screen');
-        s.setAttribute('hidden', ''); // เพิ่มการจัดการ hidden attribute เพื่อป้องกันการซ้อนของหน้าจอ
-    });
+// Screen Switcher
+function switchScreen(screenId, focusId = null) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
     const target = document.getElementById(screenId);
     if (target) {
         target.classList.add('active-screen');
-        target.removeAttribute('hidden'); // ยกเลิกการซ่อนหน้าจอเป้าหมาย
-        if (focusHeadingId) {
-            const h = document.getElementById(focusHeadingId);
-            if (h) {
-                h.setAttribute('tabindex', '-1');
-                h.focus();
-                const cleanupFocus = () => {
-                    h.removeAttribute('tabindex');
-                    h.removeEventListener('blur', cleanupFocus);
-                };
-                h.addEventListener('blur', cleanupFocus);
-            }
+        if (focusId) {
+            const el = document.getElementById(focusId);
+            if (el) { el.setAttribute('tabindex', '-1'); el.focus(); }
         }
     }
 }
 
-// Fetch Hints
-function fetchHints() {
-    if (typeof window.EscapeTowerClueBank !== 'undefined') {
-        hintsData = window.EscapeTowerClueBank;
-    } else {
-        hintsData = null;
-    }
-}
+// Initial Events
+document.addEventListener('DOMContentLoaded', () => {
+    initLobbyListener();
+    document.getElementById('player-name-input').addEventListener('input', (e) => {
+        document.getElementById('btn-confirm-name').disabled = e.target.value.trim().length === 0;
+    });
+    document.getElementById('player-name-input').addEventListener('keydown', (e) => {
+        if(e.key === 'Enter' && e.target.value.trim().length > 0) confirmName();
+    });
+    document.getElementById('btn-confirm-name').onclick = confirmName;
+    document.getElementById('btn-create-room').onclick = createRoom;
+    document.getElementById('btn-leave-room').onclick = window.leaveRoomAndGoHome;
+    document.getElementById('btn-start-game').onclick = startGame;
+    
+    document.getElementById('btn-open-manual-welcome').onclick = () => showManual(true);
+    document.getElementById('btn-open-manual-lobby').onclick = () => showManual(true);
+    document.getElementById('btn-close-manual').onclick = () => showManual(false);
 
-// Board Random Generator สำหรับ Escape Tower
-function generateTowerFloors() {
-    const floors = {};
-    for (let f = 1; f <= 6; f++) {
-        const roomTypes = [
-            'key_normal', 'key_skeleton', 'secret_stair',
-            'hint_1', 'hint_2', 'hint_3',
-            'zombie', 'zombie', 'zombie', 'zombie',
-            'vaccine', 'vaccine', 'vaccine',
-            'food', 'food', 'food',
-            'armor', 'puzzle', 'laser_gun', 'battery'
-        ];
-        // Shuffle
-        for (let i = roomTypes.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [roomTypes[i], roomTypes[j]] = [roomTypes[j], roomTypes[i]];
-        }
-        
-        // สุ่มคำใบ้ประจำชั้น 3 ข้อจากคลังคำใบ้ต้นฉบับ
-        const selectedClues = (typeof window.EscapeTowerClueBank !== 'undefined') 
-            ? window.EscapeTowerClueBank.selectCluesForGame(f) 
-            : [];
+    document.getElementById('btn-add-bot').onclick = () => adjustBot(1);
+    document.getElementById('btn-remove-bot').onclick = () => adjustBot(-1);
+    document.getElementById('btn-read-all-status').onclick = readAllStatus;
+    
+    document.getElementById('btn-close-clue').onclick = () => document.getElementById('clue-modal').style.display = 'none';
+    document.getElementById('btn-submit-clue').onclick = submitClue;
+    document.getElementById('clue-answer-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submitClue();
+    });
+});
 
-        let hintCount = 0;
-        const rooms = {};
-
-        for(let i=0; i<20; i++) {
-            const type = roomTypes[i];
-            let clueData = null;
-
-            // ถ้าสุ่มได้ห้องคำใบ้ ให้แนบข้อมูลคำใบ้ประจำห้องไปด้วย
-            if (type.startsWith('hint_')) {
-                clueData = selectedClues[hintCount] || null;
-                hintCount++;
-            }
-
-            rooms[i] = { 
-                type: type, 
-                exploredBy: [],
-                clue: clueData // บันทึกคำใบ้ลงในห้อง
-            };
-        }
-        floors[f] = { rooms: rooms, doorsOpened: [] }; // doorsOpened เก็บ player ids ที่เปิดประตูลงชั้นแล้ว
-    }
-    return floors;
-}
-
-window.createEscapeRoom = async function () {
-    const nameInput = document.getElementById('player-name-input');
-    if(nameInput) myPlayerName = nameInput.value.trim() || 'ผู้เล่น 1';
-    else myPlayerName = 'ผู้เล่น 1';
-
+function confirmName() {
+    myName = document.getElementById('player-name-input').value.trim() || 'ผู้รอดชีวิต';
     playAudio('select.mp3');
-    await fetchHints(); // โหลดคำใบ้ก่อนสร้างห้อง
+    switchScreen('screen-lobby', 'lobby-heading');
+    announceSR(`เข้าสู่ล็อบบี้แล้ว ยินดีต้อนรับ ${myName}`);
+}
 
-    const counterRef = ref(db, 'games/Escape/room_counter');
-    runTransaction(counterRef, (cur) => (cur || 0) + 1).then((res) => {
+function showManual(show) {
+    const m = document.getElementById('manual-page');
+    m.style.display = show ? 'flex' : 'none';
+    if(show) { document.getElementById('manual-title').focus(); announceSR("เปิดคู่มือเกมแล้ว"); }
+    else { announceSR("ปิดคู่มือเกมแล้ว"); }
+}
+
+// Lobby / Room Management
+function initLobbyListener() {
+    onValue(ref(db, 'games/Escape/rooms'), (snap) => {
+        const rooms = snap.val() || {};
+        const container = document.getElementById('room-list');
+        if (myId) return; // Ignore if in room
+        container.innerHTML = '';
+        let count = 0;
+        for (const [rId, rData] of Object.entries(rooms)) {
+            if (rData.status === 'waiting') {
+                count++;
+                const pCount = rData.players ? Object.keys(rData.players).length : 0;
+                if (pCount < 4) {
+                    const d = document.createElement('div');
+                    d.className = 'room-item';
+                    d.innerHTML = `เข้าร่วมห้อง ${rId} (มี ${pCount}/4 คน)`;
+                    d.onclick = () => joinRoom(rId);
+                    d.setAttribute('role', 'button');
+                    d.setAttribute('tabindex', '0');
+                    d.onkeydown = (e) => { if (e.key === 'Enter') joinRoom(rId); };
+                    container.appendChild(d);
+                }
+            }
+        }
+        if(count===0) container.innerHTML = '<div class="loading-text">ไม่มีห้องที่รอผู้เล่น...</div>';
+    });
+}
+
+function createRoom() {
+    playAudio('select.mp3');
+    runTransaction(ref(db, 'games/Escape/room_counter'), (cur) => (cur || 0) + 1).then((res) => {
         if (res.committed) {
             currentRoomId = 'Escape' + String(res.snapshot.val()).padStart(5, '0');
-            myPlayerId = 'p1';
+            myId = 'p1';
             isHost = true;
-
             const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
-            onDisconnect(roomRef).remove();
-
-            const initialPlayers = {
-                p1: { 
-                    name: myPlayerName, animal: ANIMAL_POOL[0], isBot: false, 
-                    floor: 6, hp: 200, infectionRate: 0, 
-                    inventory: { food: [], vaccines: 0, keys: 0, skeletonKeys: 0, armor: 0, ammo: 0, hasGun: false },
-                    status: 'active'
-                }
-            };
-
+            onDisconnect(roomRef).remove(); // Hostหลุด -> ลบห้อง
             set(roomRef, {
                 status: 'waiting',
-                players: initialPlayers,
-                botCount: 0,
-                turnIndex: 0,
-                towerConfig: null,
-                lastAction: { msg: '', ts: 0 }
+                players: { p1: createPlayerObj(myName, false) },
+                botCount: 0, turnIndex: 0,
+                log: { msg: '', ts: 0 }
             });
-
-            switchScreen('screen-lobby', 'lobby-heading');
-            setupRoomListener();
-            announceSR(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId}`);
+            enterRoomUI();
+            announceSR(`สร้างห้องสำเร็จ รหัส ${currentRoomId}`);
         }
     });
-};
+}
 
-window.joinEscapeRoom = async function (rId) {
-    const nameInput = document.getElementById('player-name-input');
-    if(nameInput) myPlayerName = nameInput.value.trim() || 'ผู้เข้าใหม่';
-    else myPlayerName = 'ผู้เข้าใหม่';
-
-    // แก้ไขให้ตรงกับ ID จริงจากหน้า HTML (room-code-input)
-    currentRoomId = (rId || (document.getElementById('room-code-input') ? document.getElementById('room-code-input').value : '')).trim();
-    if(!currentRoomId) return;
-
+function joinRoom(rId) {
+    currentRoomId = rId;
     isHost = false;
-    await fetchHints();
-
     const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
-    runTransaction(roomRef, (roomData) => {
-        if (!roomData || roomData.status !== 'waiting') return;
-        const pKeys = Object.keys(roomData.players || {});
-        if (pKeys.length >= 4) return; // รวมบอทไม่เกิน 4
-
-        let nextSlot = 'p1';
-        for (let i = 1; i <= 4; i++) {
-            if (!pKeys.includes('p' + i)) {
-                nextSlot = 'p' + i;
-                break;
-            }
-        }
-
-        const usedAnimals = Object.values(roomData.players).map(p => p.animal.icon);
-        const availAnimals = ANIMAL_POOL.filter(a => !usedAnimals.includes(a.icon));
-
-        if (!roomData.players) roomData.players = {};
-        roomData.players[nextSlot] = {
-            name: myPlayerName, animal: availAnimals[0] || ANIMAL_POOL[0], isBot: false, 
-            floor: 6, hp: 200, infectionRate: 0, 
-            inventory: { food: [], vaccines: 0, keys: 0, skeletonKeys: 0, armor: 0, ammo: 0, hasGun: false },
-            status: 'active'
-        };
-
-        myPlayerId = nextSlot;
-        return roomData;
+    runTransaction(roomRef, (rData) => {
+        if (!rData || rData.status !== 'waiting') return;
+        const keys = Object.keys(rData.players || {});
+        if (keys.length >= 4) return;
+        let slot = 'p1';
+        for(let i=1; i<=4; i++) { if(!keys.includes('p'+i)) { slot = 'p'+i; break; } }
+        if (!rData.players) rData.players = {};
+        rData.players[slot] = createPlayerObj(myName, false);
+        myId = slot;
+        return rData;
     }).then((res) => {
-        if (res.committed) {
+        if (res.committed && myId) {
             playAudio('select.mp3');
-            onDisconnect(ref(db, `games/Escape/rooms/${currentRoomId}/players/${myPlayerId}`)).update({
-                isBot: true, name: "บอท" + myPlayerName
+            onDisconnect(ref(db, `games/Escape/rooms/${currentRoomId}/players/${myId}`)).update({
+                isBot: true, name: "บอท_" + myName
             });
-            switchScreen('screen-lobby', 'lobby-heading');
-            setupRoomListener();
-            announceSR(`เข้าร่วมห้อง ${currentRoomId} เรียบร้อยแล้ว`);
+            enterRoomUI();
+            announceSR(`เข้าร่วมห้อง ${currentRoomId} สำเร็จ`);
         } else {
-            announceSR("ไม่สามารถเข้าห้องได้ ห้องอาจเต็มหรือเริ่มเกมไปแล้ว", 'assertive');
-        }
-    });
-};
-
-window.adjustBot = function(delta) {
-    if (!isHost || !gameState) return;
-    const curBots = gameState.botCount || 0;
-    const humanCount = Object.values(gameState.players).filter(p => !p.isBot).length;
-    const newBots = curBots + delta;
-
-    if (newBots < 0 || (humanCount + newBots) > 4) return;
-
-    const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
-    const updatedPlayers = { ...gameState.players };
-
-    if (delta > 0) {
-        const botSlot = 'p' + (humanCount + newBots);
-        const botNames = ['บอทผู้รอด 1', 'บอทผู้รอด 2', 'บอทผู้รอด 3'];
-        const usedAnimals = Object.values(updatedPlayers).map(p => p.animal.icon);
-        const availAnimals = ANIMAL_POOL.filter(a => !usedAnimals.includes(a.icon));
-
-        updatedPlayers[botSlot] = {
-            name: botNames[newBots - 1] || `บอท ${newBots}`,
-            animal: availAnimals[0] || ANIMAL_POOL[1],
-            isBot: true, floor: 6, hp: 200, infectionRate: 0,
-            inventory: { food: [], vaccines: 0, keys: 0, skeletonKeys: 0, armor: 0, ammo: 0, hasGun: false },
-            status: 'active'
-        };
-    } else {
-        const botSlots = Object.keys(updatedPlayers).filter(k => updatedPlayers[k].isBot);
-        if (botSlots.length > 0) {
-            delete updatedPlayers[botSlots[botSlots.length - 1]];
-        }
-    }
-
-    update(roomRef, { botCount: newBots, players: updatedPlayers });
-};
-
-function setupRoomListener() {
-    const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
-    roomListener = onValue(roomRef, (snapshot) => {
-        gameState = snapshot.val();
-        if (!gameState) {
-            announceSR("ห้องถูกปิดแล้ว กลับสู่หน้าแรก", 'assertive');
-            setTimeout(() => { location.reload(); }, 2000);
-            return;
-        }
-
-        updateLobbyUI();
-
-        if (gameState.lastAction && gameState.lastAction.ts > localLastActionTs) {
-            localLastActionTs = gameState.lastAction.ts;
-            announceSR(gameState.lastAction.msg, 'polite');
-            if (gameState.lastAction.audio) playAudio(gameState.lastAction.audio);
-        }
-
-        if (gameState.status === 'playing') {
-            if (!document.getElementById('screen-game').classList.contains('active-screen')) {
-                switchScreen('screen-game', 'game-title');
-                playAudio('bgm.mp3', true);
-            }
-            updateGameUI();
-            checkAndRunBotTurn();
+            announceSR("ห้องเต็มหรือเริ่มไปแล้ว");
+            currentRoomId = null;
         }
     });
 }
 
-function updateLobbyUI() {
-    if(!gameState) return;
-    const pList = Object.values(gameState.players || {});
-    const container = document.getElementById('participant-list');
-    if(container) {
-        container.innerHTML = '';
-        pList.forEach(p => {
-            const div = document.createElement('div');
-            div.className = 'room-list li'; // จำลอง class ตาม css
-            div.textContent = `${p.animal.icon} ${p.name} ${p.isBot ? '(บอท)' : ''}`;
-            container.appendChild(div);
+function enterRoomUI() {
+    document.getElementById('lobby-menu-section').style.display = 'none';
+    document.getElementById('lobby-room-section').style.display = 'block';
+    setupRoomListener();
+    document.getElementById('lobby-room-title').focus();
+}
+
+window.leaveRoomAndGoHome = function() {
+    if (currentRoomId && myId) {
+        if (isHost) remove(ref(db, `games/Escape/rooms/${currentRoomId}`));
+        else update(ref(db, `games/Escape/rooms/${currentRoomId}/players/${myId}`), { isBot: true, name: "บอท_"+myName });
+    }
+    myId = null; currentRoomId = null; isHost = false; gameState = null;
+    if(roomListener) roomListener(); // unsubscribe
+    switchScreen('screen-welcome', 'welcome-title');
+    announceSR("ออกจากห้องแล้ว");
+};
+
+function createPlayerObj(name, isBot) {
+    return {
+        name: name, isBot: isBot, floor: 6, hp: 200, status: 'normal', // normal, resting, dead, escaped
+        infection: 0, vaccine: 0, food: 0, armor: 0, gun: 0, ammo: 0,
+        keys: 0, ghostKeys: 0, secretPassage: false,
+        cluesFound: {}, // { floor: { clueId, answersTried } }
+        canUseDoor: false
+    };
+}
+
+function adjustBot(delta) {
+    if(!isHost || !gameState) return;
+    const hCount = Object.values(gameState.players).filter(p=>!p.isBot).length;
+    const bCount = gameState.botCount || 0;
+    const total = hCount + bCount;
+    if(delta > 0 && total < 4) {
+        const slot = 'p' + (total+1);
+        update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
+            [`players/${slot}`]: createPlayerObj(`บอท${bCount+1}`, true),
+            botCount: bCount + 1
         });
-    }
-
-    const startBtn = document.getElementById('btn-start-game');
-    if(startBtn) {
-        if(isHost) {
-            startBtn.style.display = 'block';
-            startBtn.disabled = (gameState.status !== 'waiting');
-        } else {
-            startBtn.style.display = 'none';
+        playAudio('select.mp3');
+    } else if(delta < 0 && bCount > 0) {
+        const bots = Object.keys(gameState.players).filter(k=>gameState.players[k].isBot);
+        if(bots.length > 0) {
+            const updates = { botCount: bCount - 1 };
+            updates[`players/${bots[bots.length-1]}`] = null;
+            update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates);
+            playAudio('select.mp3');
         }
     }
 }
 
-window.startEscapeGame = function() {
-    if (!isHost || !gameState || gameState.status !== 'waiting') return;
-    const towerConfig = generateTowerFloors();
-    const pKeys = Object.keys(gameState.players || {});
+// Game Logic
+function generateRoomsForFloor(floorNum) {
+    let arr = [
+        {type:'key'}, {type:'ghostKey'}, {type:'secret'}, {type:'clue', cid:0}, {type:'clue', cid:1}, {type:'clue', cid:2},
+        {type:'zombie'}, {type:'zombie'}, {type:'zombie'}, {type:'zombie'},
+        {type:'vaccine'}, {type:'vaccine'}, {type:'vaccine'},
+        {type:'food'}, {type:'food'}, {type:'food'},
+        {type:'armor'}, {type:'puzzle'}, {type:'gun'}, {type:'battery'}
+    ];
+    // Shuffle
+    for(let i=arr.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
     
-    for (let i = pKeys.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]];
+    // Pick 3 Clues for this floor from clue bank
+    let clues = [];
+    if(window.EscapeTowerClueBank) {
+        clues = window.EscapeTowerClueBank.selectCluesForGame(floorNum);
     }
+    
+    let board = {};
+    for(let i=0; i<20; i++) {
+        board[i] = { type: arr[i].type, explored: false };
+        if(arr[i].type === 'clue' && clues[arr[i].cid]) {
+            board[i].clueId = clues[arr[i].cid].id;
+            board[i].explored = false; // clue rooms can be re-entered
+        }
+    }
+    return board;
+}
+
+function startGame() {
+    if(!isHost || !gameState || gameState.status !== 'waiting') return;
+    document.getElementById('btn-start-game').disabled = true;
+    
+    const pKeys = Object.keys(gameState.players);
+    for(let i=pKeys.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]]; }
+    
+    const floorsData = {};
+    for(let f=6; f>=1; f--) floorsData[f] = generateRoomsForFloor(f);
 
     update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
-        status: 'playing',
-        towerConfig,
-        turnIndex: 0,
-        playerOrder: pKeys
+        status: 'playing', turnIndex: 0, order: pKeys,
+        floors: floorsData, log: { msg: 'เกมเริ่มขึ้นแล้ว หาทางลงไปยังชั้น 1!', ts: Date.now() }
     });
-};
-
-function checkAndRunBotTurn() {
-    if (!isHost || !gameState || gameState.status !== 'playing' || gameState.turnExecuting) return;
-    const pOrder = gameState.playerOrder;
-    const currentTurnKey = pOrder[gameState.turnIndex];
-    const currentTurnPlayer = gameState.players[currentTurnKey];
-    
-    if (currentTurnPlayer && currentTurnPlayer.isBot && currentTurnPlayer.status === 'active') {
-        update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnExecuting`]: true });
-        setTimeout(() => { executeBotTurn(currentTurnKey); }, 2000);
-    }
 }
 
-function updateGameUI() {
-    if (!gameState) return;
-    const me = gameState.players[myPlayerId];
-    if(!me) return;
+let localTs = 0;
+function setupRoomListener() {
+    roomListener = onValue(ref(db, `games/Escape/rooms/${currentRoomId}`), (snap) => {
+        gameState = snap.val();
+        if(!gameState) { announceSR("ห้องถูกปิด", "assertive"); setTimeout(()=>window.location.href='../index.html', 2000); return; }
+        
+        if(gameState.status === 'waiting') {
+            document.getElementById('lobby-room-title').textContent = `ห้อง: ${currentRoomId}`;
+            const pList = Object.values(gameState.players||{});
+            document.getElementById('participant-count').textContent = `${pList.length}/4`;
+            const listEl = document.getElementById('participant-list');
+            listEl.innerHTML = '';
+            pList.forEach(p => {
+                listEl.innerHTML += `<div class="participant-card">${p.name} ${p.isBot?'(บอท)':''}</div>`;
+            });
+            if(isHost) {
+                document.getElementById('host-controls').style.display = 'block';
+                document.getElementById('bot-count-display').textContent = gameState.botCount||0;
+                document.getElementById('btn-start-game').style.display = 'block';
+                document.getElementById('btn-start-game').disabled = pList.length < 1;
+            }
+        } else if (gameState.status === 'playing') {
+            if(!document.getElementById('screen-game').classList.contains('active-screen')) {
+                switchScreen('screen-game', 'game-floor-title');
+            }
+            if(gameState.log && gameState.log.ts > localTs) {
+                localTs = gameState.log.ts;
+                announceSR(gameState.log.msg, 'polite');
+                document.getElementById('latest-event-display').textContent = gameState.log.msg;
+            }
+            renderGameUI();
+        } else if (gameState.status === 'ended') {
+            switchScreen('screen-result', 'result-title');
+            renderResult();
+        }
+    });
+}
 
-    // อัปเดต UI ส่วนตัวและทุกคน
-    const floorIndicator = document.getElementById('floor-description');
-    if(floorIndicator) floorIndicator.textContent = `คุณอยู่ชั้น ${me.floor}`;
-
-    const statusBar = document.getElementById('latest-event');
-    if(statusBar) {
-        statusBar.textContent = `HP: ${me.hp} | ติดเชื้อ: ${me.infectionRate > 0 ? 'ใช่(-'+me.infectionRate+'/เทิร์น)' : 'ไม่'} | กุญแจ: ${me.inventory.keys} | กระสุน: ${me.inventory.ammo} / ปืน: ${me.inventory.hasGun ? 'มี':'ไม่มี'}`;
-    }
-
-    renderRoomGrid(me.floor);
+function renderGameUI() {
+    if(!gameState) return;
+    const myP = gameState.players[myId];
+    if(!myP) return;
     
-    const pOrder = gameState.playerOrder || [];
-    const currentTurnKey = pOrder[gameState.turnIndex];
-    const currentTurnPlayer = gameState.players[currentTurnKey];
-
-    if (currentTurnPlayer) {
-        const turnUniqueId = `${currentRoomId}_${gameState.turnIndex}_${currentTurnKey}`;
-        if (lastAnnouncedTurnKey !== turnUniqueId) {
-            lastAnnouncedTurnKey = turnUniqueId;
-            announceSR(`ถึงเทิร์นของ ${currentTurnPlayer.name} (อยู่ชั้น ${currentTurnPlayer.floor})`);
-            playAudio('turn.mp3');
+    document.getElementById('game-floor-title').textContent = `คุณอยู่ชั้น ${myP.floor}`;
+    
+    const curPId = gameState.order[gameState.turnIndex];
+    const curP = gameState.players[curPId];
+    const isMyTurn = (curPId === myId && !myP.isBot && myP.status === 'normal');
+    
+    if(lastAnnouncedTurn !== `${gameState.turnIndex}_${curPId}`) {
+        lastAnnouncedTurn = `${gameState.turnIndex}_${curPId}`;
+        announceSR(`ถึงเทิร์นของ ${curP.name}`);
+        playAudio('turn.mp3');
+        if(isHost && curP.isBot && curP.status === 'normal') {
+            setTimeout(() => executeBotTurn(curPId), 1500);
+        } else if(curP.status !== 'normal' && isHost) {
+            // Auto skip dead/escaped/resting
+            setTimeout(() => endTurn(curPId), 1000);
+        }
+    }
+    
+    document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
+    
+    // Status Cards
+    const cardsEl = document.getElementById('player-status-cards');
+    cardsEl.innerHTML = '';
+    gameState.order.forEach(pid => {
+        const p = gameState.players[pid];
+        let cClass = 'p-status-card';
+        if(pid === curPId) cClass += ' active-turn';
+        if(p.status === 'dead') cClass += ' dead';
+        if(p.status === 'escaped') cClass += ' escaped';
+        cardsEl.innerHTML += `<div class="${cClass}" aria-hidden="true">
+            <strong>${p.name} (ชั้น ${p.floor})</strong><br>
+            HP: ${p.hp} | ติดเชื้อ: ${p.infection}<br>
+            กุญแจ: ${p.keys} | เกราะ: ${p.armor} | ปืน: ${p.gun}(${p.ammo})
+        </div>`;
+    });
+    
+    // Board
+    const boardEl = document.getElementById('escape-board');
+    boardEl.innerHTML = '';
+    const floorData = gameState.floors[myP.floor];
+    if(floorData) {
+        for(let i=0; i<20; i++) {
+            const r = floorData[i];
+            const btn = document.createElement('button');
+            btn.className = 'board-cell';
+            const num = i+1;
             
-            // ประมวลผลเทิร์นตัวเองก่อนอนุญาตให้กด
-            if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot) {
-                processMyTurnStart(currentTurnPlayer);
-            }
-        }
-    }
-}
-
-function renderRoomGrid(floorNum) {
-    const grid = document.getElementById('room-grid');
-    if(!grid || !gameState.towerConfig) return;
-    grid.innerHTML = '';
-    
-    const currentTurnKey = gameState.playerOrder[gameState.turnIndex];
-    const isMyTurn = (currentTurnKey === myPlayerId && !gameState.turnExecuting);
-    const floorData = gameState.towerConfig[floorNum];
-
-    for(let i=0; i<20; i++) {
-        const room = floorData.rooms[i];
-        const btn = document.createElement('button');
-        btn.className = 'room-button';
-        
-        let isLocked = room.exploredBy.includes('all');
-        if (room.type.startsWith('hint_')) {
-            isLocked = false; // ห้องคำใบ้เข้าได้เรื่อยๆ
-        }
-
-        btn.textContent = isLocked ? 'สำรวจแล้ว' : `ห้อง ${i+1}`;
-        btn.disabled = isLocked || !isMyTurn;
-        btn.onclick = () => window.exploreRoom(i);
-        
-        // ถ้าเป็นห้องคำใบ้ที่เคยเปิดโดยตัวเอง ให้บอกว่าเป็นคำใบ้อะไร
-        if (room.exploredBy.includes(myPlayerId) && room.type.startsWith('hint_')) {
-            btn.textContent += ' (อ่านคำใบ้)';
-        }
-        
-        grid.appendChild(btn);
-    }
-}
-
-async function emitAction(msg, audio = null) {
-    const ts = Date.now() + Math.random();
-    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/lastAction`]: { msg, ts, audio } });
-}
-
-async function processMyTurnStart(pData) {
-    update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnExecuting`]: true });
-    
-    let hp = pData.hp;
-    let infRate = pData.infectionRate;
-    let status = pData.status;
-
-    if (hp <= 0) {
-        await emitAction(`${pData.name} เสียชีวิตแล้ว ข้ามเทิร์น`);
-        status = 'dead';
-        await endTurnFlow({ status });
-        return;
-    }
-
-    if (infRate > 0) {
-        hp -= infRate;
-        await emitAction(`${pData.name} เสีย HP ${infRate} จากการติดเชื้อ (เหลือ HP ${hp})`, 'hurt.mp3');
-    }
-
-    // ฟื้นฟูอัตโนมัติ (ข้ามเทิร์น 1 ครั้ง)
-    if (hp > 0 && hp <= 60 && status !== 'recovering') {
-        await emitAction(`${pData.name} HP เหลือน้อย เข้าสู่สถานะพักฟื้น ข้าม 1 เทิร์น`);
-        await endTurnFlow({ hp, status: 'recovering' });
-        return;
-    } else if (status === 'recovering') {
-        hp = 100;
-        await emitAction(`${pData.name} พักฟื้นเสร็จสิ้น ฟื้นฟู HP เป็น 100 พร้อมสู้ต่อ!`, 'heal.mp3');
-        status = 'active'; // ฟื้นแล้วให้เล่นต่อในรอบหน้า (หรือรอบนี้เลย? ตามกติกาคือข้าม 1 เทิร์น แล้วฟื้นเป็น 100 ดังนั้นรอบถัดไปจะ active)
-        // ตามกติกา: ข้ามเทิร์นของตัวเอง 1 ครั้งแล้วฟื้น
-        await endTurnFlow({ hp, status });
-        return;
-    }
-
-    // Auto use vaccine/food if needed logic should go here or when attacked.
-    // For now, allow player to select room. Unlock turn Execution.
-    if(hp <= 0) {
-        await emitAction(`${pData.name} ทนพิษบาดแผลไม่ไหว เสียชีวิตแล้ว`);
-        await endTurnFlow({ hp: 0, status: 'dead' });
-        return;
-    }
-
-    await update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
-        [`players/${myPlayerId}/hp`]: hp,
-        [`players/${myPlayerId}/status`]: status,
-        'turnExecuting': false
-    });
-}
-
-window.exploreRoom = async function(roomIndex) {
-    if (gameState.turnExecuting) return;
-    update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnExecuting`]: true });
-
-    const me = gameState.players[myPlayerId];
-    const floor = me.floor;
-    const room = gameState.towerConfig[floor].rooms[roomIndex];
-    let roomType = room.type;
-
-    await emitAction(`${me.name} เลือกสำรวจ ห้องที่ ${roomIndex+1}`);
-
-    let lockRoom = true;
-    let updates = { ...me.inventory };
-    let hpUpdate = me.hp;
-    let infUpdate = me.infectionRate;
-
-    switch(roomType) {
-        case 'key_normal':
-            updates.keys++;
-            await emitAction(`พบกุญแจปกติ! เก็บไว้ไขประตูลงชั้น`, 'item.mp3');
-            break;
-        case 'key_skeleton':
-            updates.skeletonKeys++;
-            await emitAction(`พบกุญแจผี! ใช้ลงชั้นได้ทันที`, 'item.mp3');
-            break;
-        case 'secret_stair':
-            await emitAction(`พบทางลงลับ! (สามารถใช้ข้ามชั้นได้ที่ประตู)`, 'door.mp3');
-            // logic is handled when clicking go down stairs
-            break;
-        case 'hint_1':
-        case 'hint_2':
-        case 'hint_3':
-            lockRoom = false; // ห้องคำใบ้กลับมาอ่านซ้ำได้ ไม่ล็อก
-            if (room.clue) {
-                await emitAction(`พบคำใบ้ที่ ${roomType.replace('hint_', '')}: "${room.clue.question}"`);
-                
-                // อัปเดตข้อความบนหน้าจอ puzzle-content เฉพาะเครื่องผู้เล่นตนเอง
-                const puzzleBox = document.getElementById('puzzle-content');
-                if (puzzleBox) {
-                    puzzleBox.innerHTML = `
-                        <p><strong>คำใบ้ประจำห้อง (ชั้น ${floor}):</strong></p>
-                        <p>${room.clue.question}</p>
-                    `;
-                }
+            if(r.explored && r.type !== 'clue') {
+                btn.classList.add('explored');
+                btn.disabled = true;
+                btn.innerHTML = `<span class="cell-icon">❌</span>ห้อง ${num}`;
+                btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
             } else {
-                await emitAction(`พบห้องคำใบ้ แต่ไม่พบข้อมูลคำใบ้ในระบบ`);
+                let lbl = `ห้อง ${num}`;
+                if(r.type === 'clue') {
+                    btn.innerHTML = `<span class="cell-icon">❓</span>คำใบ้`;
+                    lbl = `ห้องคำใบ้ ${num} สามารถสำรวจซ้ำได้`;
+                } else {
+                    btn.innerHTML = `<span class="cell-icon">🚪</span>ห้อง ${num}`;
+                }
+                
+                if(isMyTurn) {
+                    btn.onclick = () => exploreRoom(i, r);
+                    lbl += ' กดเพื่อสำรวจ';
+                } else {
+                    btn.disabled = true;
+                }
+                btn.setAttribute('aria-label', lbl);
             }
+            boardEl.appendChild(btn);
+        }
+    }
+    
+    // Stairs
+    const btnStairs = document.getElementById('btn-use-stairs');
+    if(isMyTurn && (myP.keys > 0 || myP.ghostKeys > 0 || myP.secretPassage || myP.canUseDoor)) {
+        btnStairs.disabled = false;
+        btnStairs.onclick = useStairs;
+    } else {
+        btnStairs.disabled = true;
+    }
+}
+
+function readAllStatus() {
+    let txt = "สถานะทั้งหมด: ";
+    gameState.order.forEach(pid => {
+        const p = gameState.players[pid];
+        txt += `${p.name} อยู่ชั้น ${p.floor} HP ${p.hp} `;
+        if(p.status !== 'normal') txt += `สถานะ ${p.status} `;
+        if(p.infection > 0) txt += `ติดเชื้อระดับ ${p.infection} `;
+        txt += `กุญแจ ${p.keys} เกราะ ${p.armor}, `;
+    });
+    announceSR(txt);
+}
+
+// Logic - Turn Processing
+async function processTurnStartEffects(pId) {
+    let p = gameState.players[pId];
+    if(p.status === 'dead' || p.status === 'escaped') return p;
+    
+    if(p.status === 'resting') {
+        p.hp = 100;
+        p.status = 'normal';
+        await emitLog(`${p.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 100 และพร้อมลุยต่อ`);
+        return p; // skips action this turn essentially? wait, rules say "skip turn, then heal to 100".
+        // To properly skip: if resting, heal and immediately end turn.
+    }
+    
+    if(p.infection > 0) {
+        if(p.vaccine > 0) {
+            p.vaccine--; p.infection = 0;
+            await emitLog(`${p.name} ใช้วัคซีนรักษาการติดเชื้ออัตโนมัติ`);
+        } else {
+            p.hp -= p.infection;
+            await emitLog(`${p.name} เสีย ${p.infection} HP จากการติดเชื้อ (เหลือ ${p.hp} HP)`);
+        }
+    }
+    
+    if(p.hp <= 0) {
+        p.status = 'dead';
+        await emitLog(`${p.name} เสียชีวิตแล้ว...`);
+    } else if (p.hp <= 60 && p.status === 'normal') {
+        p.status = 'resting';
+        await emitLog(`${p.name} HP ต่ำกว่า 60 ต้องเข้าสู่สถานะพักฟื้นในเทิร์นนี้`);
+    }
+    
+    return p;
+}
+
+async function exploreRoom(roomIdx, roomData) {
+    if(!gameState) return;
+    const pId = myId;
+    let p = await processTurnStartEffects(pId);
+    if(p.status !== 'normal') {
+        await commitPlayer(pId, p);
+        endTurn(pId);
+        return;
+    }
+
+    if(roomData.type === 'clue') {
+        openClueModal(roomData.clueId);
+        return; // Don't end turn yet
+    }
+    
+    // Mark room explored
+    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/floors/${p.floor}/${roomIdx}/explored`]: true });
+    
+    let msg = `${p.name} สำรวจห้อง ${roomIdx+1}: `;
+    
+    switch(roomData.type) {
+        case 'key': p.keys++; msg += "พบกุญแจปกติ 1 ดอก"; break;
+        case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี 1 ดอก"; break;
+        case 'secret': p.secretPassage = true; msg += "พบทางลงลับ! สามารถลงข้าม 2 ชั้นได้"; break;
+        case 'vaccine': p.vaccine++; msg += "พบวัคซีน 1 ขวด"; break;
+        case 'food': 
+            let heal = 30; 
+            p.hp = Math.min(200, p.hp + heal); 
+            msg += `พบอาหาร ฟื้นฟู HP ${heal} หน่วย (รวม ${p.hp})`; 
             break;
+        case 'armor': p.armor++; msg += "พบเกราะสวรรค์ 1 ชิ้น"; break;
+        case 'battery': 
+            if(p.ammo < 2) { p.ammo++; msg += "พบแบตเตอรี่ ได้กระสุน 1 นัด"; }
+            else { msg += "พบแบตเตอรี่ แต่กระสุนเต็มแล้ว"; }
+            break;
+        case 'gun':
+            if(p.gun === 0) { p.gun = 1; if(p.ammo < 2) p.ammo++; msg += "พบปืนเลเซอร์และกระสุน 1 นัด!"; }
+            else if(p.ammo < 2) { p.ammo++; msg += "พบปืนเลเซอร์ ซ้ำ แปลงเป็นกระสุน 1 นัด"; }
+            else { msg += "พบปืนเลเซอร์ ซ้ำ แต่กระสุนเต็มแล้ว"; }
+            break;
+        case 'puzzle': msg += "พบเหตุการณ์พิเศษ: ไม่มีอะไรเกิดขึ้น (ปลอดภัย)"; break;
         case 'zombie':
-            if (updates.hasGun && updates.ammo > 0) {
-                updates.ammo--;
-                await emitAction(`พบซอมบี้! ปืนเลเซอร์ยิงอัตโนมัติ กำจัดซอมบี้ปลอดภัย (เหลือกระสุน ${updates.ammo})`, 'laser.mp3');
-            } else if (updates.armor > 0) {
-                updates.armor--;
-                await emitAction(`พบซอมบี้! โดนโจมตีแต่เกราะสวรรค์ป้องกันไว้ได้ เกราะพังลง`, 'shield.mp3');
+            msg += "พบซอมบี้! ";
+            if(p.gun > 0 && p.ammo > 0) {
+                p.ammo--; msg += "ใช้ปืนยิงป้องกันสำเร็จ เสียกระสุน 1 นัด";
+            } else if (p.armor > 0) {
+                p.armor--; msg += "เกราะสวรรค์ป้องกันการโจมตีสำเร็จ เกราะพัง";
             } else {
-                if (infUpdate === 0) infUpdate = 20;
-                else if (infUpdate === 20) infUpdate = 40;
-                await emitAction(`ถูกซอมบี้โจมตี! ติดเชื้อระดับเสีย HP ${infUpdate}/เทิร์น`, 'zombie.mp3');
-                
-                // Auto use vaccine
-                if (updates.vaccines > 0) {
-                    updates.vaccines--;
-                    infUpdate = 0;
-                    await emitAction(`ใช้วัคซีนสำรองอัตโนมัติ รักษาการติดเชื้อหายเป็นปกติ`, 'heal.mp3');
-                }
+                if(p.infection === 0) p.infection = 20;
+                else p.infection = 40;
+                msg += `ถูกโจมตี ติดเชื้อระดับ ${p.infection} HP/เทิร์น`;
             }
             break;
-        case 'vaccine':
-            if (infUpdate > 0) {
-                infUpdate = 0;
-                await emitAction(`พบวัคซีน! นำมารักษาการติดเชื้อทันที`, 'heal.mp3');
-            } else {
-                updates.vaccines++;
-                await emitAction(`พบวัคซีน! เก็บสำรองไว้ในคลัง`, 'item.mp3');
-            }
-            break;
-        case 'food':
-            if (hpUpdate < 200) {
-                hpUpdate = Math.min(200, hpUpdate + 30); // ฟื้นกลางๆ 30
-                await emitAction(`พบอาหาร กินทันที ฟื้นฟู HP เป็น ${hpUpdate}`, 'heal.mp3');
-            } else if (updates.food.length < 3) {
-                updates.food.push(30);
-                await emitAction(`พบอาหาร แต่ HP เต็มแล้ว จึงเก็บเข้ากระเป๋า (สูงสุด 3 ชิ้น)`, 'item.mp3');
-            } else {
-                await emitAction(`พบอาหาร แต่กระเป๋าเต็มแล้ว จึงทิ้งไว้ที่เดิม`);
-            }
-            break;
-        case 'armor':
-            updates.armor++;
-            await emitAction(`พบเกราะสวรรค์! ป้องกันการถูกโจมตีได้ 1 ครั้ง`, 'item.mp3');
-            break;
-        case 'puzzle':
-            await emitAction(`พบห้องปริศนา! (ระบบกิจกรรมพิเศษ ไม่ส่งผลขัดแย้งกติกาหลัก)`);
-            break;
-        case 'laser_gun':
-            updates.hasGun = true;
-            if (updates.ammo < 2) updates.ammo++;
-            await emitAction(`พบปืนเลเซอร์! ได้รับปืนพร้อมกระสุน (กระสุนรวม: ${updates.ammo}/2)`, 'item.mp3');
-            break;
-        case 'battery':
-            if (updates.ammo < 2) updates.ammo++;
-            await emitAction(`พบแบตเตอรี่กระสุนเลเซอร์ (กระสุนรวม: ${updates.ammo}/2)`, 'item.mp3');
-            break;
     }
-
-    const nextRoomState = room.exploredBy;
-    if (lockRoom) nextRoomState.push('all');
-    else if (!nextRoomState.includes(myPlayerId)) nextRoomState.push(myPlayerId);
-
-    const dbUpdates = {};
-    dbUpdates[`games/Escape/rooms/${currentRoomId}/towerConfig/${floor}/rooms/${roomIndex}/exploredBy`] = nextRoomState;
     
-    await endTurnFlow({
-        inventory: updates,
-        hp: hpUpdate,
-        infectionRate: infUpdate
-    }, dbUpdates);
-};
-
-window.useStairs = async function() {
-    if (gameState.turnExecuting) return;
-    const me = gameState.players[myPlayerId];
-    if(gameState.playerOrder[gameState.turnIndex] !== myPlayerId) return;
-    
-    // Check keys
-    if (me.inventory.keys > 0 || me.inventory.skeletonKeys > 0) {
-        update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnExecuting`]: true });
-        
-        let updates = { ...me.inventory };
-        if (updates.skeletonKeys > 0) updates.skeletonKeys--;
-        else updates.keys--;
-
-        let nextFloor = me.floor - 1;
-        await emitAction(`${me.name} ใช้กุญแจเปิดประตูลงชั้นสำเร็จ! ลงไปสู่ชั้น ${nextFloor}`, 'door.mp3');
-        
-        if (nextFloor === 0) {
-            await emitAction(`🎉 ${me.name} หนีออกจากตึกสำเร็จ เป็นผู้ชนะ!`, 'win.mp3');
-            await endTurnFlow({ floor: 0, status: 'escaped' }, { [`games/Escape/rooms/${currentRoomId}/status`]: 'ended' });
-            return;
-        }
-
-        await endTurnFlow({ floor: nextFloor, inventory: updates }, {});
-    } else {
-        announceSR("คุณไม่มีกุญแจลงชั้น ต้องไขปริศนาหรือหาทางลับแทน", 'assertive');
-    }
-};
-
-async function endTurnFlow(playerUpdates, extraDbUpdates = {}) {
-    const pKeys = gameState.playerOrder;
-    let nextTurn = (gameState.turnIndex + 1) % pKeys.length;
-    
-    const updates = {
-        [`games/Escape/rooms/${currentRoomId}/turnIndex`]: nextTurn,
-        [`games/Escape/rooms/${currentRoomId}/turnExecuting`]: false,
-        ...extraDbUpdates
-    };
-
-    for(const [k, v] of Object.entries(playerUpdates)) {
-        updates[`games/Escape/rooms/${currentRoomId}/players/${myPlayerId}/${k}`] = v;
-    }
-
-    await update(ref(db), updates);
+    await emitLog(msg);
+    await commitPlayer(pId, p);
+    endTurn(pId);
 }
 
-async function executeBotTurn(botId) {
-    const bot = gameState.players[botId];
-    if (bot.status !== 'active') {
-        await emitAction(`${bot.name} ไม่สามารถเล่นได้ในเทิร์นนี้`);
-        await advanceBotTurn(botId, { status: bot.status });
+function openClueModal(cid) {
+    const clue = window.EscapeTowerClueBank ? window.EscapeTowerClueBank.getClueById(cid) : null;
+    if(!clue) {
+        // Fallback if no clues loaded
+        emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`);
+        gameState.players[myId].canUseDoor = true;
+        commitPlayer(myId, gameState.players[myId]).then(()=>endTurn(myId));
         return;
     }
+    
+    const m = document.getElementById('clue-modal');
+    document.getElementById('clue-question').textContent = clue.question;
+    document.getElementById('clue-answer-input').value = '';
+    document.getElementById('clue-answer-input').dataset.cid = cid;
+    document.getElementById('clue-feedback').textContent = '';
+    m.style.display = 'flex';
+    document.getElementById('clue-title').focus();
+    announceSR(clue.question);
+}
 
-    // สำรวจห้องแบบสุ่มที่ยังไม่ถูกสำรวจ
-    const floor = bot.floor;
-    const floorRooms = gameState.towerConfig[floor].rooms;
-    let unvisited = [];
-    for(let i=0; i<20; i++) {
-        if (!floorRooms[i].exploredBy.includes('all')) unvisited.push(i);
-    }
-
-    if (unvisited.length > 0) {
-        const pick = unvisited[Math.floor(Math.random() * unvisited.length)];
-        await emitAction(`${bot.name} เลือกสำรวจห้อง ${pick + 1}`);
-        // Bot logic simulation simplified: Just lock room to keep flow moving.
-        const dbUpdates = {};
-        dbUpdates[`games/Escape/rooms/${currentRoomId}/towerConfig/${floor}/rooms/${pick}/exploredBy`] = ['all'];
-        await advanceBotTurn(botId, {}, dbUpdates);
+function submitClue() {
+    const cid = document.getElementById('clue-answer-input').dataset.cid;
+    const ans = document.getElementById('clue-answer-input').value.trim();
+    if(!ans) return;
+    
+    const isCorrect = window.EscapeTowerClueBank.checkAnswer(cid, ans);
+    if(isCorrect) {
+        document.getElementById('clue-modal').style.display = 'none';
+        const p = gameState.players[myId];
+        p.canUseDoor = true;
+        emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์เปิดประตูชั้น ${p.floor}`);
+        commitPlayer(myId, p).then(()=>endTurn(myId));
     } else {
-        await emitAction(`${bot.name} ไม่มีห้องให้สำรวจแล้ว ข้ามเทิร์น`);
-        await advanceBotTurn(botId, {});
+        document.getElementById('clue-feedback').textContent = "คำตอบผิด ลองใหม่ในเทิร์นหน้า";
+        announceSR("คำตอบผิด ลองใหม่ในเทิร์นหน้า");
+        setTimeout(() => {
+            document.getElementById('clue-modal').style.display = 'none';
+            emitLog(`${gameState.players[myId].name} ตอบคำใบ้ผิด ประตูยังไม่เปิด`);
+            endTurn(myId);
+        }, 1500);
     }
 }
 
-async function advanceBotTurn(botId, playerUpdates, extraDbUpdates = {}) {
-    const pKeys = gameState.playerOrder;
-    let nextTurn = (gameState.turnIndex + 1) % pKeys.length;
-    const updates = {
-        [`games/Escape/rooms/${currentRoomId}/turnIndex`]: nextTurn,
-        [`games/Escape/rooms/${currentRoomId}/turnExecuting`]: false,
-        ...extraDbUpdates
-    };
-    for(const [k, v] of Object.entries(playerUpdates)) {
-        updates[`games/Escape/rooms/${currentRoomId}/players/${botId}/${k}`] = v;
+async function useStairs() {
+    let p = await processTurnStartEffects(myId);
+    if(p.status !== 'normal') { await commitPlayer(myId, p); endTurn(myId); return; }
+
+    let down = 1;
+    let used = "";
+    if(p.secretPassage) { down = 2; p.secretPassage = false; used = "ทางลงลับ"; }
+    else if(p.canUseDoor) { p.canUseDoor = false; used = "รหัสคำใบ้"; }
+    else if(p.ghostKeys > 0) { p.ghostKeys--; used = "กุญแจผี"; }
+    else if(p.keys > 0) { p.keys--; used = "กุญแจปกติ"; }
+    
+    p.floor = Math.max(1, p.floor - down);
+    p.canUseDoor = false; // Reset clue auth per floor
+    
+    let msg = `${p.name} ใช้${used} ลงไปยังชั้น ${p.floor}`;
+    if(p.floor === 1) {
+        p.status = 'escaped';
+        msg += " และหนีออกจากตึกสำเร็จ!!";
     }
-    await update(ref(db), updates);
+    
+    await emitLog(msg);
+    await commitPlayer(myId, p);
+    
+    if(p.floor === 1) checkEndGame();
+    endTurn(myId);
 }
 
-// -----------------------------------------------------------
-// การเชื่อมต่อและเริ่มทำงานเมื่อโหลดหน้า (Initialization)
-// -----------------------------------------------------------
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. ปุ่มกรอกชื่อและเข้าสู่ล็อบบี้
-    const nameInput = document.getElementById('player-name-input');
-    const btnEnterLobby = document.getElementById('btn-enter-lobby');
-    const lobbyPlayerName = document.getElementById('lobby-player-name');
-
-    if (nameInput && btnEnterLobby) {
-        // ตรวจสอบการกรอกชื่อ
-        const validateName = () => {
-            const name = nameInput.value.trim();
-            btnEnterLobby.disabled = name.length === 0;
-        };
-
-        nameInput.addEventListener('input', validateName);
-        validateName();
-
-        // เมื่อกดปุ่มเข้าล็อบบี้
-        btnEnterLobby.addEventListener('click', () => {
-            const name = nameInput.value.trim();
-            if (name.length === 0) {
-                announceSR("กรุณากรอกชื่อผู้เล่นก่อนเข้าสู่ล็อบบี้", "assertive");
-                return;
-            }
-            
-            myPlayerName = name;
-            if (lobbyPlayerName) {
-                lobbyPlayerName.textContent = myPlayerName;
-            }
-            
-            // เปิดให้ปุ่มในล็อบบี้ใช้งานได้
-            const btnCreate = document.getElementById('btn-create-room');
-            const btnJoin = document.getElementById('btn-join-room');
-            if (btnCreate) btnCreate.disabled = false;
-            if (btnJoin) btnJoin.disabled = false;
-            
-            const connStatus = document.getElementById('lobby-connection-status');
-            if (connStatus) {
-                connStatus.textContent = "เชื่อมต่อระบบพร้อมใช้งาน กดปุ่มเพื่อสร้างหรือเข้าร่วมห้อง";
-            }
-            
-            switchScreen('screen-lobby', 'lobby-heading');
-            announceSR(`เข้าสู่ล็อบบี้ในชื่อ ${myPlayerName}`);
-        });
-
-        // รองรับการใช้ปุ่ม Enter
-        nameInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !btnEnterLobby.disabled) {
-                btnEnterLobby.click();
-            }
-        });
+// Bot Logic (Very Basic AI)
+async function executeBotTurn(botId) {
+    let p = gameState.players[botId];
+    if(!p || p.status !== 'normal') { endTurn(botId); return; }
+    
+    // Evaluate if should go down
+    if(p.secretPassage || p.ghostKeys > 0 || p.keys > 0) {
+        let down = p.secretPassage ? 2 : 1;
+        let used = p.secretPassage ? "ทางลงลับ" : (p.ghostKeys>0 ? "กุญแจผี" : "กุญแจปกติ");
+        p.secretPassage = false;
+        if(used==="กุญแจผี") p.ghostKeys--; else if(used==="กุญแจปกติ") p.keys--;
+        
+        p.floor = Math.max(1, p.floor - down);
+        let msg = `${p.name} ใช้${used} ลงไปยังชั้น ${p.floor}`;
+        if(p.floor === 1) { p.status = 'escaped'; msg += " หนีสำเร็จ!!"; }
+        await emitLog(msg);
+        await commitPlayer(botId, p);
+        if(p.floor === 1) checkEndGame();
+        endTurn(botId);
+        return;
     }
-
-    // 2. ปุ่มสร้างห้องและเข้าร่วมห้องในล็อบบี้
-    const btnCreateRoom = document.getElementById('btn-create-room');
-    if (btnCreateRoom) {
-        btnCreateRoom.addEventListener('click', () => {
-            if (!btnCreateRoom.disabled) {
-                window.createEscapeRoom();
-            }
-        });
+    
+    // Pick random unexplored room
+    const floorData = gameState.floors[p.floor];
+    let available = [];
+    for(let i=0; i<20; i++) {
+        if(!floorData[i].explored && floorData[i].type !== 'clue') available.push(i);
     }
-
-    const joinForm = document.getElementById('join-room-form');
-    if (joinForm) {
-        joinForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const joinBtn = document.getElementById('btn-join-room');
-            if (joinBtn && !joinBtn.disabled) {
-                const roomInput = document.getElementById('room-code-input');
-                window.joinEscapeRoom(roomInput ? roomInput.value : null);
-            }
-        });
+    
+    if(available.length > 0) {
+        const choice = available[Math.floor(Math.random()*available.length)];
+        const roomData = floorData[choice];
+        await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/floors/${p.floor}/${choice}/explored`]: true });
+        
+        let msg = `${p.name} สำรวจห้อง ${choice+1}: `;
+        switch(roomData.type) {
+            case 'key': p.keys++; msg += "พบกุญแจปกติ"; break;
+            case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี"; break;
+            case 'secret': p.secretPassage = true; msg += "พบทางลงลับ"; break;
+            case 'vaccine': p.vaccine++; msg += "พบวัคซีน"; break;
+            case 'food': p.hp = Math.min(200, p.hp+30); msg += "กินอาหารฟื้น HP"; break;
+            case 'armor': p.armor++; msg += "ได้เกราะ"; break;
+            case 'battery': if(p.ammo<2) p.ammo++; msg += "ได้กระสุน"; break;
+            case 'gun': if(p.gun===0) p.gun=1; if(p.ammo<2) p.ammo++; msg += "ได้ปืนและกระสุน"; break;
+            case 'puzzle': msg += "ไม่เกิดอะไรขึ้น"; break;
+            case 'zombie':
+                msg += "เจอซอมบี้! ";
+                if(p.gun>0 && p.ammo>0) { p.ammo--; msg+="ยิงป้องกันสำเร็จ"; }
+                else if(p.armor>0) { p.armor--; msg+="เกราะกันสำเร็จ"; }
+                else { p.infection = p.infection===0?20:40; msg+="ติดเชื้อ!"; }
+                break;
+        }
+        await emitLog(msg);
+        await commitPlayer(botId, p);
+    } else {
+        await emitLog(`${p.name} ไม่เหลือห้องให้สำรวจ ข้ามเทิร์น`);
     }
-});
+    endTurn(botId);
+}
+
+// Helpers
+async function emitLog(msg) {
+    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/log`]: { msg, ts: Date.now() } });
+}
+
+async function commitPlayer(pId, pData) {
+    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${pId}`]: pData });
+}
+
+function endTurn(curPId) {
+    const order = gameState.order;
+    let idx = gameState.turnIndex;
+    
+    // Find next playable player (or just advance 1 if all dead/escaped to avoid infinite loop, checked by checkEndGame anyway)
+    idx = (idx + 1) % order.length;
+    
+    update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnIndex`]: idx });
+    checkEndGame();
+}
+
+function checkEndGame() {
+    if(!isHost || !gameState) return;
+    let allDone = true;
+    for(let k in gameState.players) {
+        if(gameState.players[k].status === 'normal' || gameState.players[k].status === 'resting') {
+            allDone = false; break;
+        }
+    }
+    if(allDone) {
+        update(ref(db, `games/Escape/rooms/${currentRoomId}`), { status: 'ended' });
+    }
+}
+
+function renderResult() {
+    announceSR("เกมจบลงแล้ว นี่คือสรุปผล", "assertive");
+    const resEl = document.getElementById('result-list');
+    resEl.innerHTML = '';
+    const pArr = Object.values(gameState.players).sort((a,b) => a.floor - b.floor);
+    pArr.forEach(p => {
+        let txt = `${p.name}: `;
+        if(p.status === 'escaped') txt += "หนีรอดสำเร็จ! 🏆";
+        else if(p.status === 'dead') txt += "เสียชีวิต 💀";
+        else txt += `ติดอยู่ที่ชั้น ${p.floor}`;
+        resEl.innerHTML += `<div class="participant-card">${txt}</div>`;
+    });
+}
