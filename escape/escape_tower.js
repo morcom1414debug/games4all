@@ -419,9 +419,9 @@ function renderGameUI() {
     // หากตัวละครอยู่ในสถานะพักฟื้นครบ 1 เทิร์นแล้ว เมื่อถึงเทิร์นของตนเองจะได้รับการฟื้นฟู HP เป็น 100 และกลับสู่สถานะปกติเพื่อเล่นต่อได้
     if(curP.status === 'resting') {
         if(isHost) {
-            curP.hp = 100;
+            curP.hp = 150;
             curP.status = 'normal';
-            emitLog(`${curP.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 100 และพร้อมลุยต่อ`);
+            emitLog(`${curP.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 150 และพร้อมลุยต่อ`);
             commitPlayer(curPId, curP);
         }
         return;
@@ -568,9 +568,9 @@ async function processTurnStartEffects(pId) {
     if(p.status === 'dead' || p.status === 'escaped') return p;
     
     if(p.status === 'resting') {
-        p.hp = 100;
+        p.hp = 150;
         p.status = 'normal';
-        await emitLog(`${p.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 100 และพร้อมลุยต่อ`);
+        await emitLog(`${p.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 150 และพร้อมลุยต่อ`);
         return p;
     }
     
