@@ -416,13 +416,25 @@ function renderGameUI() {
     const curPId = gameState.order[gameState.turnIndex];
     const curP = gameState.players[curPId];
 
-    // หากตัวละครอยู่ในสถานะพักฟื้นครบ 1 เทิร์นแล้ว เมื่อถึงเทิร์นของตนเองจะได้รับการฟื้นฟู HP เป็น 100 และกลับสู่สถานะปกติเพื่อเล่นต่อได้
+    // กรณีถึงเทิร์นของตัวละครที่ผ่านการพักฟื้นมาแล้ว (recovered_ready): ทำการฟื้น HP เป็น 100 และพร้อมเล่นเทิร์นนี้
+    if(curP.status === 'recovered_ready') {
+        if(isHost) {
+            curP.hp = 100;
+            curP.status = 'normal';
+            emitLog(`${curP.name} พักฟื้นเสร็จสิ้น ฟื้นฟู HP เป็น 100 และพร้อมเล่นต่อ`);
+            commitPlayer(curPId, curP);
+        }
+        return;
+    }
+
+    // กรณีถึงเทิร์นของตัวละครที่กำลังพักฟื้น (resting): ต้องถูกข้ามเทิร์นนี้ 1 เทิร์น และเตรียมฟื้นฟูในเทิร์นหน้า
     if(curP.status === 'resting') {
         if(isHost) {
-            curP.hp = 150;
-            curP.status = 'normal';
-            emitLog(`${curP.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 150 และพร้อมลุยต่อ`);
-            commitPlayer(curPId, curP);
+            curP.status = 'recovered_ready';
+            emitLog(`${curP.name} กำลังพักฟื้น หยุดเล่น 1 เทิร์น`);
+            commitPlayer(curPId, curP).then(() => {
+                setTimeout(() => endTurn(curPId), 1500);
+            });
         }
         return;
     }
@@ -565,14 +577,7 @@ function closeAllStatus() {
 // Turn Processing
 async function processTurnStartEffects(pId) {
     let p = gameState.players[pId];
-    if(p.status === 'dead' || p.status === 'escaped') return p;
-    
-    if(p.status === 'resting') {
-        p.hp = 150;
-        p.status = 'normal';
-        await emitLog(`${p.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 150 และพร้อมลุยต่อ`);
-        return p;
-    }
+    if(p.status === 'dead' || p.status === 'escaped' || p.status === 'resting' || p.status === 'recovered_ready') return p;
     
     // 1. จัดการการติดเชื้อ & วัคซีน
     if(p.infection > 0) {
@@ -593,13 +598,13 @@ async function processTurnStartEffects(pId) {
         await emitLog(`${p.name} กินอาหารจากคลังอัตโนมัติ ฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${p.hp}, เหลืออาหาร ${p.food} ชิ้น)`);
     }
     
-    // 3. ตรวจสอบการหมดสติ/เสียชีวิต
+    // 3. ตรวจสอบการหมดสติ/เสียชีวิต หรือบาดเจ็บสาหัสจนต้องพักฟื้น
     if(p.hp <= 0) {
         p.status = 'dead';
         await emitLog(`${p.name} เสียชีวิตแล้ว...`);
-    } else if (p.hp <= 60 && p.status === 'normal') {
+    } else if (p.hp < 60 && p.status === 'normal') {
         p.status = 'resting';
-        await emitLog(`${p.name} HP ต่ำกว่า 60 ต้องเข้าสู่สถานะพักฟื้นในเทิร์นนี้`);
+        await emitLog(`${p.name} HP ต่ำกว่า 60 ได้รับบาดเจ็บสาหัส ต้องหยุดพักฟื้นในเทิร์นถัดไป`);
     }
     
     return p;
@@ -662,6 +667,12 @@ async function exploreRoom(roomIdx, roomData) {
                 msg += `ถูกโจมตี ติดเชื้อระดับ ${p.infection} HP/เทิร์น`;
             }
             break;
+    }
+    
+    // ตรวจสอบ HP หลังจากเหตุการณ์ในห้องสำรวจ หากต่ำกว่า 60 ให้เข้าสู่สถานะ resting สำหรับรอบถัดไป
+    if(p.hp > 0 && p.hp < 60 && p.status === 'normal') {
+        p.status = 'resting';
+        msg += ` | HP ลดต่ำกว่า 60 (${p.hp} HP) ต้องหยุดพักฟื้นในเทิร์นถัดไป`;
     }
     
     await emitLog(msg);
@@ -850,6 +861,12 @@ async function executeBotTurn(botId) {
                 else { p.infection = p.infection===0?20:40; msg+="ติดเชื้อ!"; }
                 break;
         }
+        
+        if(p.hp > 0 && p.hp < 60 && p.status === 'normal') {
+            p.status = 'resting';
+            msg += ` | HP ลดต่ำกว่า 60 (${p.hp} HP) ต้องหยุดพักฟื้นในเทิร์นถัดไป`;
+        }
+
         await emitLog(msg);
         await commitPlayer(botId, p);
     } else {
