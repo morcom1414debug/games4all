@@ -46,11 +46,15 @@ function playAudio(name) {
     } catch(e){}
 }
 
-// ARIA Announcement
+// ARIA Announcement (จัดการผ่าน Central Queue จุดเดียวเพื่อป้องกันการพูดทับซ้อนและพูดซ้ำ)
 function announceSR(text, priority = 'polite') {
+    if (!text) return;
+    // ป้องกันการยัดข้อความเดิมซ้ำติดกันเข้าคิว
+    if (speechQueue.length > 0 && speechQueue[speechQueue.length - 1].text === text) return;
     speechQueue.push({ text, priority });
     processSpeechQueue();
 }
+
 function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
     isSpeaking = true;
@@ -60,10 +64,16 @@ function processSpeechQueue() {
         targetEl.textContent = '';
         setTimeout(() => {
             targetEl.textContent = item.text;
-            const duration = Math.max(1500, item.text.length * 50);
-            setTimeout(() => { targetEl.textContent = ''; isSpeaking = false; processSpeechQueue(); }, duration);
-        }, 100);
-    } else { isSpeaking = false; }
+            const duration = Math.max(1200, item.text.length * 40);
+            setTimeout(() => { 
+                targetEl.textContent = ''; 
+                isSpeaking = false; 
+                processSpeechQueue(); 
+            }, duration);
+        }, 60);
+    } else { 
+        isSpeaking = false; 
+    }
 }
 
 // Screen Switcher
@@ -82,13 +92,18 @@ function switchScreen(screenId, focusId = null) {
 // Initial Events
 document.addEventListener('DOMContentLoaded', () => {
     initLobbyListener();
-    document.getElementById('player-name-input').addEventListener('input', (e) => {
-        document.getElementById('btn-confirm-name').disabled = e.target.value.trim().length === 0;
+    const nameInput = document.getElementById('player-name-input');
+    const btnConfirm = document.getElementById('btn-confirm-name');
+
+    nameInput.addEventListener('input', (e) => {
+        const hasVal = e.target.value.trim().length > 0;
+        btnConfirm.disabled = !hasVal;
+        btnConfirm.setAttribute('aria-disabled', (!hasVal).toString());
     });
-    document.getElementById('player-name-input').addEventListener('keydown', (e) => {
+    nameInput.addEventListener('keydown', (e) => {
         if(e.key === 'Enter' && e.target.value.trim().length > 0) confirmName();
     });
-    document.getElementById('btn-confirm-name').onclick = confirmName;
+    btnConfirm.onclick = confirmName;
     document.getElementById('btn-create-room').onclick = createRoom;
     document.getElementById('btn-leave-room').onclick = window.leaveRoomAndGoHome;
     document.getElementById('btn-start-game').onclick = startGame;
@@ -238,24 +253,30 @@ function adjustBot(delta) {
     const total = hCount + bCount;
     
     if(delta > 0 && total < 4) {
-        document.getElementById('btn-add-bot').disabled = true; // ป้องกันการกดซ้ำรัวๆ
+        const btnAdd = document.getElementById('btn-add-bot');
+        btnAdd.disabled = true;
+        btnAdd.setAttribute('aria-disabled', 'true');
         let slot = 'p1';
         for(let i=1; i<=4; i++) { if(!keys.includes('p'+i)) { slot = 'p'+i; break; } }
         update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
             [`players/${slot}`]: createPlayerObj(`บอท${bCount+1}`, true),
             botCount: bCount + 1
+        }).then(() => {
+            playAudio('select.mp3');
+            announceSR(`เพิ่มบอทแล้ว จำนวนบอทขณะนี้ ${bCount + 1} ตัว`, 'polite');
         });
-        playAudio('select.mp3');
-        announceSR(`เพิ่มบอทแล้ว จำนวนบอทขณะนี้ ${bCount + 1} ตัว`, 'polite');
     } else if(delta < 0 && bCount > 0) {
-        document.getElementById('btn-remove-bot').disabled = true; // ป้องกันการกดซ้ำรัวๆ
+        const btnRm = document.getElementById('btn-remove-bot');
+        btnRm.disabled = true;
+        btnRm.setAttribute('aria-disabled', 'true');
         const bots = keys.filter(k=>gameState.players[k].isBot);
         if(bots.length > 0) {
             const updates = { botCount: bCount - 1 };
             updates[`players/${bots[bots.length-1]}`] = null;
-            update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates);
-            playAudio('select.mp3');
-            announceSR(`ลดบอทแล้ว จำนวนบอทขณะนี้ ${bCount - 1} ตัว`, 'polite');
+            update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates).then(() => {
+                playAudio('select.mp3');
+                announceSR(`ลดบอทแล้ว จำนวนบอทขณะนี้ ${bCount - 1} ตัว`, 'polite');
+            });
         }
     }
 }
@@ -291,10 +312,11 @@ function generateRoomsForFloor(floorNum) {
 function startGame() {
     if(!isHost || !gameState || gameState.status !== 'waiting') return;
     const pKeys = Object.keys(gameState.players || {});
-    // ตรวจสอบขั้นต่ำ 2 ตัวละครในการเริ่ม
     if(pKeys.length < 2) return;
     
-    document.getElementById('btn-start-game').disabled = true;
+    const btnStart = document.getElementById('btn-start-game');
+    btnStart.disabled = true;
+    btnStart.setAttribute('aria-disabled', 'true');
     
     for(let i=pKeys.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]]; }
     
@@ -334,22 +356,36 @@ function setupRoomListener() {
                 const btnRm = document.getElementById('btn-remove-bot');
                 const btnStart = document.getElementById('btn-start-game');
                 
-                btnAdd.disabled = (total >= 4);
-                btnRm.disabled = (bCount <= 0);
+                const isMax = (total >= 4);
+                const isMin = (bCount <= 0);
+                
+                // Dimming และปิดการเลือกปุ่มเพิ่ม/ลดบอท
+                btnAdd.disabled = isMax;
+                btnAdd.setAttribute('aria-disabled', isMax ? 'true' : 'false');
+                
+                btnRm.disabled = isMin;
+                btnRm.setAttribute('aria-disabled', isMin ? 'true' : 'false');
                 
                 btnStart.style.display = 'block';
-                // ถ้ามีแค่ 1 ตัวละคร จะ dim ปุ่ม และล็อคกดไม่ได้
-                btnStart.disabled = (pList.length < 2);
+                const canStart = (pList.length >= 2);
+                btnStart.disabled = !canStart;
+                btnStart.setAttribute('aria-disabled', (!canStart).toString());
             }
         } else if (gameState.status === 'playing') {
             if(!document.getElementById('screen-game').classList.contains('active-screen')) {
                 switchScreen('screen-game', 'game-floor-title');
             }
+            
+            // ลำดับการประกาศ: ประกาศผลลัพธ์เหตุการณ์ที่เกิดขึ้นก่อน
             if(gameState.log && gameState.log.ts > localTs) {
                 localTs = gameState.log.ts;
-                announceSR(gameState.log.msg, 'polite');
+                if(gameState.log.msg) {
+                    announceSR(gameState.log.msg, 'polite');
+                }
                 document.getElementById('latest-event-display').textContent = gameState.log.msg;
             }
+            
+            // ตามด้วยการอัปเดตหน้าจอและการประกาศเทิร์นถัดไป
             renderGameUI();
         } else if (gameState.status === 'ended') {
             if(!document.getElementById('screen-result').classList.contains('active-screen')) {
@@ -371,6 +407,7 @@ function renderGameUI() {
     const curP = gameState.players[curPId];
     const isMyTurn = (curPId === myId && !myP.isBot && myP.status === 'normal');
     
+    // ประกาศเทิร์นหลังจากเหตุการณ์เสมอ
     if(lastAnnouncedTurn !== `${gameState.turnIndex}_${curPId}`) {
         lastAnnouncedTurn = `${gameState.turnIndex}_${curPId}`;
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
@@ -384,13 +421,13 @@ function renderGameUI() {
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
     
-    // จัดกลุ่มข้อมูลสถานะของคุณให้ SC อ่านในประโยคเดียวผ่าน Aria Label
+    // แถบสถานะส่วนตัว อ่านรอบเดียวผ่าน aria-label
     const statusText = `สถานะของคุณ: ${myP.name} ชั้น ${myP.floor} อาหาร ${myP.food} วัคซีน ${myP.vaccine} ปืน ${myP.gun} กระสุน ${myP.ammo}`;
     const statusContainer = document.getElementById('my-player-status');
     statusContainer.setAttribute('aria-label', statusText);
     statusContainer.innerHTML = `<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | ปืน: ${myP.gun} | กระสุน: ${myP.ammo}</span>`;
     
-    // Status Cards (สำหรับแสดงผลทางสายตา แต่จะถูกซ่อนจาก SC ใน flow ปกติด้วยการใช้ modal ตัวละครทั้งหมด)
+    // Status Cards (สำหรับแสดงผลทางสายตา ซ่อนจาก SC)
     const cardsEl = document.getElementById('player-status-cards');
     cardsEl.innerHTML = '';
     gameState.order.forEach(pid => {
@@ -406,64 +443,53 @@ function renderGameUI() {
         </div>`;
     });
     
-    // Board (Table Format)
+    // Board (จัดเรียงเป็น Grid แทน Table — ปราศจาก table tags แต่เรียง 4x5 เสมือนเดิม)
     const boardEl = document.getElementById('escape-board');
     boardEl.innerHTML = '';
     const floorData = gameState.floors[myP.floor];
     if(floorData) {
-        let roomIdx = 0;
-        for(let r=0; r<4; r++) {
-            const tr = document.createElement('tr');
-            for(let c=0; c<5; c++) {
-                const td = document.createElement('td');
-                const i = roomIdx;
-                const roomData = floorData[i];
-                
-                const btn = document.createElement('button');
-                btn.className = 'board-cell';
-                const num = i + 1;
-                
-                // แสดงเฉพาะเลขห้อง
-                btn.textContent = num.toString();
-                
-                if(roomData.explored) {
-                    btn.classList.add('explored');
-                    if (roomData.type === 'clue') {
-                        btn.setAttribute('aria-label', `ห้องคำใบ้ ${num} สำรวจแล้ว สามารถกดอ่านคำใบ้ซ้ำได้`);
-                        if (isMyTurn) {
-                            btn.onclick = () => exploreRoom(i, roomData);
-                        } else {
-                            btn.disabled = true;
-                        }
-                    } else {
-                        btn.disabled = true;
-                        btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
-                    }
-                } else {
-                    // ไม่บอกว่าเป็นห้องคำใบ้จนกว่าจะกดเข้าไปจริงๆ
-                    btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
-                    if(isMyTurn) {
+        for(let i=0; i<20; i++) {
+            const roomData = floorData[i];
+            const btn = document.createElement('button');
+            btn.className = 'board-cell';
+            const num = i + 1;
+            btn.textContent = num.toString();
+            
+            if(roomData.explored) {
+                btn.classList.add('explored');
+                if (roomData.type === 'clue') {
+                    btn.setAttribute('aria-label', `ห้องคำใบ้ ${num} สำรวจแล้ว สามารถกดอ่านคำใบ้ซ้ำได้`);
+                    if (isMyTurn) {
                         btn.onclick = () => exploreRoom(i, roomData);
                     } else {
                         btn.disabled = true;
+                        btn.setAttribute('aria-disabled', 'true');
                     }
+                } else {
+                    btn.disabled = true;
+                    btn.setAttribute('aria-disabled', 'true');
+                    btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
                 }
-                
-                td.appendChild(btn);
-                tr.appendChild(td);
-                roomIdx++;
+            } else {
+                btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
+                if(isMyTurn) {
+                    btn.onclick = () => exploreRoom(i, roomData);
+                } else {
+                    btn.disabled = true;
+                    btn.setAttribute('aria-disabled', 'true');
+                }
             }
-            boardEl.appendChild(tr);
+            boardEl.appendChild(btn);
         }
     }
     
     // Stairs
     const btnStairs = document.getElementById('btn-use-stairs');
-    if(isMyTurn && (myP.keys > 0 || myP.ghostKeys > 0 || myP.secretPassage || myP.canUseDoor)) {
-        btnStairs.disabled = false;
+    const canUseStairs = isMyTurn && (myP.keys > 0 || myP.ghostKeys > 0 || myP.secretPassage || myP.canUseDoor);
+    btnStairs.disabled = !canUseStairs;
+    btnStairs.setAttribute('aria-disabled', (!canUseStairs).toString());
+    if(canUseStairs) {
         btnStairs.onclick = useStairs;
-    } else {
-        btnStairs.disabled = true;
     }
 }
 
@@ -655,7 +681,6 @@ async function useStairs() {
     await emitLog(msg);
     await commitPlayer(myId, p);
     
-    // หากถึงชั้นที่ 1 (ประตูทางออกชั้น 1 สำเร็จ) จบเกมทันที
     if(p.floor === 1) {
         await triggerEndGame(myId);
     } else {
@@ -679,7 +704,6 @@ async function executeBotTurn(botId) {
         await emitLog(msg);
         await commitPlayer(botId, p);
         
-        // หากบอทหนีสำเร็จที่ชั้น 1 จบเกมทันที
         if(p.floor === 1) {
             await triggerEndGame(botId);
         } else {
@@ -725,7 +749,6 @@ async function executeBotTurn(botId) {
     endTurn(botId);
 }
 
-// Atomic / Transaction เพื่อป้องกันการประกาศจบเกมซ้ำซ้อน
 async function triggerEndGame(winnerId) {
     const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
     await runTransaction(roomRef, (rData) => {
@@ -734,7 +757,7 @@ async function triggerEndGame(winnerId) {
             rData.winner = winnerId;
             return rData;
         }
-        return; // ป้องกันการบันทึกหากผู้เล่นคนอื่นจบเกมไปก่อนแล้ว
+        return;
     });
 }
 
@@ -749,7 +772,6 @@ async function commitPlayer(pId, pData) {
 function endTurn(curPId) {
     if (!gameState || gameState.status === 'ended') return;
     
-    // ตรวจสอบกรณีผู้เล่นทุกคนเสียชีวิต
     let allDead = Object.values(gameState.players).every(p => p.status === 'dead');
     if (allDead && isHost) {
         update(ref(db, `games/Escape/rooms/${currentRoomId}`), { status: 'ended' });
