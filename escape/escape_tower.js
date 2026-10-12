@@ -33,8 +33,6 @@ document.addEventListener('click', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
 
 function playAudio(name) {
-    // ใช้ Web Audio API โหลดและเล่นเสียงจำลองแบบเดียวกับ Camping
-    // หากไม่มีไฟล์เสียง จะข้ามไปเงียบๆ ไม่ทำให้เกมพัง
     try {
         fetch(`audio/${name}`)
             .then(res => res.arrayBuffer())
@@ -101,13 +99,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-add-bot').onclick = () => adjustBot(1);
     document.getElementById('btn-remove-bot').onclick = () => adjustBot(-1);
+    
     document.getElementById('btn-read-all-status').onclick = readAllStatus;
+    document.getElementById('btn-close-all-status').onclick = closeAllStatus;
     
     document.getElementById('btn-close-clue').onclick = () => document.getElementById('clue-modal').style.display = 'none';
     document.getElementById('btn-submit-clue').onclick = submitClue;
     document.getElementById('clue-answer-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submitClue();
     });
+    
+    // บังคับรูปแบบแป้นพิมพ์ตัวเลขสำหรับมือถือ
+    const clueInput = document.getElementById('clue-answer-input');
+    if (clueInput) {
+        clueInput.setAttribute('inputmode', 'numeric');
+        clueInput.setAttribute('pattern', '[0-9]*');
+    }
 });
 
 function confirmName() {
@@ -222,33 +229,40 @@ window.leaveRoomAndGoHome = function() {
 
 function createPlayerObj(name, isBot) {
     return {
-        name: name, isBot: isBot, floor: 6, hp: 200, status: 'normal', // normal, resting, dead, escaped
+        name: name, isBot: isBot, floor: 6, hp: 200, status: 'normal',
         infection: 0, vaccine: 0, food: 0, armor: 0, gun: 0, ammo: 0,
         keys: 0, ghostKeys: 0, secretPassage: false,
-        cluesFound: {}, // { floor: { clueId, answersTried } }
+        cluesFound: {},
         canUseDoor: false
     };
 }
 
 function adjustBot(delta) {
     if(!isHost || !gameState) return;
+    const keys = Object.keys(gameState.players);
     const hCount = Object.values(gameState.players).filter(p=>!p.isBot).length;
     const bCount = gameState.botCount || 0;
     const total = hCount + bCount;
+    
     if(delta > 0 && total < 4) {
-        const slot = 'p' + (total+1);
+        document.getElementById('btn-add-bot').disabled = true; // ป้องกันการกดซ้ำรัวๆ
+        let slot = 'p1';
+        for(let i=1; i<=4; i++) { if(!keys.includes('p'+i)) { slot = 'p'+i; break; } }
         update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
             [`players/${slot}`]: createPlayerObj(`บอท${bCount+1}`, true),
             botCount: bCount + 1
         });
         playAudio('select.mp3');
+        announceSR(`เพิ่มบอทแล้ว จำนวนบอทขณะนี้ ${bCount + 1} ตัว`, 'polite');
     } else if(delta < 0 && bCount > 0) {
-        const bots = Object.keys(gameState.players).filter(k=>gameState.players[k].isBot);
+        document.getElementById('btn-remove-bot').disabled = true; // ป้องกันการกดซ้ำรัวๆ
+        const bots = keys.filter(k=>gameState.players[k].isBot);
         if(bots.length > 0) {
             const updates = { botCount: bCount - 1 };
             updates[`players/${bots[bots.length-1]}`] = null;
             update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates);
             playAudio('select.mp3');
+            announceSR(`ลดบอทแล้ว จำนวนบอทขณะนี้ ${bCount - 1} ตัว`, 'polite');
         }
     }
 }
@@ -265,7 +279,6 @@ function generateRoomsForFloor(floorNum) {
     // Shuffle
     for(let i=arr.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
     
-    // Pick 3 Clues for this floor from clue bank
     let clues = [];
     if(window.EscapeTowerClueBank) {
         clues = window.EscapeTowerClueBank.selectCluesForGame(floorNum);
@@ -276,7 +289,7 @@ function generateRoomsForFloor(floorNum) {
         board[i] = { type: arr[i].type, explored: false };
         if(arr[i].type === 'clue' && clues[arr[i].cid]) {
             board[i].clueId = clues[arr[i].cid].id;
-            board[i].explored = false; // clue rooms can be re-entered
+            board[i].explored = false;
         }
     }
     return board;
@@ -284,9 +297,12 @@ function generateRoomsForFloor(floorNum) {
 
 function startGame() {
     if(!isHost || !gameState || gameState.status !== 'waiting') return;
+    const pKeys = Object.keys(gameState.players || {});
+    // ตรวจสอบขั้นต่ำ 2 ตัวละครในการเริ่ม
+    if(pKeys.length < 2) return;
+    
     document.getElementById('btn-start-game').disabled = true;
     
-    const pKeys = Object.keys(gameState.players);
     for(let i=pKeys.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]]; }
     
     const floorsData = {};
@@ -314,10 +330,17 @@ function setupRoomListener() {
                 listEl.innerHTML += `<div class="participant-card">${p.name} ${p.isBot?'(บอท)':''}</div>`;
             });
             if(isHost) {
+                const hCount = pList.filter(p=>!p.isBot).length;
+                const bCount = gameState.botCount || 0;
+                const total = hCount + bCount;
+                
                 document.getElementById('host-controls').style.display = 'block';
-                document.getElementById('bot-count-display').textContent = gameState.botCount||0;
+                document.getElementById('bot-count-display').textContent = bCount;
+                document.getElementById('btn-add-bot').disabled = (total >= 4);
+                document.getElementById('btn-remove-bot').disabled = (bCount <= 0);
+                
                 document.getElementById('btn-start-game').style.display = 'block';
-                document.getElementById('btn-start-game').disabled = pList.length < 1;
+                document.getElementById('btn-start-game').disabled = (pList.length < 2);
             }
         } else if (gameState.status === 'playing') {
             if(!document.getElementById('screen-game').classList.contains('active-screen')) {
@@ -330,8 +353,10 @@ function setupRoomListener() {
             }
             renderGameUI();
         } else if (gameState.status === 'ended') {
-            switchScreen('screen-result', 'result-title');
-            renderResult();
+            if(!document.getElementById('screen-result').classList.contains('active-screen')) {
+                switchScreen('screen-result', 'result-title');
+                renderResult();
+            }
         }
     });
 }
@@ -354,14 +379,17 @@ function renderGameUI() {
         if(isHost && curP.isBot && curP.status === 'normal') {
             setTimeout(() => executeBotTurn(curPId), 1500);
         } else if(curP.status !== 'normal' && isHost) {
-            // Auto skip dead/escaped/resting
             setTimeout(() => endTurn(curPId), 1000);
         }
     }
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
     
-    // Status Cards
+    // จัดกลุ่มข้อมูลสถานะของคุณให้ SC อ่านในประโยคเดียว
+    document.getElementById('my-player-status').innerHTML = 
+        `<span class="sr-only">สถานะของคุณ: </span>${myP.name} ชั้น ${myP.floor} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | ปืน: ${myP.gun} | กระสุน: ${myP.ammo}`;
+    
+    // Status Cards (สำหรับแสดงผลทางสายตา แต่จะถูกซ่อนจาก SC ใน flow ปกติด้วยการใช้ modal ตัวละครทั้งหมด)
     const cardsEl = document.getElementById('player-status-cards');
     cardsEl.innerHTML = '';
     gameState.order.forEach(pid => {
@@ -377,7 +405,7 @@ function renderGameUI() {
         </div>`;
     });
     
-    // Board
+    // Board (ปุ่มห้องต้องไม่ประกาศประเภทก่อนการสำรวจจริง)
     const boardEl = document.getElementById('escape-board');
     boardEl.innerHTML = '';
     const floorData = gameState.floors[myP.floor];
@@ -388,27 +416,29 @@ function renderGameUI() {
             btn.className = 'board-cell';
             const num = i+1;
             
-            if(r.explored && r.type !== 'clue') {
+            // แสดงเฉพาะเลขห้อง
+            btn.textContent = num.toString();
+            
+            if(r.explored) {
                 btn.classList.add('explored');
-                btn.disabled = true;
-                btn.innerHTML = `<span class="cell-icon">❌</span>ห้อง ${num}`;
-                btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
-            } else {
-                let lbl = `ห้อง ${num}`;
-                if(r.type === 'clue') {
-                    btn.innerHTML = `<span class="cell-icon">❓</span>คำใบ้`;
-                    lbl = `ห้องคำใบ้ ${num} สามารถสำรวจซ้ำได้`;
+                if (r.type === 'clue') {
+                    btn.setAttribute('aria-label', `ห้องคำใบ้ ${num} สำรวจแล้ว สามารถกดอ่านคำใบ้ซ้ำได้`);
+                    if (isMyTurn) {
+                        btn.onclick = () => exploreRoom(i, r);
+                    } else {
+                        btn.disabled = true;
+                    }
                 } else {
-                    btn.innerHTML = `<span class="cell-icon">🚪</span>ห้อง ${num}`;
+                    btn.disabled = true;
+                    btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
                 }
-                
+            } else {
+                btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
                 if(isMyTurn) {
                     btn.onclick = () => exploreRoom(i, r);
-                    lbl += ' กดเพื่อสำรวจ';
                 } else {
                     btn.disabled = true;
                 }
-                btn.setAttribute('aria-label', lbl);
             }
             boardEl.appendChild(btn);
         }
@@ -425,18 +455,33 @@ function renderGameUI() {
 }
 
 function readAllStatus() {
-    let txt = "สถานะทั้งหมด: ";
+    if(!gameState) return;
+    const modal = document.getElementById('all-status-modal');
+    const list = document.getElementById('all-status-list');
+    list.innerHTML = '';
     gameState.order.forEach(pid => {
         const p = gameState.players[pid];
-        txt += `${p.name} อยู่ชั้น ${p.floor} HP ${p.hp} `;
-        if(p.status !== 'normal') txt += `สถานะ ${p.status} `;
-        if(p.infection > 0) txt += `ติดเชื้อระดับ ${p.infection} `;
-        txt += `กุญแจ ${p.keys} เกราะ ${p.armor}, `;
+        let txt = `${p.name} - ชั้น ${p.floor} | HP: ${p.hp}`;
+        if(p.status !== 'normal') txt += ` (${p.status})`;
+        txt += ` | ติดเชื้อ: ${p.infection} | อาหาร: ${p.food} | วัคซีน: ${p.vaccine} | กุญแจ: ${p.keys} | เกราะ: ${p.armor} | ปืน: ${p.gun} | กระสุน: ${p.ammo}`;
+        list.innerHTML += `<div class="participant-card">${txt}</div>`;
     });
-    announceSR(txt);
+    modal.style.display = 'flex';
+    document.getElementById('screen-game').setAttribute('aria-hidden', 'true');
+    const title = document.getElementById('all-status-title');
+    title.setAttribute('tabindex', '-1');
+    title.focus();
+    announceSR("เปิดหน้าสถานะตัวละครทั้งหมดแล้ว");
 }
 
-// Logic - Turn Processing
+function closeAllStatus() {
+    document.getElementById('all-status-modal').style.display = 'none';
+    document.getElementById('screen-game').removeAttribute('aria-hidden');
+    document.getElementById('btn-read-all-status').focus();
+    announceSR("ปิดหน้าสถานะแล้ว กลับสู่หน้าเกม");
+}
+
+// Turn Processing
 async function processTurnStartEffects(pId) {
     let p = gameState.players[pId];
     if(p.status === 'dead' || p.status === 'escaped') return p;
@@ -445,8 +490,7 @@ async function processTurnStartEffects(pId) {
         p.hp = 100;
         p.status = 'normal';
         await emitLog(`${p.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 100 และพร้อมลุยต่อ`);
-        return p; // skips action this turn essentially? wait, rules say "skip turn, then heal to 100".
-        // To properly skip: if resting, heal and immediately end turn.
+        return p;
     }
     
     if(p.infection > 0) {
@@ -482,10 +526,9 @@ async function exploreRoom(roomIdx, roomData) {
 
     if(roomData.type === 'clue') {
         openClueModal(roomData.clueId);
-        return; // Don't end turn yet
+        return;
     }
     
-    // Mark room explored
     await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/floors/${p.floor}/${roomIdx}/explored`]: true });
     
     let msg = `${p.name} สำรวจห้อง ${roomIdx+1}: `;
@@ -533,7 +576,6 @@ async function exploreRoom(roomIdx, roomData) {
 function openClueModal(cid) {
     const clue = window.EscapeTowerClueBank ? window.EscapeTowerClueBank.getClueById(cid) : null;
     if(!clue) {
-        // Fallback if no clues loaded
         emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`);
         gameState.players[myId].canUseDoor = true;
         commitPlayer(myId, gameState.players[myId]).then(()=>endTurn(myId));
@@ -542,8 +584,11 @@ function openClueModal(cid) {
     
     const m = document.getElementById('clue-modal');
     document.getElementById('clue-question').textContent = clue.question;
-    document.getElementById('clue-answer-input').value = '';
-    document.getElementById('clue-answer-input').dataset.cid = cid;
+    
+    const inputEl = document.getElementById('clue-answer-input');
+    inputEl.value = '';
+    inputEl.dataset.cid = cid;
+    
     document.getElementById('clue-feedback').textContent = '';
     m.style.display = 'flex';
     document.getElementById('clue-title').focus();
@@ -551,8 +596,9 @@ function openClueModal(cid) {
 }
 
 function submitClue() {
-    const cid = document.getElementById('clue-answer-input').dataset.cid;
-    const ans = document.getElementById('clue-answer-input').value.trim();
+    const inputEl = document.getElementById('clue-answer-input');
+    const cid = inputEl.dataset.cid;
+    const ans = inputEl.value.trim();
     if(!ans) return;
     
     const isCorrect = window.EscapeTowerClueBank.checkAnswer(cid, ans);
@@ -585,7 +631,7 @@ async function useStairs() {
     else if(p.keys > 0) { p.keys--; used = "กุญแจปกติ"; }
     
     p.floor = Math.max(1, p.floor - down);
-    p.canUseDoor = false; // Reset clue auth per floor
+    p.canUseDoor = false;
     
     let msg = `${p.name} ใช้${used} ลงไปยังชั้น ${p.floor}`;
     if(p.floor === 1) {
@@ -596,16 +642,17 @@ async function useStairs() {
     await emitLog(msg);
     await commitPlayer(myId, p);
     
-    if(p.floor === 1) checkEndGame();
-    endTurn(myId);
+    if(p.floor === 1) {
+        await triggerEndGame(myId);
+    } else {
+        endTurn(myId);
+    }
 }
 
-// Bot Logic (Very Basic AI)
 async function executeBotTurn(botId) {
     let p = gameState.players[botId];
     if(!p || p.status !== 'normal') { endTurn(botId); return; }
     
-    // Evaluate if should go down
     if(p.secretPassage || p.ghostKeys > 0 || p.keys > 0) {
         let down = p.secretPassage ? 2 : 1;
         let used = p.secretPassage ? "ทางลงลับ" : (p.ghostKeys>0 ? "กุญแจผี" : "กุญแจปกติ");
@@ -617,12 +664,15 @@ async function executeBotTurn(botId) {
         if(p.floor === 1) { p.status = 'escaped'; msg += " หนีสำเร็จ!!"; }
         await emitLog(msg);
         await commitPlayer(botId, p);
-        if(p.floor === 1) checkEndGame();
-        endTurn(botId);
+        
+        if(p.floor === 1) {
+            await triggerEndGame(botId);
+        } else {
+            endTurn(botId);
+        }
         return;
     }
     
-    // Pick random unexplored room
     const floorData = gameState.floors[p.floor];
     let available = [];
     for(let i=0; i<20; i++) {
@@ -660,7 +710,19 @@ async function executeBotTurn(botId) {
     endTurn(botId);
 }
 
-// Helpers
+// Atomic / Transaction เพื่อป้องกันการประกาศจบเกมซ้ำซ้อน
+async function triggerEndGame(winnerId) {
+    const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
+    await runTransaction(roomRef, (rData) => {
+        if (rData && rData.status === 'playing') {
+            rData.status = 'ended';
+            rData.winner = winnerId;
+            return rData;
+        }
+        return; // ป้องกันการบันทึกหากผู้เล่นคนอื่นจบเกมไปก่อนแล้ว
+    });
+}
+
 async function emitLog(msg) {
     await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/log`]: { msg, ts: Date.now() } });
 }
@@ -670,39 +732,36 @@ async function commitPlayer(pId, pData) {
 }
 
 function endTurn(curPId) {
+    if (!gameState || gameState.status === 'ended') return;
+    
+    // ตรวจสอบกรณีผู้เล่นทุกคนเสียชีวิต
+    let allDead = Object.values(gameState.players).every(p => p.status === 'dead');
+    if (allDead && isHost) {
+        update(ref(db, `games/Escape/rooms/${currentRoomId}`), { status: 'ended' });
+        return;
+    }
+
     const order = gameState.order;
     let idx = gameState.turnIndex;
-    
-    // Find next playable player (or just advance 1 if all dead/escaped to avoid infinite loop, checked by checkEndGame anyway)
     idx = (idx + 1) % order.length;
     
     update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnIndex`]: idx });
-    checkEndGame();
-}
-
-function checkEndGame() {
-    if(!isHost || !gameState) return;
-    let allDone = true;
-    for(let k in gameState.players) {
-        if(gameState.players[k].status === 'normal' || gameState.players[k].status === 'resting') {
-            allDone = false; break;
-        }
-    }
-    if(allDone) {
-        update(ref(db, `games/Escape/rooms/${currentRoomId}`), { status: 'ended' });
-    }
 }
 
 function renderResult() {
-    announceSR("เกมจบลงแล้ว นี่คือสรุปผล", "assertive");
+    const winnerName = gameState.winner ? gameState.players[gameState.winner].name : "ไม่มีผู้รอดชีวิต";
+    announceSR(`เกมจบลงแล้ว ผู้ชนะคือ ${winnerName}`, "assertive");
+    
+    document.getElementById('result-title').textContent = `ผู้ชนะ: ${winnerName}`;
+    
     const resEl = document.getElementById('result-list');
     resEl.innerHTML = '';
-    const pArr = Object.values(gameState.players).sort((a,b) => a.floor - b.floor);
+    const pArr = Object.values(gameState.players);
     pArr.forEach(p => {
-        let txt = `${p.name}: `;
-        if(p.status === 'escaped') txt += "หนีรอดสำเร็จ! 🏆";
-        else if(p.status === 'dead') txt += "เสียชีวิต 💀";
-        else txt += `ติดอยู่ที่ชั้น ${p.floor}`;
+        let txt = `${p.name} - ชั้น ${p.floor} `;
+        if(p.status === 'escaped') txt += "(หนีรอดสำเร็จ! 🏆)";
+        else if(p.status === 'dead') txt += "(เสียชีวิต 💀)";
+        else txt += `(ติดอยู่ในตึก HP: ${p.hp})`;
         resEl.innerHTML += `<div class="participant-card">${txt}</div>`;
     });
 }
