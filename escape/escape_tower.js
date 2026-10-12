@@ -415,6 +415,18 @@ function renderGameUI() {
     
     const curPId = gameState.order[gameState.turnIndex];
     const curP = gameState.players[curPId];
+
+    // หากตัวละครอยู่ในสถานะพักฟื้นครบ 1 เทิร์นแล้ว เมื่อถึงเทิร์นของตนเองจะได้รับการฟื้นฟู HP เป็น 100 และกลับสู่สถานะปกติเพื่อเล่นต่อได้
+    if(curP.status === 'resting') {
+        if(isHost) {
+            curP.hp = 100;
+            curP.status = 'normal';
+            emitLog(`${curP.name} พักฟื้นเสร็จสิ้น ฟื้น HP เป็น 100 และพร้อมลุยต่อ`);
+            commitPlayer(curPId, curP);
+        }
+        return;
+    }
+    
     const isMyTurn = (curPId === myId && !myP.isBot && myP.status === 'normal');
     
     // ประกาศเทิร์นและหน่วงเวลาการคิดของบอทให้สมจริง (2.2 วินาที)
