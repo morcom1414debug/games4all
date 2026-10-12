@@ -63,9 +63,9 @@
             <div id="host-controls" class="controls-panel" style="display: none;">
                 <p class="panel-label" id="bot-control-label">จัดการบอท (สูงสุด 4 ตัวละครรวมผู้เล่น):</p>
                 <div class="bot-counter-group" role="group" aria-labelledby="bot-control-label">
-                    <button id="btn-remove-bot" type="button" class="btn-circle" aria-label="ลดจำนวนบอท">-</button>
+                    <button id="btn-remove-bot" type="button" class="btn-circle" aria-label="ลดจำนวนบอท" disabled>-</button>
                     <span id="bot-count-display" class="counter-val" aria-live="polite" aria-atomic="true">0</span>
-                    <button id="btn-add-bot" type="button" class="btn-circle" aria-label="เพิ่มจำนวนบอท">+</button>
+                    <button id="btn-add-bot" type="button" class="btn-circle" aria-label="เพิ่มจำนวนบอท">-</button>
                 </div>
             </div>
 
@@ -74,7 +74,7 @@
                 <div id="participant-list" class="participant-list-box" role="list" aria-labelledby="participant-list-title" aria-live="polite"></div>
             </div>
 
-            <button id="btn-start-game" class="btn-primary" type="button" style="display: none; margin-top: 15px;" aria-disabled="true" disabled>🚀 เริ่มเกม</button>
+            <button id="btn-start-game" class="btn-primary" type="button" style="display: none; margin-top: 15px;" disabled>🚀 เริ่มเกม</button>
             <button id="btn-leave-room" class="btn-secondary" type="button" style="margin-top: 10px;">ออกจากห้อง</button>
         </div>
     </div>
@@ -86,33 +86,32 @@
         <h1 id="game-floor-title" class="game-title" tabindex="-1">ชั้น 6</h1>
         <div id="game-status-bar" class="status-bar" aria-live="polite" aria-atomic="true">กำลังเตรียมกระดาน...</div>
         
-        <!-- แถบสถานะเฉพาะของผู้เล่น (อัปเดตข้อมูลรวมกันผ่าน JS) -->
-        <div id="my-player-status" class="status-bar" style="margin-top: 10px; background: #222; border-color: #555;" aria-live="polite" aria-atomic="true">
-            <span class="sr-only">สถานะของคุณ: </span>กำลังโหลดสถานะ...
+        <!-- แถบสถานะผู้เล่น รวม Aria Label และปุ่ม 👥 -->
+        <div class="player-status-row">
+            <div id="my-player-status" class="status-bar" tabindex="0" aria-label="กำลังโหลดสถานะ...">
+                <span aria-hidden="true">กำลังโหลดสถานะ...</span>
+            </div>
+            <button id="btn-read-all-status" class="btn-secondary btn-icon" type="button" aria-label="ดูสถานะตัวละครทั้งหมด">👥</button>
         </div>
 
         <div id="latest-event-display" class="event-display" aria-live="polite" aria-atomic="true"></div>
-        
-        <!-- ปุ่มเปิดหน้าต่างสถานะทั้งหมด -->
-        <button id="btn-read-all-status" class="btn-secondary btn-small" type="button" style="margin-top:10px;" aria-label="ดูสถานะตัวละครทั้งหมด">👥 ดูสถานะตัวละครทั้งหมด</button>
     </header>
 
-    <!-- (ซ่อนพื้นที่นี้จาก Screen Reader ปกติ เนื่องจากเราจะใช้ Modal แทนเพื่อความชัดเจน แต่อิง ID เดิมไว้ให้ JS อัปเดตได้) -->
+    <!-- (ซ่อนพื้นที่สถานะตัวละครจาก SC ปกติ เนื่องจากใช้ Modal แทนเพื่อความชัดเจน) -->
     <section class="status-cards-container sr-only" id="player-status-cards" aria-hidden="true"></section>
 
-    <!-- กระดานห้อง 20 ห้อง -->
+    <!-- กระดานห้อง 20 ห้อง (ใช้ HTML Table สำหรับ SC ให้เข้าถึงได้ง่าย) -->
     <main class="board-container">
-        <div id="escape-board" class="board-grid" role="grid" aria-label="กระดานห้อง 20 ห้อง (ขนาด 5 คอลัมน์ 4 แถว)"></div>
+        <table id="escape-board" class="board-table" role="grid" aria-label="กระดานห้อง 20 ห้อง"></table>
     </main>
 
     <!-- ประตูลงชั้น -->
     <footer class="game-controls">
-        <button id="btn-use-stairs" class="btn-door" type="button" aria-disabled="true" disabled>🚪 ลงบันไดไปชั้นล่าง</button>
+        <button id="btn-use-stairs" class="btn-door" type="button" disabled>🚪 ลงบันไดไปชั้นล่าง</button>
     </footer>
 </div>
 
 <!-- ==================== แผงสถานะตัวละครทั้งหมด (All Status Modal) ==================== -->
-<!-- JS ควบคุมการเปิดปิดโดยเปลี่ยน display และจัดการย้าย Focus มาที่ all-status-title -->
 <div id="all-status-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="all-status-title">
     <div class="card-main" style="max-width: 500px; width: 90%; text-align: left;">
         <h2 id="all-status-title" class="game-title" tabindex="-1">สถานะตัวละครทั้งหมด</h2>
@@ -130,8 +129,8 @@
         <p id="clue-question" class="modal-desc"></p>
         <div class="form-group">
             <label for="clue-answer-input" class="form-label">คำตอบของคุณ (ตัวเลข):</label>
-            <!-- ใช้ inputmode="numeric" แทน type="number" เพื่อให้ SC อ่านและกรอกง่ายโดยไม่บังคับ UI spinner -->
-            <input type="text" id="clue-answer-input" class="text-input" inputmode="numeric" placeholder="พิมพ์คำตอบที่นี่..." autocomplete="off">
+            <!-- ใช้ type="tel" เพื่อบังคับ Numpad (KeyPad) ล้วน ๆ ในมือถือทั้ง iOS และ Android อย่างสมบูรณ์แบบ -->
+            <input type="tel" id="clue-answer-input" class="text-input" placeholder="พิมพ์คำตอบที่นี่..." autocomplete="off">
         </div>
         <div id="clue-feedback" aria-live="assertive" style="margin-bottom:10px; font-weight:bold; color:var(--secondary);"></div>
         <div class="modal-actions">

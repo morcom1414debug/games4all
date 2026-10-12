@@ -108,13 +108,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('clue-answer-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submitClue();
     });
-    
-    // บังคับรูปแบบแป้นพิมพ์ตัวเลขสำหรับมือถือ
-    const clueInput = document.getElementById('clue-answer-input');
-    if (clueInput) {
-        clueInput.setAttribute('inputmode', 'numeric');
-        clueInput.setAttribute('pattern', '[0-9]*');
-    }
 });
 
 function confirmName() {
@@ -336,11 +329,17 @@ function setupRoomListener() {
                 
                 document.getElementById('host-controls').style.display = 'block';
                 document.getElementById('bot-count-display').textContent = bCount;
-                document.getElementById('btn-add-bot').disabled = (total >= 4);
-                document.getElementById('btn-remove-bot').disabled = (bCount <= 0);
                 
-                document.getElementById('btn-start-game').style.display = 'block';
-                document.getElementById('btn-start-game').disabled = (pList.length < 2);
+                const btnAdd = document.getElementById('btn-add-bot');
+                const btnRm = document.getElementById('btn-remove-bot');
+                const btnStart = document.getElementById('btn-start-game');
+                
+                btnAdd.disabled = (total >= 4);
+                btnRm.disabled = (bCount <= 0);
+                
+                btnStart.style.display = 'block';
+                // ถ้ามีแค่ 1 ตัวละคร จะ dim ปุ่ม และล็อคกดไม่ได้
+                btnStart.disabled = (pList.length < 2);
             }
         } else if (gameState.status === 'playing') {
             if(!document.getElementById('screen-game').classList.contains('active-screen')) {
@@ -385,9 +384,11 @@ function renderGameUI() {
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
     
-    // จัดกลุ่มข้อมูลสถานะของคุณให้ SC อ่านในประโยคเดียว
-    document.getElementById('my-player-status').innerHTML = 
-        `<span class="sr-only">สถานะของคุณ: </span>${myP.name} ชั้น ${myP.floor} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | ปืน: ${myP.gun} | กระสุน: ${myP.ammo}`;
+    // จัดกลุ่มข้อมูลสถานะของคุณให้ SC อ่านในประโยคเดียวผ่าน Aria Label
+    const statusText = `สถานะของคุณ: ${myP.name} ชั้น ${myP.floor} อาหาร ${myP.food} วัคซีน ${myP.vaccine} ปืน ${myP.gun} กระสุน ${myP.ammo}`;
+    const statusContainer = document.getElementById('my-player-status');
+    statusContainer.setAttribute('aria-label', statusText);
+    statusContainer.innerHTML = `<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | ปืน: ${myP.gun} | กระสุน: ${myP.ammo}</span>`;
     
     // Status Cards (สำหรับแสดงผลทางสายตา แต่จะถูกซ่อนจาก SC ใน flow ปกติด้วยการใช้ modal ตัวละครทั้งหมด)
     const cardsEl = document.getElementById('player-status-cards');
@@ -405,42 +406,54 @@ function renderGameUI() {
         </div>`;
     });
     
-    // Board (ปุ่มห้องต้องไม่ประกาศประเภทก่อนการสำรวจจริง)
+    // Board (Table Format)
     const boardEl = document.getElementById('escape-board');
     boardEl.innerHTML = '';
     const floorData = gameState.floors[myP.floor];
     if(floorData) {
-        for(let i=0; i<20; i++) {
-            const r = floorData[i];
-            const btn = document.createElement('button');
-            btn.className = 'board-cell';
-            const num = i+1;
-            
-            // แสดงเฉพาะเลขห้อง
-            btn.textContent = num.toString();
-            
-            if(r.explored) {
-                btn.classList.add('explored');
-                if (r.type === 'clue') {
-                    btn.setAttribute('aria-label', `ห้องคำใบ้ ${num} สำรวจแล้ว สามารถกดอ่านคำใบ้ซ้ำได้`);
-                    if (isMyTurn) {
-                        btn.onclick = () => exploreRoom(i, r);
+        let roomIdx = 0;
+        for(let r=0; r<4; r++) {
+            const tr = document.createElement('tr');
+            for(let c=0; c<5; c++) {
+                const td = document.createElement('td');
+                const i = roomIdx;
+                const roomData = floorData[i];
+                
+                const btn = document.createElement('button');
+                btn.className = 'board-cell';
+                const num = i + 1;
+                
+                // แสดงเฉพาะเลขห้อง
+                btn.textContent = num.toString();
+                
+                if(roomData.explored) {
+                    btn.classList.add('explored');
+                    if (roomData.type === 'clue') {
+                        btn.setAttribute('aria-label', `ห้องคำใบ้ ${num} สำรวจแล้ว สามารถกดอ่านคำใบ้ซ้ำได้`);
+                        if (isMyTurn) {
+                            btn.onclick = () => exploreRoom(i, roomData);
+                        } else {
+                            btn.disabled = true;
+                        }
+                    } else {
+                        btn.disabled = true;
+                        btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
+                    }
+                } else {
+                    // ไม่บอกว่าเป็นห้องคำใบ้จนกว่าจะกดเข้าไปจริงๆ
+                    btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
+                    if(isMyTurn) {
+                        btn.onclick = () => exploreRoom(i, roomData);
                     } else {
                         btn.disabled = true;
                     }
-                } else {
-                    btn.disabled = true;
-                    btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
                 }
-            } else {
-                btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
-                if(isMyTurn) {
-                    btn.onclick = () => exploreRoom(i, r);
-                } else {
-                    btn.disabled = true;
-                }
+                
+                td.appendChild(btn);
+                tr.appendChild(td);
+                roomIdx++;
             }
-            boardEl.appendChild(btn);
+            boardEl.appendChild(tr);
         }
     }
     
@@ -642,6 +655,7 @@ async function useStairs() {
     await emitLog(msg);
     await commitPlayer(myId, p);
     
+    // หากถึงชั้นที่ 1 (ประตูทางออกชั้น 1 สำเร็จ) จบเกมทันที
     if(p.floor === 1) {
         await triggerEndGame(myId);
     } else {
@@ -665,6 +679,7 @@ async function executeBotTurn(botId) {
         await emitLog(msg);
         await commitPlayer(botId, p);
         
+        // หากบอทหนีสำเร็จที่ชั้น 1 จบเกมทันที
         if(p.floor === 1) {
             await triggerEndGame(botId);
         } else {
