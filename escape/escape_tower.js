@@ -46,10 +46,9 @@ function playAudio(name) {
     } catch(e){}
 }
 
-// ARIA Announcement (จัดการผ่าน Central Queue จุดเดียวเพื่อป้องกันการพูดทับซ้อนและพูดซ้ำ)
+// ARIA Announcement (จัดการผ่าน Central Queue ป้องกันเสียงพูดชนกัน)
 function announceSR(text, priority = 'polite') {
     if (!text) return;
-    // ป้องกันการยัดข้อความเดิมซ้ำติดกันเข้าคิว
     if (speechQueue.length > 0 && speechQueue[speechQueue.length - 1].text === text) return;
     speechQueue.push({ text, priority });
     processSpeechQueue();
@@ -64,13 +63,13 @@ function processSpeechQueue() {
         targetEl.textContent = '';
         setTimeout(() => {
             targetEl.textContent = item.text;
-            const duration = Math.max(1200, item.text.length * 40);
+            const duration = Math.max(1400, item.text.length * 45);
             setTimeout(() => { 
                 targetEl.textContent = ''; 
                 isSpeaking = false; 
                 processSpeechQueue(); 
             }, duration);
-        }, 60);
+        }, 70);
     } else { 
         isSpeaking = false; 
     }
@@ -144,7 +143,7 @@ function initLobbyListener() {
     onValue(ref(db, 'games/Escape/rooms'), (snap) => {
         const rooms = snap.val() || {};
         const container = document.getElementById('room-list');
-        if (myId) return; // Ignore if in room
+        if (myId) return; // Ignore if already in room
         container.innerHTML = '';
         let count = 0;
         for (const [rId, rData] of Object.entries(rooms)) {
@@ -175,7 +174,7 @@ function createRoom() {
             myId = 'p1';
             isHost = true;
             const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
-            onDisconnect(roomRef).remove(); // Hostหลุด -> ลบห้อง
+            onDisconnect(roomRef).remove(); // Host หลุด -> ลบห้อง
             set(roomRef, {
                 status: 'waiting',
                 players: { p1: createPlayerObj(myName, false) },
@@ -245,17 +244,18 @@ function createPlayerObj(name, isBot) {
     };
 }
 
+// ปรับปรุงการเพิ่ม-ลดบอท: เสถียร ไม่หลุดโฟกัสบน VoiceOver
 function adjustBot(delta) {
     if(!isHost || !gameState) return;
     const keys = Object.keys(gameState.players);
-    const hCount = Object.values(gameState.players).filter(p=>!p.isBot).length;
     const bCount = gameState.botCount || 0;
-    const total = hCount + bCount;
+    const total = keys.length;
     
-    if(delta > 0 && total < 4) {
-        const btnAdd = document.getElementById('btn-add-bot');
-        btnAdd.disabled = true;
-        btnAdd.setAttribute('aria-disabled', 'true');
+    if(delta > 0) {
+        if (total >= 4) {
+            announceSR("ห้องเต็ม 4 คนแล้ว ไม่สามารถเพิ่มบอทได้อีก", 'assertive');
+            return;
+        }
         let slot = 'p1';
         for(let i=1; i<=4; i++) { if(!keys.includes('p'+i)) { slot = 'p'+i; break; } }
         update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
@@ -263,19 +263,20 @@ function adjustBot(delta) {
             botCount: bCount + 1
         }).then(() => {
             playAudio('select.mp3');
-            announceSR(`เพิ่มบอทแล้ว จำนวนบอทขณะนี้ ${bCount + 1} ตัว`, 'polite');
+            announceSR(`เพิ่มบอทสำเร็จ ขณะนี้มีบอท ${bCount + 1} ตัว รวม ${total + 1} คน`, 'polite');
         });
-    } else if(delta < 0 && bCount > 0) {
-        const btnRm = document.getElementById('btn-remove-bot');
-        btnRm.disabled = true;
-        btnRm.setAttribute('aria-disabled', 'true');
+    } else if(delta < 0) {
+        if (bCount <= 0) {
+            announceSR("ไม่มีบอทให้ลดแล้ว", 'assertive');
+            return;
+        }
         const bots = keys.filter(k=>gameState.players[k].isBot);
         if(bots.length > 0) {
             const updates = { botCount: bCount - 1 };
             updates[`players/${bots[bots.length-1]}`] = null;
             update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates).then(() => {
                 playAudio('select.mp3');
-                announceSR(`ลดบอทแล้ว จำนวนบอทขณะนี้ ${bCount - 1} ตัว`, 'polite');
+                announceSR(`ลดบอทสำเร็จ ขณะนี้มีบอท ${bCount - 1} ตัว รวม ${total - 1} คน`, 'polite');
             });
         }
     }
@@ -325,7 +326,7 @@ function startGame() {
 
     update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
         status: 'playing', turnIndex: 0, order: pKeys,
-        floors: floorsData, log: { msg: 'เกมเริ่มขึ้นแล้ว หาทางลงไปยังชั้น 1!', ts: Date.now() }
+        floors: floorsData, log: { msg: 'เกมเริ่มขึ้นแล้ว หาทางลงไปยังชั้น 1 และหนีออกจากตึก!', ts: Date.now() }
     });
 }
 
@@ -338,16 +339,15 @@ function setupRoomListener() {
         if(gameState.status === 'waiting') {
             document.getElementById('lobby-room-title').textContent = `ห้อง: ${currentRoomId}`;
             const pList = Object.values(gameState.players||{});
-            document.getElementById('participant-count').textContent = `${pList.length}/4`;
+            const totalPlayers = pList.length;
+            document.getElementById('participant-count').textContent = `${totalPlayers}/4`;
             const listEl = document.getElementById('participant-list');
             listEl.innerHTML = '';
             pList.forEach(p => {
                 listEl.innerHTML += `<div class="participant-card">${p.name} ${p.isBot?'(บอท)':''}</div>`;
             });
             if(isHost) {
-                const hCount = pList.filter(p=>!p.isBot).length;
                 const bCount = gameState.botCount || 0;
-                const total = hCount + bCount;
                 
                 document.getElementById('host-controls').style.display = 'block';
                 document.getElementById('bot-count-display').textContent = bCount;
@@ -356,18 +356,28 @@ function setupRoomListener() {
                 const btnRm = document.getElementById('btn-remove-bot');
                 const btnStart = document.getElementById('btn-start-game');
                 
-                const isMax = (total >= 4);
+                const isMax = (totalPlayers >= 4);
                 const isMin = (bCount <= 0);
                 
-                // Dimming และปิดการเลือกปุ่มเพิ่ม/ลดบอท
+                // Dimming อย่างสมบูรณ์ทั้ง attribute และ VoiceOver Accessibility Label
                 btnAdd.disabled = isMax;
                 btnAdd.setAttribute('aria-disabled', isMax ? 'true' : 'false');
+                if (isMax) {
+                    btnAdd.setAttribute('aria-label', `เพิ่มบอท (คนเต็มห้อง 4 คนแล้ว ไม่สามารถเพิ่มได้)`);
+                } else {
+                    btnAdd.setAttribute('aria-label', `เพิ่มจำนวนบอท ปัจจุบันมี ${bCount} ตัว รวมผู้เล่น ${totalPlayers} จาก 4 คน`);
+                }
                 
                 btnRm.disabled = isMin;
                 btnRm.setAttribute('aria-disabled', isMin ? 'true' : 'false');
+                if (isMin) {
+                    btnRm.setAttribute('aria-label', `ลดบอท (ปัจจุบันมีบอท 0 ตัว ไม่สามารถลดได้)`);
+                } else {
+                    btnRm.setAttribute('aria-label', `ลดจำนวนบอท ปัจจุบันมี ${bCount} ตัว`);
+                }
                 
                 btnStart.style.display = 'block';
-                const canStart = (pList.length >= 2);
+                const canStart = (totalPlayers >= 2);
                 btnStart.disabled = !canStart;
                 btnStart.setAttribute('aria-disabled', (!canStart).toString());
             }
@@ -385,7 +395,7 @@ function setupRoomListener() {
                 document.getElementById('latest-event-display').textContent = gameState.log.msg;
             }
             
-            // ตามด้วยการอัปเดตหน้าจอและการประกาศเทิร์นถัดไป
+            // อัปเดตหน้าจอและการประกาศเทิร์นถัดไป
             renderGameUI();
         } else if (gameState.status === 'ended') {
             if(!document.getElementById('screen-result').classList.contains('active-screen')) {
@@ -407,27 +417,27 @@ function renderGameUI() {
     const curP = gameState.players[curPId];
     const isMyTurn = (curPId === myId && !myP.isBot && myP.status === 'normal');
     
-    // ประกาศเทิร์นหลังจากเหตุการณ์เสมอ
+    // ประกาศเทิร์นและหน่วงเวลาการคิดของบอทให้สมจริง (2.2 วินาที)
     if(lastAnnouncedTurn !== `${gameState.turnIndex}_${curPId}`) {
         lastAnnouncedTurn = `${gameState.turnIndex}_${curPId}`;
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
         playAudio('turn.mp3');
         if(isHost && curP.isBot && curP.status === 'normal') {
-            setTimeout(() => executeBotTurn(curPId), 1500);
+            setTimeout(() => executeBotTurn(curPId), 2200);
         } else if(curP.status !== 'normal' && isHost) {
-            setTimeout(() => endTurn(curPId), 1000);
+            setTimeout(() => endTurn(curPId), 1200);
         }
     }
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
     
-    // แถบสถานะส่วนตัว อ่านรอบเดียวผ่าน aria-label
-    const statusText = `สถานะของคุณ: ${myP.name} ชั้น ${myP.floor} อาหาร ${myP.food} วัคซีน ${myP.vaccine} ปืน ${myP.gun} กระสุน ${myP.ammo}`;
+    // แถบสถานะส่วนตัว (แสดงอาหารในคลังด้วย)
+    const statusText = `สถานะของคุณ: ${myP.name} ชั้น ${myP.floor} HP ${myP.hp} อาหารในคลัง ${myP.food} วัคซีน ${myP.vaccine} กุญแจ ${myP.keys} ปืน ${myP.gun} กระสุน ${myP.ammo}`;
     const statusContainer = document.getElementById('my-player-status');
     statusContainer.setAttribute('aria-label', statusText);
-    statusContainer.innerHTML = `<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | ปืน: ${myP.gun} | กระสุน: ${myP.ammo}</span>`;
+    statusContainer.innerHTML = `<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | HP: ${myP.hp} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | กุญแจ: ${myP.keys} | ปืน: ${myP.gun}(${myP.ammo})</span>`;
     
-    // Status Cards (สำหรับแสดงผลทางสายตา ซ่อนจาก SC)
+    // Status Cards (สำหรับสายตา)
     const cardsEl = document.getElementById('player-status-cards');
     cardsEl.innerHTML = '';
     gameState.order.forEach(pid => {
@@ -439,11 +449,11 @@ function renderGameUI() {
         cardsEl.innerHTML += `<div class="${cClass}" aria-hidden="true">
             <strong>${p.name} (ชั้น ${p.floor})</strong><br>
             HP: ${p.hp} | ติดเชื้อ: ${p.infection}<br>
-            กุญแจ: ${p.keys} | เกราะ: ${p.armor} | ปืน: ${p.gun}(${p.ammo})
+            กุญแจ: ${p.keys} | อาหาร: ${p.food} | เกราะ: ${p.armor} | ปืน: ${p.gun}(${p.ammo})
         </div>`;
     });
     
-    // Board (จัดเรียงเป็น Grid แทน Table — ปราศจาก table tags แต่เรียง 4x5 เสมือนเดิม)
+    // Board (Grid 20 ห้อง)
     const boardEl = document.getElementById('escape-board');
     boardEl.innerHTML = '';
     const floorData = gameState.floors[myP.floor];
@@ -483,13 +493,33 @@ function renderGameUI() {
         }
     }
     
-    // Stairs
+    // บันได หรือ ประตูหนีออกจากตึก
     const btnStairs = document.getElementById('btn-use-stairs');
+    const isFloor1 = (myP.floor === 1);
+    
+    if (isFloor1) {
+        btnStairs.textContent = "🚪 เปิดประตูหนีออกจากตึก";
+    } else {
+        btnStairs.textContent = "🚪 ลงบันไดไปชั้นล่าง";
+    }
+    
     const canUseStairs = isMyTurn && (myP.keys > 0 || myP.ghostKeys > 0 || myP.secretPassage || myP.canUseDoor);
     btnStairs.disabled = !canUseStairs;
     btnStairs.setAttribute('aria-disabled', (!canUseStairs).toString());
-    if(canUseStairs) {
+    
+    if (canUseStairs) {
+        if (isFloor1) {
+            btnStairs.setAttribute('aria-label', "เปิดประตูหนีออกจากตึก คุณมีไอเท็มพร้อมแล้ว กดเพื่อหนีรอดและชนะเกม");
+        } else {
+            btnStairs.setAttribute('aria-label', "ลงบันไดไปชั้นล่าง คุณมีไอเท็มพร้อมลงชั้นแล้ว กดเพื่อลง");
+        }
         btnStairs.onclick = useStairs;
+    } else {
+        if (isFloor1) {
+            btnStairs.setAttribute('aria-label', "ประตูหนีออกจากตึก (ยังเปิดไม่ได้ ต้องหากุญแจ ทางลับ หรือตอบคำใบ้ก่อน)");
+        } else {
+            btnStairs.setAttribute('aria-label', "บันไดลงชั้นล่าง (ยังลงไม่ได้ ต้องหากุญแจ ทางลับ หรือตอบคำใบ้ก่อน)");
+        }
     }
 }
 
@@ -532,6 +562,7 @@ async function processTurnStartEffects(pId) {
         return p;
     }
     
+    // 1. จัดการการติดเชื้อ & วัคซีน
     if(p.infection > 0) {
         if(p.vaccine > 0) {
             p.vaccine--; p.infection = 0;
@@ -542,6 +573,15 @@ async function processTurnStartEffects(pId) {
         }
     }
     
+    // 2. จัดการอาหารในคลังอัตโนมัติ: หาก HP ต่ำกว่า 200 และมีอาหาร จะกินรักษาอัตโนมัติ 1 ชิ้น (+30 HP)
+    if(p.hp > 0 && p.hp < 200 && p.food > 0) {
+        const heal = Math.min(30, 200 - p.hp);
+        p.food--;
+        p.hp += heal;
+        await emitLog(`${p.name} กินอาหารจากคลังอัตโนมัติ ฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${p.hp}, เหลืออาหาร ${p.food} ชิ้น)`);
+    }
+    
+    // 3. ตรวจสอบการหมดสติ/เสียชีวิต
     if(p.hp <= 0) {
         p.status = 'dead';
         await emitLog(`${p.name} เสียชีวิตแล้ว...`);
@@ -559,7 +599,7 @@ async function exploreRoom(roomIdx, roomData) {
     let p = await processTurnStartEffects(pId);
     if(p.status !== 'normal') {
         await commitPlayer(pId, p);
-        endTurn(pId);
+        setTimeout(() => endTurn(pId), 1500);
         return;
     }
 
@@ -575,12 +615,17 @@ async function exploreRoom(roomIdx, roomData) {
     switch(roomData.type) {
         case 'key': p.keys++; msg += "พบกุญแจปกติ 1 ดอก"; break;
         case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี 1 ดอก"; break;
-        case 'secret': p.secretPassage = true; msg += "พบทางลงลับ! สามารถลงข้าม 2 ชั้นได้"; break;
-        case 'vaccine': p.vaccine++; msg += "พบวัคซีน 1 ขวด"; break;
+        case 'secret': p.secretPassage = true; msg += "พบทางลงลับ! สามารถลงข้ามชั้นได้"; break;
+        case 'vaccine': p.vaccine++; msg += "พบวัคซีน 1 ขวด เก็บเข้าคลัง"; break;
         case 'food': 
-            let heal = 30; 
-            p.hp = Math.min(200, p.hp + heal); 
-            msg += `พบอาหาร ฟื้นฟู HP ${heal} หน่วย (รวม ${p.hp})`; 
+            if(p.hp < 200) {
+                const heal = Math.min(30, 200 - p.hp);
+                p.hp += heal;
+                msg += `พบอาหาร กินทันทีฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${p.hp})`;
+            } else {
+                p.food = (p.food || 0) + 1;
+                msg += `พบอาหาร แต่ HP เต็ม 200 แล้ว จึงเก็บอาหารเข้าคลัง (มีอาหารสะสม ${p.food} ชิ้น)`;
+            }
             break;
         case 'armor': p.armor++; msg += "พบเกราะสวรรค์ 1 ชิ้น"; break;
         case 'battery': 
@@ -609,7 +654,8 @@ async function exploreRoom(roomIdx, roomData) {
     
     await emitLog(msg);
     await commitPlayer(pId, p);
-    endTurn(pId);
+    // หน่วงเวลา 1.5 วินาทีเพื่อให้ VoiceOver อ่านเหตุการณ์ครบก่อนเปลี่ยนเทิร์น
+    setTimeout(() => endTurn(pId), 1500);
 }
 
 function openClueModal(cid) {
@@ -617,7 +663,7 @@ function openClueModal(cid) {
     if(!clue) {
         emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`);
         gameState.players[myId].canUseDoor = true;
-        commitPlayer(myId, gameState.players[myId]).then(()=>endTurn(myId));
+        commitPlayer(myId, gameState.players[myId]).then(() => setTimeout(()=>endTurn(myId), 1500));
         return;
     }
     
@@ -645,73 +691,116 @@ function submitClue() {
         document.getElementById('clue-modal').style.display = 'none';
         const p = gameState.players[myId];
         p.canUseDoor = true;
-        emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์เปิดประตูชั้น ${p.floor}`);
-        commitPlayer(myId, p).then(()=>endTurn(myId));
+        const targetDesc = (p.floor === 1) ? "เปิดประตูทางออกตึก" : `เปิดประตูชั้น ${p.floor}`;
+        emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์${targetDesc}`);
+        commitPlayer(myId, p).then(() => setTimeout(()=>endTurn(myId), 1500));
     } else {
         document.getElementById('clue-feedback').textContent = "คำตอบผิด ลองใหม่ในเทิร์นหน้า";
         announceSR("คำตอบผิด ลองใหม่ในเทิร์นหน้า");
         setTimeout(() => {
             document.getElementById('clue-modal').style.display = 'none';
             emitLog(`${gameState.players[myId].name} ตอบคำใบ้ผิด ประตูยังไม่เปิด`);
-            endTurn(myId);
+            setTimeout(() => endTurn(myId), 1200);
         }, 1500);
     }
 }
 
+// ลงบันได หรือ เปิดประตูหนีออกจากตึก
 async function useStairs() {
     let p = await processTurnStartEffects(myId);
-    if(p.status !== 'normal') { await commitPlayer(myId, p); endTurn(myId); return; }
+    if(p.status !== 'normal') { 
+        await commitPlayer(myId, p); 
+        setTimeout(() => endTurn(myId), 1500); 
+        return; 
+    }
 
-    let down = 1;
     let used = "";
-    if(p.secretPassage) { down = 2; p.secretPassage = false; used = "ทางลงลับ"; }
+    if(p.secretPassage) { p.secretPassage = false; used = "ทางลับ"; }
     else if(p.canUseDoor) { p.canUseDoor = false; used = "รหัสคำใบ้"; }
     else if(p.ghostKeys > 0) { p.ghostKeys--; used = "กุญแจผี"; }
     else if(p.keys > 0) { p.keys--; used = "กุญแจปกติ"; }
-    
+
+    // กรณีอยู่ชั้น 1: การใช้กุญแจ/รหัส จะเป็นการเปิดประตูหนีออกจากตึกทันที (ชนะเกม!)
+    if(p.floor === 1) {
+        p.status = 'escaped';
+        p.canUseDoor = false;
+        let msg = `${p.name} ใช้${used} ปลดล็อกประตูทางออกชั้น 1 และหนีรอดออกจากตึกได้สำเร็จ เป็นผู้ชนะ!!`;
+        await emitLog(msg);
+        await commitPlayer(myId, p);
+        await triggerEndGame(myId);
+        return;
+    }
+
+    // กรณีอยู่ชั้น 2-6: ลงบันไดไปชั้นล่าง
+    let down = (used === "ทางลับ") ? 2 : 1;
     p.floor = Math.max(1, p.floor - down);
     p.canUseDoor = false;
     
-    let msg = `${p.name} ใช้${used} ลงไปยังชั้น ${p.floor}`;
+    let msg = `${p.name} ใช้${used} ลงมายังชั้น ${p.floor}`;
     if(p.floor === 1) {
-        p.status = 'escaped';
-        msg += " และหนีออกจากตึกสำเร็จ!!";
+        msg += " ถึงชั้น 1 แล้ว! จงหากุญแจหรือรหัสเพื่อปลดล็อกประตูหนีออกจากตึก!";
     }
     
     await emitLog(msg);
     await commitPlayer(myId, p);
     
-    if(p.floor === 1) {
-        await triggerEndGame(myId);
-    } else {
-        endTurn(myId);
-    }
+    setTimeout(() => endTurn(myId), 1500);
 }
 
+// ระบบบอทเล่น: เพิ่มการคิด + ระบบเก็บอาหาร + กติกาชั้น 1
 async function executeBotTurn(botId) {
     let p = gameState.players[botId];
-    if(!p || p.status !== 'normal') { endTurn(botId); return; }
+    if(!p || p.status !== 'normal') { 
+        setTimeout(() => endTurn(botId), 1200); 
+        return; 
+    }
     
-    if(p.secretPassage || p.ghostKeys > 0 || p.keys > 0) {
-        let down = p.secretPassage ? 2 : 1;
-        let used = p.secretPassage ? "ทางลงลับ" : (p.ghostKeys>0 ? "กุญแจผี" : "กุญแจปกติ");
-        p.secretPassage = false;
-        if(used==="กุญแจผี") p.ghostKeys--; else if(used==="กุญแจปกติ") p.keys--;
-        
-        p.floor = Math.max(1, p.floor - down);
-        let msg = `${p.name} ใช้${used} ลงไปยังชั้น ${p.floor}`;
-        if(p.floor === 1) { p.status = 'escaped'; msg += " หนีสำเร็จ!!"; }
-        await emitLog(msg);
+    p = await processTurnStartEffects(botId);
+    if(p.status !== 'normal') {
         await commitPlayer(botId, p);
-        
-        if(p.floor === 1) {
-            await triggerEndGame(botId);
-        } else {
-            endTurn(botId);
-        }
+        setTimeout(() => endTurn(botId), 1500);
         return;
     }
     
+    const canUnlock = (p.secretPassage || p.ghostKeys > 0 || p.keys > 0 || p.canUseDoor);
+    
+    // บอทอยู่ชั้น 1 แล้วมีไอเท็มเปิดประตูหนี
+    if(p.floor === 1 && canUnlock) {
+        let used = p.secretPassage ? "ทางลับ" : (p.ghostKeys > 0 ? "กุญแจผี" : "กุญแจปกติ");
+        if(p.secretPassage) p.secretPassage = false;
+        else if(p.ghostKeys > 0) p.ghostKeys--;
+        else if(p.keys > 0) p.keys--;
+        p.canUseDoor = false;
+        
+        p.status = 'escaped';
+        let msg = `${p.name} ใช้${used} ปลดล็อกประตูทางออกชั้น 1 หนีรอดออกจากตึกสำเร็จ เป็นผู้ชนะ!!`;
+        await emitLog(msg);
+        await commitPlayer(botId, p);
+        await triggerEndGame(botId);
+        return;
+    }
+    
+    // บอทอยู่ชั้น 2-6 แล้วมีไอเท็มลงชั้นล่าง
+    if(p.floor > 1 && canUnlock) {
+        let down = p.secretPassage ? 2 : 1;
+        let used = p.secretPassage ? "ทางลับ" : (p.ghostKeys > 0 ? "กุญแจผี" : "กุญแจปกติ");
+        if(p.secretPassage) p.secretPassage = false;
+        else if(p.ghostKeys > 0) p.ghostKeys--;
+        else if(p.keys > 0) p.keys--;
+        p.canUseDoor = false;
+        
+        p.floor = Math.max(1, p.floor - down);
+        let msg = `${p.name} ใช้${used} ลงมายังชั้น ${p.floor}`;
+        if(p.floor === 1) {
+            msg += " ถึงชั้น 1 แล้ว! กำลังหาทางเปิดประตูหนีออกจากตึก";
+        }
+        await emitLog(msg);
+        await commitPlayer(botId, p);
+        setTimeout(() => endTurn(botId), 1500);
+        return;
+    }
+    
+    // สำรวจห้องบนชั้นปัจจุบัน
     const floorData = gameState.floors[p.floor];
     let available = [];
     for(let i=0; i<20; i++) {
@@ -727,9 +816,17 @@ async function executeBotTurn(botId) {
         switch(roomData.type) {
             case 'key': p.keys++; msg += "พบกุญแจปกติ"; break;
             case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี"; break;
-            case 'secret': p.secretPassage = true; msg += "พบทางลงลับ"; break;
+            case 'secret': p.secretPassage = true; msg += "พบทางลับ"; break;
             case 'vaccine': p.vaccine++; msg += "พบวัคซีน"; break;
-            case 'food': p.hp = Math.min(200, p.hp+30); msg += "กินอาหารฟื้น HP"; break;
+            case 'food': 
+                if(p.hp < 200) {
+                    p.hp = Math.min(200, p.hp + 30);
+                    msg += "กินอาหารฟื้น HP";
+                } else {
+                    p.food = (p.food || 0) + 1;
+                    msg += "เก็บอาหารเข้าคลังสำรอง";
+                }
+                break;
             case 'armor': p.armor++; msg += "ได้เกราะ"; break;
             case 'battery': if(p.ammo<2) p.ammo++; msg += "ได้กระสุน"; break;
             case 'gun': if(p.gun===0) p.gun=1; if(p.ammo<2) p.ammo++; msg += "ได้ปืนและกระสุน"; break;
@@ -746,7 +843,7 @@ async function executeBotTurn(botId) {
     } else {
         await emitLog(`${p.name} ไม่เหลือห้องให้สำรวจ ข้ามเทิร์น`);
     }
-    endTurn(botId);
+    setTimeout(() => endTurn(botId), 1500);
 }
 
 async function triggerEndGame(winnerId) {
