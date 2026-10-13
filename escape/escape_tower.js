@@ -494,6 +494,7 @@ async function renderGameUI() {
         if (curP.status === 'dead' || curP.status === 'escaped') {
             await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: true });
             isProcessingTurn = false;
+            renderGameUI(); // แก้ไข: เรียกเรนเดอร์ใหม่เพื่อปลดล็อก UI ทันที
             return;
         }
 
@@ -545,6 +546,7 @@ async function renderGameUI() {
         }
         
         isProcessingTurn = false;
+        renderGameUI(); // แก้ไข: เรียกเรนเดอร์ใหม่เพื่อปลดล็อก UI ทันที
         return; 
     }
     
