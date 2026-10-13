@@ -200,12 +200,13 @@ function initLobbyListener() {
 }
 
 function createRoom() {
-    playAudio('select.mp3');
+    playAudio('1.mp3');
     runTransaction(ref(db, 'games/Escape/room_counter'), (cur) => (cur || 0) + 1).then((res) => {
         if (res.committed) {
             currentRoomId = 'Escape' + String(res.snapshot.val()).padStart(5, '0');
             myId = 'p1';
             isHost = true;
+            localTs = Date.now();
             const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
             onDisconnect(roomRef).remove(); // Host หลุด -> ลบห้อง
             set(roomRef, {
@@ -215,6 +216,7 @@ function createRoom() {
                 turnFinished: null,
                 log: { msg: '', ts: 0 }
             });
+            playAudio('1.mp3');
             enterRoomUI();
             announceSR(`สร้างห้องสำเร็จ รหัส ${currentRoomId}`);
         }
@@ -225,6 +227,7 @@ function joinRoom(rId) {
     currentRoomId = rId;
     isHost = false;
     const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
+    let assignedSlot = null;
     runTransaction(roomRef, (rData) => {
         if (!rData || rData.status !== 'waiting') return;
         const keys = Object.keys(rData.players || {});
@@ -233,16 +236,17 @@ function joinRoom(rId) {
         for(let i=1; i<=4; i++) { if(!keys.includes('p'+i)) { slot = 'p'+i; break; } }
         if (!rData.players) rData.players = {};
         rData.players[slot] = createPlayerObj(myName, false);
-        myId = slot;
+        rData.log = { msg: `${myName} เข้าร่วมห้องสำเร็จ`, ts: Date.now(), type: 'join' };
+        assignedSlot = slot;
         return rData;
     }).then((res) => {
-        if (res.committed && myId) {
-            playAudio('select.mp3');
+        if (res.committed && assignedSlot) {
+            myId = assignedSlot;
+            localTs = 0; // รีเซ็ตเพื่อให้รับ log การเข้าร่วมห้องพร้อมทุกคน
             onDisconnect(ref(db, `games/Escape/rooms/${currentRoomId}/players/${myId}`)).update({
                 isBot: true, name: "บอท_" + myName
             });
             enterRoomUI();
-            announceSR(`เข้าร่วมห้อง ${currentRoomId} สำเร็จ`);
         } else {
             announceSR("ห้องเต็มหรือเริ่มไปแล้ว");
             currentRoomId = null;
@@ -413,6 +417,15 @@ function setupRoomListener() {
         }
 
         if(gameState.status === 'waiting') {
+            if (gameState.log && gameState.log.ts > localTs) {
+                localTs = gameState.log.ts;
+                if (gameState.log.msg) {
+                    if (gameState.log.type === 'join') {
+                        playAudio('select.mp3');
+                    }
+                    announceSR(gameState.log.msg, 'polite');
+                }
+            }
             document.getElementById('lobby-room-title').textContent = `ห้อง: ${currentRoomId}`;
             const pList = Object.values(gameState.players||{});
             const totalPlayers = pList.length;
@@ -1107,18 +1120,51 @@ function endTurn(curPId) {
 
 function renderResult() {
     const winnerName = gameState.winner ? gameState.players[gameState.winner].name : "ไม่มีผู้รอดชีวิต";
-    announceSR(`เกมจบลงแล้ว ผู้ชนะคือ ${winnerName}`, "assertive");
     
     document.getElementById('result-title').textContent = `ผู้ชนะ: ${winnerName}`;
     
     const resEl = document.getElementById('result-list');
     resEl.innerHTML = '';
-    const pArr = Object.values(gameState.players);
-    pArr.forEach(p => {
-        let txt = `${p.name} - ชั้น ${p.floor} `;
-        if(p.status === 'escaped') txt += "(หนีรอดสำเร็จ! 🏆)";
-        else if(p.status === 'dead') txt += "(เสียชีวิต 💀)";
-        else txt += `(ติดอยู่ในตึก HP: ${p.hp})`;
-        resEl.innerHTML += `<div class="participant-card">${txt}</div>`;
+    const pArr = Object.entries(gameState.players).map(([id, p]) => ({ id, ...p }));
+    
+    // เรียงลำดับจาก: 1. ผู้ชนะ (escaped) -> 2. ผู้ที่ยังรอดชีวิตเรียงตามชั้นที่ใกล้ชั้น 1 ที่สุด -> 3. ผู้ที่เสียชีวิตเรียงตามชั้นที่ใกล้ชั้น 1 ที่สุด
+    pArr.sort((a, b) => {
+        const aIsWinner = (a.status === 'escaped' || a.id === gameState.winner);
+        const bIsWinner = (b.status === 'escaped' || b.id === gameState.winner);
+        if (aIsWinner && !bIsWinner) return -1;
+        if (!aIsWinner && bIsWinner) return 1;
+        
+        const aIsDead = (a.status === 'dead');
+        const bIsDead = (b.status === 'dead');
+        if (!aIsDead && bIsDead) return -1;
+        if (aIsDead && !bIsDead) return 1;
+        
+        // เรียงตามชั้นที่ใกล้ชั้น 1 มากที่สุด (เลขชั้นน้อยกว่าอยู่อันดับดีกว่า)
+        if (a.floor !== b.floor) return a.floor - b.floor;
+        
+        // หากอยู่ชั้นเดียวกัน เรียงตามผู้ที่มีสิทธิ์เปิดประตู/กุญแจพร้อมกว่า
+        const aReady = (a.keys > 0 || a.ghostKeys > 0 || a.secretPassage || a.canUseDoor) ? 1 : 0;
+        const bReady = (b.keys > 0 || b.ghostKeys > 0 || b.secretPassage || b.canUseDoor) ? 1 : 0;
+        if (aReady !== bReady) return bReady - aReady;
+        
+        // หากเท่ากันอีก เรียงตาม HP มากที่สุด
+        return b.hp - a.hp;
     });
+
+    let summarySpeech = `เกมจบลงแล้ว ผู้ชนะคือ ${winnerName} สรุปอันดับดังนี้ `;
+    pArr.forEach((p, idx) => {
+        const rank = idx + 1;
+        let txt = `อันดับที่ ${rank}: ${p.name} - ชั้น ${p.floor} `;
+        if (p.status === 'escaped' || p.id === gameState.winner) {
+            txt += `(หนีรอดสำเร็จ! 🏆 HP: ${p.hp})`;
+        } else if (p.status === 'dead') {
+            txt += `(เสียชีวิต 💀 HP: 0)`;
+        } else {
+            txt += `(ติดอยู่ในตึก HP: ${p.hp})`;
+        }
+        resEl.innerHTML += `<div class="participant-card" role="listitem">${txt}</div>`;
+        summarySpeech += `${txt} `;
+    });
+    
+    announceSR(summarySpeech.trim(), "assertive");
 }
