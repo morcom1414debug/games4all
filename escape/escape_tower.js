@@ -25,7 +25,7 @@ let roomListener = null;
 let speechQueue = [];
 let isSpeaking = false;
 let lastAnnouncedTurn = null;
-let isProcessingTurn = false; // Add state to prevent duplicate turn processing
+let activeTurnLock = null; // ป้องกันการซ้อนทับของ Callback แบบระบุ Turn Key
 
 // Timer & Bot Names
 let turnTimer = null;
@@ -132,11 +132,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputEl = document.getElementById('clue-answer-input');
         if (m.style.display === 'none' || inputEl.disabled) return;
         
+        if (!gameState) return;
+        const thisTurnKey = `${gameState.turnIndex}_${myId}`;
+        if (activeTurnLock === thisTurnKey) return;
+        activeTurnLock = thisTurnKey;
+        
         m.style.display = 'none';
         inputEl.disabled = true;
         document.getElementById('btn-submit-clue').disabled = true;
-        
-        isProcessingTurn = true;
         
         await update(ref(db), { 
             [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
@@ -259,6 +262,7 @@ window.leaveRoomAndGoHome = function() {
         clearTimeout(turnTimer);
         turnTimer = null;
     }
+    activeTurnLock = null;
     if (currentRoomId && myId) {
         if (isHost) remove(ref(db, `games/Escape/rooms/${currentRoomId}`));
         else update(ref(db, `games/Escape/rooms/${currentRoomId}/players/${myId}`), { isBot: true, name: "บอท_"+myName });
@@ -484,10 +488,22 @@ async function renderGameUI() {
     
     const curPId = gameState.order[gameState.turnIndex];
     let curP = gameState.players[curPId];
+    
+    const thisTurnKey = `${gameState.turnIndex}_${curPId}`;
 
-    if (isHost && !gameState.turnProcessed && curP.status !== 'dead' && curP.status !== 'escaped') {
-        if (isProcessingTurn) return; // Prevent duplicate turn processing due to multiple incoming snapshots
-        isProcessingTurn = true;
+    // การประมวลผลช่วงเริ่มเทิร์นของ Host
+    if (isHost && !gameState.turnProcessed) {
+        if (curP.status === 'dead' || curP.status === 'escaped') {
+            const initKey = thisTurnKey + "_init_skip";
+            if (activeTurnLock === initKey) return;
+            activeTurnLock = initKey;
+            setTimeout(() => endTurn(curPId), 1000);
+            return;
+        }
+
+        const initKey = thisTurnKey + "_init";
+        if (activeTurnLock === initKey) return; 
+        activeTurnLock = initKey;
         
         let turnLog = '';
         
@@ -505,7 +521,6 @@ async function renderGameUI() {
             if(turnLog) await emitLog(turnLog.trim());
             
             setTimeout(() => {
-                isProcessingTurn = false;
                 endTurn(curPId);
             }, 2500); 
             return;
@@ -549,24 +564,23 @@ async function renderGameUI() {
         
         if (curP.status !== 'normal') {
             setTimeout(() => {
-                isProcessingTurn = false;
                 endTurn(curPId);
             }, 2500); 
             return;
         }
-        
-        isProcessingTurn = false;
+        // รอรับ Snapshot ล่าสุดก่อนปลดปล่อยให้เกมดำเนินต่อไป
+        return; 
     }
     
     if (!gameState.turnProcessed && isHost) return;
 
     curP = gameState.players[curPId]; 
-
     const isMyTurn = (curPId === myId && !myP.isBot && myP.status === 'normal' && gameState.turnProcessed);
     
-    if(lastAnnouncedTurn !== `${gameState.turnIndex}_${curPId}`) {
-        lastAnnouncedTurn = `${gameState.turnIndex}_${curPId}`;
-        isProcessingTurn = false; // ปลดล็อก UI สำหรับผู้เล่นเมื่อเริ่มเทิร์นใหม่
+    // ตั้งค่าตัวจับเวลาเมื่อมีการเปลี่ยนเทิร์นสมบูรณ์
+    if(lastAnnouncedTurn !== thisTurnKey) {
+        lastAnnouncedTurn = thisTurnKey;
+        activeTurnLock = null; // ปลดล็อก UI สำหรับผู้เล่นเมื่อเริ่มเทิร์นใหม่
         
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
         playAudio('turn.mp3');
@@ -577,34 +591,36 @@ async function renderGameUI() {
         }
 
         if(isHost && curP.isBot && curP.status === 'normal') {
-            setTimeout(() => executeBotTurn(curPId), 3000); 
-        } else if (curP.status !== 'normal' && isHost && !isProcessingTurn) {
-             setTimeout(() => endTurn(curPId), 2000);
+            setTimeout(() => executeBotTurn(curPId, thisTurnKey), 3000); 
+        } else if (curP.status !== 'normal' && isHost) {
+             const skipKey = thisTurnKey + "_skip";
+             if (activeTurnLock !== skipKey) {
+                 activeTurnLock = skipKey;
+                 setTimeout(() => endTurn(curPId), 2000);
+             }
         } else if (isHost && !curP.isBot && curP.status === 'normal') {
-            currentTurnKey = lastAnnouncedTurn;
+            currentTurnKey = thisTurnKey;
             turnTimer = setTimeout(async () => {
                 if (!gameState || gameState.status !== 'playing') return;
-                if (currentTurnKey !== `${gameState.turnIndex}_${curPId}`) return; 
-                if (isProcessingTurn) return; 
+                if (currentTurnKey !== thisTurnKey) return; 
+                if (activeTurnLock === thisTurnKey) return; // หากผู้เล่นกำลังทำกิจกรรมอยู่ให้ยกเลิกการหมดเวลา
                 
                 let p = gameState.players[curPId];
-                // บล็อกไม่ให้ตัดเทิร์นหากผู้เล่นเริ่ม action ไปแล้วในเวลาไม่เกิน 10 วินาที ป้องกัน Timeout ทำงานซ้อน
                 if (p.actionStarted && (Date.now() - p.actionStarted < 10000)) return; 
                 
-                isProcessingTurn = true;
+                activeTurnLock = thisTurnKey; // ยึดล็อกสำหรับกระบวนการหมดเวลา
                 
                 if (p.answeringClue) {
                     await emitLog(`${p.name} หมดเวลาตอบคำใบ้ข้ามเทิร์นทันที`);
                     await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${curPId}/answeringClue`]: null });
                     setTimeout(() => {
-                        isProcessingTurn = false; // Reset to allow processing the next steps
                         endTurn(curPId);
                     }, 2000);
                 } else {
                     await emitLog(`${p.name} หมดเวลาดำเนินการ ระบบเล่นอัตโนมัติสำหรับเทิร์นนี้`);
                     setTimeout(() => {
-                        isProcessingTurn = false; // Reset before handing over to bot logic
-                        executeBotTurn(curPId);
+                        activeTurnLock = null; // คืนล็อกเพื่อให้บอทนำไปประมวลผลต่อ
+                        executeBotTurn(curPId, thisTurnKey);
                     }, 2000);
                 }
             }, TURN_TIME_LIMIT);
@@ -617,7 +633,6 @@ async function renderGameUI() {
         modal.style.display = 'none';
         document.getElementById('clue-answer-input').disabled = true;
         document.getElementById('btn-submit-clue').disabled = true;
-        isProcessingTurn = false; 
     }
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
@@ -657,7 +672,7 @@ async function renderGameUI() {
                 btn.classList.add('explored');
                 if (roomData.type === 'clue') {
                     btn.setAttribute('aria-label', `ห้องคำใบ้ ${num} สำรวจแล้ว สามารถกดอ่านคำใบ้ซ้ำได้`);
-                    if (isMyTurn && !isProcessingTurn) {
+                    if (isMyTurn && activeTurnLock !== thisTurnKey) {
                         btn.onclick = () => exploreRoom(i, roomData);
                     } else {
                         btn.disabled = true;
@@ -670,7 +685,7 @@ async function renderGameUI() {
                 }
             } else {
                 btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
-                if(isMyTurn && !isProcessingTurn) {
+                if(isMyTurn && activeTurnLock !== thisTurnKey) {
                     btn.onclick = () => exploreRoom(i, roomData);
                 } else {
                     btn.disabled = true;
@@ -690,7 +705,7 @@ async function renderGameUI() {
         btnStairs.textContent = "🚪 ลงบันไดไปชั้นล่าง";
     }
     
-    const canUseStairs = isMyTurn && !isProcessingTurn && (myP.keys > 0 || myP.ghostKeys > 0 || myP.secretPassage || myP.canUseDoor);
+    const canUseStairs = isMyTurn && activeTurnLock !== thisTurnKey && (myP.keys > 0 || myP.ghostKeys > 0 || myP.secretPassage || myP.canUseDoor);
     btnStairs.disabled = !canUseStairs;
     btnStairs.setAttribute('aria-disabled', (!canUseStairs).toString());
     
@@ -738,14 +753,18 @@ function closeAllStatus() {
 }
 
 async function exploreRoom(roomIdx, roomData) {
-    if(!gameState || isProcessingTurn) return;
-    isProcessingTurn = true;
+    if(!gameState) return;
+    const thisTurnKey = `${gameState.turnIndex}_${myId}`;
+    if (activeTurnLock === thisTurnKey) return;
+    activeTurnLock = thisTurnKey;
+    
     const pId = myId;
     let p = gameState.players[pId];
 
     if(roomData.type === 'clue') {
         update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${pId}/answeringClue`]: true }).then(() => {
-            openClueModal(roomData.clueId);
+            const isOpen = openClueModal(roomData.clueId);
+            if (isOpen) activeTurnLock = null; // คืนล็อกชั่วคราวให้ผู้เล่นตอบคำถามได้
         });
         return;
     }
@@ -827,7 +846,7 @@ function openClueModal(cid) {
         commitPlayer(myId, gameState.players[myId]).then(() => setTimeout(()=> { 
             endTurn(myId); 
         }, 2500));
-        return;
+        return false;
     }
     
     const m = document.getElementById('clue-modal');
@@ -843,6 +862,7 @@ function openClueModal(cid) {
     m.style.display = 'flex';
     document.getElementById('clue-title').focus();
     announceSR(clue.question);
+    return true;
 }
 
 async function submitClue() {
@@ -857,6 +877,11 @@ async function submitClue() {
     const cid = inputEl.dataset.cid;
     const ans = inputEl.value.trim();
     if(!ans) return;
+    
+    if (!gameState) return;
+    const thisTurnKey = `${gameState.turnIndex}_${myId}`;
+    if (activeTurnLock === thisTurnKey) return;
+    activeTurnLock = thisTurnKey;
     
     inputEl.disabled = true;
     btnSubmit.disabled = true;
@@ -886,8 +911,11 @@ async function submitClue() {
 }
 
 async function useStairs() {
-    if(isProcessingTurn) return;
-    isProcessingTurn = true;
+    if(!gameState) return;
+    const thisTurnKey = `${gameState.turnIndex}_${myId}`;
+    if (activeTurnLock === thisTurnKey) return;
+    activeTurnLock = thisTurnKey;
+    
     await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now() });
     let p = gameState.players[myId];
 
@@ -922,9 +950,12 @@ async function useStairs() {
     setTimeout(() => { endTurn(myId); }, 2500);
 }
 
-async function executeBotTurn(botId) {
-    if(!gameState || isProcessingTurn) return;
-    isProcessingTurn = true;
+async function executeBotTurn(botId, turnKey) {
+    if(!gameState) return;
+    const tk = turnKey || `${gameState.turnIndex}_${botId}`;
+    if (activeTurnLock === tk) return;
+    activeTurnLock = tk;
+    
     let p = gameState.players[botId];
     
     const canUnlock = (p.secretPassage || p.ghostKeys > 0 || p.keys > 0 || p.canUseDoor);
@@ -1047,6 +1078,9 @@ function endTurn(curPId) {
     }
 
     if (isHost) {
+        const expectedPId = gameState.order[gameState.turnIndex];
+        if (expectedPId !== curPId) return; // ป้องกัน Double turn advance หากมี callback ทำงานซ้อน
+        
         if (turnTimer) {
             clearTimeout(turnTimer);
             turnTimer = null;
@@ -1064,7 +1098,10 @@ function endTurn(curPId) {
             [`games/Escape/rooms/${currentRoomId}/players/${curPId}/answeringClue`]: null
         });
     } else {
-        update(ref(db, `games/Escape/rooms/${currentRoomId}`), { turnFinished: curPId });
+        const expectedPId = gameState.order[gameState.turnIndex];
+        if (expectedPId === curPId && gameState.turnFinished !== curPId) {
+            update(ref(db, `games/Escape/rooms/${currentRoomId}`), { turnFinished: curPId });
+        }
     }
 }
 
