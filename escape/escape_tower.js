@@ -132,19 +132,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const inputEl = document.getElementById('clue-answer-input');
         if (m.style.display === 'none' || inputEl.disabled) return;
         
+        // Ensure only the player whose turn it currently is can close and trigger endTurn
+        const curPId = gameState.order[gameState.turnIndex];
+        if (curPId !== myId) {
+            m.style.display = 'none';
+            return;
+        }
+
         m.style.display = 'none';
+        
+        // Lock inputs to prevent double execution
         inputEl.disabled = true;
         document.getElementById('btn-submit-clue').disabled = true;
+        isProcessingTurn = true;
         
-        if (isProcessingTurn) {
+        try {
             await update(ref(db), { 
                 [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
                 [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now()
             });
             emitLog(`${gameState.players[myId].name} ปิดหน้าต่างคำใบ้โดยไม่ตอบคำถาม`);
+            
             setTimeout(() => { 
+                isProcessingTurn = false;
                 endTurn(myId); 
             }, 1500);
+        } catch(e) {
+            isProcessingTurn = false;
         }
     };
     
@@ -401,11 +415,9 @@ function setupRoomListener() {
         if (isHost && gameState.status === 'playing' && gameState.turnFinished) {
             const expectedPId = gameState.order[gameState.turnIndex];
             if (gameState.turnFinished === expectedPId) {
-                gameState.turnFinished = null;
                 endTurn(expectedPId);
                 return; // รอข้อมูล Snapshot ใหม่หลังจากการเปลี่ยนเทิร์นเสร็จสิ้น
             } else {
-                gameState.turnFinished = null;
                 update(ref(db, `games/Escape/rooms/${currentRoomId}`), { turnFinished: null });
             }
         }
@@ -488,66 +500,65 @@ async function renderGameUI() {
     let curP = gameState.players[curPId];
 
     if (isHost && !gameState.turnProcessed) {
-        if (isProcessingTurn) return; 
+        if (isProcessingTurn) return; // ป้องกัน Snapshot ที่เข้ามาพร้อมกันไม่ให้ประมวลผลซ้ำ
         isProcessingTurn = true;
         
-        if (curP.status === 'dead' || curP.status === 'escaped') {
-            await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: true });
-            isProcessingTurn = false;
-            renderGameUI(); // แก้ไข: เรียกเรนเดอร์ใหม่เพื่อปลดล็อก UI ทันที
-            return;
-        }
-
         let turnLog = '';
         
-        if (curP.status === 'recovered_ready') {
-            curP.hp = 150;
-            curP.status = 'normal';
-            turnLog += `${curP.name} พักฟื้นเสร็จสิ้น ฟื้นฟู HP เป็น 150 และพร้อมเล่นต่อ `;
-        } else if (curP.status === 'resting') {
-            curP.status = 'recovered_ready';
-            turnLog += `${curP.name} กำลังพักฟื้น หยุดเล่น 1 เทิร์น `;
-        } else {
-            if (curP.infection > 0 && curP.vaccine > 0) {
-                curP.vaccine--;
-                curP.infection = 0;
-                turnLog += `${curP.name} ใช้วัคซีนรักษาการติดเชื้ออัตโนมัติ `;
+        try {
+            if (curP.status === 'dead' || curP.status === 'escaped') {
+                // ข้ามการประมวลผลสถานะสำหรับผู้เล่นที่ตายหรือหนีรอดแล้ว
+            } else if (curP.status === 'recovered_ready') {
+                curP.hp = 150;
+                curP.status = 'normal';
+                turnLog += `${curP.name} พักฟื้นเสร็จสิ้น ฟื้นฟู HP เป็น 150 และพร้อมเล่นต่อ `;
+            } else if (curP.status === 'resting') {
+                curP.status = 'recovered_ready';
+                turnLog += `${curP.name} กำลังพักฟื้น หยุดเล่น 1 เทิร์น `;
+            } else {
+                if (curP.infection > 0 && curP.vaccine > 0) {
+                    curP.vaccine--;
+                    curP.infection = 0;
+                    turnLog += `${curP.name} ใช้วัคซีนรักษาการติดเชื้ออัตโนมัติ `;
+                }
+                
+                if (curP.hp > 0 && curP.hp < 200 && curP.food > 0) {
+                    const heal = Math.min(30, 200 - curP.hp);
+                    curP.food--;
+                    curP.hp += heal;
+                    turnLog += `${curP.name} กินอาหารฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${curP.hp}) `;
+                }
+                
+                if (curP.infection > 0) {
+                    curP.hp -= curP.infection;
+                    turnLog += `${curP.name} เสีย ${curP.infection} HP จากการติดเชื้อ (เหลือ ${curP.hp} HP) `;
+                }
+                
+                if (curP.hp <= 0) {
+                    curP.status = 'dead';
+                    turnLog += `${curP.name} เสียชีวิตแล้ว... `;
+                } else if (curP.hp < 60 && curP.status === 'normal') {
+                    curP.status = 'resting';
+                    turnLog += `${curP.name} HP ลดต่ำกว่า 60 ได้รับบาดเจ็บสาหัส ต้องหยุดพักฟื้น `;
+                }
             }
             
-            if (curP.hp > 0 && curP.hp < 200 && curP.food > 0) {
-                const heal = Math.min(30, 200 - curP.hp);
-                curP.food--;
-                curP.hp += heal;
-                turnLog += `${curP.name} กินอาหารฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${curP.hp}) `;
-            }
+            await update(ref(db), { 
+                [`games/Escape/rooms/${currentRoomId}/players/${curPId}`]: curP,
+                [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: true 
+            });
             
-            if (curP.infection > 0) {
-                curP.hp -= curP.infection;
-                turnLog += `${curP.name} เสีย ${curP.infection} HP จากการติดเชื้อ (เหลือ ${curP.hp} HP) `;
+            if (turnLog) {
+                await emitLog(turnLog.trim());
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
-            
-            if (curP.hp <= 0) {
-                curP.status = 'dead';
-                turnLog += `${curP.name} เสียชีวิตแล้ว... `;
-            } else if (curP.hp < 60 && curP.status === 'normal') {
-                curP.status = 'resting';
-                turnLog += `${curP.name} HP ลดต่ำกว่า 60 ได้รับบาดเจ็บสาหัส ต้องหยุดพักฟื้น `;
-            }
+        } catch(e) {
+            console.error(e);
+        } finally {
+            isProcessingTurn = false;
         }
         
-        await update(ref(db), { 
-            [`games/Escape/rooms/${currentRoomId}/players/${curPId}`]: curP,
-            [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: true 
-        });
-        
-        if (turnLog) {
-            await emitLog(turnLog.trim());
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        
-        isProcessingTurn = false;
-        renderGameUI(); // แก้ไข: เรียกเรนเดอร์ใหม่เพื่อปลดล็อก UI ทันที
-        return; 
+        return; // รอ Snapshot ใหม่ที่ turnProcessed เป็น true เพื่อข้ามไปเข้า Block ด้านล่าง
     }
     
     if (!gameState.turnProcessed && isHost) return;
@@ -569,38 +580,45 @@ async function renderGameUI() {
         }
 
         if(isHost && curP.isBot && curP.status === 'normal') {
-            isProcessingTurn = true;
-            setTimeout(() => {
-                isProcessingTurn = false;
-                executeBotTurn(curPId);
-            }, 3000); 
+            setTimeout(() => executeBotTurn(curPId), 3000); 
         } else if (curP.status !== 'normal' && isHost && !isProcessingTurn) {
-             isProcessingTurn = true;
              setTimeout(() => endTurn(curPId), 2000);
         } else if (isHost && !curP.isBot && curP.status === 'normal') {
             currentTurnKey = lastAnnouncedTurn;
             turnTimer = setTimeout(async () => {
                 if (!gameState || gameState.status !== 'playing') return;
                 if (currentTurnKey !== `${gameState.turnIndex}_${curPId}`) return; 
-                if (isProcessingTurn) return; 
                 
                 let p = gameState.players[curPId];
-                // บล็อกไม่ให้ตัดเทิร์นหากผู้เล่นเริ่ม action ไปแล้วในเวลาไม่เกิน 10 วินาที ป้องกัน Timeout ทำงานซ้อน
-                if (p.actionStarted && (Date.now() - p.actionStarted < 10000)) return; 
                 
-                isProcessingTurn = true;
+                // ตรวจสอบว่ามีการกระทำดำเนินอยู่จริงหรือไม่ หากมีให้เวลาประมวลผลต่อพร้อมกำหนด Timeout สำรองกันค้าง
+                const isReallyProcessing = isProcessingTurn || (p.actionStarted && (Date.now() - p.actionStarted < 10000));
+                if (isReallyProcessing) {
+                    setTimeout(() => {
+                        if (gameState && gameState.status === 'playing' && currentTurnKey === `${gameState.turnIndex}_${curPId}`) {
+                            isProcessingTurn = false;
+                            endTurn(curPId);
+                        }
+                    }, 5000);
+                    return; 
+                } 
+                
+                isProcessingTurn = true; // ล็อกไม่ให้ทำสิ่งอื่นซ้อน
                 
                 if (p.answeringClue) {
                     await emitLog(`${p.name} หมดเวลาตอบคำใบ้ข้ามเทิร์นทันที`);
                     await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${curPId}/answeringClue`]: null });
                     setTimeout(() => {
+                        isProcessingTurn = false; // ปลดล็อกเตรียมจบเทิร์น
                         endTurn(curPId);
                     }, 2000);
                 } else {
                     await emitLog(`${p.name} หมดเวลาดำเนินการ ระบบเล่นอัตโนมัติสำหรับเทิร์นนี้`);
+                    isProcessingTurn = false; // ต้องปลดล็อกเพื่อให้ executeBotTurn สามารถทำงานได้
                     setTimeout(() => {
-                        isProcessingTurn = false; // ปลดล็อกให้บอททำงานได้
-                        executeBotTurn(curPId);
+                        if (currentTurnKey === `${gameState.turnIndex}_${curPId}`) {
+                            executeBotTurn(curPId);
+                        }
                     }, 2000);
                 }
             }, TURN_TIME_LIMIT);
@@ -850,6 +868,9 @@ async function submitClue() {
     
     if (inputEl.disabled) return;
     
+    const curPId = gameState.order[gameState.turnIndex];
+    if (curPId !== myId) return;
+    
     const cid = inputEl.dataset.cid;
     const ans = inputEl.value.trim();
     if(!ans) return;
@@ -857,27 +878,39 @@ async function submitClue() {
     inputEl.disabled = true;
     btnSubmit.disabled = true;
     
-    await update(ref(db), { 
-        [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
-        [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now()
-    });
+    isProcessingTurn = true;
     
-    const isCorrect = window.EscapeTowerClueBank.checkAnswer(cid, ans);
-    if(isCorrect) {
-        m.style.display = 'none';
-        const p = gameState.players[myId];
-        p.canUseDoor = true;
-        const targetDesc = (p.floor === 1) ? "เปิดประตูทางออกตึก" : `เปิดประตูชั้น ${p.floor}`;
-        emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์${targetDesc}`);
-        commitPlayer(myId, p).then(() => setTimeout(()=> { endTurn(myId); }, 2500));
-    } else {
-        document.getElementById('clue-feedback').textContent = "คำตอบผิด ลองใหม่ในเทิร์นหน้า";
-        announceSR("คำตอบผิด ลองใหม่ในเทิร์นหน้า");
-        setTimeout(() => {
+    try {
+        await update(ref(db), { 
+            [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
+            [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now()
+        });
+        
+        const isCorrect = window.EscapeTowerClueBank.checkAnswer(cid, ans);
+        if(isCorrect) {
             m.style.display = 'none';
-            emitLog(`${gameState.players[myId].name} ตอบคำใบ้ผิด ประตูยังไม่เปิด`);
-            setTimeout(() => { endTurn(myId); }, 2000);
-        }, 2000);
+            const p = gameState.players[myId];
+            p.canUseDoor = true;
+            const targetDesc = (p.floor === 1) ? "เปิดประตูทางออกตึก" : `เปิดประตูชั้น ${p.floor}`;
+            emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์${targetDesc}`);
+            commitPlayer(myId, p).then(() => setTimeout(()=> { 
+                isProcessingTurn = false;
+                endTurn(myId); 
+            }, 2500));
+        } else {
+            document.getElementById('clue-feedback').textContent = "คำตอบผิด ลองใหม่ในเทิร์นหน้า";
+            announceSR("คำตอบผิด ลองใหม่ในเทิร์นหน้า");
+            setTimeout(() => {
+                m.style.display = 'none';
+                emitLog(`${gameState.players[myId].name} ตอบคำใบ้ผิด ประตูยังไม่เปิด`);
+                setTimeout(() => { 
+                    isProcessingTurn = false;
+                    endTurn(myId); 
+                }, 2000);
+            }, 2000);
+        }
+    } catch(e) {
+        isProcessingTurn = false;
     }
 }
 
