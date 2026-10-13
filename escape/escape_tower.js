@@ -118,7 +118,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-read-all-status').onclick = readAllStatus;
     document.getElementById('btn-close-all-status').onclick = closeAllStatus;
     
-    document.getElementById('btn-close-clue').onclick = () => document.getElementById('clue-modal').style.display = 'none';
+    document.getElementById('btn-close-clue').onclick = () => {
+        const m = document.getElementById('clue-modal');
+        const inputEl = document.getElementById('clue-answer-input');
+        if (m.style.display === 'none' || inputEl.disabled) return;
+        
+        m.style.display = 'none';
+        
+        if (isProcessingTurn) {
+            emitLog(`${gameState.players[myId].name} ปิดหน้าต่างคำใบ้โดยไม่ตอบคำถาม`);
+            setTimeout(() => { 
+                isProcessingTurn = false; 
+                endTurn(myId); 
+            }, 1500);
+        }
+    };
+    
     document.getElementById('btn-submit-clue').onclick = submitClue;
     document.getElementById('clue-answer-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') submitClue();
@@ -245,7 +260,6 @@ function createPlayerObj(name, isBot) {
     };
 }
 
-// ปรับปรุงการเพิ่ม-ลดบอท: เสถียร ไม่หลุดโฟกัสบน VoiceOver
 function adjustBot(delta) {
     if(!isHost || !gameState) return;
     const keys = Object.keys(gameState.players);
@@ -360,7 +374,6 @@ function setupRoomListener() {
                 const isMax = (totalPlayers >= 4);
                 const isMin = (bCount <= 0);
                 
-                // Dimming อย่างสมบูรณ์ทั้ง attribute และ VoiceOver Accessibility Label
                 btnAdd.disabled = isMax;
                 btnAdd.setAttribute('aria-disabled', isMax ? 'true' : 'false');
                 if (isMax) {
@@ -387,7 +400,6 @@ function setupRoomListener() {
                 switchScreen('screen-game', 'game-floor-title');
             }
             
-            // ลำดับการประกาศ: ประกาศผลลัพธ์เหตุการณ์ที่เกิดขึ้นก่อน
             if(gameState.log && gameState.log.ts > localTs) {
                 localTs = gameState.log.ts;
                 if(gameState.log.msg) {
@@ -396,7 +408,6 @@ function setupRoomListener() {
                 document.getElementById('latest-event-display').textContent = gameState.log.msg;
             }
             
-            // อัปเดตหน้าจอและการประกาศเทิร์นถัดไป
             renderGameUI();
         } else if (gameState.status === 'ended') {
             if(!document.getElementById('screen-result').classList.contains('active-screen')) {
@@ -417,13 +428,11 @@ async function renderGameUI() {
     const curPId = gameState.order[gameState.turnIndex];
     let curP = gameState.players[curPId];
 
-    // Only host processes turn start logic to prevent duplication
     if (isHost && !gameState.turnProcessed && curP.status !== 'dead' && curP.status !== 'escaped') {
         isProcessingTurn = true;
         
         let turnLog = '';
         
-        // Handle Resting / Recovery
         if (curP.status === 'recovered_ready') {
             curP.hp = 150;
             curP.status = 'normal';
@@ -437,17 +446,15 @@ async function renderGameUI() {
             });
             if(turnLog) await emitLog(turnLog.trim());
             isProcessingTurn = false;
-            setTimeout(() => endTurn(curPId), 2500); // Increased delay
+            setTimeout(() => endTurn(curPId), 2500); 
             return;
         } else {
-             // 1. Vaccine Processing
             if (curP.infection > 0 && curP.vaccine > 0) {
                 curP.vaccine--;
                 curP.infection = 0;
                 turnLog += `${curP.name} ใช้วัคซีนรักษาการติดเชื้ออัตโนมัติ `;
             }
             
-            // 2. Food Processing
             if (curP.hp > 0 && curP.hp < 200 && curP.food > 0) {
                 const heal = Math.min(30, 200 - curP.hp);
                 curP.food--;
@@ -455,13 +462,11 @@ async function renderGameUI() {
                 turnLog += `${curP.name} กินอาหารฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${curP.hp}) `;
             }
             
-            // 3. Infection Processing
             if (curP.infection > 0) {
                 curP.hp -= curP.infection;
                 turnLog += `${curP.name} เสีย ${curP.infection} HP จากการติดเชื้อ (เหลือ ${curP.hp} HP) `;
             }
             
-            // 4. HP & Status Check
             if (curP.hp <= 0) {
                 curP.status = 'dead';
                 turnLog += `${curP.name} เสียชีวิตแล้ว... `;
@@ -478,32 +483,29 @@ async function renderGameUI() {
         
         if (turnLog) {
             await emitLog(turnLog.trim());
-            // Wait for log to be announced before proceeding
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
         
         isProcessingTurn = false;
         
         if (curP.status !== 'normal') {
-            setTimeout(() => endTurn(curPId), 2500); // Increased delay
+            setTimeout(() => endTurn(curPId), 2500); 
             return;
         }
     }
     
-    // Wait for host to finish processing
     if (!gameState.turnProcessed && isHost) return;
 
-    curP = gameState.players[curPId]; // Refresh data after processing
+    curP = gameState.players[curPId]; 
 
     const isMyTurn = (curPId === myId && !myP.isBot && myP.status === 'normal' && gameState.turnProcessed);
     
-    // ประกาศเทิร์น
     if(lastAnnouncedTurn !== `${gameState.turnIndex}_${curPId}`) {
         lastAnnouncedTurn = `${gameState.turnIndex}_${curPId}`;
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
         playAudio('turn.mp3');
         if(isHost && curP.isBot && curP.status === 'normal') {
-            setTimeout(() => executeBotTurn(curPId), 3000); // Increased bot wait time for announcements
+            setTimeout(() => executeBotTurn(curPId), 3000); 
         } else if (curP.status !== 'normal' && isHost && !isProcessingTurn) {
              setTimeout(() => endTurn(curPId), 2000);
         }
@@ -511,13 +513,11 @@ async function renderGameUI() {
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
     
-    // แถบสถานะส่วนตัว
     const statusText = `สถานะของคุณ: ${myP.name} ชั้น ${myP.floor} HP ${myP.hp} อาหารในคลัง ${myP.food} วัคซีน ${myP.vaccine} กุญแจ ${myP.keys} ปืน ${myP.gun} กระสุน ${myP.ammo}`;
     const statusContainer = document.getElementById('my-player-status');
     statusContainer.setAttribute('aria-label', statusText);
     statusContainer.innerHTML = `<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | HP: ${myP.hp} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | กุญแจ: ${myP.keys} | ปืน: ${myP.gun}(${myP.ammo})</span>`;
     
-    // Status Cards
     const cardsEl = document.getElementById('player-status-cards');
     cardsEl.innerHTML = '';
     gameState.order.forEach(pid => {
@@ -533,7 +533,6 @@ async function renderGameUI() {
         </div>`;
     });
     
-    // Board
     const boardEl = document.getElementById('escape-board');
     boardEl.innerHTML = '';
     const floorData = gameState.floors[myP.floor];
@@ -573,7 +572,6 @@ async function renderGameUI() {
         }
     }
     
-    // บันได หรือ ประตูหนีออกจากตึก
     const btnStairs = document.getElementById('btn-use-stairs');
     const isFloor1 = (myP.floor === 1);
     
@@ -637,7 +635,6 @@ async function exploreRoom(roomIdx, roomData) {
     let p = gameState.players[pId];
 
     if(roomData.type === 'clue') {
-        isProcessingTurn = false;
         openClueModal(roomData.clueId);
         return;
     }
@@ -686,7 +683,6 @@ async function exploreRoom(roomIdx, roomData) {
             break;
     }
     
-    // ตรวจสอบ HP หลังจากเหตุการณ์ในห้องสำรวจ
     if(p.hp <= 0) {
         p.status = 'dead';
         msg += ` | ${p.name} เสียชีวิตแล้ว...`;
@@ -701,7 +697,7 @@ async function exploreRoom(roomIdx, roomData) {
     setTimeout(() => {
         isProcessingTurn = false;
         endTurn(pId);
-    }, 2500); // Increased delay
+    }, 2500); 
 }
 
 function openClueModal(cid) {
@@ -709,7 +705,10 @@ function openClueModal(cid) {
     if(!clue) {
         emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`);
         gameState.players[myId].canUseDoor = true;
-        commitPlayer(myId, gameState.players[myId]).then(() => setTimeout(()=>endTurn(myId), 2500));
+        commitPlayer(myId, gameState.players[myId]).then(() => setTimeout(()=> { 
+            isProcessingTurn = false; 
+            endTurn(myId); 
+        }, 2500));
         return;
     }
     
@@ -719,6 +718,8 @@ function openClueModal(cid) {
     const inputEl = document.getElementById('clue-answer-input');
     inputEl.value = '';
     inputEl.dataset.cid = cid;
+    inputEl.disabled = false;
+    document.getElementById('btn-submit-clue').disabled = false;
     
     document.getElementById('clue-feedback').textContent = '';
     m.style.display = 'flex';
@@ -727,16 +728,24 @@ function openClueModal(cid) {
 }
 
 function submitClue() {
-    if(isProcessingTurn) return;
-    isProcessingTurn = true;
+    const m = document.getElementById('clue-modal');
+    if (m.style.display === 'none') return;
+    
     const inputEl = document.getElementById('clue-answer-input');
+    const btnSubmit = document.getElementById('btn-submit-clue');
+    
+    if (inputEl.disabled) return;
+    
     const cid = inputEl.dataset.cid;
     const ans = inputEl.value.trim();
-    if(!ans) { isProcessingTurn = false; return; }
+    if(!ans) return;
+    
+    inputEl.disabled = true;
+    btnSubmit.disabled = true;
     
     const isCorrect = window.EscapeTowerClueBank.checkAnswer(cid, ans);
     if(isCorrect) {
-        document.getElementById('clue-modal').style.display = 'none';
+        m.style.display = 'none';
         const p = gameState.players[myId];
         p.canUseDoor = true;
         const targetDesc = (p.floor === 1) ? "เปิดประตูทางออกตึก" : `เปิดประตูชั้น ${p.floor}`;
@@ -746,14 +755,13 @@ function submitClue() {
         document.getElementById('clue-feedback').textContent = "คำตอบผิด ลองใหม่ในเทิร์นหน้า";
         announceSR("คำตอบผิด ลองใหม่ในเทิร์นหน้า");
         setTimeout(() => {
-            document.getElementById('clue-modal').style.display = 'none';
+            m.style.display = 'none';
             emitLog(`${gameState.players[myId].name} ตอบคำใบ้ผิด ประตูยังไม่เปิด`);
             setTimeout(() => { isProcessingTurn = false; endTurn(myId); }, 2000);
         }, 2000);
     }
 }
 
-// ลงบันได หรือ เปิดประตูหนีออกจากตึก
 async function useStairs() {
     if(isProcessingTurn) return;
     isProcessingTurn = true;
@@ -765,7 +773,6 @@ async function useStairs() {
     else if(p.ghostKeys > 0) { p.ghostKeys--; used = "กุญแจผี"; }
     else if(p.keys > 0) { p.keys--; used = "กุญแจปกติ"; }
 
-    // กรณีอยู่ชั้น 1: การใช้กุญแจ/รหัส จะเป็นการเปิดประตูหนีออกจากตึกทันที (ชนะเกม!)
     if(p.floor === 1) {
         p.status = 'escaped';
         p.canUseDoor = false;
@@ -777,7 +784,6 @@ async function useStairs() {
         return;
     }
 
-    // กรณีอยู่ชั้น 2-6: ลงบันไดไปชั้นล่าง
     let down = (used === "ทางลับ") ? 2 : 1;
     p.floor = Math.max(1, p.floor - down);
     p.canUseDoor = false;
@@ -793,7 +799,6 @@ async function useStairs() {
     setTimeout(() => { isProcessingTurn = false; endTurn(myId); }, 2500);
 }
 
-// ระบบบอทเล่น
 async function executeBotTurn(botId) {
     if(!gameState || isProcessingTurn) return;
     isProcessingTurn = true;
@@ -801,7 +806,6 @@ async function executeBotTurn(botId) {
     
     const canUnlock = (p.secretPassage || p.ghostKeys > 0 || p.keys > 0 || p.canUseDoor);
     
-    // บอทอยู่ชั้น 1 แล้วมีไอเท็มเปิดประตูหนี
     if(p.floor === 1 && canUnlock) {
         let used = p.secretPassage ? "ทางลับ" : (p.ghostKeys > 0 ? "กุญแจผี" : "กุญแจปกติ");
         if(p.secretPassage) p.secretPassage = false;
@@ -818,7 +822,6 @@ async function executeBotTurn(botId) {
         return;
     }
     
-    // บอทอยู่ชั้น 2-6 แล้วมีไอเท็มลงชั้นล่าง
     if(p.floor > 1 && canUnlock) {
         let down = p.secretPassage ? 2 : 1;
         let used = p.secretPassage ? "ทางลับ" : (p.ghostKeys > 0 ? "กุญแจผี" : "กุญแจปกติ");
@@ -838,7 +841,6 @@ async function executeBotTurn(botId) {
         return;
     }
     
-    // สำรวจห้องบนชั้นปัจจุบัน
     const floorData = gameState.floors[p.floor];
     let available = [];
     for(let i=0; i<20; i++) {
