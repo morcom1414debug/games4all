@@ -27,6 +27,15 @@ let isSpeaking = false;
 let lastAnnouncedTurn = null;
 let isProcessingTurn = false; // Add state to prevent duplicate turn processing
 
+// Timer & Bot Names
+let turnTimer = null;
+let currentTurnKey = null;
+const TURN_TIME_LIMIT = 55000;
+const BOT_NAMES = [
+    "ไข่เค็ม(b)", "ไข่ดาว(B)", "ไข่เจียว(B)", "ไข่ต้ม(B)", "ไข่คน(B)", 
+    "ไข่ตุ๋น(B)", "ไข่กระทะ(B)", "ไข่ครอบ(B)", "ไข่ยัดไส้(B)", "ไข่ระเบิด(B)"
+];
+
 // Audio System
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const unlockAudio = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
@@ -118,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-read-all-status').onclick = readAllStatus;
     document.getElementById('btn-close-all-status').onclick = closeAllStatus;
     
-    document.getElementById('btn-close-clue').onclick = () => {
+    document.getElementById('btn-close-clue').onclick = async () => {
         const m = document.getElementById('clue-modal');
         const inputEl = document.getElementById('clue-answer-input');
         if (m.style.display === 'none' || inputEl.disabled) return;
@@ -126,6 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
         m.style.display = 'none';
         
         if (isProcessingTurn) {
+            await update(ref(db), { 
+                [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
+                [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true
+            });
             emitLog(`${gameState.players[myId].name} ปิดหน้าต่างคำใบ้โดยไม่ตอบคำถาม`);
             setTimeout(() => { 
                 isProcessingTurn = false; 
@@ -240,6 +253,10 @@ function enterRoomUI() {
 }
 
 window.leaveRoomAndGoHome = function() {
+    if (turnTimer) {
+        clearTimeout(turnTimer);
+        turnTimer = null;
+    }
     if (currentRoomId && myId) {
         if (isHost) remove(ref(db, `games/Escape/rooms/${currentRoomId}`));
         else update(ref(db, `games/Escape/rooms/${currentRoomId}/players/${myId}`), { isBot: true, name: "บอท_"+myName });
@@ -256,7 +273,9 @@ function createPlayerObj(name, isBot) {
         infection: 0, vaccine: 0, food: 0, armor: 0, gun: 0, ammo: 0,
         keys: 0, ghostKeys: 0, secretPassage: false,
         cluesFound: {},
-        canUseDoor: false
+        canUseDoor: false,
+        answeringClue: null,
+        actionStarted: null
     };
 }
 
@@ -271,14 +290,27 @@ function adjustBot(delta) {
             announceSR("ห้องเต็ม 4 คนแล้ว ไม่สามารถเพิ่มบอทได้อีก", 'assertive');
             return;
         }
+        
+        // กรองชื่อบอทที่ยังว่างอยู่ (ไม่ให้ซ้ำในห้อง)
+        const usedNames = keys.map(k => gameState.players[k].name);
+        const availableNames = BOT_NAMES.filter(n => !usedNames.includes(n));
+        
+        if (availableNames.length === 0) {
+            announceSR("ชื่อบอทถูกใช้งานครบหมดแล้ว ไม่สามารถเพิ่มบอทได้อีก", 'assertive');
+            return;
+        }
+        
+        // สุ่มชื่อจากรายชื่อที่ยังว่าง
+        const randomName = availableNames[Math.floor(Math.random() * availableNames.length)];
+        
         let slot = 'p1';
         for(let i=1; i<=4; i++) { if(!keys.includes('p'+i)) { slot = 'p'+i; break; } }
         update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
-            [`players/${slot}`]: createPlayerObj(`บอท${bCount+1}`, true),
+            [`players/${slot}`]: createPlayerObj(randomName, true),
             botCount: bCount + 1
         }).then(() => {
             playAudio('select.mp3');
-            announceSR(`เพิ่มบอทสำเร็จ ขณะนี้มีบอท ${bCount + 1} ตัว รวม ${total + 1} คน`, 'polite');
+            announceSR(`เพิ่มบอทสำเร็จ ได้ชื่อ ${randomName} ขณะนี้มีบอท ${bCount + 1} ตัว รวม ${total + 1} คน`, 'polite');
         });
     } else if(delta < 0) {
         if (bCount <= 0) {
@@ -288,7 +320,7 @@ function adjustBot(delta) {
         const bots = keys.filter(k=>gameState.players[k].isBot);
         if(bots.length > 0) {
             const updates = { botCount: bCount - 1 };
-            updates[`players/${bots[bots.length-1]}`] = null;
+            updates[`players/${bots[bots.length-1]}`] = null; // คืนชื่ออัตโนมัติเนื่องจากข้อมูลถูกลบ
             update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates).then(() => {
                 playAudio('select.mp3');
                 announceSR(`ลดบอทสำเร็จ ขณะนี้มีบอท ${bCount - 1} ตัว รวม ${total - 1} คน`, 'polite');
@@ -504,11 +536,55 @@ async function renderGameUI() {
         lastAnnouncedTurn = `${gameState.turnIndex}_${curPId}`;
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
         playAudio('turn.mp3');
+        
+        // ล้าง Timer เก่าทิ้งเมื่อมีการเปลี่ยนเทิร์น
+        if (turnTimer) {
+            clearTimeout(turnTimer);
+            turnTimer = null;
+        }
+
         if(isHost && curP.isBot && curP.status === 'normal') {
             setTimeout(() => executeBotTurn(curPId), 3000); 
         } else if (curP.status !== 'normal' && isHost && !isProcessingTurn) {
              setTimeout(() => endTurn(curPId), 2000);
+        } else if (isHost && !curP.isBot && curP.status === 'normal') {
+            // ระบบจับเวลา 55 วินาทีของ Host
+            currentTurnKey = lastAnnouncedTurn;
+            turnTimer = setTimeout(async () => {
+                if (!gameState || gameState.status !== 'playing') return;
+                if (currentTurnKey !== `${gameState.turnIndex}_${curPId}`) return; // เทิร์นขยับไปแล้ว ป้องกันการทำงานซ้ำ
+                if (isProcessingTurn) return; // กำลังประมวลผลคำสั่งอื่น
+                
+                let p = gameState.players[curPId];
+                if (p.actionStarted) return; // ผู้เล่นกด action ไปแล้วและกำลังประมวลผลอยู่ ป้องกัน Race condition
+                
+                isProcessingTurn = true;
+                
+                if (p.answeringClue) {
+                    await emitLog(`${p.name} หมดเวลาตอบคำใบ้ข้ามเทิร์นทันที`);
+                    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${curPId}/answeringClue`]: null });
+                    setTimeout(() => {
+                        isProcessingTurn = false;
+                        endTurn(curPId);
+                    }, 2000);
+                } else {
+                    await emitLog(`${p.name} หมดเวลาดำเนินการ ระบบเล่นอัตโนมัติสำหรับเทิร์นนี้`);
+                    setTimeout(() => {
+                        isProcessingTurn = false;
+                        executeBotTurn(curPId);
+                    }, 2000);
+                }
+            }, TURN_TIME_LIMIT);
         }
+    }
+    
+    // บังคับปิด Modal ทันที หากหมดเวลาและเทิร์นเปลี่ยนไปแล้ว
+    const modal = document.getElementById('clue-modal');
+    if (modal.style.display !== 'none' && !isMyTurn) {
+        modal.style.display = 'none';
+        document.getElementById('clue-answer-input').disabled = true;
+        document.getElementById('btn-submit-clue').disabled = true;
+        isProcessingTurn = false; // ปลดล็อก UI ฝั่ง Client
     }
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
@@ -635,11 +711,17 @@ async function exploreRoom(roomIdx, roomData) {
     let p = gameState.players[pId];
 
     if(roomData.type === 'clue') {
-        openClueModal(roomData.clueId);
+        update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${pId}/answeringClue`]: true }).then(() => {
+            openClueModal(roomData.clueId);
+        });
         return;
     }
     
-    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/floors/${p.floor}/${roomIdx}/explored`]: true });
+    // ตั้งสถานะ actionStarted ป้องกัน Host สั่ง Timeout ทับขณะรอดำเนินการ
+    await update(ref(db), { 
+        [`games/Escape/rooms/${currentRoomId}/floors/${p.floor}/${roomIdx}/explored`]: true,
+        [`games/Escape/rooms/${currentRoomId}/players/${pId}/actionStarted`]: true
+    });
     
     let msg = `${p.name} สำรวจห้อง ${roomIdx+1}: `;
     
@@ -705,6 +787,13 @@ function openClueModal(cid) {
     if(!clue) {
         emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`);
         gameState.players[myId].canUseDoor = true;
+        
+        // เคลียร์สถานะตอบคำถาม และเซ็ต actionStarted
+        update(ref(db), { 
+            [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
+            [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true
+        });
+        
         commitPlayer(myId, gameState.players[myId]).then(() => setTimeout(()=> { 
             isProcessingTurn = false; 
             endTurn(myId); 
@@ -727,7 +816,7 @@ function openClueModal(cid) {
     announceSR(clue.question);
 }
 
-function submitClue() {
+async function submitClue() {
     const m = document.getElementById('clue-modal');
     if (m.style.display === 'none') return;
     
@@ -742,6 +831,12 @@ function submitClue() {
     
     inputEl.disabled = true;
     btnSubmit.disabled = true;
+    
+    // ตั้งสถานะ actionStarted และเคลียร์สถานะการตอบ เพื่อไม่ให้ Host ยึดเทิร์น
+    await update(ref(db), { 
+        [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
+        [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true
+    });
     
     const isCorrect = window.EscapeTowerClueBank.checkAnswer(cid, ans);
     if(isCorrect) {
@@ -765,6 +860,7 @@ function submitClue() {
 async function useStairs() {
     if(isProcessingTurn) return;
     isProcessingTurn = true;
+    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true });
     let p = gameState.players[myId];
 
     let used = "";
@@ -931,7 +1027,9 @@ function endTurn(curPId) {
     if (isHost) {
         update(ref(db), { 
             [`games/Escape/rooms/${currentRoomId}/turnIndex`]: idx,
-            [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: false 
+            [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: false,
+            [`games/Escape/rooms/${currentRoomId}/players/${curPId}/actionStarted`]: null,
+            [`games/Escape/rooms/${currentRoomId}/players/${curPId}/answeringClue`]: null
         });
     }
 }
