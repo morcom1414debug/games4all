@@ -137,11 +137,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isProcessingTurn) {
             await update(ref(db), { 
                 [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
-                [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true
+                [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now()
             });
             emitLog(`${gameState.players[myId].name} ปิดหน้าต่างคำใบ้โดยไม่ตอบคำถาม`);
             setTimeout(() => { 
-                isProcessingTurn = false; 
                 endTurn(myId); 
             }, 1500);
         }
@@ -208,6 +207,7 @@ function createRoom() {
                 status: 'waiting',
                 players: { p1: createPlayerObj(myName, false) },
                 botCount: 0, turnIndex: 0, turnProcessed: false,
+                turnFinished: null,
                 log: { msg: '', ts: 0 }
             });
             enterRoomUI();
@@ -331,13 +331,25 @@ function adjustBot(delta) {
 
 // Game Logic
 function generateRoomsForFloor(floorNum) {
-    let arr = [
-        {type:'key'}, {type:'ghostKey'}, {type:'secret'}, {type:'clue', cid:0}, {type:'clue', cid:1}, {type:'clue', cid:2},
-        {type:'zombie'}, {type:'zombie'}, {type:'zombie'}, {type:'zombie'},
-        {type:'vaccine'}, {type:'vaccine'}, {type:'vaccine'},
-        {type:'food'}, {type:'food'}, {type:'food'},
-        {type:'armor'}, {type:'puzzle'}, {type:'gun'}, {type:'battery'}
-    ];
+    let arr = [];
+    if (floorNum >= 4) { // Floors 6, 5, 4 (20 ห้อง)
+        arr = [
+            {type:'key'}, {type:'ghostKey'}, {type:'secret'}, {type:'clue', cid:0}, {type:'clue', cid:1}, {type:'clue', cid:2},
+            {type:'zombie'}, {type:'zombie'}, {type:'zombie'}, {type:'zombie'},
+            {type:'vaccine'}, {type:'vaccine'}, {type:'vaccine'},
+            {type:'food'}, {type:'food'}, {type:'food'},
+            {type:'armor'}, {type:'puzzle'}, {type:'gun'}, {type:'battery'}
+        ];
+    } else { // Floors 3, 2, 1 (20 ห้อง ไม่มีห้องทางลับ)
+        arr = [
+            {type:'key'}, {type:'ghostKey'}, {type:'clue', cid:0}, {type:'clue', cid:1}, {type:'clue', cid:2},
+            {type:'zombie'}, {type:'zombie'}, {type:'zombie'}, {type:'zombie'}, {type:'zombie'}, {type:'zombie'},
+            {type:'vaccine'}, {type:'vaccine'}, {type:'vaccine'},
+            {type:'food'}, {type:'food'},
+            {type:'armor'}, {type:'puzzle'}, {type:'gun'}, {type:'battery'}
+        ];
+    }
+    
     // Shuffle
     for(let i=arr.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
     
@@ -383,6 +395,17 @@ function setupRoomListener() {
         gameState = snap.val();
         if(!gameState) { announceSR("ห้องถูกปิด", "assertive"); setTimeout(()=>window.location.href='../index.html', 2000); return; }
         
+        // Host จะจัดการเรื่องเปลี่ยนเทิร์นเมื่อได้รับสัญญาณจาก Client
+        if (isHost && gameState.status === 'playing' && gameState.turnFinished) {
+            const expectedPId = gameState.order[gameState.turnIndex];
+            if (gameState.turnFinished === expectedPId) {
+                endTurn(expectedPId);
+                return; // รอข้อมูล Snapshot ใหม่หลังจากการเปลี่ยนเทิร์นเสร็จสิ้น
+            } else {
+                update(ref(db, `games/Escape/rooms/${currentRoomId}`), { turnFinished: null });
+            }
+        }
+
         if(gameState.status === 'waiting') {
             document.getElementById('lobby-room-title').textContent = `ห้อง: ${currentRoomId}`;
             const pList = Object.values(gameState.players||{});
@@ -477,7 +500,7 @@ async function renderGameUI() {
                 [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: true 
             });
             if(turnLog) await emitLog(turnLog.trim());
-            isProcessingTurn = false;
+            isProcessingTurn = false; // ต้องปลดล็อกเพื่อให้ผู้เล่นคนอื่นสามารถเริ่มเทิร์นต่อไปได้
             setTimeout(() => endTurn(curPId), 2500); 
             return;
         } else {
@@ -534,10 +557,11 @@ async function renderGameUI() {
     
     if(lastAnnouncedTurn !== `${gameState.turnIndex}_${curPId}`) {
         lastAnnouncedTurn = `${gameState.turnIndex}_${curPId}`;
+        isProcessingTurn = false; // ปลดล็อก UI สำหรับผู้เล่นเมื่อเริ่มเทิร์นใหม่
+        
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
         playAudio('turn.mp3');
         
-        // ล้าง Timer เก่าทิ้งเมื่อมีการเปลี่ยนเทิร์น
         if (turnTimer) {
             clearTimeout(turnTimer);
             turnTimer = null;
@@ -548,15 +572,15 @@ async function renderGameUI() {
         } else if (curP.status !== 'normal' && isHost && !isProcessingTurn) {
              setTimeout(() => endTurn(curPId), 2000);
         } else if (isHost && !curP.isBot && curP.status === 'normal') {
-            // ระบบจับเวลา 55 วินาทีของ Host
             currentTurnKey = lastAnnouncedTurn;
             turnTimer = setTimeout(async () => {
                 if (!gameState || gameState.status !== 'playing') return;
-                if (currentTurnKey !== `${gameState.turnIndex}_${curPId}`) return; // เทิร์นขยับไปแล้ว ป้องกันการทำงานซ้ำ
-                if (isProcessingTurn) return; // กำลังประมวลผลคำสั่งอื่น
+                if (currentTurnKey !== `${gameState.turnIndex}_${curPId}`) return; 
+                if (isProcessingTurn) return; 
                 
                 let p = gameState.players[curPId];
-                if (p.actionStarted) return; // ผู้เล่นกด action ไปแล้วและกำลังประมวลผลอยู่ ป้องกัน Race condition
+                // บล็อกไม่ให้ตัดเทิร์นหากผู้เล่นเริ่ม action ไปแล้วในเวลาไม่เกิน 10 วินาที ป้องกัน Timeout ทำงานซ้อน
+                if (p.actionStarted && (Date.now() - p.actionStarted < 10000)) return; 
                 
                 isProcessingTurn = true;
                 
@@ -564,13 +588,11 @@ async function renderGameUI() {
                     await emitLog(`${p.name} หมดเวลาตอบคำใบ้ข้ามเทิร์นทันที`);
                     await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${curPId}/answeringClue`]: null });
                     setTimeout(() => {
-                        isProcessingTurn = false;
                         endTurn(curPId);
                     }, 2000);
                 } else {
                     await emitLog(`${p.name} หมดเวลาดำเนินการ ระบบเล่นอัตโนมัติสำหรับเทิร์นนี้`);
                     setTimeout(() => {
-                        isProcessingTurn = false;
                         executeBotTurn(curPId);
                     }, 2000);
                 }
@@ -584,7 +606,7 @@ async function renderGameUI() {
         modal.style.display = 'none';
         document.getElementById('clue-answer-input').disabled = true;
         document.getElementById('btn-submit-clue').disabled = true;
-        isProcessingTurn = false; // ปลดล็อก UI ฝั่ง Client
+        isProcessingTurn = false; 
     }
     
     document.getElementById('game-status-bar').textContent = `เทิร์นของ: ${curP.name}`;
@@ -717,10 +739,9 @@ async function exploreRoom(roomIdx, roomData) {
         return;
     }
     
-    // ตั้งสถานะ actionStarted ป้องกัน Host สั่ง Timeout ทับขณะรอดำเนินการ
     await update(ref(db), { 
         [`games/Escape/rooms/${currentRoomId}/floors/${p.floor}/${roomIdx}/explored`]: true,
-        [`games/Escape/rooms/${currentRoomId}/players/${pId}/actionStarted`]: true
+        [`games/Escape/rooms/${currentRoomId}/players/${pId}/actionStarted`]: Date.now()
     });
     
     let msg = `${p.name} สำรวจห้อง ${roomIdx+1}: `;
@@ -777,7 +798,6 @@ async function exploreRoom(roomIdx, roomData) {
     await commitPlayer(pId, p);
     
     setTimeout(() => {
-        isProcessingTurn = false;
         endTurn(pId);
     }, 2500); 
 }
@@ -788,14 +808,12 @@ function openClueModal(cid) {
         emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`);
         gameState.players[myId].canUseDoor = true;
         
-        // เคลียร์สถานะตอบคำถาม และเซ็ต actionStarted
         update(ref(db), { 
             [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
-            [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true
+            [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now()
         });
         
         commitPlayer(myId, gameState.players[myId]).then(() => setTimeout(()=> { 
-            isProcessingTurn = false; 
             endTurn(myId); 
         }, 2500));
         return;
@@ -832,10 +850,9 @@ async function submitClue() {
     inputEl.disabled = true;
     btnSubmit.disabled = true;
     
-    // ตั้งสถานะ actionStarted และเคลียร์สถานะการตอบ เพื่อไม่ให้ Host ยึดเทิร์น
     await update(ref(db), { 
         [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
-        [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true
+        [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now()
     });
     
     const isCorrect = window.EscapeTowerClueBank.checkAnswer(cid, ans);
@@ -845,14 +862,14 @@ async function submitClue() {
         p.canUseDoor = true;
         const targetDesc = (p.floor === 1) ? "เปิดประตูทางออกตึก" : `เปิดประตูชั้น ${p.floor}`;
         emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์${targetDesc}`);
-        commitPlayer(myId, p).then(() => setTimeout(()=> { isProcessingTurn = false; endTurn(myId); }, 2500));
+        commitPlayer(myId, p).then(() => setTimeout(()=> { endTurn(myId); }, 2500));
     } else {
         document.getElementById('clue-feedback').textContent = "คำตอบผิด ลองใหม่ในเทิร์นหน้า";
         announceSR("คำตอบผิด ลองใหม่ในเทิร์นหน้า");
         setTimeout(() => {
             m.style.display = 'none';
             emitLog(`${gameState.players[myId].name} ตอบคำใบ้ผิด ประตูยังไม่เปิด`);
-            setTimeout(() => { isProcessingTurn = false; endTurn(myId); }, 2000);
+            setTimeout(() => { endTurn(myId); }, 2000);
         }, 2000);
     }
 }
@@ -860,7 +877,7 @@ async function submitClue() {
 async function useStairs() {
     if(isProcessingTurn) return;
     isProcessingTurn = true;
-    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: true });
+    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now() });
     let p = gameState.players[myId];
 
     let used = "";
@@ -875,7 +892,6 @@ async function useStairs() {
         let msg = `${p.name} ใช้${used} ปลดล็อกประตูทางออกชั้น 1 และหนีรอดออกจากตึกได้สำเร็จ เป็นผู้ชนะ!!`;
         await emitLog(msg);
         await commitPlayer(myId, p);
-        isProcessingTurn = false;
         await triggerEndGame(myId);
         return;
     }
@@ -892,7 +908,7 @@ async function useStairs() {
     await emitLog(msg);
     await commitPlayer(myId, p);
     
-    setTimeout(() => { isProcessingTurn = false; endTurn(myId); }, 2500);
+    setTimeout(() => { endTurn(myId); }, 2500);
 }
 
 async function executeBotTurn(botId) {
@@ -913,7 +929,6 @@ async function executeBotTurn(botId) {
         let msg = `${p.name} ใช้${used} ปลดล็อกประตูทางออกชั้น 1 หนีรอดออกจากตึกสำเร็จ เป็นผู้ชนะ!!`;
         await emitLog(msg);
         await commitPlayer(botId, p);
-        isProcessingTurn = false;
         await triggerEndGame(botId);
         return;
     }
@@ -933,7 +948,7 @@ async function executeBotTurn(botId) {
         }
         await emitLog(msg);
         await commitPlayer(botId, p);
-        setTimeout(() => { isProcessingTurn = false; endTurn(botId); }, 2500);
+        setTimeout(() => { endTurn(botId); }, 2500);
         return;
     }
     
@@ -988,7 +1003,7 @@ async function executeBotTurn(botId) {
     } else {
         await emitLog(`${p.name} ไม่เหลือห้องให้สำรวจ ข้ามเทิร์น`);
     }
-    setTimeout(() => { isProcessingTurn = false; endTurn(botId); }, 2500);
+    setTimeout(() => { endTurn(botId); }, 2500);
 }
 
 async function triggerEndGame(winnerId) {
@@ -1020,17 +1035,25 @@ function endTurn(curPId) {
         return;
     }
 
-    const order = gameState.order;
-    let idx = gameState.turnIndex;
-    idx = (idx + 1) % order.length;
-    
     if (isHost) {
+        if (turnTimer) {
+            clearTimeout(turnTimer);
+            turnTimer = null;
+        }
+
+        const order = gameState.order;
+        let idx = gameState.turnIndex;
+        idx = (idx + 1) % order.length;
+        
         update(ref(db), { 
             [`games/Escape/rooms/${currentRoomId}/turnIndex`]: idx,
             [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: false,
+            [`games/Escape/rooms/${currentRoomId}/turnFinished`]: null,
             [`games/Escape/rooms/${currentRoomId}/players/${curPId}/actionStarted`]: null,
             [`games/Escape/rooms/${currentRoomId}/players/${curPId}/answeringClue`]: null
         });
+    } else {
+        update(ref(db, `games/Escape/rooms/${currentRoomId}`), { turnFinished: curPId });
     }
 }
 
