@@ -671,7 +671,7 @@ async function exploreRoom(roomIdx, roomData) {
             else if(p.ammo < 2) { p.ammo++; msg += "พบปืนเลเซอร์ ซ้ำ แปลงเป็นกระสุน 1 นัด"; }
             else { msg += "พบปืนเลเซอร์ ซ้ำ แต่กระสุนเต็มแล้ว"; }
             break;
-        case 'puzzle': msg += "พบเหตุการณ์พิเศษ: ไม่มีอะไรเกิดขึ้น (ปลอดภัย)"; break;
+        case 'puzzle': msg += "พบห้องน้ำเก่าสกปรกแถมผุพัง: อั้นไว้ก่อนนะ"; break;
         case 'zombie':
             msg += "พบซอมบี้! ";
             if(p.gun > 0 && p.ammo > 0) {
@@ -868,7 +868,7 @@ async function executeBotTurn(botId) {
             case 'armor': p.armor++; msg += "ได้เกราะ"; break;
             case 'battery': if(p.ammo<2) p.ammo++; msg += "ได้กระสุน"; break;
             case 'gun': if(p.gun===0) p.gun=1; if(p.ammo<2) p.ammo++; msg += "ได้ปืนและกระสุน"; break;
-            case 'puzzle': msg += "ไม่เกิดอะไรขึ้น"; break;
+            case 'puzzle': msg += "พบห้องน้ำเก่าสกปรกแถมผุพัง: อั้นไว้ก่อนนะ"; break;
             case 'zombie':
                 msg += "เจอซอมบี้! ";
                 if(p.gun>0 && p.ammo>0) { p.ammo--; msg+="ยิงป้องกันสำเร็จ"; }
