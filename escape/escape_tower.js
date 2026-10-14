@@ -52,17 +52,30 @@ document.addEventListener('click', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
 
 function playAudio(name) {
-    try {
-        fetch(`audio/${name}`)
-            .then(res => res.arrayBuffer())
-            .then(buf => audioCtx.decodeAudioData(buf))
-            .then(decoded => {
-                const source = audioCtx.createBufferSource();
-                source.buffer = decoded;
-                source.connect(audioCtx.destination);
-                source.start(0);
-            }).catch(() => {});
-    } catch(e){}
+    return new Promise((resolve) => {
+        try {
+            fetch(`audio/${name}`)
+                .then(res => res.arrayBuffer())
+                .then(buf => audioCtx.decodeAudioData(buf))
+                .then(decoded => {
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = decoded;
+                    source.connect(audioCtx.destination);
+                    source.onended = () => resolve();
+                    source.start(0);
+                }).catch(() => resolve());
+        } catch(e) {
+            resolve();
+        }
+    });
+}
+
+async function playAudioSequence(files) {
+    if (!files) return;
+    const list = Array.isArray(files) ? files : [files];
+    for (const f of list) {
+        if (f) await playAudio(f);
+    }
 }
 
 function playBGM() {
@@ -768,10 +781,13 @@ function setupRoomListener() {
             
             if(gameState.log && gameState.log.ts > localTs) {
                 localTs = gameState.log.ts;
+                if (gameState.log.sfx) {
+                    playAudioSequence(gameState.log.sfx);
+                }
                 if(gameState.log.msg) {
                     announceSR(gameState.log.msg, 'polite');
+                    document.getElementById('latest-event-display').textContent = gameState.log.msg;
                 }
-                document.getElementById('latest-event-display').textContent = gameState.log.msg;
             }
             
             renderGameUI();
@@ -780,6 +796,12 @@ function setupRoomListener() {
             if (turnTimer) {
                 clearTimeout(turnTimer);
                 turnTimer = null;
+            }
+            if (gameState.log && gameState.log.ts > localTs) {
+                localTs = gameState.log.ts;
+                if (gameState.log.sfx) {
+                    playAudioSequence(gameState.log.sfx);
+                }
             }
             if (gameState.winner && !winCutscenePlayed) {
                 winCutscenePlayed = true;
@@ -838,6 +860,7 @@ async function renderGameUI() {
         activeTurnLock = initKey;
         
         let turnLog = '';
+        let turnSfx = [];
         
         if (curP.status === 'recovered_ready') {
             curP.hp = 150;
@@ -861,6 +884,7 @@ async function renderGameUI() {
                 curP.vaccine--;
                 curP.infection = 0;
                 turnLog += `${curP.name} ใช้วัคซีนรักษาการติดเชื้ออัตโนมัติ `;
+                turnSfx.push('vac.mp3');
             }
             
             if (curP.hp > 0 && curP.hp < 200 && curP.food > 0) {
@@ -868,6 +892,7 @@ async function renderGameUI() {
                 curP.food--;
                 curP.hp += heal;
                 turnLog += `${curP.name} กินอาหารฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${curP.hp}) `;
+                turnSfx.push('eat.mp3');
             }
             
             if (curP.infection > 0) {
@@ -890,7 +915,7 @@ async function renderGameUI() {
         });
         
         if (turnLog) {
-            await emitLog(turnLog.trim());
+            await emitLog(turnLog.trim(), turnSfx.length > 0 ? turnSfx : null);
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
         
@@ -915,7 +940,11 @@ async function renderGameUI() {
         activeTurnLock = null; // ปลดล็อก UI สำหรับผู้เล่นเมื่อเริ่มเทิร์นใหม่
         
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
-        playAudio('turn.mp3');
+        if (curPId === myId && !myP.isBot && myP.status === 'normal') {
+            playAudioSequence(['turn.mp3', 'abc.mp3']);
+        } else {
+            playAudio('turn.mp3');
+        }
         
         if (turnTimer) {
             clearTimeout(turnTimer);
@@ -1094,9 +1123,12 @@ async function exploreRoom(roomIdx, roomData) {
     let p = gameState.players[pId];
 
     if(roomData.type === 'clue') {
-        update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${pId}/answeringClue`]: true }).then(() => {
+        update(ref(db), { [`games/Escape/rooms/${currentRoomId}/players/${pId}/answeringClue`]: true }).then(async () => {
             const isOpen = openClueModal(roomData.clueId);
-            if (isOpen) activeTurnLock = null; // คืนล็อกชั่วคราวให้ผู้เล่นตอบคำถามได้
+            if (isOpen) {
+                activeTurnLock = null; // คืนล็อกชั่วคราวให้ผู้เล่นตอบคำถามได้
+                await emitLog('', ['question.mp3']);
+            }
         });
         return;
     }
@@ -1107,43 +1139,62 @@ async function exploreRoom(roomIdx, roomData) {
     });
     
     let msg = `${p.name} สำรวจห้อง ${roomIdx+1}: `;
+    let sfxList = [];
     
     switch(roomData.type) {
         case 'key': p.keys++; msg += "พบกุญแจปกติ 1 ดอก"; break;
         case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี 1 ดอก"; break;
         case 'secret': p.secretPassage = true; msg += "พบทางลงลับ! สามารถลงข้ามชั้นได้"; break;
-        case 'vaccine': p.vaccine++; msg += "พบวัคซีน 1 ขวด เก็บเข้าคลัง"; break;
+        case 'vaccine': 
+            p.vaccine++; 
+            msg += "พบวัคซีน 1 ขวด เก็บเข้าคลัง"; 
+            sfxList.push('findvac.mp3');
+            break;
         case 'food': 
+            sfxList.push('findfood.mp3');
             if(p.hp < 200) {
                 const heal = Math.min(30, 200 - p.hp);
                 p.hp += heal;
                 msg += `พบอาหาร กินทันทีฟื้นฟู HP ${heal} หน่วย (HP ปัจจุบัน ${p.hp})`;
+                sfxList.push('eat.mp3');
             } else {
                 p.food = (p.food || 0) + 1;
                 msg += `พบอาหาร แต่ HP เต็ม 200 แล้ว จึงเก็บอาหารเข้าคลัง (มีอาหารสะสม ${p.food} ชิ้น)`;
             }
             break;
-        case 'armor': p.armor++; msg += "พบเกราะสวรรค์ 1 ชิ้น"; break;
+        case 'armor': 
+            p.armor++; 
+            msg += "พบเกราะสวรรค์ 1 ชิ้น"; 
+            sfxList.push('findshield.mp3');
+            break;
         case 'battery': 
+            sfxList.push('findbat.mp3');
             if(p.ammo < 2) { p.ammo++; msg += "พบแบตเตอรี่ ได้กระสุน 1 นัด"; }
             else { msg += "พบแบตเตอรี่ แต่กระสุนเต็มแล้ว"; }
             break;
         case 'gun':
+            sfxList.push('findgun.mp3');
             if(p.gun === 0) { p.gun = 1; if(p.ammo < 2) p.ammo++; msg += "พบปืนเลเซอร์และกระสุน 1 นัด!"; }
             else if(p.ammo < 2) { p.ammo++; msg += "พบปืนเลเซอร์ ซ้ำ แปลงเป็นกระสุน 1 นัด"; }
             else { msg += "พบปืนเลเซอร์ ซ้ำ แต่กระสุนเต็มแล้ว"; }
             break;
-        case 'puzzle': msg += "พบห้องน้ำเก่าสกปรกแถมผุพัง: อั้นไว้ก่อนนะ"; break;
+        case 'puzzle': 
+            msg += "พบห้องน้ำเก่าสกปรกแถมผุพัง: อั้นไว้ก่อนนะ"; 
+            sfxList.push('toilet.mp3');
+            break;
         case 'zombie':
             msg += "พบซอมบี้! ";
             if(p.gun > 0 && p.ammo > 0) {
                 p.ammo--; msg += "ใช้ปืนยิงป้องกันสำเร็จ เสียกระสุน 1 นัด";
+                sfxList.push('zombi2.mp3');
             } else if (p.armor > 0) {
                 p.armor--; msg += "เกราะสวรรค์ป้องกันการโจมตีสำเร็จ เกราะพัง";
+                sfxList.push('zombi3.mp3');
             } else {
                 if(p.infection === 0) p.infection = 20;
                 else p.infection = 40;
                 msg += `ถูกโจมตี ติดเชื้อระดับ ${p.infection} HP/เทิร์น`;
+                sfxList.push('zombi1.mp3');
             }
             break;
     }
@@ -1156,7 +1207,7 @@ async function exploreRoom(roomIdx, roomData) {
         msg += ` | HP ลดต่ำกว่า 60 (${p.hp} HP) ต้องหยุดพักฟื้นในเทิร์นถัดไป`;
     }
     
-    await emitLog(msg);
+    await emitLog(msg, sfxList.length > 0 ? sfxList : null);
     await commitPlayer(pId, p);
     
     setTimeout(() => {
@@ -1167,7 +1218,7 @@ async function exploreRoom(roomIdx, roomData) {
 function openClueModal(cid) {
     const clue = window.EscapeTowerClueBank ? window.EscapeTowerClueBank.getClueById(cid) : null;
     if(!clue) {
-        emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`);
+        emitLog(`${gameState.players[myId].name} สำรวจห้องคำใบ้ แต่ระบบคำใบ้ไม่พร้อมใช้งาน รับสิทธิ์ผ่านประตูไปเลย`, ['question.mp3']);
         gameState.players[myId].canUseDoor = true;
         
         update(ref(db), { 
@@ -1229,11 +1280,12 @@ async function submitClue() {
         const p = gameState.players[myId];
         p.canUseDoor = true;
         const targetDesc = (p.floor === 1) ? "เปิดประตูทางออกตึก" : `เปิดประตูชั้น ${p.floor}`;
-        emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์${targetDesc}`);
+        emitLog(`${p.name} ตอบคำใบ้ถูกต้อง ได้รับสิทธิ์${targetDesc}`, ['TRUE.mp3']);
         commitPlayer(myId, p).then(() => setTimeout(()=> { endTurn(myId); }, 2500));
     } else {
         document.getElementById('clue-feedback').textContent = "คำตอบผิด ลองใหม่ในเทิร์นหน้า";
         announceSR("คำตอบผิด ลองใหม่ในเทิร์นหน้า");
+        emitLog('', ['wrong.mp3']);
         setTimeout(() => {
             m.style.display = 'none';
             emitLog(`${gameState.players[myId].name} ตอบคำใบ้ผิด ประตูยังไม่เปิด`);
@@ -1276,7 +1328,7 @@ async function useStairs() {
         msg += " ถึงชั้น 1 แล้ว! จงหากุญแจหรือรหัสเพื่อปลดล็อกประตูหนีออกจากตึก!";
     }
     
-    await emitLog(msg);
+    await emitLog(msg, ['door1.mp3']);
     await commitPlayer(myId, p);
     
     setTimeout(() => { endTurn(myId); }, 2500);
@@ -1320,7 +1372,7 @@ async function executeBotTurn(botId, turnKey) {
         if(p.floor === 1) {
             msg += " ถึงชั้น 1 แล้ว! กำลังหาทางเปิดประตูหนีออกจากตึก";
         }
-        await emitLog(msg);
+        await emitLog(msg, ['door1.mp3']);
         await commitPlayer(botId, p);
         setTimeout(() => { endTurn(botId); }, 2500);
         return;
@@ -1338,29 +1390,64 @@ async function executeBotTurn(botId, turnKey) {
         await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/floors/${p.floor}/${choice}/explored`]: true });
         
         let msg = `${p.name} สำรวจห้อง ${choice+1}: `;
+        let sfxList = [];
         switch(roomData.type) {
             case 'key': p.keys++; msg += "พบกุญแจปกติ"; break;
             case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี"; break;
             case 'secret': p.secretPassage = true; msg += "พบทางลับ"; break;
-            case 'vaccine': p.vaccine++; msg += "พบวัคซีน"; break;
+            case 'vaccine': 
+                p.vaccine++; 
+                msg += "พบวัคซีน"; 
+                sfxList.push('findvac.mp3');
+                break;
             case 'food': 
+                sfxList.push('findfood.mp3');
                 if(p.hp < 200) {
                     p.hp = Math.min(200, p.hp + 30);
                     msg += "กินอาหารฟื้น HP";
+                    sfxList.push('eat.mp3');
                 } else {
                     p.food = (p.food || 0) + 1;
                     msg += "เก็บอาหารเข้าคลังสำรอง";
                 }
                 break;
-            case 'armor': p.armor++; msg += "ได้เกราะ"; break;
-            case 'battery': if(p.ammo<2) p.ammo++; msg += "ได้กระสุน"; break;
-            case 'gun': if(p.gun===0) p.gun=1; if(p.ammo<2) p.ammo++; msg += "ได้ปืนและกระสุน"; break;
-            case 'puzzle': msg += "พบห้องน้ำเก่าสกปรกแถมผุพัง: อั้นไว้ก่อนนะ"; break;
+            case 'armor': 
+                p.armor++; 
+                msg += "ได้เกราะ"; 
+                sfxList.push('findshield.mp3');
+                break;
+            case 'battery': 
+                sfxList.push('findbat.mp3');
+                if(p.ammo<2) p.ammo++; 
+                msg += "ได้กระสุน"; 
+                break;
+            case 'gun': 
+                sfxList.push('findgun.mp3');
+                if(p.gun===0) p.gun=1; 
+                if(p.ammo<2) p.ammo++; 
+                msg += "ได้ปืนและกระสุน"; 
+                break;
+            case 'puzzle': 
+                msg += "พบห้องน้ำเก่าสกปรกแถมผุพัง: อั้นไว้ก่อนนะ"; 
+                sfxList.push('toilet.mp3');
+                break;
             case 'zombie':
                 msg += "เจอซอมบี้! ";
-                if(p.gun>0 && p.ammo>0) { p.ammo--; msg+="ยิงป้องกันสำเร็จ"; }
-                else if(p.armor>0) { p.armor--; msg+="เกราะกันสำเร็จ"; }
-                else { p.infection = p.infection===0?20:40; msg+="ติดเชื้อ!"; }
+                if(p.gun>0 && p.ammo>0) { 
+                    p.ammo--; 
+                    msg+="ยิงป้องกันสำเร็จ"; 
+                    sfxList.push('zombi2.mp3');
+                }
+                else if(p.armor>0) { 
+                    p.armor--; 
+                    msg+="เกราะกันสำเร็จ"; 
+                    sfxList.push('zombi3.mp3');
+                }
+                else { 
+                    p.infection = p.infection===0?20:40; 
+                    msg+="ติดเชื้อ!"; 
+                    sfxList.push('zombi1.mp3');
+                }
                 break;
         }
         
@@ -1372,7 +1459,7 @@ async function executeBotTurn(botId, turnKey) {
             msg += ` | HP ลดต่ำกว่า 60 (${p.hp} HP) ต้องหยุดพักฟื้นในเทิร์นถัดไป`;
         }
 
-        await emitLog(msg);
+        await emitLog(msg, sfxList.length > 0 ? sfxList : null);
         await commitPlayer(botId, p);
     } else {
         await emitLog(`${p.name} ไม่เหลือห้องให้สำรวจ ข้ามเทิร์น`);
@@ -1392,8 +1479,10 @@ async function triggerEndGame(winnerId) {
     });
 }
 
-async function emitLog(msg) {
-    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/log`]: { msg, ts: Date.now() } });
+async function emitLog(msg, sfx = null) {
+    const logData = { msg, ts: Date.now() };
+    if (sfx) logData.sfx = sfx;
+    await update(ref(db), { [`games/Escape/rooms/${currentRoomId}/log`]: logData });
 }
 
 async function commitPlayer(pId, pData) {
