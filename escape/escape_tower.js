@@ -397,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
             [`games/Escape/rooms/${currentRoomId}/players/${myId}/answeringClue`]: null,
             [`games/Escape/rooms/${currentRoomId}/players/${myId}/actionStarted`]: Date.now()
         });
-        await emitLog(`${gameState.players[myId].name} ปิดหน้าต่างคำใบ้โดยไม่ตอบคำถาม`);
+        await emitLog(`${gameState.players[myId].name} ปิดหน้าต่างคำใบ้โดยไม่ตอบคำถาม`, ['key4.mp3']);
         setTimeout(() => { 
             endTurn(myId); 
         }, 1500);
@@ -1142,9 +1142,9 @@ async function exploreRoom(roomIdx, roomData) {
     let sfxList = [];
     
     switch(roomData.type) {
-        case 'key': p.keys++; msg += "พบกุญแจปกติ 1 ดอก"; break;
-        case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี 1 ดอก"; break;
-        case 'secret': p.secretPassage = true; msg += "พบทางลงลับ! สามารถลงข้ามชั้นได้"; break;
+        case 'key': p.keys++; msg += "พบกุญแจปกติ 1 ดอก"; sfxList.push('key1.mp3'); break;
+        case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี 1 ดอก"; sfxList.push('key2.mp3'); break;
+        case 'secret': p.secretPassage = true; msg += "พบทางลงลับ! สามารถลงข้ามชั้นได้"; sfxList.push('key3.mp3'); break;
         case 'vaccine': 
             p.vaccine++; 
             msg += "พบวัคซีน 1 ขวด เก็บเข้าคลัง"; 
@@ -1392,9 +1392,9 @@ async function executeBotTurn(botId, turnKey) {
         let msg = `${p.name} สำรวจห้อง ${choice+1}: `;
         let sfxList = [];
         switch(roomData.type) {
-            case 'key': p.keys++; msg += "พบกุญแจปกติ"; break;
-            case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี"; break;
-            case 'secret': p.secretPassage = true; msg += "พบทางลับ"; break;
+            case 'key': p.keys++; msg += "พบกุญแจปกติ"; sfxList.push('key1.mp3'); break;
+            case 'ghostKey': p.ghostKeys++; msg += "พบกุญแจผี"; sfxList.push('key2.mp3'); break;
+            case 'secret': p.secretPassage = true; msg += "พบทางลับ"; sfxList.push('key3.mp3'); break;
             case 'vaccine': 
                 p.vaccine++; 
                 msg += "พบวัคซีน"; 
