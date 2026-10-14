@@ -27,6 +27,15 @@ let isSpeaking = false;
 let lastAnnouncedTurn = null;
 let activeTurnLock = null; // ป้องกันการซ้อนทับของ Callback แบบระบุ Turn Key
 
+// Scene & BGM State
+let bgmSource = null;
+let isBgmPlaying = false;
+let startCutscenePlayed = false;
+let winCutscenePlayed = false;
+let isPlayingStartCutscene = false;
+let isPlayingWinCutscene = false;
+let sceneTimeouts = [];
+
 // Timer & Bot Names
 let turnTimer = null;
 let currentTurnKey = null;
@@ -54,6 +63,236 @@ function playAudio(name) {
                 source.start(0);
             }).catch(() => {});
     } catch(e){}
+}
+
+function playBGM() {
+    stopBGM();
+    isBgmPlaying = true;
+    try {
+        fetch('audio/bgm.mp3')
+            .then(res => res.arrayBuffer())
+            .then(buf => audioCtx.decodeAudioData(buf))
+            .then(decoded => {
+                if (!isBgmPlaying) return;
+                bgmSource = audioCtx.createBufferSource();
+                bgmSource.buffer = decoded;
+                bgmSource.loop = true;
+                bgmSource.connect(audioCtx.destination);
+                bgmSource.start(0);
+            }).catch(() => {});
+    } catch(e){}
+}
+
+function stopBGM() {
+    isBgmPlaying = false;
+    if (bgmSource) {
+        try {
+            bgmSource.stop(0);
+            bgmSource.disconnect();
+        } catch(e) {}
+        bgmSource = null;
+    }
+}
+
+window.addEventListener('beforeunload', () => {
+    stopBGM();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (audioCtx.state === 'running') audioCtx.suspend();
+    } else {
+        if (audioCtx.state === 'suspended' && isBgmPlaying) audioCtx.resume();
+    }
+});
+
+// Scene Animation & Synchronized ARIA Live Helper
+function clearSceneTimeouts() {
+    sceneTimeouts.forEach(t => clearTimeout(t));
+    sceneTimeouts = [];
+    const overlay = document.getElementById('cutscene-overlay');
+    if (overlay) overlay.remove();
+}
+
+function createCutsceneOverlay(theme) {
+    let existing = document.getElementById('cutscene-overlay');
+    if (existing) existing.remove();
+
+    if (!document.getElementById('cutscene-style')) {
+        const style = document.createElement('style');
+        style.id = 'cutscene-style';
+        style.textContent = `
+            @keyframes pulseSceneText {
+                0% { transform: scale(0.85); opacity: 0; }
+                20% { transform: scale(1.05); opacity: 1; }
+                85% { transform: scale(1); opacity: 1; }
+                100% { transform: scale(0.95); opacity: 0.9; }
+            }
+            @keyframes scaryBgPulse {
+                0%, 100% { background: radial-gradient(circle, #3a0000 0%, #050000 85%); }
+                50% { background: radial-gradient(circle, #590000 0%, #0a0000 85%); }
+            }
+            @keyframes winBgGlow {
+                0%, 100% { background: radial-gradient(circle, #1b4d20 0%, #041206 85%); }
+                50% { background: radial-gradient(circle, #2e7d32 0%, #08240c 85%); }
+            }
+            #cutscene-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding: 20px;
+                text-align: center;
+                user-select: none;
+            }
+            #cutscene-overlay.scary-theme {
+                animation: scaryBgPulse 2.5s infinite ease-in-out;
+                box-shadow: inset 0 0 120px #000;
+            }
+            #cutscene-overlay.win-theme {
+                animation: winBgGlow 2.5s infinite ease-in-out;
+                box-shadow: inset 0 0 100px #000;
+            }
+            #cutscene-text {
+                font-size: clamp(2.2rem, 8vw, 4.5rem);
+                font-weight: 900;
+                max-width: 92vw;
+                word-wrap: break-word;
+                line-height: 1.35;
+                letter-spacing: 2px;
+            }
+            .scary-theme #cutscene-text {
+                color: #ffebee;
+                text-shadow: 0 0 15px #ff1744, 0 0 35px #b71c1c, 2px 2px 5px #000;
+            }
+            .win-theme #cutscene-text {
+                color: #fff8e1;
+                text-shadow: 0 0 15px #ffb300, 0 0 35px #2e7d32, 2px 2px 5px #000;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cutscene-overlay';
+    overlay.className = theme === 'scary' ? 'scary-theme' : 'win-theme';
+    overlay.setAttribute('aria-hidden', 'true');
+
+    const textEl = document.createElement('div');
+    textEl.id = 'cutscene-text';
+    overlay.appendChild(textEl);
+
+    document.body.appendChild(overlay);
+    return textEl;
+}
+
+function announceSceneCue(text, clearDelay = 850) {
+    speechQueue = [];
+    isSpeaking = false;
+    const assertiveEl = document.getElementById('sr-assertive');
+    const politeEl = document.getElementById('sr-polite');
+    if (politeEl) politeEl.textContent = '';
+    if (assertiveEl) {
+        assertiveEl.textContent = '';
+        const t1 = setTimeout(() => {
+            assertiveEl.textContent = text;
+            const t2 = setTimeout(() => {
+                if (assertiveEl.textContent === text) {
+                    assertiveEl.textContent = '';
+                }
+            }, clearDelay);
+            sceneTimeouts.push(t2);
+        }, 40);
+        sceneTimeouts.push(t1);
+    }
+}
+
+function runStartCutscene(onComplete) {
+    clearSceneTimeouts();
+    stopBGM();
+    playAudio('start.mp3');
+
+    const textEl = createCutsceneOverlay('scary');
+    const updateText = (msg) => {
+        textEl.style.animation = 'none';
+        void textEl.offsetWidth;
+        textEl.textContent = msg;
+        textEl.style.animation = 'pulseSceneText 1.2s ease-out forwards';
+    };
+
+    // 1.0 วินาที = ตั้งสติ
+    sceneTimeouts.push(setTimeout(() => {
+        updateText('ตั้งสติ');
+        announceSceneCue('ตั้งสติ', 1500);
+    }, 1000));
+
+    // 3.0 วินาที = ต้องรอด
+    sceneTimeouts.push(setTimeout(() => {
+        updateText('ต้องรอด');
+        announceSceneCue('ต้องรอด', 950);
+    }, 3000));
+
+    // 4.2 วินาที = ไป
+    sceneTimeouts.push(setTimeout(() => {
+        updateText('ไป');
+        announceSceneCue('ไป', 750);
+    }, 4200));
+
+    // 5.10 วินาที = จบซีน เข้าสู่หน้าเกม และรอ 0.2 วินาทีเพื่อเล่น bgm.mp3
+    sceneTimeouts.push(setTimeout(() => {
+        const overlay = document.getElementById('cutscene-overlay');
+        if (overlay) overlay.remove();
+        const assertiveEl = document.getElementById('sr-assertive');
+        if (assertiveEl) assertiveEl.textContent = '';
+        
+        if (onComplete) onComplete();
+
+        sceneTimeouts.push(setTimeout(() => {
+            if (gameState && gameState.status === 'playing') {
+                playBGM();
+            }
+        }, 200));
+    }, 5100));
+}
+
+function runWinCutscene(winnerName, onComplete) {
+    clearSceneTimeouts();
+    stopBGM();
+    playAudio('win.mp3');
+
+    const textEl = createCutsceneOverlay('win');
+    const updateText = (msg) => {
+        textEl.style.animation = 'none';
+        void textEl.offsetWidth;
+        textEl.textContent = msg;
+        textEl.style.animation = 'pulseSceneText 1.5s ease-out forwards';
+    };
+
+    // 1.0 วินาที = ยินดีด้วย
+    sceneTimeouts.push(setTimeout(() => {
+        updateText('ยินดีด้วย');
+        announceSceneCue('ยินดีด้วย', 1600);
+    }, 1000));
+
+    // 3.0 วินาที = (ชื่อตัวละคร) รอดชีวิต
+    sceneTimeouts.push(setTimeout(() => {
+        const msg = `${winnerName} รอดชีวิต`;
+        updateText(msg);
+        announceSceneCue(msg, 1700);
+    }, 3000));
+
+    // 5.0 วินาที = จบซีน ตัดเข้าหน้าจบเกมตามปกติ
+    sceneTimeouts.push(setTimeout(() => {
+        const overlay = document.getElementById('cutscene-overlay');
+        if (overlay) overlay.remove();
+        const assertiveEl = document.getElementById('sr-assertive');
+        if (assertiveEl) assertiveEl.textContent = '';
+        
+        if (onComplete) onComplete();
+    }, 5000));
 }
 
 // ARIA Announcement (จัดการผ่าน Central Queue ป้องกันเสียงพูดชนกัน)
@@ -207,6 +446,10 @@ function createRoom() {
             myId = 'p1';
             isHost = true;
             localTs = Date.now();
+            startCutscenePlayed = false;
+            winCutscenePlayed = false;
+            isPlayingStartCutscene = false;
+            isPlayingWinCutscene = false;
             const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
             onDisconnect(roomRef).remove(); // Host หลุด -> ลบห้อง
             set(roomRef, {
@@ -226,6 +469,10 @@ function createRoom() {
 function joinRoom(rId) {
     currentRoomId = rId;
     isHost = false;
+    startCutscenePlayed = false;
+    winCutscenePlayed = false;
+    isPlayingStartCutscene = false;
+    isPlayingWinCutscene = false;
     const roomRef = ref(db, `games/Escape/rooms/${currentRoomId}`);
     let assignedSlot = null;
     runTransaction(roomRef, (rData) => {
@@ -262,6 +509,12 @@ function enterRoomUI() {
 }
 
 window.leaveRoomAndGoHome = function() {
+    stopBGM();
+    clearSceneTimeouts();
+    startCutscenePlayed = false;
+    winCutscenePlayed = false;
+    isPlayingStartCutscene = false;
+    isPlayingWinCutscene = false;
     if (turnTimer) {
         clearTimeout(turnTimer);
         turnTimer = null;
@@ -273,6 +526,8 @@ window.leaveRoomAndGoHome = function() {
     }
     myId = null; currentRoomId = null; isHost = false; gameState = null;
     if(roomListener) roomListener(); // unsubscribe
+    document.getElementById('lobby-menu-section').style.display = 'block';
+    document.getElementById('lobby-room-section').style.display = 'none';
     switchScreen('screen-welcome', 'welcome-title');
     announceSR("ออกจากห้องแล้ว");
 };
@@ -315,12 +570,11 @@ function adjustBot(delta) {
         
         let slot = 'p1';
         for(let i=1; i<=4; i++) { if(!keys.includes('p'+i)) { slot = 'p'+i; break; } }
+        const msg = `เพิ่มบอทสำเร็จ ได้ชื่อ ${randomName} ขณะนี้มีบอท ${bCount + 1} ตัว รวม ${total + 1} คน`;
         update(ref(db, `games/Escape/rooms/${currentRoomId}`), {
             [`players/${slot}`]: createPlayerObj(randomName, true),
-            botCount: bCount + 1
-        }).then(() => {
-            playAudio('select.mp3');
-            announceSR(`เพิ่มบอทสำเร็จ ได้ชื่อ ${randomName} ขณะนี้มีบอท ${bCount + 1} ตัว รวม ${total + 1} คน`, 'polite');
+            botCount: bCount + 1,
+            log: { msg: msg, ts: Date.now(), type: 'bot' }
         });
     } else if(delta < 0) {
         if (bCount <= 0) {
@@ -329,12 +583,15 @@ function adjustBot(delta) {
         }
         const bots = keys.filter(k=>gameState.players[k].isBot);
         if(bots.length > 0) {
-            const updates = { botCount: bCount - 1 };
-            updates[`players/${bots[bots.length-1]}`] = null; // คืนชื่ออัตโนมัติเนื่องจากข้อมูลถูกลบ
-            update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates).then(() => {
-                playAudio('select.mp3');
-                announceSR(`ลดบอทสำเร็จ ขณะนี้มีบอท ${bCount - 1} ตัว รวม ${total - 1} คน`, 'polite');
-            });
+            const targetBotKey = bots[bots.length - 1];
+            const removedBotName = gameState.players[targetBotKey].name;
+            const msg = `ลดบอท ${removedBotName} สำเร็จ ขณะนี้มีบอท ${bCount - 1} ตัว รวม ${total - 1} คน`;
+            const updates = { 
+                botCount: bCount - 1,
+                log: { msg: msg, ts: Date.now(), type: 'bot' }
+            };
+            updates[`players/${targetBotKey}`] = null; // คืนชื่ออัตโนมัติเนื่องจากข้อมูลถูกลบ
+            update(ref(db, `games/Escape/rooms/${currentRoomId}`), updates);
         }
     }
 }
@@ -388,6 +645,8 @@ function startGame() {
     btnStart.disabled = true;
     btnStart.setAttribute('aria-disabled', 'true');
     
+    stopBGM();
+    
     for(let i=pKeys.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [pKeys[i], pKeys[j]] = [pKeys[j], pKeys[i]]; }
     
     const floorsData = {};
@@ -403,10 +662,10 @@ let localTs = 0;
 function setupRoomListener() {
     roomListener = onValue(ref(db, `games/Escape/rooms/${currentRoomId}`), (snap) => {
         gameState = snap.val();
-        if(!gameState) { announceSR("ห้องถูกปิด", "assertive"); setTimeout(()=>window.location.href='../index.html', 2000); return; }
+        if(!gameState) { stopBGM(); clearSceneTimeouts(); announceSR("ห้องถูกปิด", "assertive"); setTimeout(()=>window.location.href='../index.html', 2000); return; }
         
         // Host จะจัดการเรื่องเปลี่ยนเทิร์นเมื่อได้รับสัญญาณจาก Client
-        if (isHost && gameState.status === 'playing' && gameState.turnFinished) {
+        if (isHost && gameState.status === 'playing' && gameState.turnFinished && !isPlayingStartCutscene) {
             const expectedPId = gameState.order[gameState.turnIndex];
             if (gameState.turnFinished === expectedPId) {
                 endTurn(expectedPId);
@@ -417,10 +676,16 @@ function setupRoomListener() {
         }
 
         if(gameState.status === 'waiting') {
+            startCutscenePlayed = false;
+            winCutscenePlayed = false;
+            isPlayingStartCutscene = false;
+            isPlayingWinCutscene = false;
+            stopBGM();
+
             if (gameState.log && gameState.log.ts > localTs) {
                 localTs = gameState.log.ts;
                 if (gameState.log.msg) {
-                    if (gameState.log.type === 'join') {
+                    if (gameState.log.type === 'join' || gameState.log.type === 'bot') {
                         playAudio('select.mp3');
                     }
                     announceSR(gameState.log.msg, 'polite');
@@ -470,6 +735,33 @@ function setupRoomListener() {
                 btnStart.setAttribute('aria-disabled', (!canStart).toString());
             }
         } else if (gameState.status === 'playing') {
+            if (!startCutscenePlayed) {
+                startCutscenePlayed = true;
+                isPlayingStartCutscene = true;
+                if (gameState.log && gameState.log.ts > localTs) {
+                    localTs = gameState.log.ts;
+                }
+                runStartCutscene(() => {
+                    isPlayingStartCutscene = false;
+                    if (!gameState || gameState.status !== 'playing') return;
+                    if (!document.getElementById('screen-game').classList.contains('active-screen')) {
+                        switchScreen('screen-game', 'game-floor-title');
+                    }
+                    if (gameState.log && gameState.log.msg) {
+                        document.getElementById('latest-event-display').textContent = gameState.log.msg;
+                    }
+                    renderGameUI();
+                });
+                return;
+            }
+
+            if (isPlayingStartCutscene) {
+                if (gameState.log && gameState.log.ts > localTs) {
+                    localTs = gameState.log.ts;
+                }
+                return;
+            }
+
             if(!document.getElementById('screen-game').classList.contains('active-screen')) {
                 switchScreen('screen-game', 'game-floor-title');
             }
@@ -484,6 +776,33 @@ function setupRoomListener() {
             
             renderGameUI();
         } else if (gameState.status === 'ended') {
+            stopBGM();
+            if (turnTimer) {
+                clearTimeout(turnTimer);
+                turnTimer = null;
+            }
+            if (gameState.winner && !winCutscenePlayed) {
+                winCutscenePlayed = true;
+                isPlayingWinCutscene = true;
+                if (gameState.log && gameState.log.ts > localTs) {
+                    localTs = gameState.log.ts;
+                }
+                const winnerName = (gameState.players && gameState.players[gameState.winner]) 
+                    ? gameState.players[gameState.winner].name 
+                    : 'ผู้รอดชีวิต';
+                runWinCutscene(winnerName, () => {
+                    isPlayingWinCutscene = false;
+                    if (!gameState || gameState.status !== 'ended') return;
+                    if (!document.getElementById('screen-result').classList.contains('active-screen')) {
+                        switchScreen('screen-result', 'result-title');
+                        renderResult();
+                    }
+                });
+                return;
+            }
+
+            if (isPlayingWinCutscene) return;
+
             if(!document.getElementById('screen-result').classList.contains('active-screen')) {
                 switchScreen('screen-result', 'result-title');
                 renderResult();
@@ -493,7 +812,7 @@ function setupRoomListener() {
 }
 
 async function renderGameUI() {
-    if(!gameState) return;
+    if(!gameState || isPlayingStartCutscene || isPlayingWinCutscene) return;
     const myP = gameState.players[myId];
     if(!myP) return;
     
