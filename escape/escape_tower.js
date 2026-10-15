@@ -47,15 +47,24 @@ const BOT_NAMES = [
 
 // Audio System
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const unlockAudio = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
+const unlockAudio = () => {
+    if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        audioCtx.resume().catch(() => {});
+    }
+};
 document.addEventListener('click', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
+document.addEventListener('touchstart', unlockAudio, { capture: true, passive: true });
+document.addEventListener('touchend', unlockAudio, { capture: true, passive: true });
 
 let audioPlaybackQueue = Promise.resolve();
 
 function playAudio(name) {
     return new Promise((resolve) => {
         try {
+            if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+                audioCtx.resume().catch(() => {});
+            }
             fetch(`audio/${name}`)
                 .then(res => res.arrayBuffer())
                 .then(buf => audioCtx.decodeAudioData(buf))
@@ -87,6 +96,9 @@ function playBGM() {
     stopBGM();
     isBgmPlaying = true;
     try {
+        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+            audioCtx.resume().catch(() => {});
+        }
         fetch('audio/bgm.mp3')
             .then(res => res.arrayBuffer())
             .then(buf => audioCtx.decodeAudioData(buf))
@@ -118,9 +130,25 @@ window.addEventListener('beforeunload', () => {
 
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-        if (audioCtx.state === 'running') audioCtx.suspend();
+        if (audioCtx.state === 'running') {
+            audioCtx.suspend().catch(() => {});
+        }
     } else {
-        if (audioCtx.state === 'suspended' && isBgmPlaying) audioCtx.resume();
+        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+            audioCtx.resume().catch(() => {});
+        }
+    }
+});
+
+window.addEventListener('pageshow', () => {
+    if (!document.hidden && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+        audioCtx.resume().catch(() => {});
+    }
+});
+
+window.addEventListener('focus', () => {
+    if (!document.hidden && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+        audioCtx.resume().catch(() => {});
     }
 });
 
