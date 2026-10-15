@@ -77,6 +77,15 @@ const ROOM_VISUAL_MAP = {
     battery: { icon: '🔋', cls: 'room-type-battery' }
 };
 
+function escapeHtml(str) {
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function isClueRoomType(type) {
     return type === 'clue' || type === 'hint_1' || type === 'hint_2' || type === 'hint_3';
 }
@@ -109,6 +118,62 @@ function ensureVisualRuntimeStyles() {
         #result-list .participant-card.has-js-avatar::before {
             display: none !important;
             content: none !important;
+        }
+        /* สไตล์ไอคอนประกอบสถานะผู้เล่นปัจจุบันและแผงสถานะตัวละครทั้งหมด */
+        .et-status-bar-items {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 6px 8px;
+        }
+        .et-stat-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 7px;
+            border-radius: 6px;
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            white-space: nowrap;
+            font-size: 0.92em;
+            line-height: 1.3;
+        }
+        .et-stat-icon {
+            display: inline-block;
+            line-height: 1;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+        }
+        .et-all-status-body {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+        }
+        .et-all-status-header {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+        .et-all-status-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px 7px;
+        }
+        .et-state-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            color: #fca5a5;
         }
         /* การแสดงผลห้องที่สำรวจแล้วตามผลลัพธ์จริง (ยกเว้นห้องคำใบ้ที่คงเป็นประตูปิด) */
         .board-cell.explored:not(.room-clue-door) {
@@ -337,7 +402,7 @@ function buildCutsceneVisualStageHtml(theme) {
             avatarsHtml += `
                 <div class="cutscene-avatar-item" aria-hidden="true">
                     ${getParticipantAvatarHtml(pid, p)}
-                    <span class="cutscene-avatar-name">${p.name}</span>
+                    <span class="cutscene-avatar-name">${escapeHtml(p.name)}</span>
                 </div>
             `;
         });
@@ -364,7 +429,7 @@ function buildCutsceneVisualStageHtml(theme) {
             winAvatarHtml = `
                 <div class="cutscene-avatar-item" aria-hidden="true">
                     ${getParticipantAvatarHtml(winId, winP)}
-                    <span class="cutscene-avatar-name">🏆 ${winP.name}</span>
+                    <span class="cutscene-avatar-name">🏆 ${escapeHtml(winP.name)}</span>
                 </div>
             `;
         }
@@ -972,7 +1037,7 @@ function setupRoomListener() {
             listEl.innerHTML = '';
             pEntries.forEach(([pid, p]) => {
                 const avatarHtml = getParticipantAvatarHtml(pid, p);
-                listEl.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${p.name} ${p.isBot?'(บอท)':''}</span></div>`;
+                listEl.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${escapeHtml(p.name)} ${p.isBot?'(บอท)':''}</span></div>`;
             });
             if(isHost) {
                 const bCount = gameState.botCount || 0;
@@ -1277,7 +1342,16 @@ async function renderGameUI(pendingTurnSfx = null) {
     const statusContainer = document.getElementById('my-player-status');
     statusContainer.setAttribute('aria-label', statusText);
     const myAvatarHtml = getParticipantAvatarHtml(myId, myP);
-    statusContainer.innerHTML = `${myAvatarHtml}<span aria-hidden="true"><span style="white-space: nowrap;">${myP.name} ชั้น&nbsp;${myP.floor}</span> | <span style="white-space: nowrap;">HP:&nbsp;${myP.hp}</span> | <span style="white-space: nowrap;">อาหาร:&nbsp;${myP.food}</span> | <span style="white-space: nowrap;">วัคซีน:&nbsp;${myP.vaccine}</span> | <span style="white-space: nowrap;">กุญแจ:&nbsp;${myP.keys}</span> | <span style="white-space: nowrap;">ปืน:&nbsp;${myP.gun}(${myP.ammo})</span></span>`;
+    const safeMyName = escapeHtml(myP.name);
+    statusContainer.innerHTML = `${myAvatarHtml}<span class="et-status-bar-items" aria-hidden="true">` +
+        `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">👤</span>${safeMyName}</span>` +
+        `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🏢</span>ชั้น&nbsp;${myP.floor}</span>` +
+        `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">❤️</span>HP:&nbsp;${myP.hp}</span>` +
+        `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🥫</span>อาหาร:&nbsp;${myP.food}</span>` +
+        `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">💉</span>วัคซีน:&nbsp;${myP.vaccine}</span>` +
+        `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🔑</span>กุญแจ:&nbsp;${myP.keys}</span>` +
+        `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🔫</span>ปืน:&nbsp;${myP.gun}&nbsp;<span class="et-stat-icon" aria-hidden="true">🔋</span>(${myP.ammo})</span>` +
+        `</span>`;
     
     const cardsEl = document.getElementById('player-status-cards');
     cardsEl.innerHTML = '';
@@ -1288,11 +1362,13 @@ async function renderGameUI(pendingTurnSfx = null) {
         if(p.status === 'dead') cClass += ' dead';
         if(p.status === 'escaped') cClass += ' escaped';
         const pAvatarHtml = getParticipantAvatarHtml(pid, p);
+        const safePName = escapeHtml(p.name);
+        const pRoleIcon = p.isBot ? '🤖' : '👤';
         cardsEl.innerHTML += `<div class="${cClass}" aria-hidden="true">
             ${pAvatarHtml}
-            <strong>${p.name} (ชั้น ${p.floor})</strong><br>
-            HP: ${p.hp} | ติดเชื้อ: ${p.infection}<br>
-            กุญแจ: ${p.keys} | อาหาร: ${p.food} | เกราะ: ${p.armor} | ปืน: ${p.gun}(${p.ammo})
+            <strong><span class="et-stat-icon" aria-hidden="true">${pRoleIcon}</span> ${safePName} (<span class="et-stat-icon" aria-hidden="true">🏢</span> ชั้น ${p.floor})</strong><br>
+            <span class="et-stat-icon" aria-hidden="true">❤️</span> HP: ${p.hp} | <span class="et-stat-icon" aria-hidden="true">☣️</span> ติดเชื้อ: ${p.infection}<br>
+            <span class="et-stat-icon" aria-hidden="true">🔑</span> กุญแจ: ${p.keys} | <span class="et-stat-icon" aria-hidden="true">🥫</span> อาหาร: ${p.food} | <span class="et-stat-icon" aria-hidden="true">🛡️</span> เกราะ: ${p.armor} | <span class="et-stat-icon" aria-hidden="true">🔫</span> ปืน: ${p.gun} <span class="et-stat-icon" aria-hidden="true">🔋</span>(${p.ammo})
         </div>`;
     });
     
@@ -1390,7 +1466,35 @@ function readAllStatus() {
         if(p.status !== 'normal') txt += ` (${p.status})`;
         txt += ` | ติดเชื้อ: ${p.infection} | อาหาร: ${p.food} | วัคซีน: ${p.vaccine} | กุญแจ: ${p.keys} | เกราะ: ${p.armor} | ปืน: ${p.gun} | กระสุน: ${p.ammo}`;
         const avatarHtml = getParticipantAvatarHtml(pid, p);
-        list.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${txt}</span></div>`;
+        const safeName = escapeHtml(p.name);
+        const safeSrTxt = escapeHtml(txt);
+        const roleIcon = p.isBot ? '🤖' : '👤';
+        let statusBadgeHtml = '';
+        if (p.status !== 'normal') {
+            let stateIcon = '⚠️';
+            if (p.status === 'dead') stateIcon = '💀';
+            else if (p.status === 'escaped') stateIcon = '🏆';
+            else if (p.status === 'resting' || p.status === 'recovered_ready') stateIcon = '🛌';
+            statusBadgeHtml = `<span class="et-state-tag"><span class="et-stat-icon" aria-hidden="true">${stateIcon}</span>(${escapeHtml(p.status)})</span>`;
+        }
+        const visualHtml = `<div class="et-all-status-body" aria-hidden="true">` +
+            `<div class="et-all-status-header">` +
+                `<span><span class="et-stat-icon" aria-hidden="true">${roleIcon}</span> ${safeName}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🏢</span>ชั้น ${p.floor}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">❤️</span>HP: ${p.hp}</span>` +
+                `${statusBadgeHtml}` +
+            `</div>` +
+            `<div class="et-all-status-grid">` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">☣️</span>ติดเชื้อ: ${p.infection}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🥫</span>อาหาร: ${p.food}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">💉</span>วัคซีน: ${p.vaccine}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🔑</span>กุญแจ: ${p.keys}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🛡️</span>เกราะ: ${p.armor}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🔫</span>ปืน: ${p.gun}</span>` +
+                `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🔋</span>กระสุน: ${p.ammo}</span>` +
+            `</div>` +
+        `</div>`;
+        list.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span class="sr-only">${safeSrTxt}</span>${visualHtml}</div>`;
     });
     modal.style.display = 'flex';
     document.getElementById('screen-game').setAttribute('aria-hidden', 'true');
@@ -1865,7 +1969,7 @@ function renderResult() {
             txt += `(ติดอยู่ในตึก HP: ${p.hp})`;
         }
         const avatarHtml = getParticipantAvatarHtml(p.id, p);
-        resEl.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${txt}</span></div>`;
+        resEl.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${escapeHtml(txt)}</span></div>`;
         summarySpeech += `${txt} `;
     });
     
