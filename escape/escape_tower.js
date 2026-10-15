@@ -45,6 +45,169 @@ const BOT_NAMES = [
     "ไข่ตุ๋น(B)", "ไข่กระทะ(B)", "ไข่ครอบ(B)", "ไข่ยัดไส้(B)", "ไข่ระเบิด(B)"
 ];
 
+// ==================== Visual Assets & Helpers (SVG Data URIs - ไม่พึ่งพาไฟล์ภายนอก) ====================
+const HUMAN_AVATARS = [
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='32' fill='%230f172a'/><circle cx='32' cy='24' r='12' fill='%23fbbf24'/><path d='M14 56c0-11 8-18 18-18s18 7 18 18' fill='%233b82f6'/></svg>",
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='32' fill='%230f172a'/><circle cx='32' cy='24' r='12' fill='%23f59e0b'/><path d='M14 56c0-11 8-18 18-18s18 7 18 18' fill='%2310b981'/></svg>",
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='32' fill='%230f172a'/><circle cx='32' cy='24' r='12' fill='%23fde047'/><path d='M14 56c0-11 8-18 18-18s18 7 18 18' fill='%238b5cf6'/></svg>",
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='32' fill='%230f172a'/><circle cx='32' cy='24' r='12' fill='%23fdba74'/><path d='M14 56c0-11 8-18 18-18s18 7 18 18' fill='%23ec4899'/></svg>"
+];
+
+const BOT_AVATARS = [
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='32' fill='%230f172a'/><rect x='16' y='14' width='32' height='22' rx='5' fill='%2394a3b8'/><circle cx='24' cy='25' r='3.5' fill='%23ef4444'/><circle cx='40' cy='25' r='3.5' fill='%23ef4444'/><path d='M14 56c0-10 8-16 18-16s18 6 18 16' fill='%23475569'/></svg>",
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='32' fill='%230f172a'/><rect x='16' y='14' width='32' height='22' rx='5' fill='%2364748b'/><circle cx='24' cy='25' r='3.5' fill='%23fbbf24'/><circle cx='40' cy='25' r='3.5' fill='%23fbbf24'/><path d='M14 56c0-10 8-16 18-16s18 6 18 16' fill='%23334155'/></svg>",
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='32' fill='%230f172a'/><rect x='16' y='14' width='32' height='22' rx='5' fill='%23cbd5e1'/><circle cx='24' cy='25' r='3.5' fill='%2322c55e'/><circle cx='40' cy='25' r='3.5' fill='%2322c55e'/><path d='M14 56c0-10 8-16 18-16s18 6 18 16' fill='%231e293b'/></svg>"
+];
+
+// แผนผังสัญลักษณ์และ Class ของประเภทห้องตามระบบจริง (และชื่อเทียบเคียงตามข้อกำหนด)
+const ROOM_VISUAL_MAP = {
+    key: { icon: '🔑', cls: 'room-type-key' },
+    key_normal: { icon: '🔑', cls: 'room-type-key' },
+    ghostKey: { icon: '🗝️', cls: 'room-type-ghostKey' },
+    key_skeleton: { icon: '🗝️', cls: 'room-type-ghostKey' },
+    secret: { icon: '🪜', cls: 'room-type-secret' },
+    secret_stair: { icon: '🪜', cls: 'room-type-secret' },
+    zombie: { icon: '🧟', cls: 'room-type-zombie' },
+    vaccine: { icon: '💉', cls: 'room-type-vaccine' },
+    food: { icon: '🥫', cls: 'room-type-food' },
+    armor: { icon: '🛡️', cls: 'room-type-armor' },
+    puzzle: { icon: '🚽', cls: 'room-type-puzzle' },
+    gun: { icon: '🔫', cls: 'room-type-gun' },
+    laser_gun: { icon: '🔫', cls: 'room-type-gun' },
+    battery: { icon: '🔋', cls: 'room-type-battery' }
+};
+
+function isClueRoomType(type) {
+    return type === 'clue' || type === 'hint_1' || type === 'hint_2' || type === 'hint_3';
+}
+
+function getParticipantAvatarSrc(pId, playerObj) {
+    const slotNum = parseInt(String(pId || 'p1').replace(/\D/g, ''), 10) || 1;
+    if (playerObj && playerObj.isBot) {
+        const nameIdx = BOT_NAMES.indexOf(playerObj.name);
+        const botIdx = nameIdx >= 0 ? (nameIdx % BOT_AVATARS.length) : ((slotNum - 1) % BOT_AVATARS.length);
+        return BOT_AVATARS[botIdx];
+    }
+    const humanIdx = (slotNum - 1) % HUMAN_AVATARS.length;
+    return HUMAN_AVATARS[humanIdx];
+}
+
+function getParticipantAvatarHtml(pId, playerObj) {
+    const src = getParticipantAvatarSrc(pId, playerObj);
+    const cls = (playerObj && playerObj.isBot) ? 'bot-avatar' : 'character-avatar';
+    return `<img src="${src}" alt="" class="${cls}" aria-hidden="true">`;
+}
+
+function ensureVisualRuntimeStyles() {
+    if (document.getElementById('escape-visual-runtime-style')) return;
+    const style = document.createElement('style');
+    style.id = 'escape-visual-runtime-style';
+    style.textContent = `
+        /* ปิด pseudo-element เดิมเมื่อมีรูป avatar จริง เพื่อไม่ให้แสดงไอคอนซ้ำ 2 อัน */
+        #participant-list .participant-card.has-js-avatar::before,
+        #all-status-list .participant-card.has-js-avatar::before,
+        #result-list .participant-card.has-js-avatar::before {
+            display: none !important;
+            content: none !important;
+        }
+        /* การแสดงผลห้องที่สำรวจแล้วตามผลลัพธ์จริง (ยกเว้นห้องคำใบ้ที่คงเป็นประตูปิด) */
+        .board-cell.explored:not(.room-clue-door) {
+            text-decoration: none !important;
+            opacity: 0.92 !important;
+            gap: 2px;
+        }
+        .board-cell .room-num-label {
+            font-size: 0.72em;
+            line-height: 1;
+            opacity: 0.85;
+        }
+        .board-cell .room-result-icon {
+            font-size: 1.05em;
+            line-height: 1;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.85));
+        }
+        .board-cell.explored.room-type-zombie {
+            border-color: #ef4444 !important;
+            background: radial-gradient(circle at 50% 50%, rgba(185, 28, 28, 0.38) 0%, #0b0f17 85%) !important;
+            color: #fca5a5 !important;
+        }
+        .board-cell.explored.room-type-key,
+        .board-cell.explored.room-type-ghostKey,
+        .board-cell.explored.room-type-secret {
+            border-color: #fbbf24 !important;
+            background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.32) 0%, #0b0f17 85%) !important;
+            color: #fde68a !important;
+        }
+        .board-cell.explored.room-type-vaccine,
+        .board-cell.explored.room-type-food {
+            border-color: #22c55e !important;
+            background: radial-gradient(circle at 50% 50%, rgba(22, 163, 74, 0.32) 0%, #0b0f17 85%) !important;
+            color: #bbf7d0 !important;
+        }
+        .board-cell.explored.room-type-armor,
+        .board-cell.explored.room-type-gun,
+        .board-cell.explored.room-type-battery {
+            border-color: #38bdf8 !important;
+            background: radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.32) 0%, #0b0f17 85%) !important;
+            color: #bae6fd !important;
+        }
+        .board-cell.explored.room-type-puzzle {
+            border-color: #a855f7 !important;
+            background: radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.28) 0%, #0b0f17 85%) !important;
+            color: #e9d5ff !important;
+        }
+        /* Cutscene Visual Stage */
+        #cutscene-visual-stage {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+        .cutscene-tower-svg {
+            width: clamp(84px, 18vw, 120px);
+            height: clamp(84px, 18vw, 120px);
+            filter: drop-shadow(0 0 18px rgba(220, 38, 38, 0.75));
+        }
+        .win-theme .cutscene-tower-svg {
+            filter: drop-shadow(0 0 18px rgba(251, 191, 36, 0.8));
+        }
+        .cutscene-avatars-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .cutscene-avatar-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            background: rgba(9, 13, 20, 0.75);
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .cutscene-avatar-item img {
+            margin: 0 !important;
+            width: 52px;
+            height: 52px;
+        }
+        .cutscene-avatar-name {
+            font-size: 0.85rem;
+            color: #f1f5f9;
+            font-weight: 700;
+            max-width: 110px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 // Audio System
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const unlockAudio = () => {
@@ -160,7 +323,64 @@ function clearSceneTimeouts() {
     if (overlay) overlay.remove();
 }
 
+function buildCutsceneVisualStageHtml(theme) {
+    if (!gameState || !gameState.players) return '';
+    const orderKeys = (gameState.order && gameState.order.length > 0)
+        ? gameState.order
+        : Object.keys(gameState.players);
+
+    if (theme === 'scary') {
+        let avatarsHtml = '';
+        orderKeys.forEach(pid => {
+            const p = gameState.players[pid];
+            if (!p) return;
+            avatarsHtml += `
+                <div class="cutscene-avatar-item" aria-hidden="true">
+                    ${getParticipantAvatarHtml(pid, p)}
+                    <span class="cutscene-avatar-name">${p.name}</span>
+                </div>
+            `;
+        });
+        return `
+            <svg class="cutscene-tower-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+                <rect x="24" y="10" width="52" height="80" rx="4" fill="#131b26" stroke="#dc2626" stroke-width="3"/>
+                <line x1="24" y1="23" x2="76" y2="23" stroke="#2e3c51" stroke-width="2"/>
+                <line x1="24" y1="36" x2="76" y2="36" stroke="#2e3c51" stroke-width="2"/>
+                <line x1="24" y1="49" x2="76" y2="49" stroke="#2e3c51" stroke-width="2"/>
+                <line x1="24" y1="62" x2="76" y2="62" stroke="#2e3c51" stroke-width="2"/>
+                <line x1="24" y1="75" x2="76" y2="75" stroke="#2e3c51" stroke-width="2"/>
+                <rect x="34" y="14" width="8" height="5" fill="#fbbf24"/>
+                <rect x="58" y="27" width="8" height="5" fill="#dc2626"/>
+                <rect x="34" y="40" width="8" height="5" fill="#fbbf24"/>
+                <rect x="44" y="78" width="12" height="12" fill="#fbbf24"/>
+            </svg>
+            <div class="cutscene-avatars-row" aria-hidden="true">${avatarsHtml}</div>
+        `;
+    } else {
+        const winId = gameState.winner;
+        const winP = winId && gameState.players[winId] ? gameState.players[winId] : null;
+        let winAvatarHtml = '';
+        if (winP) {
+            winAvatarHtml = `
+                <div class="cutscene-avatar-item" aria-hidden="true">
+                    ${getParticipantAvatarHtml(winId, winP)}
+                    <span class="cutscene-avatar-name">🏆 ${winP.name}</span>
+                </div>
+            `;
+        }
+        return `
+            <svg class="cutscene-tower-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+                <circle cx="50" cy="50" r="42" fill="#131b26" stroke="#fbbf24" stroke-width="3"/>
+                <rect x="34" y="26" width="32" height="48" rx="3" fill="#0f172a" stroke="#22c55e" stroke-width="2.5"/>
+                <path d="M34 26 L56 20 L56 68 L34 74 Z" fill="#fbbf24" opacity="0.85"/>
+            </svg>
+            <div class="cutscene-avatars-row" aria-hidden="true">${winAvatarHtml}</div>
+        `;
+    }
+}
+
 function createCutsceneOverlay(theme) {
+    ensureVisualRuntimeStyles();
     let existing = document.getElementById('cutscene-overlay');
     if (existing) existing.remove();
 
@@ -226,6 +446,12 @@ function createCutsceneOverlay(theme) {
     overlay.id = 'cutscene-overlay';
     overlay.className = theme === 'scary' ? 'scary-theme' : 'win-theme';
     overlay.setAttribute('aria-hidden', 'true');
+
+    const visualStage = document.createElement('div');
+    visualStage.id = 'cutscene-visual-stage';
+    visualStage.setAttribute('aria-hidden', 'true');
+    visualStage.innerHTML = buildCutsceneVisualStageHtml(theme);
+    overlay.appendChild(visualStage);
 
     const textEl = document.createElement('div');
     textEl.id = 'cutscene-text';
@@ -385,6 +611,7 @@ function switchScreen(screenId, focusId = null) {
 
 // Initial Events
 document.addEventListener('DOMContentLoaded', () => {
+    ensureVisualRuntimeStyles();
     initLobbyListener();
     const nameInput = document.getElementById('player-name-input');
     const btnConfirm = document.getElementById('btn-confirm-name');
@@ -738,13 +965,14 @@ function setupRoomListener() {
                 }
             }
             document.getElementById('lobby-room-title').textContent = `ห้อง: ${currentRoomId}`;
-            const pList = Object.values(gameState.players||{});
-            const totalPlayers = pList.length;
+            const pEntries = Object.entries(gameState.players || {});
+            const totalPlayers = pEntries.length;
             document.getElementById('participant-count').textContent = `${totalPlayers}/4`;
             const listEl = document.getElementById('participant-list');
             listEl.innerHTML = '';
-            pList.forEach(p => {
-                listEl.innerHTML += `<div class="participant-card">${p.name} ${p.isBot?'(บอท)':''}</div>`;
+            pEntries.forEach(([pid, p]) => {
+                const avatarHtml = getParticipantAvatarHtml(pid, p);
+                listEl.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${p.name} ${p.isBot?'(บอท)':''}</span></div>`;
             });
             if(isHost) {
                 const bCount = gameState.botCount || 0;
@@ -1048,7 +1276,8 @@ async function renderGameUI(pendingTurnSfx = null) {
     const statusText = `สถานะของคุณ: ${myP.name} ชั้น ${myP.floor} HP ${myP.hp} อาหารในคลัง ${myP.food} วัคซีน ${myP.vaccine} กุญแจ ${myP.keys} ปืน ${myP.gun} กระสุน ${myP.ammo}`;
     const statusContainer = document.getElementById('my-player-status');
     statusContainer.setAttribute('aria-label', statusText);
-    statusContainer.innerHTML = `<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | HP: ${myP.hp} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | กุญแจ: ${myP.keys} | ปืน: ${myP.gun}(${myP.ammo})</span>`;
+    const myAvatarHtml = getParticipantAvatarHtml(myId, myP);
+    statusContainer.innerHTML = `${myAvatarHtml}<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | HP: ${myP.hp} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | กุญแจ: ${myP.keys} | ปืน: ${myP.gun}(${myP.ammo})</span>`;
     
     const cardsEl = document.getElementById('player-status-cards');
     cardsEl.innerHTML = '';
@@ -1058,7 +1287,9 @@ async function renderGameUI(pendingTurnSfx = null) {
         if(pid === curPId) cClass += ' active-turn';
         if(p.status === 'dead') cClass += ' dead';
         if(p.status === 'escaped') cClass += ' escaped';
+        const pAvatarHtml = getParticipantAvatarHtml(pid, p);
         cardsEl.innerHTML += `<div class="${cClass}" aria-hidden="true">
+            ${pAvatarHtml}
             <strong>${p.name} (ชั้น ${p.floor})</strong><br>
             HP: ${p.hp} | ติดเชื้อ: ${p.infection}<br>
             กุญแจ: ${p.keys} | อาหาร: ${p.food} | เกราะ: ${p.armor} | ปืน: ${p.gun}(${p.ammo})
@@ -1074,24 +1305,39 @@ async function renderGameUI(pendingTurnSfx = null) {
             const btn = document.createElement('button');
             btn.className = 'board-cell';
             const num = i + 1;
-            btn.textContent = num.toString();
-            
-            if(roomData.explored) {
-                btn.classList.add('explored');
-                if (roomData.type === 'clue') {
+            const isClue = isClueRoomType(roomData.type);
+
+            // ข้อยกเว้น: ห้องคำใบ้ต้องแสดงเป็นประตูปิดเสมอ และสำรวจซ้ำได้ตามกติกาเดิม
+            // ในโค้ดจริง ห้องคำใบ้ไม่ได้ถูกตั้งค่า explored = true ใน Firebase แต่รองรับไว้ทั้งกรณี未สำรวจและกรณี explored = true
+            if (isClue) {
+                btn.classList.add('room-clue-door');
+                btn.textContent = num.toString();
+                if (roomData.explored) {
+                    btn.classList.add('explored');
                     btn.setAttribute('aria-label', `ห้องคำใบ้ ${num} สำรวจแล้ว สามารถกดอ่านคำใบ้ซ้ำได้`);
-                    if (isMyTurn && activeTurnLock !== thisTurnKey) {
-                        btn.onclick = () => exploreRoom(i, roomData);
-                    } else {
-                        btn.disabled = true;
-                        btn.setAttribute('aria-disabled', 'true');
-                    }
+                } else {
+                    btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
+                }
+                if (isMyTurn && activeTurnLock !== thisTurnKey) {
+                    btn.onclick = () => exploreRoom(i, roomData);
                 } else {
                     btn.disabled = true;
                     btn.setAttribute('aria-disabled', 'true');
-                    btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
                 }
+            } else if (roomData.explored) {
+                btn.classList.add('explored');
+                const vInfo = ROOM_VISUAL_MAP[roomData.type];
+                if (vInfo) {
+                    btn.classList.add(vInfo.cls);
+                    btn.innerHTML = `<span class="room-num-label" aria-hidden="true">${num}</span><span class="room-result-icon" aria-hidden="true">${vInfo.icon}</span>`;
+                } else {
+                    btn.textContent = num.toString();
+                }
+                btn.disabled = true;
+                btn.setAttribute('aria-disabled', 'true');
+                btn.setAttribute('aria-label', `ห้อง ${num} สำรวจแล้ว`);
             } else {
+                btn.textContent = num.toString();
                 btn.setAttribute('aria-label', `ห้อง ${num} กดเพื่อสำรวจ`);
                 if(isMyTurn && activeTurnLock !== thisTurnKey) {
                     btn.onclick = () => exploreRoom(i, roomData);
@@ -1143,7 +1389,8 @@ function readAllStatus() {
         let txt = `${p.name} - ชั้น ${p.floor} | HP: ${p.hp}`;
         if(p.status !== 'normal') txt += ` (${p.status})`;
         txt += ` | ติดเชื้อ: ${p.infection} | อาหาร: ${p.food} | วัคซีน: ${p.vaccine} | กุญแจ: ${p.keys} | เกราะ: ${p.armor} | ปืน: ${p.gun} | กระสุน: ${p.ammo}`;
-        list.innerHTML += `<div class="participant-card">${txt}</div>`;
+        const avatarHtml = getParticipantAvatarHtml(pid, p);
+        list.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${txt}</span></div>`;
     });
     modal.style.display = 'flex';
     document.getElementById('screen-game').setAttribute('aria-hidden', 'true');
@@ -1617,7 +1864,8 @@ function renderResult() {
         } else {
             txt += `(ติดอยู่ในตึก HP: ${p.hp})`;
         }
-        resEl.innerHTML += `<div class="participant-card" role="listitem">${txt}</div>`;
+        const avatarHtml = getParticipantAvatarHtml(p.id, p);
+        resEl.innerHTML += `<div class="participant-card has-js-avatar" role="listitem">${avatarHtml}<span>${txt}</span></div>`;
         summarySpeech += `${txt} `;
     });
     
