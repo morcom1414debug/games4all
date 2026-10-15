@@ -1277,7 +1277,7 @@ async function renderGameUI(pendingTurnSfx = null) {
     const statusContainer = document.getElementById('my-player-status');
     statusContainer.setAttribute('aria-label', statusText);
     const myAvatarHtml = getParticipantAvatarHtml(myId, myP);
-    statusContainer.innerHTML = `${myAvatarHtml}<span aria-hidden="true">${myP.name} ชั้น ${myP.floor} | HP: ${myP.hp} | อาหาร: ${myP.food} | วัคซีน: ${myP.vaccine} | กุญแจ: ${myP.keys} | ปืน: ${myP.gun}(${myP.ammo})</span>`;
+    statusContainer.innerHTML = `${myAvatarHtml}<span aria-hidden="true"><span style="white-space: nowrap;">${myP.name} ชั้น&nbsp;${myP.floor}</span> | <span style="white-space: nowrap;">HP:&nbsp;${myP.hp}</span> | <span style="white-space: nowrap;">อาหาร:&nbsp;${myP.food}</span> | <span style="white-space: nowrap;">วัคซีน:&nbsp;${myP.vaccine}</span> | <span style="white-space: nowrap;">กุญแจ:&nbsp;${myP.keys}</span> | <span style="white-space: nowrap;">ปืน:&nbsp;${myP.gun}(${myP.ammo})</span></span>`;
     
     const cardsEl = document.getElementById('player-status-cards');
     cardsEl.innerHTML = '';
@@ -1846,7 +1846,7 @@ function renderResult() {
         
         // หากอยู่ชั้นเดียวกัน เรียงตามผู้ที่มีสิทธิ์เปิดประตู/กุญแจพร้อมกว่า
         const aReady = (a.keys > 0 || a.ghostKeys > 0 || a.secretPassage || a.canUseDoor) ? 1 : 0;
-        const bReady = (b.keys > 0 || b.ghostKeys > 0 || b.secretPassage || b.canUseDoor) ? 1 : 0;
+        const bReady = (b.keys > 0 || b.ghostKeys > 0 || a.secretPassage || b.canUseDoor) ? 1 : 0;
         if (aReady !== bReady) return bReady - aReady;
         
         // หากเท่ากันอีก เรียงตาม HP มากที่สุด
