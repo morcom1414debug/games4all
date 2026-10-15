@@ -660,7 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await emitLog(`${gameState.players[myId].name} ปิดหน้าต่างคำใบ้โดยไม่ตอบคำถาม`, ['key4.mp3']);
         setTimeout(() => { 
             endTurn(myId); 
-        }, 1500);
+        }, 2200);
     };
     
     document.getElementById('btn-submit-clue').onclick = submitClue;
@@ -1182,13 +1182,13 @@ async function renderGameUI(pendingTurnSfx = null) {
         
         if (turnLog) {
             await emitLog(turnLog.trim(), turnSfx.length > 0 ? turnSfx : null);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 2700));
         }
         
         if (curP.status !== 'normal') {
             setTimeout(() => {
                 endTurn(curPId);
-            }, 2500); 
+            }, 3200); 
             return;
         }
         // รอรับ Snapshot ล่าสุดก่อนปลดปล่อยให้เกมดำเนินต่อไป
@@ -1223,7 +1223,7 @@ async function renderGameUI(pendingTurnSfx = null) {
         }
 
         if(isHost && curP.isBot && curP.status === 'normal') {
-            setTimeout(() => executeBotTurn(curPId, thisTurnKey), 3000); 
+            setTimeout(() => executeBotTurn(curPId, thisTurnKey), 3500); 
         } else if (curP.status !== 'normal' && isHost) {
              const skipKey = thisTurnKey + "_skip";
              if (activeTurnLock !== skipKey) {
@@ -1506,7 +1506,7 @@ async function exploreRoom(roomIdx, roomData) {
     
     setTimeout(() => {
         endTurn(pId);
-    }, 2500); 
+    }, 3200); 
 }
 
 function openClueModal(cid) {
@@ -1522,7 +1522,7 @@ function openClueModal(cid) {
         
         commitPlayer(myId, gameState.players[myId]).then(() => setTimeout(()=> { 
             endTurn(myId); 
-        }, 2500));
+        }, 3200));
         return false;
     }
     
