@@ -51,6 +51,8 @@ const unlockAudio = () => { if (audioCtx.state === 'suspended') audioCtx.resume(
 document.addEventListener('click', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
 
+let audioPlaybackQueue = Promise.resolve();
+
 function playAudio(name) {
     return new Promise((resolve) => {
         try {
@@ -70,12 +72,15 @@ function playAudio(name) {
     });
 }
 
-async function playAudioSequence(files) {
-    if (!files) return;
+function playAudioSequence(files) {
+    if (!files) return Promise.resolve();
     const list = Array.isArray(files) ? files : [files];
-    for (const f of list) {
-        if (f) await playAudio(f);
-    }
+    audioPlaybackQueue = audioPlaybackQueue.then(async () => {
+        for (const f of list) {
+            if (f) await playAudio(f);
+        }
+    }).catch(() => {});
+    return audioPlaybackQueue;
 }
 
 function playBGM() {
@@ -779,10 +784,11 @@ function setupRoomListener() {
                 switchScreen('screen-game', 'game-floor-title');
             }
             
+            let pendingTurnSfx = null;
             if(gameState.log && gameState.log.ts > localTs) {
                 localTs = gameState.log.ts;
                 if (gameState.log.sfx) {
-                    playAudioSequence(gameState.log.sfx);
+                    pendingTurnSfx = gameState.log.sfx;
                 }
                 if(gameState.log.msg) {
                     announceSR(gameState.log.msg, 'polite');
@@ -790,7 +796,7 @@ function setupRoomListener() {
                 }
             }
             
-            renderGameUI();
+            renderGameUI(pendingTurnSfx);
         } else if (gameState.status === 'ended') {
             stopBGM();
             if (turnTimer) {
@@ -833,7 +839,7 @@ function setupRoomListener() {
     });
 }
 
-async function renderGameUI() {
+async function renderGameUI(pendingTurnSfx = null) {
     if(!gameState || isPlayingStartCutscene || isPlayingWinCutscene) return;
     const myP = gameState.players[myId];
     if(!myP) return;
@@ -866,14 +872,16 @@ async function renderGameUI() {
             curP.hp = 150;
             curP.status = 'normal';
             turnLog += `${curP.name} พักฟื้นเสร็จสิ้น ฟื้นฟู HP เป็น 150 และพร้อมเล่นต่อ `;
+            turnSfx.push('getup.mp3');
         } else if (curP.status === 'resting') {
             curP.status = 'recovered_ready';
             turnLog += `${curP.name} กำลังพักฟื้น หยุดเล่น 1 เทิร์น `;
+            turnSfx.push('stop.mp3');
             await update(ref(db), { 
                 [`games/Escape/rooms/${currentRoomId}/players/${curPId}`]: curP,
                 [`games/Escape/rooms/${currentRoomId}/turnProcessed`]: true 
             });
-            if(turnLog) await emitLog(turnLog.trim());
+            if(turnLog) await emitLog(turnLog.trim(), turnSfx.length > 0 ? turnSfx : null);
             
             setTimeout(() => {
                 endTurn(curPId);
@@ -898,6 +906,7 @@ async function renderGameUI() {
             if (curP.infection > 0) {
                 curP.hp -= curP.infection;
                 turnLog += `${curP.name} เสีย ${curP.infection} HP จากการติดเชื้อ (เหลือ ${curP.hp} HP) `;
+                turnSfx.push('reduce.mp3');
             }
             
             if (curP.hp <= 0) {
@@ -906,6 +915,7 @@ async function renderGameUI() {
             } else if (curP.hp < 60 && curP.status === 'normal') {
                 curP.status = 'resting';
                 turnLog += `${curP.name} HP ลดต่ำกว่า 60 ได้รับบาดเจ็บสาหัส ต้องหยุดพักฟื้น `;
+                turnSfx.push('stop.mp3');
             }
         }
         
@@ -940,11 +950,16 @@ async function renderGameUI() {
         activeTurnLock = null; // ปลดล็อก UI สำหรับผู้เล่นเมื่อเริ่มเทิร์นใหม่
         
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
-        if (curPId === myId && !myP.isBot && myP.status === 'normal') {
-            playAudioSequence(['turn.mp3', 'abc.mp3']);
-        } else {
-            playAudio('turn.mp3');
+        let startTurnAudio = ['turn.mp3'];
+        if (pendingTurnSfx) {
+            const sfxArr = Array.isArray(pendingTurnSfx) ? pendingTurnSfx : [pendingTurnSfx];
+            startTurnAudio.push(...sfxArr);
+            pendingTurnSfx = null;
         }
+        if (curPId === myId && !myP.isBot && myP.status === 'normal') {
+            startTurnAudio.push('abc.mp3');
+        }
+        playAudioSequence(startTurnAudio);
         
         if (turnTimer) {
             clearTimeout(turnTimer);
@@ -986,6 +1001,10 @@ async function renderGameUI() {
                 }
             }, TURN_TIME_LIMIT);
         }
+    }
+
+    if (pendingTurnSfx) {
+        playAudioSequence(pendingTurnSfx);
     }
     
     // บังคับปิด Modal ทันที หากหมดเวลาและเทิร์นเปลี่ยนไปแล้ว
