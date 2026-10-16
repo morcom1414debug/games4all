@@ -36,6 +36,10 @@ let isPlayingStartCutscene = false;
 let isPlayingWinCutscene = false;
 let sceneTimeouts = [];
 
+// Visual FX Tracking State (ป้องกันการแสดงเอฟเฟกต์ซ้ำจากเหตุการณ์เดียวกัน)
+let lastVfxLogTs = 0;
+let lastVfxTurnKey = null;
+
 // Timer & Bot Names
 let turnTimer = null;
 let currentTurnKey = null;
@@ -269,8 +273,561 @@ function ensureVisualRuntimeStyles() {
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+
+        /* ==================== Real-Event Visual Effects (Decorative, Non-blocking, aria-hidden) ==================== */
+        #et-vfx-layer {
+            position: fixed;
+            inset: 0;
+            pointer-events: none !important;
+            user-select: none !important;
+            z-index: 950;
+            overflow: hidden;
+        }
+        .et-vfx-flash {
+            position: absolute;
+            inset: 0;
+            pointer-events: none !important;
+            animation: etVfxFlashFade 0.8s ease-out forwards;
+        }
+        .et-vfx-flash.danger {
+            background: radial-gradient(circle at 50% 45%, rgba(239, 68, 68, 0.28) 0%, rgba(185, 28, 28, 0.48) 100%);
+        }
+        .et-vfx-flash.laser {
+            background: radial-gradient(circle at 50% 45%, rgba(56, 189, 248, 0.35) 0%, rgba(3, 105, 161, 0.22) 100%);
+        }
+        .et-vfx-flash.shield {
+            background: radial-gradient(circle at 50% 45%, rgba(96, 165, 250, 0.32) 0%, rgba(251, 191, 36, 0.2) 100%);
+        }
+        .et-vfx-flash.heal {
+            background: radial-gradient(circle at 50% 45%, rgba(34, 197, 94, 0.26) 0%, transparent 80%);
+        }
+        .et-vfx-flash.gold {
+            background: radial-gradient(circle at 50% 45%, rgba(251, 191, 36, 0.3) 0%, transparent 82%);
+        }
+        .et-vfx-flash.toilet-fog {
+            background: radial-gradient(circle at 50% 55%, rgba(132, 204, 22, 0.26) 0%, rgba(107, 33, 168, 0.26) 65%, transparent 95%);
+        }
+        .et-vfx-flash.stairs {
+            background: linear-gradient(180deg, rgba(251, 191, 36, 0.34) 0%, rgba(15, 23, 42, 0.55) 100%);
+        }
+
+        .et-vfx-stack {
+            position: absolute;
+            top: 28%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: max-content;
+            max-width: 92vw;
+            pointer-events: none !important;
+        }
+        .et-vfx-card {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 8px 18px;
+            border-radius: 999px;
+            background: rgba(9, 13, 20, 0.92);
+            border: 2px solid var(--secondary);
+            color: #ffffff;
+            font-weight: 800;
+            font-size: clamp(0.95rem, 3vw, 1.25rem);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85), 0 0 18px rgba(251, 191, 36, 0.35);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95);
+            animation: etVfxPopFloat 1.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            pointer-events: none !important;
+            white-space: nowrap;
+        }
+        .et-vfx-card.danger {
+            border-color: #ef4444;
+            color: #fecaca;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 22px rgba(239, 68, 68, 0.65);
+        }
+        .et-vfx-card.laser {
+            border-color: #38bdf8;
+            color: #e0f2fe;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 22px rgba(56, 189, 248, 0.7);
+        }
+        .et-vfx-card.shield {
+            border-color: #60a5fa;
+            color: #dbeafe;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 22px rgba(96, 165, 250, 0.65);
+        }
+        .et-vfx-card.heal {
+            border-color: #22c55e;
+            color: #bbf7d0;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 20px rgba(34, 197, 94, 0.6);
+        }
+        .et-vfx-card.gold {
+            border-color: #fbbf24;
+            color: #fef08a;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 22px rgba(251, 191, 36, 0.65);
+        }
+        .et-vfx-card.dirty {
+            border-color: #a855f7;
+            color: #e9d5ff;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 20px rgba(168, 85, 247, 0.55);
+        }
+        .et-vfx-emoji {
+            font-size: 1.35em;
+            line-height: 1;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+        }
+
+        /* กรงเล็บซอมบี้, ลำแสงปืนเลเซอร์, โล่ป้องกัน, ทางลงชั้น */
+        .et-vfx-svg-graphic {
+            width: clamp(95px, 24vw, 135px);
+            height: clamp(95px, 24vw, 135px);
+            pointer-events: none !important;
+            filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.85));
+            animation: etVfxGraphicScale 1.05s ease-out forwards;
+        }
+        .et-vfx-laser-beam {
+            position: absolute;
+            top: 42%;
+            left: 50%;
+            width: min(85vw, 480px);
+            height: 8px;
+            transform: translate(-50%, -50%) rotate(-12deg);
+            background: linear-gradient(90deg, transparent 0%, #38bdf8 20%, #ffffff 50%, #f43f5e 85%, transparent 100%);
+            border-radius: 999px;
+            box-shadow: 0 0 18px #38bdf8, 0 0 32px #ef4444;
+            animation: etVfxLaserStrike 0.65s ease-out forwards;
+            pointer-events: none !important;
+        }
+
+        /* กรอบเรืองแสงและการเน้นแถบเทิร์นและสถานะเมื่อเปลี่ยนเทิร์นหรือเกิดเหตุการณ์ */
+        #game-status-bar.et-turn-active-glow {
+            border-color: #fbbf24 !important;
+            box-shadow: 0 0 18px rgba(251, 191, 36, 0.55), inset 0 0 10px rgba(251, 191, 36, 0.2) !important;
+            animation: etTurnBannerPulse 0.85s ease-out;
+        }
+        #my-player-status.et-my-turn-glow {
+            border-color: #fbbf24 !important;
+            border-left: 5px solid #fde047 !important;
+            box-shadow: 0 0 16px rgba(251, 191, 36, 0.45), inset 0 0 10px rgba(251, 191, 36, 0.14) !important;
+        }
+        #my-player-status.et-status-hit-shake {
+            animation: etHudDamageShake 0.55s ease-in-out;
+            border-color: #ef4444 !important;
+        }
+        #my-player-status.et-status-heal-glow {
+            animation: etHudHealPulse 0.75s ease-out;
+            border-color: #22c55e !important;
+        }
+        #latest-event-display.et-event-pulse-danger {
+            border-left-color: #ef4444 !important;
+            box-shadow: 0 0 14px rgba(239, 68, 68, 0.4), inset 0 1px 4px rgba(0, 0, 0, 0.7) !important;
+        }
+        #latest-event-display.et-event-pulse-good {
+            border-left-color: #22c55e !important;
+            box-shadow: 0 0 14px rgba(34, 197, 94, 0.35), inset 0 1px 4px rgba(0, 0, 0, 0.7) !important;
+        }
+        #latest-event-display.et-event-pulse-gold {
+            border-left-color: #fbbf24 !important;
+            box-shadow: 0 0 14px rgba(251, 191, 36, 0.4), inset 0 1px 4px rgba(0, 0, 0, 0.7) !important;
+        }
+
+        /* เอฟเฟกต์เน้นห้องที่เพิ่งถูกสำรวจบนกระดาน */
+        .board-cell.et-room-just-explored {
+            animation: etRoomPopEffect 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+            z-index: 3;
+        }
+
+        @keyframes etVfxFlashFade {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        @keyframes etVfxPopFloat {
+            0% { opacity: 0; transform: translateY(16px) scale(0.82); }
+            22% { opacity: 1; transform: translateY(0) scale(1.05); }
+            78% { opacity: 1; transform: translateY(-6px) scale(1); }
+            100% { opacity: 0; transform: translateY(-18px) scale(0.94); }
+        }
+        @keyframes etVfxGraphicScale {
+            0% { opacity: 0; transform: scale(0.65); }
+            25% { opacity: 1; transform: scale(1.08); }
+            75% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.12); }
+        }
+        @keyframes etVfxLaserStrike {
+            0% { opacity: 0; transform: translate(-50%, -50%) rotate(-12deg) scaleX(0.1); }
+            30% { opacity: 1; transform: translate(-50%, -50%) rotate(-12deg) scaleX(1.05); }
+            100% { opacity: 0; transform: translate(-50%, -50%) rotate(-12deg) scaleX(1); }
+        }
+        @keyframes etTurnBannerPulse {
+            0% { transform: scale(0.97); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        @keyframes etHudDamageShake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+        @keyframes etHudHealPulse {
+            0% { box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
+            50% { box-shadow: 0 0 18px rgba(34, 197, 94, 0.65); }
+            100% { box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
+        }
+        @keyframes etRoomPopEffect {
+            0% { transform: scale(0.9); box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+            45% { transform: scale(1.08); box-shadow: 0 0 22px rgba(251, 191, 36, 0.75); }
+            100% { transform: scale(1); }
+        }
     `;
     document.head.appendChild(style);
+}
+
+// ==================== Decorative Visual Effects Engine (เชื่อมกับเหตุการณ์จริงเท่านั้น & ซ่อนจาก SC 100%) ====================
+function getOrCreateVfxLayer() {
+    ensureVisualRuntimeStyles();
+    let layer = document.getElementById('et-vfx-layer');
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.id = 'et-vfx-layer';
+        layer.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(layer);
+    }
+    return layer;
+}
+
+function getClawSvgHtml() {
+    return `<svg class="et-vfx-svg-graphic" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+        <path d="M18 22 L98 92 M38 14 L106 76 M12 44 L84 106" stroke="#ef4444" stroke-width="7" stroke-linecap="round"/>
+        <path d="M18 22 L98 92 M38 14 L106 76 M12 44 L84 106" stroke="#fecaca" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>`;
+}
+
+function getShieldSvgHtml() {
+    return `<svg class="et-vfx-svg-graphic" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+        <path d="M60 12 L100 28 V58 C100 84 82 102 60 110 C38 102 20 84 20 58 V28 L60 12 Z" fill="rgba(37, 99, 235, 0.38)" stroke="#60a5fa" stroke-width="5"/>
+        <path d="M60 22 L90 34 V56 C90 76 76 90 60 97 C44 90 30 76 30 56 V34 L60 22 Z" fill="none" stroke="#fde047" stroke-width="2.5"/>
+    </svg>`;
+}
+
+function getLaserSvgHtml() {
+    return `<svg class="et-vfx-svg-graphic" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+        <circle cx="60" cy="60" r="38" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="10 6"/>
+        <circle cx="60" cy="60" r="16" fill="rgba(239, 68, 68, 0.65)" stroke="#ffffff" stroke-width="3"/>
+        <line x1="60" y1="8" x2="60" y2="112" stroke="#38bdf8" stroke-width="3"/>
+        <line x1="8" y1="60" x2="112" y2="60" stroke="#38bdf8" stroke-width="3"/>
+    </svg>`;
+}
+
+function getDoorPortalSvgHtml() {
+    return `<svg class="et-vfx-svg-graphic" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+        <rect x="28" y="14" width="64" height="92" rx="4" fill="#0f172a" stroke="#fbbf24" stroke-width="4"/>
+        <path d="M32 18 L74 26 V94 L32 102 Z" fill="rgba(251, 191, 36, 0.78)"/>
+        <circle cx="66" cy="60" r="4" fill="#0f172a"/>
+    </svg>`;
+}
+
+function spawnVfxPresentation({ flashType = null, cards = [], svgHtml = '', showLaserBeam = false }) {
+    const layer = getOrCreateVfxLayer();
+    layer.innerHTML = '';
+
+    if (flashType) {
+        const flashEl = document.createElement('div');
+        flashEl.className = `et-vfx-flash ${flashType}`;
+        flashEl.setAttribute('aria-hidden', 'true');
+        layer.appendChild(flashEl);
+    }
+
+    if (showLaserBeam) {
+        const beamEl = document.createElement('div');
+        beamEl.className = 'et-vfx-laser-beam';
+        beamEl.setAttribute('aria-hidden', 'true');
+        layer.appendChild(beamEl);
+    }
+
+    const stack = document.createElement('div');
+    stack.className = 'et-vfx-stack';
+    stack.setAttribute('aria-hidden', 'true');
+
+    if (svgHtml) {
+        const svgWrap = document.createElement('div');
+        svgWrap.setAttribute('aria-hidden', 'true');
+        svgWrap.innerHTML = svgHtml;
+        stack.appendChild(svgWrap);
+    }
+
+    cards.forEach((c) => {
+        const pill = document.createElement('div');
+        pill.className = `et-vfx-card ${c.theme || ''}`;
+        pill.setAttribute('aria-hidden', 'true');
+        pill.innerHTML = `<span class="et-vfx-emoji" aria-hidden="true">${c.icon || '✨'}</span><span aria-hidden="true">${escapeHtml(c.text)}</span>`;
+        stack.appendChild(pill);
+    });
+
+    layer.appendChild(stack);
+
+    setTimeout(() => {
+        if (layer.contains(stack)) {
+            layer.innerHTML = '';
+        }
+    }, 1350);
+}
+
+function pulseEventBoxTheme(theme) {
+    const evBox = document.getElementById('latest-event-display');
+    if (!evBox) return;
+    evBox.classList.remove('et-event-pulse-danger', 'et-event-pulse-good', 'et-event-pulse-gold');
+    if (theme) {
+        void evBox.offsetWidth;
+        evBox.classList.add(theme);
+    }
+}
+
+function pulseMyStatusHud(mode) {
+    const myHud = document.getElementById('my-player-status');
+    if (!myHud) return;
+    myHud.classList.remove('et-status-hit-shake', 'et-status-heal-glow');
+    if (mode) {
+        void myHud.offsetWidth;
+        myHud.classList.add(mode);
+        setTimeout(() => {
+            myHud.classList.remove(mode);
+        }, 800);
+    }
+}
+
+function highlightExploredRoomCell(roomNum1Based) {
+    setTimeout(() => {
+        const boardEl = document.getElementById('escape-board');
+        if (!boardEl) return;
+        const cells = boardEl.querySelectorAll('.board-cell');
+        const target = cells[roomNum1Based - 1];
+        if (target) {
+            target.classList.remove('et-room-just-explored');
+            void target.offsetWidth;
+            target.classList.add('et-room-just-explored');
+        }
+    }, 50);
+}
+
+function triggerTurnChangeVisual(turnKey, activePlayerId, activePlayerName) {
+    if (!turnKey || lastVfxTurnKey === turnKey) return;
+    lastVfxTurnKey = turnKey;
+
+    const statusBar = document.getElementById('game-status-bar');
+    if (statusBar) {
+        statusBar.classList.remove('et-turn-active-glow');
+        void statusBar.offsetWidth;
+        statusBar.classList.add('et-turn-active-glow');
+    }
+
+    const myHud = document.getElementById('my-player-status');
+    if (myHud) {
+        if (activePlayerId === myId) {
+            myHud.classList.add('et-my-turn-glow');
+        } else {
+            myHud.classList.remove('et-my-turn-glow');
+        }
+    }
+
+    if (activePlayerName) {
+        spawnVfxPresentation({
+            flashType: activePlayerId === myId ? 'gold' : null,
+            cards: [{
+                icon: activePlayerId === myId ? '⚡' : '⏳',
+                text: `เทิร์นของ ${activePlayerName}`,
+                theme: 'gold'
+            }]
+        });
+    }
+}
+
+function triggerVisualEffectFromLog(logObj) {
+    if (!logObj || !logObj.ts || logObj.ts <= lastVfxLogTs) return;
+    lastVfxLogTs = logObj.ts;
+
+    const msg = String(logObj.msg || '').trim();
+    if (!msg) return;
+
+    const myPlayerName = (gameState && gameState.players && myId && gameState.players[myId])
+        ? gameState.players[myId].name
+        : '';
+    const isMeInvolved = myPlayerName && msg.startsWith(myPlayerName);
+
+    // ตรวจสอบว่ามีการสำรวจห้องหมายเลขใด เพื่อแสดงเอฟเฟกต์เน้นที่ปุ่มห้องนั้นบนกระดาน (เฉพาะชั้นเดียวกัน)
+    const roomMatch = msg.match(/สำรวจห้อง\s+(\d+):/);
+    if (roomMatch) {
+        const roomNum = parseInt(roomMatch[1], 10);
+        if (roomNum >= 1 && roomNum <= 20) {
+            highlightExploredRoomCell(roomNum);
+        }
+    }
+
+    const cards = [];
+    let flashType = null;
+    let svgHtml = '';
+    let showLaserBeam = false;
+    let eventBoxTheme = null;
+
+    // 1. เหตุการณ์ช่วงเริ่มเทิร์น (ใช้วัคซีนอัตโนมัติ / กินอาหารจากคลัง / เสีย HP จากการติดเชื้อ 20 หรือ 40 / พักฟื้น)
+    if (msg.includes('ใช้วัคซีนรักษาการติดเชื้ออัตโนมัติ')) {
+        cards.push({ icon: '💉', text: 'ใช้วัคซีน รักษาการติดเชื้อ', theme: 'heal' });
+        flashType = 'heal';
+        eventBoxTheme = 'et-event-pulse-good';
+        if (isMeInvolved) pulseMyStatusHud('et-status-heal-glow');
+    }
+
+    const startFoodMatch = msg.match(/กินอาหารฟื้นฟู HP (\d+) หน่วย/);
+    if (startFoodMatch && !msg.includes('สำรวจห้อง')) {
+        const healAmt = startFoodMatch[1];
+        cards.push({ icon: '🥫', text: `+${healAmt} HP (กินอาหาร)`, theme: 'heal' });
+        flashType = 'heal';
+        eventBoxTheme = 'et-event-pulse-good';
+        if (isMeInvolved) pulseMyStatusHud('et-status-heal-glow');
+    }
+
+    const infDmgMatch = msg.match(/เสีย (\d+) HP จากการติดเชื้อ/);
+    if (infDmgMatch) {
+        const dmgAmt = infDmgMatch[1];
+        cards.push({ icon: '☣️', text: `-${dmgAmt} HP (พิษติดเชื้อ)`, theme: 'danger' });
+        svgHtml = getClawSvgHtml();
+        flashType = 'danger';
+        eventBoxTheme = 'et-event-pulse-danger';
+        if (isMeInvolved) pulseMyStatusHud('et-status-hit-shake');
+    }
+
+    if (msg.includes('พักฟื้นเสร็จสิ้น ฟื้นฟู HP เป็น 150')) {
+        cards.push({ icon: '💚', text: 'ฟื้นฟู HP เป็น 150', theme: 'heal' });
+        flashType = 'heal';
+        eventBoxTheme = 'et-event-pulse-good';
+        if (isMeInvolved) pulseMyStatusHud('et-status-heal-glow');
+    } else if (msg.includes('กำลังพักฟื้น หยุดเล่น 1 เทิร์น') || msg.includes('ได้รับบาดเจ็บสาหัส ต้องหยุดพักฟื้น')) {
+        cards.push({ icon: '🛌', text: 'บาดเจ็บสาหัส พักฟื้น 1 เทิร์น', theme: 'danger' });
+        flashType = flashType || 'danger';
+        eventBoxTheme = 'et-event-pulse-danger';
+    }
+
+    // 2. เหตุการณ์เจอซอมบี้: ยิงซอมบี้ / เกราะป้องกัน / ถูกโจมตีติดเชื้อ
+    if (msg.includes('พบซอมบี้!') || msg.includes('เจอซอมบี้!')) {
+        if (msg.includes('ใช้ปืนยิงป้องกันสำเร็จ') || msg.includes('ยิงป้องกันสำเร็จ')) {
+            showLaserBeam = true;
+            svgHtml = getLaserSvgHtml();
+            flashType = 'laser';
+            eventBoxTheme = 'et-event-pulse-gold';
+            cards.push({ icon: '🔫', text: 'ยิงเลเซอร์สกัดซอมบี้! (-1 กระสุน)', theme: 'laser' });
+        } else if (msg.includes('เกราะสวรรค์ป้องกันการโจมตีสำเร็จ') || msg.includes('เกราะกันสำเร็จ')) {
+            svgHtml = getShieldSvgHtml();
+            flashType = 'shield';
+            eventBoxTheme = 'et-event-pulse-gold';
+            cards.push({ icon: '🛡️', text: 'เกราะป้องกันซอมบี้สำเร็จ! (-1 เกราะ)', theme: 'shield' });
+        } else if (msg.includes('ถูกโจมตี ติดเชื้อระดับ') || msg.includes('ติดเชื้อ!')) {
+            svgHtml = getClawSvgHtml();
+            flashType = 'danger';
+            eventBoxTheme = 'et-event-pulse-danger';
+            const infLevelMatch = msg.match(/ติดเชื้อระดับ (\d+) HP\/เทิร์น/);
+            const infText = infLevelMatch
+                ? `ถูกซอมบี้ข่วน! ติดเชื้อ -${infLevelMatch[1]} HP/เทิร์น`
+                : 'ถูกซอมบี้ข่วน! ติดเชื้อ!';
+            cards.push({ icon: '🧟', text: infText, theme: 'danger' });
+            if (isMeInvolved) pulseMyStatusHud('et-status-hit-shake');
+        }
+    }
+
+    // 3. เหตุการณ์พบสิ่งของหรือห้องพิเศษจากการสำรวจห้องจริง
+    if (msg.includes('พบกุญแจปกติ')) {
+        flashType = 'gold';
+        eventBoxTheme = 'et-event-pulse-gold';
+        cards.push({ icon: '🔑', text: '+1 กุญแจปกติ', theme: 'gold' });
+    } else if (msg.includes('พบกุญแจผี')) {
+        flashType = 'gold';
+        eventBoxTheme = 'et-event-pulse-gold';
+        cards.push({ icon: '🗝️', text: '+1 กุญแจผี', theme: 'gold' });
+    } else if (msg.includes('พบทางลงลับ') || msg.includes('พบทางลับ')) {
+        flashType = 'gold';
+        svgHtml = getDoorPortalSvgHtml();
+        eventBoxTheme = 'et-event-pulse-gold';
+        cards.push({ icon: '🪜', text: 'พบทางลงลับ! (ลงข้ามชั้นได้)', theme: 'gold' });
+    } else if (msg.includes('พบวัคซีน')) {
+        flashType = 'heal';
+        eventBoxTheme = 'et-event-pulse-good';
+        cards.push({ icon: '💉', text: '+1 วัคซีน', theme: 'heal' });
+    } else if (msg.includes('พบอาหาร') || msg.includes('กินอาหารฟื้น HP') || msg.includes('เก็บอาหารเข้าคลังสำรอง')) {
+        flashType = 'heal';
+        eventBoxTheme = 'et-event-pulse-good';
+        const instantHealMatch = msg.match(/กินทันทีฟื้นฟู HP (\d+) หน่วย/);
+        if (instantHealMatch) {
+            cards.push({ icon: '🥫', text: `พบอาหาร +${instantHealMatch[1]} HP`, theme: 'heal' });
+            if (isMeInvolved) pulseMyStatusHud('et-status-heal-glow');
+        } else if (msg.includes('กินอาหารฟื้น HP')) {
+            cards.push({ icon: '🥫', text: 'พบอาหาร กินฟื้นฟู HP', theme: 'heal' });
+        } else {
+            cards.push({ icon: '🥫', text: '+1 อาหารเก็บเข้าคลัง', theme: 'heal' });
+        }
+    } else if (msg.includes('พบเกราะสวรรค์') || msg.includes('ได้เกราะ')) {
+        flashType = 'shield';
+        svgHtml = getShieldSvgHtml();
+        eventBoxTheme = 'et-event-pulse-gold';
+        cards.push({ icon: '🛡️', text: '+1 เกราะสวรรค์', theme: 'shield' });
+    } else if (msg.includes('พบห้องน้ำเก่าสกปรกแถมผุพัง')) {
+        flashType = 'toilet-fog';
+        eventBoxTheme = 'et-event-pulse-danger';
+        cards.push({ icon: '🚽', text: 'ห้องน้ำเก่าและสกปรก!', theme: 'dirty' });
+    } else if (msg.includes('พบปืนเลเซอร์') || msg.includes('ได้ปืนและกระสุน')) {
+        flashType = 'laser';
+        eventBoxTheme = 'et-event-pulse-gold';
+        if (msg.includes('แต่กระสุนเต็มแล้ว')) {
+            cards.push({ icon: '🔫', text: 'พบปืนเลเซอร์ (กระสุนเต็มแล้ว)', theme: 'laser' });
+        } else if (msg.includes('แปลงเป็นกระสุน 1 นัด')) {
+            cards.push({ icon: '🔋', text: '+1 กระสุนเลเซอร์', theme: 'laser' });
+        } else {
+            cards.push({ icon: '🔫', text: 'ได้ปืนเลเซอร์ + กระสุน!', theme: 'laser' });
+        }
+    } else if (msg.includes('พบแบตเตอรี่') || msg.includes('ได้กระสุน')) {
+        flashType = 'laser';
+        eventBoxTheme = 'et-event-pulse-gold';
+        if (msg.includes('แต่กระสุนเต็มแล้ว')) {
+            cards.push({ icon: '🔋', text: 'พบแบตเตอรี่ (กระสุนเต็มแล้ว)', theme: 'laser' });
+        } else {
+            cards.push({ icon: '🔋', text: '+1 กระสุนเลเซอร์', theme: 'laser' });
+        }
+    }
+
+    // 4. เหตุการณ์ตอบคำใบ้ถูกต้อง
+    if (msg.includes('ตอบคำใบ้ถูกต้อง')) {
+        flashType = 'gold';
+        eventBoxTheme = 'et-event-pulse-gold';
+        cards.push({ icon: '🔓', text: 'ถอดรหัสคำใบ้สำเร็จ!', theme: 'gold' });
+    }
+
+    // 5. เหตุการณ์เปิดประตูลงชั้นถัดไป หรือ เปิดประตูหนีออกจากตึกชั้น 1
+    const stairsMatch = msg.match(/ใช้(.+?)\s+ลงมายังชั้น\s+(\d+)/);
+    if (stairsMatch) {
+        const usedItem = stairsMatch[1];
+        const targetFloor = stairsMatch[2];
+        flashType = 'stairs';
+        svgHtml = getDoorPortalSvgHtml();
+        eventBoxTheme = 'et-event-pulse-gold';
+        cards.push({ icon: '🚪', text: `เปิดประตูลงสู่ชั้น ${targetFloor} (${usedItem})`, theme: 'gold' });
+    } else if (msg.includes('ปลดล็อกประตูทางออกชั้น 1')) {
+        flashType = 'gold';
+        svgHtml = getDoorPortalSvgHtml();
+        eventBoxTheme = 'et-event-pulse-gold';
+        cards.push({ icon: '🏆', text: 'เปิดประตูทางออกตึกสำเร็จ!', theme: 'gold' });
+    }
+
+    if (eventBoxTheme) {
+        pulseEventBoxTheme(eventBoxTheme);
+    }
+
+    if (cards.length > 0 || svgHtml || showLaserBeam) {
+        spawnVfxPresentation({
+            flashType,
+            cards,
+            svgHtml,
+            showLaserBeam
+        });
+    }
 }
 
 // Audio System
@@ -784,6 +1341,8 @@ function createRoom() {
             myId = 'p1';
             isHost = true;
             localTs = Date.now();
+            lastVfxLogTs = 0;
+            lastVfxTurnKey = null;
             startCutscenePlayed = false;
             winCutscenePlayed = false;
             isPlayingStartCutscene = false;
@@ -807,6 +1366,8 @@ function createRoom() {
 function joinRoom(rId) {
     currentRoomId = rId;
     isHost = false;
+    lastVfxLogTs = 0;
+    lastVfxTurnKey = null;
     startCutscenePlayed = false;
     winCutscenePlayed = false;
     isPlayingStartCutscene = false;
@@ -849,6 +1410,10 @@ function enterRoomUI() {
 window.leaveRoomAndGoHome = function() {
     stopBGM();
     clearSceneTimeouts();
+    const vfxLayer = document.getElementById('et-vfx-layer');
+    if (vfxLayer) vfxLayer.innerHTML = '';
+    lastVfxLogTs = 0;
+    lastVfxTurnKey = null;
     startCutscenePlayed = false;
     winCutscenePlayed = false;
     isPlayingStartCutscene = false;
@@ -1018,6 +1583,8 @@ function setupRoomListener() {
             winCutscenePlayed = false;
             isPlayingStartCutscene = false;
             isPlayingWinCutscene = false;
+            lastVfxLogTs = 0;
+            lastVfxTurnKey = null;
             stopBGM();
 
             if (gameState.log && gameState.log.ts > localTs) {
@@ -1079,6 +1646,7 @@ function setupRoomListener() {
                 isPlayingStartCutscene = true;
                 if (gameState.log && gameState.log.ts > localTs) {
                     localTs = gameState.log.ts;
+                    lastVfxLogTs = gameState.log.ts;
                 }
                 runStartCutscene(() => {
                     isPlayingStartCutscene = false;
@@ -1097,6 +1665,7 @@ function setupRoomListener() {
             if (isPlayingStartCutscene) {
                 if (gameState.log && gameState.log.ts > localTs) {
                     localTs = gameState.log.ts;
+                    lastVfxLogTs = gameState.log.ts;
                 }
                 return;
             }
@@ -1115,6 +1684,7 @@ function setupRoomListener() {
                     announceSR(gameState.log.msg, 'polite');
                     document.getElementById('latest-event-display').textContent = gameState.log.msg;
                 }
+                triggerVisualEffectFromLog(gameState.log);
             }
             
             renderGameUI(pendingTurnSfx);
@@ -1129,6 +1699,7 @@ function setupRoomListener() {
                 if (gameState.log.sfx) {
                     playAudioSequence(gameState.log.sfx);
                 }
+                triggerVisualEffectFromLog(gameState.log);
             }
             if (gameState.winner && !winCutscenePlayed) {
                 winCutscenePlayed = true;
@@ -1271,6 +1842,8 @@ async function renderGameUI(pendingTurnSfx = null) {
         activeTurnLock = null; // ปลดล็อก UI สำหรับผู้เล่นเมื่อเริ่มเทิร์นใหม่
         
         announceSR(`ถึงเทิร์นของ ${curP.name}`);
+        triggerTurnChangeVisual(thisTurnKey, curPId, curP.name);
+
         let startTurnAudio = ['turn.mp3'];
         if (pendingTurnSfx) {
             const sfxArr = Array.isArray(pendingTurnSfx) ? pendingTurnSfx : [pendingTurnSfx];
@@ -1341,6 +1914,11 @@ async function renderGameUI(pendingTurnSfx = null) {
     const statusText = `สถานะของคุณ: ${myP.name} ชั้น ${myP.floor} HP ${myP.hp} อาหารในคลัง ${myP.food} วัคซีน ${myP.vaccine} กุญแจ ${myP.keys} ปืน ${myP.gun} กระสุน ${myP.ammo}`;
     const statusContainer = document.getElementById('my-player-status');
     statusContainer.setAttribute('aria-label', statusText);
+    if (curPId === myId) {
+        statusContainer.classList.add('et-my-turn-glow');
+    } else {
+        statusContainer.classList.remove('et-my-turn-glow');
+    }
     const myAvatarHtml = getParticipantAvatarHtml(myId, myP);
     const safeMyName = escapeHtml(myP.name);
     statusContainer.innerHTML = `${myAvatarHtml}<span class="et-status-bar-items" aria-hidden="true">` +
@@ -1460,6 +2038,7 @@ function readAllStatus() {
     const modal = document.getElementById('all-status-modal');
     const list = document.getElementById('all-status-list');
     list.innerHTML = '';
+    const curPId = (gameState.order && gameState.order[gameState.turnIndex]) ? gameState.order[gameState.turnIndex] : null;
     gameState.order.forEach(pid => {
         const p = gameState.players[pid];
         let txt = `${p.name} - ชั้น ${p.floor} | HP: ${p.hp}`;
@@ -1477,9 +2056,13 @@ function readAllStatus() {
             else if (p.status === 'resting' || p.status === 'recovered_ready') stateIcon = '🛌';
             statusBadgeHtml = `<span class="et-state-tag"><span class="et-stat-icon" aria-hidden="true">${stateIcon}</span>(${escapeHtml(p.status)})</span>`;
         }
+        const activeTurnBadgeHtml = (pid === curPId)
+            ? `<span class="et-stat-pill" style="border-color:#fbbf24!important;color:#fde047!important;" aria-hidden="true">⚡ เทิร์นปัจจุบัน</span>`
+            : '';
         const visualHtml = `<div class="et-all-status-body" aria-hidden="true">` +
             `<div class="et-all-status-header">` +
                 `<span><span class="et-stat-icon" aria-hidden="true">${roleIcon}</span> ${safeName}</span>` +
+                `${activeTurnBadgeHtml}` +
                 `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">🏢</span>ชั้น ${p.floor}</span>` +
                 `<span class="et-stat-pill"><span class="et-stat-icon" aria-hidden="true">❤️</span>HP: ${p.hp}</span>` +
                 `${statusBadgeHtml}` +
