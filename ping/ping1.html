@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Blind Ping Pong - เกมตีปิงปองด้วยเสียง</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --text: #FFFFFF;
+      --accent: #FFD700;
+      --btn-bg: #1A1A1A;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+      overflow: hidden;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 20px;
+      overflow-y: auto;
+    }
+    h1 {
+      font-size: 2.2rem;
+      color: var(--accent);
+      line-height: 1.3;
+    }
+    .desc {
+      font-size: 1.25rem;
+      line-height: 1.6;
+    }
+    .status-box {
+      background: #111;
+      border: 2px solid var(--accent);
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 1.3rem;
+      min-height: 110px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: bold;
+    }
+    .score-board {
+      font-size: 1.8rem;
+      text-align: center;
+      color: var(--accent);
+      font-weight: bold;
+      padding: 8px;
+    }
+    .bottom-bar {
+      width: 100%;
+      padding-top: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 26px;
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #000000;
+      background-color: var(--accent);
+      border: 4px solid #FFFFFF;
+      border-radius: 16px;
+      cursor: pointer;
+    }
+    button:focus, button:active {
+      outline: 6px solid #00FFFF;
+      background-color: #FFA500;
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- หน้าแรกของเกม -->
+  <main id="home-screen" role="region" aria-label="หน้าแรกของเกม">
+    <h1 tabindex="0">ปิงปองเสียง (Blind Ping Pong)</h1>
+    <div class="desc" tabindex="0">
+      <p>เกมตีปิงปองสำหรับผู้พิการทางสายตา ใช้การฟังเสียงและสะบัดสมาร์ทโฟนไปข้างหน้าเหมือนการตีไม้ปิงปอง</p>
+      <p style="margin-top: 12px;"><strong>วิธีเล่นและกติกา:</strong></p>
+      <ul style="margin-left: 24px; margin-top: 8px;">
+        <li>ถือสมาร์ทโฟนให้มั่นคง แข่งขันตามกติกาปิงปองสากล ใครถึง 11 คะแนนก่อนชนะ (หากเสมอกัน 10 ต่อ 10 ต้องดิวซ์ชนะห่าง 2 คะแนน) และสลับเสิร์ฟทุก 2 แต้ม</li>
+        <li>เมื่อได้ยินเสียงลูกปิงปองตกกระทบโต๊ะฝั่งเรา ให้สะบัดมือถือจากหลังไปข้างหน้าภายในเวลา 0.65 วินาทีเพื่อตีโต้กลับ</li>
+        <li>หากสะบัดมือก่อนที่ลูกจะตกกระทบโต๊ะ ระบบจะไม่นับจังหวะนั้น คุณสามารถสะบัดตีใหม่ได้ทันทีเมื่อลูกตกกระทบโต๊ะ</li>
+      </ul>
+    </div>
+    <div id="permission-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
+  </main>
+
+  <!-- หน้าขณะเล่นเกม -->
+  <main id="game-screen" class="hidden" role="region" aria-label="หน้ากระดานแข่งขัน">
+    <h1 id="game-title">กำลังแข่งขัน</h1>
+    <div id="score-display" class="score-board" aria-live="polite" tabindex="0">ผู้เล่น 0 - 0 บอท</div>
+    <div id="game-status" class="status-box" aria-live="assertive" tabindex="0">เตรียมพร้อม...</div>
+  </main>
+
+  <!-- ปุ่มเริ่มเกม อยู่ด้านล่างสุดเสมอ -->
+  <div class="bottom-bar">
+    <button id="start-btn" type="button" aria-label="เริ่มเกม กดเพื่อขออนุญาตเซ็นเซอร์การเคลื่อนไหวและเข้าสู่การแข่งขัน">เริ่มเกม</button>
+  </div>
+
+<script>
+/**
+ * 1. ระบบจัดการเสียงด้วย Web Audio API ทั้งหมด
+ * โหลดไฟล์จากโฟลเดอร์ audio/1.mp3, audio/2.mp3, audio/3.mp3
+ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.buffers = {};
+    this.loaded = false;
+  }
+
+  async init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+    if (!this.loaded) {
+      await this.loadAllSounds();
+    }
+  }
+
+  async loadAllSounds() {
+    const files = {
+      bounce: 'audio/1.mp3', // ลูกตกกระทบโต๊ะฝั่งตรงข้ามสำเร็จ
+      hit: 'audio/2.mp3',    // ตีโดนลูกปิงปองถูกต้อง
+      miss: 'audio/3.mp3'    // ตีไม่ถูกลูกปิงปอง
+    };
+
+    const promises = Object.entries(files).map(async ([key, url]) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        const arrayBuffer = await res.arrayBuffer();
+        this.buffers[key] = await this.ctx.decodeAudioData(arrayBuffer);
+      } catch (err) {
+        console.warn(`โหลดไฟล์ ${url} ไม่สำเร็จ ใช้เสียงสังเคราะห์สำรองแทน:`, err);
+        this.buffers[key] = this.createFallbackBuffer(key);
+      }
+    });
+
+    await Promise.all(promises);
+    this.loaded = true;
+  }
+
+  // สร้าง Buffer สำรองด้วย Web Audio API กรณีทดสอบโดยยังไม่ได้ใส่โฟลเดอร์ audio
+  createFallbackBuffer(type) {
+    const sr = this.ctx.sampleRate;
+    const duration = type === 'miss' ? 0.35 : 0.12;
+    const buffer = this.ctx.createBuffer(1, sr * duration, sr);
+    const data = buffer.getChannelData(0);
+    const freq = type === 'bounce' ? 680 : (type === 'hit' ? 420 : 150);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / sr;
+      data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-18 * t);
+    }
+    return buffer;
+  }
+
+  /**
+   * เล่นเสียงจาก AudioBuffer พร้อมกำหนดตำแหน่งซ้าย-ขวา (Stereo Pan)
+   * @param {'bounce'|'hit'|'miss'} name 
+   * @param {number} pan (-0.5 = ฝั่งผู้เล่น/ซ้าย, 0.5 = ฝั่งบอท/ขวา, 0 = ตรงกลาง)
+   */
+  play(name, pan = 0) {
+    if (!this.ctx || !this.buffers[name]) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers[name];
+
+    if (this.ctx.createStereoPanner) {
+      const panner = this.ctx.createStereoPanner();
+      panner.pan.value = pan;
+      source.connect(panner);
+      panner.connect(this.ctx.destination);
+    } else {
+      source.connect(this.ctx.destination);
+    }
+
+    source.start(0);
+  }
+}
+
+/**
+ * 2. ระบบตรวจจับการสะบัดมือถือ (Motion Sensor & Permission Manager)
+ */
+class MotionDetector {
+  constructor(onSwingCallback) {
+    this.onSwing = onSwingCallback;
+    this.lastSwingTime = 0;
+    this.cooldownMs = 320; // ป้องกันสัญญาณซ้ำจากการตวัดมือ 1 ครั้ง
+    this.listening = false;
+    this.boundHandler = this.handleMotion.bind(this);
+  }
+
+  async requestPermission() {
+    // กรณี iOS 13+ ที่บังคับขอ Permission ผ่าน Dialog ของเบราว์เซอร์
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try {
+        const state = await DeviceMotionEvent.requestPermission();
+        return state === 'granted';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // กรณี Android หรือเบราว์เซอร์มาตรฐาน: ตรวจสอบและแสดงหน้าต่างขออนุญาตชัดเจนตามเงื่อนไขเกม
+    if ('DeviceMotionEvent' in window) {
+      const allowed = window.confirm("ต้องการอนุญาตให้เกมเข้าถึงเซ็นเซอร์ตรวจจับการเคลื่อนไหว (Motion Sensor) ของสมาร์ทโฟนหรือไม่?\n\n(ต้องกด 'ตกลง' หรือ 'อนุญาต' เท่านั้นเพื่อเริ่มเล่นเกม)");
+      return allowed;
+    }
+
+    return false;
+  }
+
+  start() {
+    if (this.listening) return;
+    window.addEventListener('devicemotion', this.boundHandler, true);
+    this.listening = true;
+  }
+
+  stop() {
+    if (!this.listening) return;
+    window.removeEventListener('devicemotion', this.boundHandler, true);
+    this.listening = false;
+  }
+
+  handleMotion(event) {
+    const now = performance.now();
+    if (now - this.lastSwingTime < this.cooldownMs) return;
+
+    // 1. ตรวจความเร่งเชิงเส้น (ตัดแรงโน้มถ่วงโลกออก)
+    const acc = event.acceleration;
+    // 2. ตรวจความเร็วการหมุนข้อมือขณะตวัดไม้ปิงปอง
+    const rot = event.rotationRate;
+
+    let forwardForce = 0;
+    let wristSnap = 0;
+
+    if (acc && (acc.y !== null || acc.z !== null)) {
+      const ay = acc.y || 0;
+      const az = acc.z || 0;
+      forwardForce = Math.sqrt(ay * ay + az * az);
+    } else if (event.accelerationIncludingGravity) {
+      // Fallback กรณีมือถือบางรุ่นไม่มี Gyro แยกแรงโน้มถ่วง
+      const ag = event.accelerationIncludingGravity;
+      const total = Math.sqrt((ag.x || 0) ** 2 + (ag.y || 0) ** 2 + (ag.z || 0) ** 2);
+      forwardForce = Math.abs(total - 9.81);
+    }
+
+    if (rot) {
+      wristSnap = Math.max(Math.abs(rot.alpha || 0), Math.abs(rot.beta || 0));
+    }
+
+    // เกณฑ์ฟันธงการตี: ความเร่งสะบัดไปข้างหน้า >= 11 m/s² หรือสะบัดร่วมกับข้อมือ >= 160 deg/s
+    if (forwardForce >= 11.0 || (forwardForce >= 6.5 && wristSnap >= 160)) {
+      this.lastSwingTime = now;
+      this.onSwing();
+    }
+  }
+}
+
+/**
+ * 3. ระบบตรรกะเกมปิงปอง (กติกาจริง + จังหวะ Timing)
+ */
+const TIMING = {
+  TRAVEL_TO_BOUNCE_MS: 550, // เวลาที่ลูกลอยจากไม้ไปตกกระทบโต๊ะฝั่งตรงข้าม (0.55 วินาที)
+  HIT_WINDOW_MS: 650,       // เวลาที่เปิดให้ผู้เล่นสะบัดมือถือตีหลังจากลูกตกกระทบโต๊ะ (0.65 วินาที)
+  BOT_REACTION_MS: 320      // เวลาที่บอทใช้ตีโต้หลังลูกตกฝั่งบอท (0.32 วินาที)
+};
+
+const sound = new SoundEngine();
+let gameActive = false;
+let playerScore = 0;
+let botScore = 0;
+let initialServer = 'player'; // สุ่มทุกครั้งที่เริ่มเกม
+let currentServer = 'player';
+let canPlayerHit = false;     // เปิดเป็น true เฉพาะหลังลูกตกโต๊ะฝั่งผู้เล่นเท่านั้น
+let rallyCount = 0;
+let activeTimer = null;
+
+// DOM Elements
+const homeScreen = document.getElementById('home-screen');
+const gameScreen = document.getElementById('game-screen');
+const permissionMsg = document.getElementById('permission-msg');
+const scoreDisplay = document.getElementById('score-display');
+const gameStatus = document.getElementById('game-status');
+const startBtn = document.getElementById('start-btn');
+
+// ระบบเสียงพูดขานแต้มและสถานะสำหรับคนตาบอด (Web Speech API + ARIA Live)
+function announce(text, callback) {
+  gameStatus.textContent = text;
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'th-TH';
+    utter.rate = 1.15;
+    let finished = false;
+    const done = () => {
+      if (!finished) {
+        finished = true;
+        if (callback) callback();
+      }
+    };
+    utter.onend = done;
+    utter.onerror = done;
+    // ป้องกันกรณีเบราว์เซอร์บางรุ่นไม่ยิง event onend
+    setTimeout(done, Math.max(1800, text.length * 95));
+    window.speechSynthesis.speak(utter);
+  } else {
+    if (callback) setTimeout(callback, 1800);
+  }
+}
+
+// กลับสู่หน้าแรกทันทีหากไม่อนุญาตเซ็นเซอร์
+function returnToHomeWithError(message) {
+  gameActive = false;
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+  motion.stop();
+
+  gameScreen.classList.add('hidden');
+  homeScreen.classList.remove('hidden');
+  permissionMsg.textContent = message;
+  permissionMsg.classList.remove('hidden');
+  startBtn.textContent = 'เริ่มเกม';
+  startBtn.setAttribute('aria-label', 'เริ่มเกม กดเพื่อขออนุญาตเซ็นเซอร์การเคลื่อนไหวอีกครั้ง');
+
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(message);
+    utter.lang = 'th-TH';
+    window.speechSynthesis.speak(utter);
+  }
+}
+
+// คำนวณสิทธิ์การเสิร์ฟตามกติกาปิงปองจริง (สลับทุก 2 แต้ม และสลับทุก 1 แต้มเมื่อดิวซ์ 10-10)
+function updateServerTurn() {
+  const totalPoints = playerScore + botScore;
+  const oppositeServer = initialServer === 'player' ? 'bot' : 'player';
+
+  if (playerScore >= 10 && botScore >= 10) {
+    const deucePoints = totalPoints - 20;
+    currentServer = (deucePoints % 2 === 0) ? initialServer : oppositeServer;
+  } else {
+    const pairIndex = Math.floor(totalPoints / 2);
+    currentServer = (pairIndex % 2 === 0) ? initialServer : oppositeServer;
+  }
+}
+
+// ตรวจสอบผู้ชนะตามกติกา 11 แต้ม (ดิวซ์ต้องห่าง 2 แต้ม)
+function checkWinner() {
+  if (playerScore >= 11 && playerScore - botScore >= 2) return 'player';
+  if (botScore >= 11 && botScore - playerScore >= 2) return 'bot';
+  return null;
+}
+
+function updateScoreUI() {
+  scoreDisplay.textContent = `ผู้เล่น ${playerScore} - ${botScore} บอท`;
+}
+
+// เริ่มการเสิร์ฟในแต่ละแต้ม
+function startRally() {
+  if (!gameActive) return;
+  canPlayerHit = false;
+  rallyCount = 0;
+  updateServerTurn();
+  updateScoreUI();
+
+  const serverText = currentServer === 'player'
+    ? 'ตาคุณเสิร์ฟ สะบัดมือถือเพื่อเสิร์ฟลูกได้เลย'
+    : 'ตาบอทเสิร์ฟ เตรียมฟังเสียงลูกตกโต๊ะ';
+
+  announce(`คะแนน ${playerScore} ต่อ ${botScore} ${serverText}`, () => {
+    if (!gameActive) return;
+    if (currentServer === 'player') {
+      // รอให้ผู้เล่นสะบัดมือถือเสิร์ฟ (ให้เวลาเสิร์ฟ 4 วินาที)
+      canPlayerHit = true;
+      activeTimer = setTimeout(() => {
+        if (canPlayerHit && gameActive) {
+          canPlayerHit = false;
+          sound.play('miss', -0.4); // 3.mp3 ตี/เสิร์ฟไม่ถูกลูก
+          handlePointWon('bot', 'คุณเสิร์ฟไม่ทันเวลา บอทได้คะแนน');
+        }
+      }, 4000);
+    } else {
+      // บอทเสิร์ฟ
+      activeTimer = setTimeout(() => {
+        if (!gameActive) return;
+        botStrikeBall();
+      }, 700);
+    }
+  });
+}
+
+// เมื่อผู้เล่นสะบัดมือถือ (ถูกเรียกโดย MotionDetector)
+function onPlayerSwing() {
+  if (!gameActive) return;
+
+  // กฎเหล็ก: ถ้าสะบัดมือก่อนที่ลูกจะตกกระทบโต๊ะ (canPlayerHit === false) ให้เพิกเฉย ไม่เสียฟาวล์ รอตีตอนลูกตกได้
+  if (!canPlayerHit) {
+    return;
+  }
+
+  // ผู้เล่นตีถูกลูกภายในเวลาที่กำหนด!
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+  rallyCount++;
+
+  // เล่นเสียง 2.mp3 (ผู้เล่นตีโดนลูกได้ถูกต้อง)
+  sound.play('hit', -0.4);
+  gameStatus.textContent = 'ตีสำเร็จ! ลูกกำลังลอยไปฝั่งบอท...';
+
+  // รอเวลาลูกลอยข้ามตาข่ายไปตกโต๊ะฝั่งบอท (550 ms)
+  activeTimer = setTimeout(() => {
+    if (!gameActive) return;
+
+    // เล่นเสียง 1.mp3 (ลูกตกบนโต๊ะฝั่งบอทสำเร็จ)
+    sound.play('bounce', 0.4);
+
+    // รอจังหวะบอทตีโต้ (320 ms)
+    activeTimer = setTimeout(() => {
+      if (!gameActive) return;
+
+      // โอกาสที่บอทจะตีรับลูกได้ (เริ่มต้น 88% และลดลงเล็กน้อยเมื่อโต้กันนานขึ้นเพื่อให้เกมสนุกและสมจริง)
+      const botSuccessChance = Math.max(0.55, 0.88 - (rallyCount * 0.03));
+      if (Math.random() < botSuccessChance) {
+        botStrikeBall();
+      } else {
+        // บอทตีไม่ถูกลูก เล่นเสียง 3.mp3
+        sound.play('miss', 0.4);
+        handlePointWon('player', 'บอทตีไม่ถูกลูก คุณได้คะแนน!');
+      }
+    }, TIMING.BOT_REACTION_MS);
+
+  }, TIMING.TRAVEL_TO_BOUNCE_MS);
+}
+
+// เมื่อบอทเป็นฝ่ายตีลูกปิงปองกลับมาหาผู้เล่น
+function botStrikeBall() {
+  if (!gameActive) return;
+
+  // เล่นเสียง 2.mp3 (บอทตีโดนลูกปิงปองถูกต้อง)
+  sound.play('hit', 0.4);
+  gameStatus.textContent = 'บอทตีลูกมาแล้ว เตรียมฟังเสียงตกโต๊ะ...';
+
+  // ลูกลอยข้ามมาตกโต๊ะฝั่งผู้เล่น (550 ms)
+  activeTimer = setTimeout(() => {
+    if (!gameActive) return;
+
+    // เล่นเสียง 1.mp3 (ลูกตกบนโต๊ะฝั่งผู้เล่นสำเร็จ)
+    sound.play('bounce', -0.4);
+    gameStatus.textContent = 'ลูกตกโต๊ะแล้ว! สะบัดมือถือตีเลย!';
+
+    // เปิดหน้าต่างเวลาให้ผู้เล่นสะบัดมือถือตีภายใน 650 ms
+    canPlayerHit = true;
+
+    activeTimer = setTimeout(() => {
+      if (canPlayerHit && gameActive) {
+        // ผู้เล่นตีไม่ทันเวลา!
+        canPlayerHit = false;
+        // เล่นเสียง 3.mp3 (ผู้เล่นตีไม่ถูกลูกปิงปอง)
+        sound.play('miss', -0.4);
+        handlePointWon('bot', 'คุณตีไม่ทัน บอทได้คะแนน');
+      }
+    }, TIMING.HIT_WINDOW_MS);
+
+  }, TIMING.TRAVEL_TO_BOUNCE_MS);
+}
+
+// สรุปผลเมื่อจบ 1 แต้ม
+function handlePointWon(winner, reasonText) {
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+
+  if (winner === 'player') {
+    playerScore++;
+  } else {
+    botScore++;
+  }
+  updateScoreUI();
+
+  const matchWinner = checkWinner();
+  if (matchWinner) {
+    gameActive = false;
+    motion.stop();
+    const endMessage = matchWinner === 'player'
+      ? `${reasonText} จบเกม คุณชนะบอทด้วยคะแนน ${playerScore} ต่อ ${botScore}! กดปุ่มด้านล่างสุดเพื่อเริ่มเกมใหม่`
+      : `${reasonText} จบเกม บอทชนะด้วยคะแนน ${botScore} ต่อ ${playerScore} กดปุ่มด้านล่างสุดเพื่อแก้มือใหม่`;
+    announce(endMessage);
+    startBtn.textContent = 'เล่นอีกครั้ง';
+    startBtn.setAttribute('aria-label', 'เล่นอีกครั้ง กดเพื่อเริ่มเกมใหม่');
+  } else {
+    announce(reasonText, () => {
+      if (gameActive) {
+        activeTimer = setTimeout(startRally, 500);
+      }
+    });
+  }
+}
+
+const motion = new MotionDetector(onPlayerSwing);
+
+// จัดการเมื่อผู้เล่นกดปุ่มเริ่มเกมที่ด้านล่างสุด
+startBtn.addEventListener('click', async () => {
+  // หากกำลังเล่นอยู่แล้วกดซ้ำ ให้รีสตาร์ทหรือหยุดก่อน
+  clearTimeout(activeTimer);
+  gameActive = false;
+
+  // 1. ขออนุญาตเข้าถึง Motion Sensor ทุกครั้งที่เริ่มจากหน้าแรก
+  const granted = await motion.requestPermission();
+
+  if (!granted) {
+    // ถ้าไม่อนุญาต ให้เด้งกลับมาที่หน้าแรกทันที และต้องกดเริ่มเกมเพื่อขออนุญาตใหม่วนลูปไป
+    returnToHomeWithError('คุณไม่ได้กดอนุญาตเซ็นเซอร์การเคลื่อนไหว ระบบจึงกลับมาที่หน้าแรก กรุณากดปุ่มเริ่มเกมด้านล่างสุดและกดอนุญาตเพื่อเข้าเล่น');
+    return;
+  }
+
+  // 2. เมื่อผู้เล่นกดอนุญาตแล้ว เริ่มต้นระบบเสียง Web Audio API และเข้าสู่ตัวเกม
+  permissionMsg.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  gameScreen.classList.remove('hidden');
+
+  await sound.init();
+  motion.start();
+
+  // รีเซ็ตคะแนนและสุ่มผู้เริ่มเสิร์ฟคนแรกทุกครั้ง
+  playerScore = 0;
+  botScore = 0;
+  initialServer = Math.random() < 0.5 ? 'player' : 'bot';
+  gameActive = true;
+
+  startBtn.textContent = 'เริ่มเกมใหม่';
+  startBtn.setAttribute('aria-label', 'เริ่มเกมใหม่');
+
+  const firstTurnMsg = initialServer === 'player' ? 'ผลการสุ่ม คุณได้เริ่มเสิร์ฟก่อน' : 'ผลการสุ่ม บอทได้เริ่มเสิร์ฟก่อน';
+  announce(`เริ่มการแข่งขันปิงปอง ${firstTurnMsg}`, () => {
+    if (gameActive) startRally();
+  });
+});
+</script>
+</body>
+</html>
