@@ -122,7 +122,7 @@
 <script>
 /**
  * 1. ระบบจัดการเสียงด้วย Web Audio API ทั้งหมด
- * รองรับการจำลองระยะใกล้-ไกล (Distance attenuation & Low-pass filter)
+ * รองรับมิติเสียงใกล้-ไกล (Distance attenuation & Low-pass filter)
  */
 class SoundEngine {
   constructor() {
@@ -146,9 +146,9 @@ class SoundEngine {
 
   async loadAllSounds() {
     const files = {
-      bounce: 'audio/1.mp3', //[cite: 1, 4]
-      hit: 'audio/2.mp3',    //[cite: 2, 4]
-      miss: 'audio/3.mp3'    //[cite: 3, 4]
+      bounce: 'audio/1.mp3', // ลูกตกกระทบโต๊ะ[cite: 5]
+      hit: 'audio/2.mp3',    // ตีโดนลูก[cite: 5]
+      miss: 'audio/3.mp3'    // ตีไม่ถูกลูก[cite: 5]
     };
 
     const promises = Object.entries(files).map(async ([key, url]) => {
@@ -181,11 +181,11 @@ class SoundEngine {
   }
 
   /**
-   * เล่นเสียงจาก AudioBuffer พร้อมมิติเสียงใกล้-ไกล (Stereo Pan, Gain และ Low-pass Filter)
+   * เล่นเสียงจาก AudioBuffer พร้อมมิติเสียงใกล้-ไกล
    * @param {'bounce'|'hit'|'miss'} name 
    * @param {number} pan (-0.4 = ซ้าย/ผู้เล่น, 0.4 = ขวา/บอท)
-   * @param {number} volume (1.0 = ใกล้/ผู้เล่น, 0.45 = ไกล/บอท)
-   * @param {boolean} isDistant (ถ้าจริง จะกรองเสียงสูงออกเพื่อให้ฟังดูอยู่ไกล)
+   * @param {number} volume (1.0 = ใกล้ตัว, 0.45 = ไกลตัว)
+   * @param {boolean} isDistant (จริง = ตัดย่านแหลมออกเพื่อให้เสียงดูลึก)
    */
   play(name, pan = 0, volume = 1.0, isDistant = false) {
     if (!this.ctx || !this.buffers[name]) return;
@@ -196,24 +196,21 @@ class SoundEngine {
     const source = this.ctx.createBufferSource();
     source.buffer = this.buffers[name];
 
-    // ปรับระดับเสียงตามระยะใกล้-ไกล
     const gainNode = this.ctx.createGain();
     gainNode.gain.value = volume;
 
     let lastNode = source;
 
-    // จำลองระยะไกลด้วย Low-pass Filter (กรองความถี่สูงทิ้งเมื่ออยู่ไกล)
     if (isDistant) {
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'lowpass';
-      filter.frequency.value = 3200; // ตัดย่านเสียงแหลมออกเล็กน้อยให้เสียงทุ้มและฟังดูลึกขึ้น
+      filter.frequency.value = 3000;
       lastNode.connect(filter);
       lastNode = filter;
     }
 
     lastNode.connect(gainNode);
 
-    // จำลองทิศทางซ้าย-ขวา
     if (this.ctx.createStereoPanner) {
       const panner = this.ctx.createStereoPanner();
       panner.pan.value = pan;
@@ -228,7 +225,8 @@ class SoundEngine {
 }
 
 /**
- * 2. ระบบตรวจจับการสะบัดมือถือ (ปรับเกณฑ์ให้ออกแรงน้อยลงและจับง่ายขึ้น)
+ * 2. ระบบตรวจจับการสะบัดมือถือ
+ * แยกเกณฑ์: เริ่มเสิร์ฟ (ออกแรงน้อย) vs ระหว่างตีโต้ (เกณฑ์เดิม)
  */
 class MotionDetector {
   constructor(onSwingCallback) {
@@ -293,8 +291,21 @@ class MotionDetector {
       wristSnap = Math.max(Math.abs(rot.alpha || 0), Math.abs(rot.beta || 0));
     }
 
-    // ปรับลดแรงสะบัดลง: ใช้แรงเพียง 5.0 m/s² หรือ 3.0 m/s² ร่วมกับการสะบัดข้อมือ 100 deg/s
-    if (forwardForce >= 5.0 || (forwardForce >= 3.0 && wristSnap >= 100)) {
+    let isHit = false;
+
+    if (rallyCount === 0) {
+      // โหมดเริ่มเสิร์ฟ: ปรับให้ออกแรงน้อยลง ง่ายต่อการเริ่มเกม
+      if (forwardForce >= 5.0 || (forwardForce >= 3.0 && wristSnap >= 100)) {
+        isHit = true;
+      }
+    } else {
+      // โหมดระหว่างตีโต้กลับ: กลับไปใช้ Motion Logic เดิม (11.0 m/s² หรือ 6.5 m/s² ร่วมกับ 160 deg/s)[cite: 5]
+      if (forwardForce >= 11.0 || (forwardForce >= 6.5 && wristSnap >= 160)) {
+        isHit = true;
+      }
+    }
+
+    if (isHit) {
       this.lastSwingTime = now;
       this.onSwing();
     }
@@ -302,13 +313,13 @@ class MotionDetector {
 }
 
 /**
- * 3. ระบบตรรกะเกมปิงปอง
+ * 3. ระบบตรรกะเกมปิงปอง (กระชับ รวดเร็ว ไร้ TTS)
  */
 const TIMING = {
-  TRAVEL_TO_BOUNCE_MS: 550, // เวลาที่ลูกลอยจากไม้ไปตกกระทบโต๊ะฝั่งตรงข้าม
-  HIT_WINDOW_MS: 650,       // เวลาที่เปิดให้ผู้เล่นสะบัดมือถือตีหลังลูกตกกระทบโต๊ะ
-  BOT_REACTION_MS: 300,     // เวลาที่บอทใช้ตีโต้กลับในระหว่างการแรลลี่
-  BOT_INITIAL_SERVE_MS: 200 // เวลาที่บอทเริ่มตีเสิร์ฟลูกแรก (ปรับให้เร็วขึ้นทันที)
+  TRAVEL_TO_BOUNCE_MS: 550, // เวลาที่ลูกลอยข้ามโต๊ะไปตกกระทบอีกฝั่ง[cite: 5]
+  HIT_WINDOW_MS: 650,       // เวลาเปิดให้ผู้เล่นตีหลังลูกตกกระทบโต๊ะ[cite: 5]
+  BOT_REACTION_MS: 300,     // เวลาที่บอทตีโต้กลับระหว่างเล่น[cite: 5]
+  BOT_INITIAL_SERVE_MS: 100 // เวลาที่บอทเริ่มตีเสิร์ฟ (รวดเร็ว ไม่หน่วง)
 };
 
 const sound = new SoundEngine();
@@ -329,27 +340,9 @@ const scoreDisplay = document.getElementById('score-display');
 const gameStatus = document.getElementById('game-status');
 const startBtn = document.getElementById('start-btn');
 
-function announce(text, callback) {
+// อัปเดตสถานะให้ Screen Reader (aria-live) อ่านโดยตรง ไม่ใช้ TTS และไม่ดักรอ callback
+function announceStatus(text) {
   gameStatus.textContent = text;
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'th-TH';
-    utter.rate = 1.15;
-    let finished = false;
-    const done = () => {
-      if (!finished) {
-        finished = true;
-        if (callback) callback();
-      }
-    };
-    utter.onend = done;
-    utter.onerror = done;
-    setTimeout(done, Math.max(1800, text.length * 95));
-    window.speechSynthesis.speak(utter);
-  } else {
-    if (callback) setTimeout(callback, 1800);
-  }
 }
 
 function returnToHomeWithError(message) {
@@ -364,13 +357,6 @@ function returnToHomeWithError(message) {
   permissionMsg.classList.remove('hidden');
   startBtn.textContent = 'เริ่มเกม';
   startBtn.setAttribute('aria-label', 'เริ่มเกม กดเพื่อขออนุญาตเซ็นเซอร์การเคลื่อนไหวอีกครั้ง');
-
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(message);
-    utter.lang = 'th-TH';
-    window.speechSynthesis.speak(utter);
-  }
 }
 
 function updateServerTurn() {
@@ -396,37 +382,32 @@ function updateScoreUI() {
   scoreDisplay.textContent = `ผู้เล่น ${playerScore} - ${botScore} บอท`;
 }
 
-// เริ่มการเสิร์ฟในแต่ละแต้ม
+// เริ่มการเสิร์ฟแต้มทันที ไม่รอประกาศ
 function startRally() {
   if (!gameActive) return;
   canPlayerHit = false;
-  rallyCount = 0;
+  rallyCount = 0; // รีเซ็ตเพื่อเข้าสู่โหมดเริ่มเสิร์ฟ (สะบัดมือง่าย)
   updateServerTurn();
   updateScoreUI();
 
-  const serverText = currentServer === 'player'
-    ? 'ตาคุณเสิร์ฟ สะบัดมือถือเพื่อเสิร์ฟลูกได้เลย'
-    : 'ตาบอทเสิร์ฟ เตรียมฟังเสียงลูกตกโต๊ะ';
-
-  announce(`คะแนน ${playerScore} ต่อ ${botScore} ${serverText}`, () => {
-    if (!gameActive) return;
-    if (currentServer === 'player') {
-      canPlayerHit = true;
-      activeTimer = setTimeout(() => {
-        if (canPlayerHit && gameActive) {
-          canPlayerHit = false;
-          sound.play('miss', -0.4, 1.0, false); // ผู้เล่นเสิร์ฟไม่ทัน (ดังเต็มร้อย)[cite: 3, 4]
-          handlePointWon('bot', 'คุณเสิร์ฟไม่ทันเวลา บอทได้คะแนน');
-        }
-      }, 4000);
-    } else {
-      // บอทเริ่มตีเสิร์ฟ: ปรับให้เริ่มตีเร็วขึ้นทันที (200 ms)
-      activeTimer = setTimeout(() => {
-        if (!gameActive) return;
-        botStrikeBall();
-      }, TIMING.BOT_INITIAL_SERVE_MS);
-    }
-  });
+  if (currentServer === 'player') {
+    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาคุณเสิร์ฟ สะบัดมือถือตีได้เลย`);
+    canPlayerHit = true;
+    activeTimer = setTimeout(() => {
+      if (canPlayerHit && gameActive) {
+        canPlayerHit = false;
+        sound.play('miss', -0.4, 1.0, false);
+        handlePointWon('bot', 'คุณเสิร์ฟไม่ทัน บอทได้คะแนน');
+      }
+    }, 4000);
+  } else {
+    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ`);
+    // บอทเริ่มเสิร์ฟทันทีหลังเวลาสั้นๆ เพียง 100 ms
+    activeTimer = setTimeout(() => {
+      if (!gameActive) return;
+      botStrikeBall();
+    }, TIMING.BOT_INITIAL_SERVE_MS);
+  }
 }
 
 // เมื่อผู้เล่นสะบัดมือถือตี
@@ -439,20 +420,20 @@ function onPlayerSwing() {
 
   canPlayerHit = false;
   clearTimeout(activeTimer);
-  rallyCount++;
+  rallyCount++; // เมื่อผ่านการเริ่มตีไปแล้ว ครั้งถัดไปจะใช้ Motion เกณฑ์เดิม
 
-  // ผู้เล่นตีลูกโดน: เสียงชัดเจน ฝั่งใกล้ตัว (volume = 1.0, ไม่มี filter)
-  sound.play('hit', -0.4, 1.0, false); //[cite: 2, 4]
-  gameStatus.textContent = 'ตีสำเร็จ! ลูกกำลังลอยไปฝั่งบอท...';
+  // เสียงไม้กระทบลูกฝั่งผู้เล่น (ใกล้ตัว)
+  sound.play('hit', -0.4, 1.0, false);
+  announceStatus('ตีสำเร็จ ลูกลอยไปฝั่งบอท');
 
-  // ลูกลอยไปตกโต๊ะฝั่งบอท
+  // ลูกลอยข้ามไปตกโต๊ะฝั่งบอท
   activeTimer = setTimeout(() => {
     if (!gameActive) return;
 
-    // ลูกตกโต๊ะฝั่งบอท: เสียงอยู่ไกล (volume = 0.45, มี low-pass filter)
-    sound.play('bounce', 0.4, 0.45, true); //[cite: 1, 4]
+    // เสียงลูกตกโต๊ะฝั่งบอท (มิติไกล: เบาลงครึ่งหนึ่ง + low-pass)
+    sound.play('bounce', 0.4, 0.45, true);
 
-    // จังหวะบอทตีโต้กลับ
+    // บอทตีโต้กลับ
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
 
@@ -460,9 +441,9 @@ function onPlayerSwing() {
       if (Math.random() < botSuccessChance) {
         botStrikeBall();
       } else {
-        // บอทตีพลาด: เสียงอยู่ไกล (volume = 0.45, มี filter)
-        sound.play('miss', 0.4, 0.45, true); //[cite: 3, 4]
-        handlePointWon('player', 'บอทตีไม่ถูกลูก คุณได้คะแนน!');
+        // บอทตีพลาด
+        sound.play('miss', 0.4, 0.45, true);
+        handlePointWon('player', 'บอทตีไม่ถูกลูก คุณได้คะแนน');
       }
     }, TIMING.BOT_REACTION_MS);
 
@@ -473,25 +454,25 @@ function onPlayerSwing() {
 function botStrikeBall() {
   if (!gameActive) return;
 
-  // บอทตีโดนลูก: เสียงไม้กระทบลูกอยู่ฝั่งบอท (volume = 0.45, มี low-pass filter)
-  sound.play('hit', 0.4, 0.45, true); //[cite: 2, 4]
-  gameStatus.textContent = 'บอทตีลูกมาแล้ว เตรียมฟังเสียงตกโต๊ะ...';
+  // เสียงไม้กระทบลูกฝั่งบอท (มิติไกล)
+  sound.play('hit', 0.4, 0.45, true);
+  announceStatus('บอทตีมาแล้ว');
 
   // ลูกลอยข้ามมาตกโต๊ะฝั่งผู้เล่น
   activeTimer = setTimeout(() => {
     if (!gameActive) return;
 
-    // ลูกตกโต๊ะฝั่งผู้เล่น: เสียงอยู่ใกล้ตัว ชัดเจน (volume = 1.0, ไม่มี filter)
-    sound.play('bounce', -0.4, 1.0, false); //[cite: 1, 4]
-    gameStatus.textContent = 'ลูกตกโต๊ะแล้ว! สะบัดมือถือตีเลย!';
+    // เสียงลูกตกโต๊ะฝั่งผู้เล่น (มิติใกล้)
+    sound.play('bounce', -0.4, 1.0, false);
+    announceStatus('ลูกตกโต๊ะแล้ว สะบัดมือถือตี');
 
     canPlayerHit = true;
 
     activeTimer = setTimeout(() => {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
-        // ผู้เล่นตีพลาด: เสียงอยู่ใกล้ตัว (volume = 1.0)
-        sound.play('miss', -0.4, 1.0, false); //[cite: 3, 4]
+        // ผู้เล่นตีไม่ทัน
+        sound.play('miss', -0.4, 1.0, false);
         handlePointWon('bot', 'คุณตีไม่ทัน บอทได้คะแนน');
       }
     }, TIMING.HIT_WINDOW_MS);
@@ -515,17 +496,15 @@ function handlePointWon(winner, reasonText) {
     gameActive = false;
     motion.stop();
     const endMessage = matchWinner === 'player'
-      ? `${reasonText} จบเกม คุณชนะบอทด้วยคะแนน ${playerScore} ต่อ ${botScore}! กดปุ่มด้านล่างสุดเพื่อเริ่มเกมใหม่`
-      : `${reasonText} จบเกม บอทชนะด้วยคะแนน ${botScore} ต่อ ${playerScore} กดปุ่มด้านล่างสุดเพื่อแก้มือใหม่`;
-    announce(endMessage);
+      ? `${reasonText} จบเกม คุณชนะ ${playerScore} ต่อ ${botScore} กดปุ่มด้านล่างเพื่อเริ่มใหม่`
+      : `${reasonText} จบเกม บอทชนะ ${botScore} ต่อ ${playerScore} กดปุ่มด้านล่างเพื่อเริ่มใหม่`;
+    announceStatus(endMessage);
     startBtn.textContent = 'เล่นอีกครั้ง';
     startBtn.setAttribute('aria-label', 'เล่นอีกครั้ง กดเพื่อเริ่มเกมใหม่');
   } else {
-    announce(reasonText, () => {
-      if (gameActive) {
-        activeTimer = setTimeout(startRally, 500);
-      }
-    });
+    announceStatus(reasonText);
+    // เว้นช่วงสั้นๆ เพียง 400 ms ก่อนเริ่มแต้มถัดไปทันที
+    activeTimer = setTimeout(startRally, 400);
   }
 }
 
@@ -557,10 +536,11 @@ startBtn.addEventListener('click', async () => {
   startBtn.textContent = 'เริ่มเกมใหม่';
   startBtn.setAttribute('aria-label', 'เริ่มเกมใหม่');
 
-  const firstTurnMsg = initialServer === 'player' ? 'ผลการสุ่ม คุณได้เริ่มเสิร์ฟก่อน' : 'ผลการสุ่ม บอทได้เริ่มเสิร์ฟก่อน';
-  announce(`เริ่มการแข่งขันปิงปอง ${firstTurnMsg}`, () => {
-    if (gameActive) startRally();
-  });
+  const firstTurnMsg = initialServer === 'player' ? 'เริ่มเกม คุณได้เสิร์ฟก่อน' : 'เริ่มเกม บอทได้เสิร์ฟก่อน';
+  announceStatus(firstTurnMsg);
+  
+  // เริ่มเกมทันทีโดยไม่มีดีเลย์รอเสียงบรรยาย
+  activeTimer = setTimeout(startRally, 200);
 });
 </script>
 </body>
