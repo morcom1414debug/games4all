@@ -100,11 +100,11 @@
       <p style="margin-top: 12px;"><strong>วิธีเล่นและกติกา:</strong></p>
       <ul style="margin-left: 24px; margin-top: 8px;">
         <li>ถือสมาร์ทโฟนในแนวตั้ง แข่งขัน 11 แต้ม สลับเสิร์ฟทุก 2 แต้ม (ดิวซ์ตัดสินห่าง 2 แต้ม)</li>
-        <li>ฟังเสียงลูกปิงปองลอยมาและตกกระทบโต๊ะ: 
+        <li>ฟังมิติเสียงลูกปิงปองที่ลอยมาและตกกระทบโต๊ะด้วยตัวเอง: 
           <strong>หูซ้าย</strong> (สะบัดปัดไปทางซ้าย), 
           <strong>ตรงกลาง</strong> (สะบัดตรงไปข้างหน้า), 
           <strong>หูขวา</strong> (สะบัดปัดไปทางขวา)</li>
-        <li>ต้องสะบัดให้ตรงกับทิศทางที่ลูกมาภายในเวลา 0.95 วินาทีหลังจากลูกตกโต๊ะ</li>
+        <li>ต้องสะบัดให้ตรงกับทิศทางเสียงภายในเวลา 0.95 วินาทีหลังจากลูกตกโต๊ะ</li>
         <li>ทิศทางที่คุณสะบัดจะเป็นทิศทางของลูกที่ตีกลับไปหาบอทด้วยเช่นกัน</li>
       </ul>
     </div>
@@ -184,7 +184,7 @@ class SoundEngine {
     return buffer;
   }
 
-  // เล่นเสียงคงที่ตามตำแหน่งทิศทาง
+  // เล่นเสียงตามตำแหน่ง Pan
   play(name, pan = 0, volume = 1.0, isDistant = false) {
     if (!this.ctx || !this.buffers[name]) return;
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -219,7 +219,7 @@ class SoundEngine {
     source.start(0);
   }
 
-  // เสียงลูกลอยแหวกอากาศไล่มิติเสียงจากต้นทางไปปลายทาง (Whoosh / Flight Trajectory)
+  // เสียงลูกลอยแหวกอากาศไล่มิติเสียงจากต้นทางไปปลายทาง (Flight Trajectory)
   playBallFlight(startPan, endPan, durationMs, toOpponent = false) {
     if (!this.ctx) return;
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -236,7 +236,6 @@ class SoundEngine {
     filter.Q.value = 3.0;
 
     if (toOpponent) {
-      // ลูกพุ่งออกไปฝั่งตรงข้าม (เสียงสูงไปต่ำ ค่อยๆ เบาลง)
       osc.frequency.setValueAtTime(380, now);
       osc.frequency.exponentialRampToValueAtTime(220, now + duration);
       filter.frequency.setValueAtTime(800, now);
@@ -244,7 +243,6 @@ class SoundEngine {
       gain.gain.setValueAtTime(0.18, now);
       gain.gain.exponentialRampToValueAtTime(0.04, now + duration);
     } else {
-      // ลูกพุ่งเข้ามาหาตัวเรา (เสียงใกล้ขึ้นและดังชัดขึ้น)
       osc.frequency.setValueAtTime(240, now);
       osc.frequency.exponentialRampToValueAtTime(420, now + duration);
       filter.frequency.setValueAtTime(400, now);
@@ -273,7 +271,8 @@ class SoundEngine {
 }
 
 /**
- * 2. ระบบตรวจจับการสะบัดและระบุทิศทาง (Left, Center, Right)
+ * 2. ระบบตรวจจับการสะบัดและระบุทิศทาง
+ * ปรับทิศทางซ้าย-ขวาให้ตรงกับการ Pan ของเสียง (สลับค่า X/Gamma)
  */
 class MotionDetector {
   constructor(onSwingCallback) {
@@ -342,12 +341,10 @@ class MotionDetector {
 
     let isHit = false;
     if (rallyCount === 0) {
-      // โหมดเสิร์ฟ: ออกแรงเล็กน้อยก็ตรวจจับได้
       if (forwardForce >= 4.5 || (forwardForce >= 2.5 && wristSnap >= 90)) {
         isHit = true;
       }
     } else {
-      // โหมดตีโต้ปกติ
       if (forwardForce >= 9.5 || (forwardForce >= 5.5 && wristSnap >= 140)) {
         isHit = true;
       }
@@ -356,19 +353,17 @@ class MotionDetector {
     if (isHit) {
       this.lastSwingTime = now;
 
-      // วิเคราะห์ทิศทางจากการเหวี่ยงแกน X และการบิดข้อมือ
       let direction = 'center';
       const sideThreshold = 3.2;
 
-      // ตรวจสอบแรงเหวี่ยงทางแนวนอน
+      // สลับทิศทางซ้าย-ขวา ให้ตรงกับการ Pan เสียง
       if (horizontalForce > sideThreshold) {
-        direction = 'right';
-      } else if (horizontalForce < -sideThreshold) {
         direction = 'left';
+      } else if (horizontalForce < -sideThreshold) {
+        direction = 'right';
       } else if (rot && rot.gamma) {
-        // ใช้การเอียงพลิกข้อมือเสริมกรณีเหวี่ยงสั้น
-        if (rot.gamma > 70) direction = 'right';
-        else if (rot.gamma < -70) direction = 'left';
+        if (rot.gamma > 70) direction = 'left';
+        else if (rot.gamma < -70) direction = 'right';
       }
 
       this.onSwing(direction);
@@ -380,14 +375,13 @@ class MotionDetector {
  * 3. พารามิเตอร์เวลา และพิกัดเสียง 3 ทิศทาง
  */
 const TIMING = {
-  TRAVEL_TO_BOUNCE_MS: 700,   // ขยายเวลาลูกลอยข้ามฝั่งให้ผู้เล่นได้ยินทิศทางชัดเจน
-  HIT_WINDOW_MS: 950,         // หน้าต่างเวลาตี 950 ms เพื่อให้ฟังมิติเสียงและสะบัดได้ทัน
-  BOT_REACTION_MS: 380,       // เวลาบอทเตรียมตัวตอบสนอง
-  BOT_SERVE_DELAY_MS: 2000,   // เว้นช่วงให้เสียงอ่านข้อความเสร็จก่อนบอทเริ่มเสิร์ฟ
-  POINT_TRANSITION_MS: 2200   // ช่วงเปลี่ยนแต้ม
+  TRAVEL_TO_BOUNCE_MS: 700,
+  HIT_WINDOW_MS: 950,
+  BOT_REACTION_MS: 380,
+  BOT_SERVE_DELAY_MS: 2000,
+  POINT_TRANSITION_MS: 2200
 };
 
-// พิกัด Pan สำหรับเสียง 3 ทิศทาง
 const DIRECTIONS = {
   left: { name: 'ซ้าย', pan: -0.75 },
   center: { name: 'ตรงกลาง', pan: 0.0 },
@@ -404,7 +398,6 @@ let canPlayerHit = false;
 let rallyCount = 0;
 let activeTimer = null;
 
-// ทิศทางปัจจุบันของลูก
 let currentBallDir = 'center'; 
 let currentOriginDir = 'center';
 
@@ -471,7 +464,7 @@ function startRally() {
   updateScoreUI();
 
   if (currentServer === 'player') {
-    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาคุณเสิร์ฟ สะบัดมือถือเลือกทิศทางได้เลย`);
+    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาคุณเสิร์ฟ สะบัดมือถือตีได้เลย`);
     canPlayerHit = true;
     currentBallDir = 'center';
 
@@ -483,7 +476,7 @@ function startRally() {
       }
     }, 5000);
   } else {
-    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ สวมหูฟังเตรียมรับลูก`);
+    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ ฟังเสียงเตรียมรับลูก`);
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
       botStrikeBall();
@@ -498,12 +491,10 @@ function onPlayerSwing(swingDirection) {
   clearTimeout(activeTimer);
   canPlayerHit = false;
 
-  // ตรวจสอบความถูกต้องของทิศทาง (ในการเสิร์ฟลูกแรกอนุญาตให้ส่งไปทิศไหนก็ได้)
+  // ตรวจสอบความถูกต้องของทิศทาง
   if (rallyCount > 0 && swingDirection !== currentBallDir) {
     sound.play('miss', DIRECTIONS[currentBallDir].pan, 1.0, false);
-    const expected = DIRECTIONS[currentBallDir].name;
-    const actual = DIRECTIONS[swingDirection].name;
-    handlePointWon('bot', `ลูกมาทาง${expected} แต่คุณตีไปทาง${actual} บอทได้คะแนน`);
+    handlePointWon('bot', `คุณตีผิดทิศทาง บอทได้คะแนน`);
     return;
   }
 
@@ -511,11 +502,10 @@ function onPlayerSwing(swingDirection) {
   const startPan = DIRECTIONS[swingDirection].pan;
   sound.play('hit', startPan, 1.0, false);
 
-  // สุ่มเลือกทิศทางปลายทางที่ลูกจะไปตกฝั่งบอท
   const targetDir = (rallyCount === 1) ? swingDirection : getRandomDirection();
   const endPan = DIRECTIONS[targetDir].pan;
 
-  announceStatus(`ตีไปทาง${DIRECTIONS[swingDirection].name} ลูกกำลังลอยไปฝั่งบอท`);
+  announceStatus('ตีสำเร็จ ลูกลอยไปฝั่งบอท');
   sound.playBallFlight(startPan, endPan, TIMING.TRAVEL_TO_BOUNCE_MS, true);
 
   // ลูกลอยไปตกโต๊ะฝั่งบอท
@@ -545,7 +535,7 @@ function botStrikeBall() {
   if (!gameActive) return;
 
   const startDir = (rallyCount === 0) ? getRandomDirection() : currentOriginDir;
-  const targetDir = getRandomDirection(); // บอทสุ่มทิศทางส่งมาหาเรา
+  const targetDir = getRandomDirection();
 
   currentBallDir = targetDir;
   const startPan = DIRECTIONS[startDir].pan;
@@ -553,14 +543,14 @@ function botStrikeBall() {
 
   sound.play('hit', startPan, 0.5, true);
   sound.playBallFlight(startPan, endPan, TIMING.TRAVEL_TO_BOUNCE_MS, false);
-  announceStatus(`บอทตีลูกมาแล้ว ฟังทิศทาง`);
+  announceStatus('บอทตีมาแล้ว ฟังทิศทาง');
 
-  // ลูกพุ่งข้ามมาตกกระทบโต๊ะฝั่งผู้เล่น
+  // ลูกพุ่งข้ามมาตกกระทบโต๊ะฝั่งผู้เล่น (ไม่บอกทิศทางผ่าน announce ให้ฟังจากเสียงเท่านั้น)
   activeTimer = setTimeout(() => {
     if (!gameActive) return;
 
     sound.play('bounce', endPan, 1.0, false);
-    announceStatus(`ลูกตกโต๊ะทาง [${DIRECTIONS[targetDir].name}] สะบัดรับทันที!`);
+    announceStatus('ลูกตกโต๊ะแล้ว สะบัดตี!');
 
     canPlayerHit = true;
 
@@ -569,7 +559,7 @@ function botStrikeBall() {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
         sound.play('miss', endPan, 1.0, false);
-        handlePointWon('bot', `คุณตีลูกทาง${DIRECTIONS[targetDir].name}ไม่ทัน บอทได้คะแนน`);
+        handlePointWon('bot', 'คุณตีไม่ทัน บอทได้คะแนน');
       }
     }, TIMING.HIT_WINDOW_MS);
 
@@ -592,8 +582,8 @@ function handlePointWon(winner, reasonText) {
     gameActive = false;
     motion.stop();
     const endMessage = matchWinner === 'player'
-      ? `${reasonText} ยินดีด้วยคุณชนะการแข่งขัน ${playerScore} ต่อ ${botScore} คะแนน`
-      : `${reasonText} จบเกม บอทชนะ ${botScore} ต่อ ${playerScore} คะแนน`;
+      ? `${reasonText} จบการแข่งขัน คุณชนะ ${playerScore} ต่อ ${botScore} คะแนน`
+      : `${reasonText} จบการแข่งขัน บอทชนะ ${botScore} ต่อ ${playerScore} คะแนน`;
     announceStatus(endMessage);
     startBtn.textContent = 'เล่นอีกครั้ง';
     startBtn.setAttribute('aria-label', 'เล่นอีกครั้ง กดเพื่อเริ่มเกมใหม่');
@@ -631,8 +621,8 @@ startBtn.addEventListener('click', async () => {
   startBtn.setAttribute('aria-label', 'เริ่มเกมใหม่');
 
   const firstTurnMsg = initialServer === 'player' 
-    ? 'เริ่มเกม คุณได้สิทธิ์เสิร์ฟก่อน สวมหูฟังและเตรียมสะบัดไม้' 
-    : 'เริ่มเกม บอทได้สิทธิ์เสิร์ฟก่อน สวมหูฟังและเตรียมรับลูก';
+    ? 'เริ่มเกม คุณได้สิทธิ์เสิร์ฟก่อน เตรียมสะบัดไม้' 
+    : 'เริ่มเกม บอทได้สิทธิ์เสิร์ฟก่อน สวมหูฟังเตรียมรับลูก';
   announceStatus(firstTurnMsg);
   
   activeTimer = setTimeout(startRally, 2000);
