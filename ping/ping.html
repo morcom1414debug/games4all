@@ -100,7 +100,7 @@
       <p style="margin-top: 12px;"><strong>วิธีเล่นและกติกา:</strong></p>
       <ul style="margin-left: 24px; margin-top: 8px;">
         <li>ถือสมาร์ทโฟนให้มั่นคง แข่งขันตามกติกาปิงปองสากล ใครถึง 11 คะแนนก่อนชนะ (หากเสมอกัน 10 ต่อ 10 ต้องดิวซ์ชนะห่าง 2 คะแนน) และสลับเสิร์ฟทุก 2 แต้ม</li>
-        <li>เมื่อได้ยินเสียงลูกปิงปองตกกระทบโต๊ะฝั่งเรา ให้สะบัดมือถือจากหลังไปข้างหน้าภายในเวลา 0.65 วินาทีเพื่อตีโต้กลับ</li>
+        <li>เมื่อได้ยินเสียงลูกปิงปองตกกระทบโต๊ะฝั่งเรา ให้สะบัดมือถือจากหลังไปข้างหน้าภายในเวลา 0.8 วินาทีเพื่อตีโต้กลับ</li>
         <li>หากสะบัดมือก่อนที่ลูกจะตกกระทบโต๊ะ ระบบจะไม่นับจังหวะนั้น คุณสามารถสะบัดตีใหม่ได้ทันทีเมื่อลูกตกกระทบโต๊ะ</li>
       </ul>
     </div>
@@ -146,9 +146,9 @@ class SoundEngine {
 
   async loadAllSounds() {
     const files = {
-      bounce: 'audio/1.mp3', // ลูกตกกระทบโต๊ะ[cite: 5]
-      hit: 'audio/2.mp3',    // ตีโดนลูก[cite: 5]
-      miss: 'audio/3.mp3'    // ตีไม่ถูกลูก[cite: 5]
+      bounce: 'audio/1.mp3', // ลูกตกกระทบโต๊ะ
+      hit: 'audio/2.mp3',    // ตีโดนลูก
+      miss: 'audio/3.mp3'    // ตีไม่ถูกลูก
     };
 
     const promises = Object.entries(files).map(async ([key, url]) => {
@@ -180,13 +180,6 @@ class SoundEngine {
     return buffer;
   }
 
-  /**
-   * เล่นเสียงจาก AudioBuffer พร้อมมิติเสียงใกล้-ไกล
-   * @param {'bounce'|'hit'|'miss'} name 
-   * @param {number} pan (-0.4 = ซ้าย/ผู้เล่น, 0.4 = ขวา/บอท)
-   * @param {number} volume (1.0 = ใกล้ตัว, 0.45 = ไกลตัว)
-   * @param {boolean} isDistant (จริง = ตัดย่านแหลมออกเพื่อให้เสียงดูลึก)
-   */
   play(name, pan = 0, volume = 1.0, isDistant = false) {
     if (!this.ctx || !this.buffers[name]) return;
     if (this.ctx.state === 'suspended') {
@@ -226,7 +219,6 @@ class SoundEngine {
 
 /**
  * 2. ระบบตรวจจับการสะบัดมือถือ
- * แยกเกณฑ์: เริ่มเสิร์ฟ (ออกแรงน้อย) vs ระหว่างตีโต้ (เกณฑ์เดิม)
  */
 class MotionDetector {
   constructor(onSwingCallback) {
@@ -294,12 +286,12 @@ class MotionDetector {
     let isHit = false;
 
     if (rallyCount === 0) {
-      // โหมดเริ่มเสิร์ฟ: ปรับให้ออกแรงน้อยลง ง่ายต่อการเริ่มเกม
+      // โหมดเริ่มเสิร์ฟ: ออกแรงน้อย
       if (forwardForce >= 5.0 || (forwardForce >= 3.0 && wristSnap >= 100)) {
         isHit = true;
       }
     } else {
-      // โหมดระหว่างตีโต้กลับ: กลับไปใช้ Motion Logic เดิม (11.0 m/s² หรือ 6.5 m/s² ร่วมกับ 160 deg/s)[cite: 5]
+      // โหมดระหว่างตีโต้
       if (forwardForce >= 11.0 || (forwardForce >= 6.5 && wristSnap >= 160)) {
         isHit = true;
       }
@@ -313,13 +305,14 @@ class MotionDetector {
 }
 
 /**
- * 3. ระบบตรรกะเกมปิงปอง (กระชับ รวดเร็ว ไร้ TTS)
+ * 3. ค่าจังหวะเวลา (Timing Settings)
  */
 const TIMING = {
-  TRAVEL_TO_BOUNCE_MS: 550, // เวลาที่ลูกลอยข้ามโต๊ะไปตกกระทบอีกฝั่ง[cite: 5]
-  HIT_WINDOW_MS: 650,       // เวลาเปิดให้ผู้เล่นตีหลังลูกตกกระทบโต๊ะ[cite: 5]
-  BOT_REACTION_MS: 300,     // เวลาที่บอทตีโต้กลับระหว่างเล่น[cite: 5]
-  BOT_INITIAL_SERVE_MS: 100 // เวลาที่บอทเริ่มตีเสิร์ฟ (รวดเร็ว ไม่หน่วง)
+  TRAVEL_TO_BOUNCE_MS: 550,   // เวลาที่ลูกลอยข้ามโต๊ะไปตกกระทบอีกฝั่ง
+  HIT_WINDOW_MS: 800,         // ขยายเป็น 800 ms (+150ms) เพื่อให้ตีทันง่ายขึ้น ไม่จำกัดเกินไป
+  BOT_REACTION_MS: 300,       // เวลาบอทตอบสนองระหว่างตีโต้
+  BOT_SERVE_DELAY_MS: 1800,   // เวลาหน่วงให้บอทก่อนเสิร์ฟ เพื่อให้เสียงประกาศเสร็จและผู้เล่นเตรียมพร้อม
+  POINT_TRANSITION_MS: 2000   // เว้นช่วงหลังจบแต้มเพื่อให้อ่านผลและคะแนนจนจบก่อนเริ่มรอบใหม่
 };
 
 const sound = new SoundEngine();
@@ -340,7 +333,6 @@ const scoreDisplay = document.getElementById('score-display');
 const gameStatus = document.getElementById('game-status');
 const startBtn = document.getElementById('start-btn');
 
-// อัปเดตสถานะให้ Screen Reader (aria-live) อ่านโดยตรง ไม่ใช้ TTS และไม่ดักรอ callback
 function announceStatus(text) {
   gameStatus.textContent = text;
 }
@@ -382,11 +374,11 @@ function updateScoreUI() {
   scoreDisplay.textContent = `ผู้เล่น ${playerScore} - ${botScore} บอท`;
 }
 
-// เริ่มการเสิร์ฟแต้มทันที ไม่รอประกาศ
+// เริ่มรอบแต้มใหม่
 function startRally() {
   if (!gameActive) return;
   canPlayerHit = false;
-  rallyCount = 0; // รีเซ็ตเพื่อเข้าสู่โหมดเริ่มเสิร์ฟ (สะบัดมือง่าย)
+  rallyCount = 0;
   updateServerTurn();
   updateScoreUI();
 
@@ -399,41 +391,34 @@ function startRally() {
         sound.play('miss', -0.4, 1.0, false);
         handlePointWon('bot', 'คุณเสิร์ฟไม่ทัน บอทได้คะแนน');
       }
-    }, 4000);
+    }, 4500); // ให้เวลาเสิร์ฟกว้างขึ้นเล็กน้อย
   } else {
-    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ`);
-    // บอทเริ่มเสิร์ฟทันทีหลังเวลาสั้นๆ เพียง 100 ms
+    // ประกาศคะแนนและสถานะให้เรียบร้อย พร้อมหน่วงเวลาให้บอทเริ่มตี
+    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ เตรียมพร้อม`);
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
       botStrikeBall();
-    }, TIMING.BOT_INITIAL_SERVE_MS);
+    }, TIMING.BOT_SERVE_DELAY_MS);
   }
 }
 
-// เมื่อผู้เล่นสะบัดมือถือตี
+// เมื่อผู้เล่นสะบัดตี
 function onPlayerSwing() {
-  if (!gameActive) return;
-
-  if (!canPlayerHit) {
-    return;
-  }
+  if (!gameActive || !canPlayerHit) return;
 
   canPlayerHit = false;
   clearTimeout(activeTimer);
-  rallyCount++; // เมื่อผ่านการเริ่มตีไปแล้ว ครั้งถัดไปจะใช้ Motion เกณฑ์เดิม
+  rallyCount++;
 
-  // เสียงไม้กระทบลูกฝั่งผู้เล่น (ใกล้ตัว)
   sound.play('hit', -0.4, 1.0, false);
   announceStatus('ตีสำเร็จ ลูกลอยไปฝั่งบอท');
 
-  // ลูกลอยข้ามไปตกโต๊ะฝั่งบอท
+  // บอลลอยข้ามไปฝั่งบอท
   activeTimer = setTimeout(() => {
     if (!gameActive) return;
 
-    // เสียงลูกตกโต๊ะฝั่งบอท (มิติไกล: เบาลงครึ่งหนึ่ง + low-pass)
     sound.play('bounce', 0.4, 0.45, true);
 
-    // บอทตีโต้กลับ
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
 
@@ -441,7 +426,6 @@ function onPlayerSwing() {
       if (Math.random() < botSuccessChance) {
         botStrikeBall();
       } else {
-        // บอทตีพลาด
         sound.play('miss', 0.4, 0.45, true);
         handlePointWon('player', 'บอทตีไม่ถูกลูก คุณได้คะแนน');
       }
@@ -450,28 +434,26 @@ function onPlayerSwing() {
   }, TIMING.TRAVEL_TO_BOUNCE_MS);
 }
 
-// เมื่อบอทเป็นฝ่ายตีลูก
+// เมื่อบอทตีลูก
 function botStrikeBall() {
   if (!gameActive) return;
 
-  // เสียงไม้กระทบลูกฝั่งบอท (มิติไกล)
   sound.play('hit', 0.4, 0.45, true);
   announceStatus('บอทตีมาแล้ว');
 
-  // ลูกลอยข้ามมาตกโต๊ะฝั่งผู้เล่น
+  // บอลลอยข้ามมาฝั่งผู้เล่น
   activeTimer = setTimeout(() => {
     if (!gameActive) return;
 
-    // เสียงลูกตกโต๊ะฝั่งผู้เล่น (มิติใกล้)
     sound.play('bounce', -0.4, 1.0, false);
     announceStatus('ลูกตกโต๊ะแล้ว สะบัดมือถือตี');
 
     canPlayerHit = true;
 
+    // ขยายหน้าต่างให้ตีทันเป็น 800 ms
     activeTimer = setTimeout(() => {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
-        // ผู้เล่นตีไม่ทัน
         sound.play('miss', -0.4, 1.0, false);
         handlePointWon('bot', 'คุณตีไม่ทัน บอทได้คะแนน');
       }
@@ -496,15 +478,15 @@ function handlePointWon(winner, reasonText) {
     gameActive = false;
     motion.stop();
     const endMessage = matchWinner === 'player'
-      ? `${reasonText} จบเกม คุณชนะ ${playerScore} ต่อ ${botScore} กดปุ่มด้านล่างเพื่อเริ่มใหม่`
-      : `${reasonText} จบเกม บอทชนะ ${botScore} ต่อ ${playerScore} กดปุ่มด้านล่างเพื่อเริ่มใหม่`;
+      ? `${reasonText} จบการแข่งขัน คุณชนะ ${playerScore} ต่อ ${botScore} กดปุ่มด้านล่างเพื่อเริ่มใหม่`
+      : `${reasonText} จบการแข่งขัน บอทชนะ ${botScore} ต่อ ${playerScore} กดปุ่มด้านล่างเพื่อเริ่มใหม่`;
     announceStatus(endMessage);
     startBtn.textContent = 'เล่นอีกครั้ง';
     startBtn.setAttribute('aria-label', 'เล่นอีกครั้ง กดเพื่อเริ่มเกมใหม่');
   } else {
-    announceStatus(reasonText);
-    // เว้นช่วงสั้นๆ เพียง 400 ms ก่อนเริ่มแต้มถัดไปทันที
-    activeTimer = setTimeout(startRally, 400);
+    // ประกาศสาเหตุที่ได้/เสียแต้ม และเว้นเวลา 2 วินาทีเพื่อให้เสียงอ่านจบ ก่อนขึ้นแต้มใหม่
+    announceStatus(`${reasonText}`);
+    activeTimer = setTimeout(startRally, TIMING.POINT_TRANSITION_MS);
   }
 }
 
@@ -536,11 +518,13 @@ startBtn.addEventListener('click', async () => {
   startBtn.textContent = 'เริ่มเกมใหม่';
   startBtn.setAttribute('aria-label', 'เริ่มเกมใหม่');
 
-  const firstTurnMsg = initialServer === 'player' ? 'เริ่มเกม คุณได้เสิร์ฟก่อน' : 'เริ่มเกม บอทได้เสิร์ฟก่อน';
+  const firstTurnMsg = initialServer === 'player' 
+    ? 'เริ่มเกม คุณได้สิทธิ์เสิร์ฟก่อน เตรียมสะบัดไม้' 
+    : 'เริ่มเกม บอทได้สิทธิ์เสิร์ฟก่อน เตรียมรับลูก';
   announceStatus(firstTurnMsg);
   
-  // เริ่มเกมทันทีโดยไม่มีดีเลย์รอเสียงบรรยาย
-  activeTimer = setTimeout(startRally, 200);
+  // หน่วงเวลาเตรียมตัวครั้งแรกสุดก่อนเริ่มเสิร์ฟ
+  activeTimer = setTimeout(startRally, 1800);
 });
 </script>
 </body>
