@@ -34,7 +34,7 @@
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
-      gap: 20px;
+      gap: 16px;
       overflow-y: auto;
     }
     h1 {
@@ -59,12 +59,18 @@
       text-align: center;
       font-weight: bold;
     }
+    .set-board {
+      font-size: 1.4rem;
+      text-align: center;
+      color: #00FFFF;
+      font-weight: bold;
+    }
     .score-board {
-      font-size: 1.8rem;
+      font-size: 1.9rem;
       text-align: center;
       color: var(--accent);
       font-weight: bold;
-      padding: 8px;
+      padding: 4px;
     }
     .bottom-bar {
       width: 100%;
@@ -99,13 +105,12 @@
       <p>เกมตีปิงปองสำหรับผู้พิการทางสายตา ควรสวมหูฟังเพื่อฟังมิติเสียงสมจริง 3 ทิศทาง: ซ้าย กลาง และขวา</p>
       <p style="margin-top: 12px;"><strong>วิธีเล่นและกติกา:</strong></p>
       <ul style="margin-left: 24px; margin-top: 8px;">
-        <li>ถือสมาร์ทโฟนในแนวตั้ง แข่งขัน 11 แต้ม สลับเสิร์ฟทุก 2 แต้ม (ดิวซ์ตัดสินห่าง 2 แต้ม)</li>
+        <li>แข่งขันระบบชนะ 3 ใน 5 เซต โดยแต่ละเซตแข่งขัน 11 แต้ม (ดิวซ์ตัดสินห่าง 2 แต้ม) และสลับเสิร์ฟทุก 2 แต้ม</li>
         <li>ฟังมิติเสียงลูกปิงปองที่ลอยมาและตกกระทบโต๊ะด้วยตัวเอง: 
           <strong>หูซ้าย</strong> (สะบัดปัดไปทางซ้าย), 
           <strong>ตรงกลาง</strong> (สะบัดตรงไปข้างหน้า), 
           <strong>หูขวา</strong> (สะบัดปัดไปทางขวา)</li>
-        <li>ต้องสะบัดให้ตรงกับทิศทางเสียงภายในเวลา 1.2 วินาทีหลังจากลูกตกโต๊ะ</li>
-        <li>ทิศทางที่คุณสะบัดจะเป็นทิศทางของลูกที่ตีกลับไปหาบอทด้วยเช่นกัน</li>
+        <li>เมื่อชนะเซต ความยากในเซตถัดไปจะเพิ่มขึ้นโดยให้เวลาตีกระชับขึ้น (1.2 วินาที &rarr; 1.05 วินาที &rarr; 0.95 วินาที) หากแพ้จะคงระดับความยากเดิมไว้</li>
       </ul>
     </div>
     <div id="permission-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
@@ -114,7 +119,8 @@
   <!-- หน้าขณะเล่นเกม -->
   <main id="game-screen" class="hidden" role="region" aria-label="หน้ากระดานแข่งขัน">
     <h1 id="game-title">กำลังแข่งขัน</h1>
-    <div id="score-display" class="score-board" aria-live="polite" tabindex="0">ผู้เล่น 0 - 0 บอท</div>
+    <div id="set-display" class="set-board" aria-live="polite" tabindex="0">เซตที่ 1 (เซต: ผู้เล่น 0 - 0 บอท)</div>
+    <div id="score-display" class="score-board" aria-live="polite" tabindex="0">แต้ม: ผู้เล่น 0 - 0 บอท</div>
     <div id="game-status" class="status-box" aria-live="assertive" tabindex="0">เตรียมพร้อม...</div>
   </main>
 
@@ -126,7 +132,6 @@
 <script>
 /**
  * 1. ระบบจัดการเสียงด้วย Web Audio API
- * รองรับ Stereo Panning 3 ทิศทาง และ Dynamic Flight Audio
  */
 class SoundEngine {
   constructor() {
@@ -184,7 +189,7 @@ class SoundEngine {
     return buffer;
   }
 
-  // เล่นเสียงตามตำแหน่ง Pan
+  // เล่นเสียงตามตำแหน่ง Pan และปรับ Filter ฝั่งบอทให้ไกลขึ้น (2200 Hz)
   play(name, pan = 0, volume = 1.0, isDistant = false) {
     if (!this.ctx || !this.buffers[name]) return;
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -200,7 +205,7 @@ class SoundEngine {
     if (isDistant) {
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'lowpass';
-      filter.frequency.value = 3200;
+      filter.frequency.value = 2200; // ตัดย่านเสียงแหลมให้ฟังดูไกลโต๊ะอีกฝั่งชัดเจน
       lastNode.connect(filter);
       lastNode = filter;
     }
@@ -239,15 +244,15 @@ class SoundEngine {
       osc.frequency.setValueAtTime(380, now);
       osc.frequency.exponentialRampToValueAtTime(220, now + duration);
       filter.frequency.setValueAtTime(800, now);
-      filter.frequency.exponentialRampToValueAtTime(350, now + duration);
-      gain.gain.setValueAtTime(0.18, now);
-      gain.gain.exponentialRampToValueAtTime(0.04, now + duration);
+      filter.frequency.exponentialRampToValueAtTime(320, now + duration);
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.03, now + duration);
     } else {
       osc.frequency.setValueAtTime(240, now);
       osc.frequency.exponentialRampToValueAtTime(420, now + duration);
       filter.frequency.setValueAtTime(400, now);
       filter.frequency.exponentialRampToValueAtTime(950, now + duration);
-      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.setValueAtTime(0.05, now);
       gain.gain.linearRampToValueAtTime(0.28, now + duration * 0.85);
       gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
     }
@@ -272,7 +277,6 @@ class SoundEngine {
 
 /**
  * 2. ระบบตรวจจับการสะบัดและระบุทิศทาง
- * ปรับทิศทางซ้าย-ขวาให้ตรงกับการ Pan ของเสียง (สลับค่า X/Gamma)
  */
 class MotionDetector {
   constructor(onSwingCallback) {
@@ -356,7 +360,7 @@ class MotionDetector {
       let direction = 'center';
       const sideThreshold = 3.2;
 
-      // สลับทิศทางซ้าย-ขวา ให้ตรงกับการ Pan เสียง
+      // ตรวจจับทิศทางให้ตรงกับการ Pan ของเสียง
       if (horizontalForce > sideThreshold) {
         direction = 'left';
       } else if (horizontalForce < -sideThreshold) {
@@ -372,15 +376,17 @@ class MotionDetector {
 }
 
 /**
- * 3. พารามิเตอร์เวลา และพิกัดเสียง 3 ทิศทาง
+ * 3. การตั้งค่าระบบเวลา และระดับความยาก
  */
 const TIMING = {
   TRAVEL_TO_BOUNCE_MS: 700,
-  HIT_WINDOW_MS: 1200,
   BOT_REACTION_MS: 380,
   BOT_SERVE_DELAY_MS: 2000,
   POINT_TRANSITION_MS: 2200
 };
+
+// ระดับความยากตามลำดับการชนะเซต (มิลลิวินาที)
+const DIFFICULTY_LEVELS = [1200, 1050, 950];
 
 const DIRECTIONS = {
   left: { name: 'ซ้าย', pan: -0.75 },
@@ -390,6 +396,15 @@ const DIRECTIONS = {
 
 const sound = new SoundEngine();
 let gameActive = false;
+let betweenSets = false; // สถานะรอเริ่มเซตถัดไป
+
+// ข้อมูลการแข่งขัน (ระบบ 3 ใน 5 เซต)
+let playerSetsWon = 0;
+let botSetsWon = 0;
+let currentSetNumber = 1;
+let currentDifficultyIndex = 0; // 0 = 1200ms, 1 = 1050ms, 2 = 950ms
+
+// ข้อมูลในแต่ละเซต
 let playerScore = 0;
 let botScore = 0;
 let initialServer = 'player';
@@ -405,6 +420,7 @@ let currentOriginDir = 'center';
 const homeScreen = document.getElementById('home-screen');
 const gameScreen = document.getElementById('game-screen');
 const permissionMsg = document.getElementById('permission-msg');
+const setDisplay = document.getElementById('set-display');
 const scoreDisplay = document.getElementById('score-display');
 const gameStatus = document.getElementById('game-status');
 const startBtn = document.getElementById('start-btn');
@@ -420,6 +436,7 @@ function getRandomDirection() {
 
 function returnToHomeWithError(message) {
   gameActive = false;
+  betweenSets = false;
   canPlayerHit = false;
   clearTimeout(activeTimer);
   motion.stop();
@@ -445,14 +462,15 @@ function updateServerTurn() {
   }
 }
 
-function checkWinner() {
+function checkSetWinner() {
   if (playerScore >= 11 && playerScore - botScore >= 2) return 'player';
   if (botScore >= 11 && botScore - playerScore >= 2) return 'bot';
   return null;
 }
 
 function updateScoreUI() {
-  scoreDisplay.textContent = `ผู้เล่น ${playerScore} - ${botScore} บอท`;
+  setDisplay.textContent = `เซตที่ ${currentSetNumber} (เซต: ผู้เล่น ${playerSetsWon} - ${botSetsWon} บอท)`;
+  scoreDisplay.textContent = `แต้ม: ผู้เล่น ${playerScore} - ${botScore} บอท`;
 }
 
 // เริ่มแต้มใหม่
@@ -464,7 +482,7 @@ function startRally() {
   updateScoreUI();
 
   if (currentServer === 'player') {
-    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาคุณเสิร์ฟ สะบัดมือถือตีได้เลย`);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} ตาคุณเสิร์ฟ สะบัดมือถือตีได้เลย`);
     canPlayerHit = true;
     currentBallDir = 'center';
 
@@ -472,11 +490,11 @@ function startRally() {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
         sound.play('miss', 0, 1.0, false);
-        handlePointWon('bot', 'คุณเสิร์ฟไม่ทัน บอทได้คะแนน');
+        handlePointWon('bot', 'คุณเสิร์ฟไม่ทัน บอทได้แต้ม');
       }
     }, 5000);
   } else {
-    announceStatus(`คะแนน ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ ฟังเสียงเตรียมรับลูก`);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ ฟังเสียงเตรียมรับลูก`);
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
       botStrikeBall();
@@ -494,7 +512,7 @@ function onPlayerSwing(swingDirection) {
   // ตรวจสอบความถูกต้องของทิศทาง
   if (rallyCount > 0 && swingDirection !== currentBallDir) {
     sound.play('miss', DIRECTIONS[currentBallDir].pan, 1.0, false);
-    handlePointWon('bot', `คุณตีผิดทิศทาง บอทได้คะแนน`);
+    handlePointWon('bot', `คุณตีผิดทิศทาง บอทได้แต้ม`);
     return;
   }
 
@@ -508,11 +526,11 @@ function onPlayerSwing(swingDirection) {
   announceStatus('ตีสำเร็จ ลูกลอยไปฝั่งบอท');
   sound.playBallFlight(startPan, endPan, TIMING.TRAVEL_TO_BOUNCE_MS, true);
 
-  // ลูกลอยไปตกโต๊ะฝั่งบอท
+  // ลูกลอยไปตกโต๊ะฝั่งบอท (ปรับลดเสียงตกกระทบฝั่งบอทเป็น 0.32)
   activeTimer = setTimeout(() => {
     if (!gameActive) return;
 
-    sound.play('bounce', endPan, 0.45, true);
+    sound.play('bounce', endPan, 0.32, true);
 
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
@@ -522,15 +540,15 @@ function onPlayerSwing(swingDirection) {
         currentOriginDir = targetDir;
         botStrikeBall();
       } else {
-        sound.play('miss', endPan, 0.5, true);
-        handlePointWon('player', 'บอทตีไม่โดนลูก คุณได้คะแนน');
+        sound.play('miss', endPan, 0.35, true);
+        handlePointWon('player', 'บอทตีไม่โดนลูก คุณได้แต้ม');
       }
     }, TIMING.BOT_REACTION_MS);
 
   }, TIMING.TRAVEL_TO_BOUNCE_MS);
 }
 
-// เมื่อบอทตีลูกส่งมาหาผู้เล่น
+// เมื่อบอทตีลูกส่งมาหาผู้เล่น (ปรับลดเสียงตีของบอทเป็น 0.32)
 function botStrikeBall() {
   if (!gameActive) return;
 
@@ -541,27 +559,30 @@ function botStrikeBall() {
   const startPan = DIRECTIONS[startDir].pan;
   const endPan = DIRECTIONS[targetDir].pan;
 
-  sound.play('hit', startPan, 0.5, true);
+  sound.play('hit', startPan, 0.32, true);
   sound.playBallFlight(startPan, endPan, TIMING.TRAVEL_TO_BOUNCE_MS, false);
   announceStatus('บอทตีมาแล้ว ฟังทิศทาง');
 
-  // ลูกพุ่งข้ามมาตกกระทบโต๊ะฝั่งผู้เล่น (ไม่บอกทิศทางผ่าน announce ให้ฟังจากเสียงเท่านั้น)
+  // ลูกพุ่งข้ามมาตกกระทบโต๊ะฝั่งผู้เล่น
   activeTimer = setTimeout(() => {
     if (!gameActive) return;
 
-    sound.play('bounce', endPan, 1.0, false);
+    // ชดเชยเสียงตกตรงกลางให้ดัง 1.30 เพื่อแก้ปัญหาเสียงจมในหูฟัง
+    const bounceVol = (targetDir === 'center') ? 1.30 : 1.0;
+    sound.play('bounce', endPan, bounceVol, false);
     announceStatus('ลูกตกโต๊ะแล้ว สะบัดตี!');
 
     canPlayerHit = true;
 
-    // หน้าต่างเวลาในการตีโต้กลับ
+    // หน้าต่างเวลาในการตีโต้กลับตามระดับความยากปัจจุบัน
+    const currentHitWindow = DIFFICULTY_LEVELS[currentDifficultyIndex];
     activeTimer = setTimeout(() => {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
         sound.play('miss', endPan, 1.0, false);
-        handlePointWon('bot', 'คุณตีไม่ทัน บอทได้คะแนน');
+        handlePointWon('bot', 'คุณตีไม่ทัน บอทได้แต้ม');
       }
-    }, TIMING.HIT_WINDOW_MS);
+    }, currentHitWindow);
 
   }, TIMING.TRAVEL_TO_BOUNCE_MS);
 }
@@ -577,25 +598,96 @@ function handlePointWon(winner, reasonText) {
   }
   updateScoreUI();
 
-  const matchWinner = checkWinner();
-  if (matchWinner) {
-    gameActive = false;
-    motion.stop();
-    const endMessage = matchWinner === 'player'
-      ? `${reasonText} จบการแข่งขัน คุณชนะ ${playerScore} ต่อ ${botScore} คะแนน`
-      : `${reasonText} จบการแข่งขัน บอทชนะ ${botScore} ต่อ ${playerScore} คะแนน`;
-    announceStatus(endMessage);
-    startBtn.textContent = 'เล่นอีกครั้ง';
-    startBtn.setAttribute('aria-label', 'เล่นอีกครั้ง กดเพื่อเริ่มเกมใหม่');
+  const setWinner = checkSetWinner();
+  if (setWinner) {
+    handleSetWon(setWinner, reasonText);
   } else {
     announceStatus(reasonText);
     activeTimer = setTimeout(startRally, TIMING.POINT_TRANSITION_MS);
   }
 }
 
+// จัดการเมื่อมีผู้ชนะในเซต
+function handleSetWon(winner, reasonText) {
+  gameActive = false;
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+
+  let diffChangeMsg = "";
+
+  if (winner === 'player') {
+    playerSetsWon++;
+    // ถ้าผู้เล่นชนะ: เพิ่มระดับความยากขึ้นไปอีกขั้น
+    if (currentDifficultyIndex < DIFFICULTY_LEVELS.length - 1) {
+      currentDifficultyIndex++;
+      const nextWindowSec = (DIFFICULTY_LEVELS[currentDifficultyIndex] / 1000).toFixed(2);
+      diffChangeMsg = ` ยอดเยี่ยม! ความยากเซตต่อไปจะเพิ่มขึ้น (เหลือเวลาตี ${nextWindowSec} วินาที)`;
+    } else {
+      diffChangeMsg = ` คุณยังคงอยู่ในระดับความยากสูงสุด!`;
+    }
+  } else {
+    botSetsWon++;
+    // ถ้าผู้เล่นแพ้: ให้คงระดับความยากเดิมไว้
+    const currentWindowSec = (DIFFICULTY_LEVELS[currentDifficultyIndex] / 1000).toFixed(2);
+    diffChangeMsg = ` ไม่เป็นไร เซตต่อไปยังคงระดับความยากเดิมไว้ (เวลาตี ${currentWindowSec} วินาที) สู้ใหม่ครับ`;
+  }
+
+  updateScoreUI();
+
+  // ตรวจสอบว่ามีผู้ชนะครบ 3 ใน 5 เซตแล้วหรือยัง
+  if (playerSetsWon === 3 || botSetsWon === 3) {
+    motion.stop();
+    const isOverallWin = playerSetsWon === 3;
+    const finalMsg = isOverallWin 
+      ? `${reasonText} จบการแข่งขัน ยินดีด้วย! คุณชนะการแข่งขัน ${playerSetsWon} ต่อ ${botSetsWon} เซต กดปุ่มด้านล่างเพื่อเริ่มการแข่งขันใหม่`
+      : `${reasonText} จบการแข่งขัน บอทชนะการแข่งขัน ${botSetsWon} ต่อ ${playerSetsWon} เซต กดปุ่มด้านล่างเพื่อเริ่มการแข่งขันใหม่`;
+    
+    announceStatus(finalMsg);
+    startBtn.textContent = 'เริ่มการแข่งขันใหม่';
+    startBtn.setAttribute('aria-label', 'เริ่มการแข่งขันใหม่');
+    betweenSets = false;
+  } else {
+    // จบเซตปัจจุบันและรอเข้าสู่เซตถัดไป
+    betweenSets = true;
+    currentSetNumber++;
+    const setEndMsg = `${reasonText} จบเซตที่ ${currentSetNumber - 1}! คุณชนะ ${playerScore} ต่อ ${botScore} แต้ม (รวมเซต: คุณ ${playerSetsWon} - ${botSetsWon} บอท).${diffChangeMsg} กดปุ่มด้านล่างเพื่อเริ่มเซตที่ ${currentSetNumber}`;
+    announceStatus(setEndMsg);
+
+    startBtn.textContent = `เริ่มเซตที่ ${currentSetNumber}`;
+    startBtn.setAttribute('aria-label', `เริ่มเซตที่ ${currentSetNumber}`);
+  }
+}
+
+// เริ่มเซตใหม่
+function startNewSet() {
+  playerScore = 0;
+  botScore = 0;
+  initialServer = (currentSetNumber % 2 === 1) ? 'player' : 'bot';
+  gameActive = true;
+  betweenSets = false;
+
+  updateScoreUI();
+  startBtn.textContent = 'กำลังแข่งขัน';
+  startBtn.setAttribute('aria-label', `กำลังแข่งขันเซตที่ ${currentSetNumber}`);
+
+  const startMsg = initialServer === 'player'
+    ? `เริ่มเซตที่ ${currentSetNumber} คุณได้เสิร์ฟก่อน เตรียมสะบัดไม้`
+    : `เริ่มเซตที่ ${currentSetNumber} บอทได้เสิร์ฟก่อน สวมหูฟังเตรียมรับลูก`;
+  announceStatus(startMsg);
+
+  activeTimer = setTimeout(startRally, 2000);
+}
+
 const motion = new MotionDetector(onPlayerSwing);
 
 startBtn.addEventListener('click', async () => {
+  // หากอยู่ในระหว่างจบเซตและรอเริ่มเซตถัดไป
+  if (betweenSets) {
+    startNewSet();
+    return;
+  }
+
+  // หากเริ่มการแข่งขันใหม่ทั้งหมด
   clearTimeout(activeTimer);
   gameActive = false;
 
@@ -612,20 +704,13 @@ startBtn.addEventListener('click', async () => {
   await sound.init();
   motion.start();
 
-  playerScore = 0;
-  botScore = 0;
-  initialServer = Math.random() < 0.5 ? 'player' : 'bot';
-  gameActive = true;
+  // รีเซ็ตการแข่งขัน 3 ใน 5 เซต
+  playerSetsWon = 0;
+  botSetsWon = 0;
+  currentSetNumber = 1;
+  currentDifficultyIndex = 0; // เริ่มที่ 1200 ms ในเซตแรก
 
-  startBtn.textContent = 'เริ่มเกมใหม่';
-  startBtn.setAttribute('aria-label', 'เริ่มเกมใหม่');
-
-  const firstTurnMsg = initialServer === 'player' 
-    ? 'เริ่มเกม คุณได้สิทธิ์เสิร์ฟก่อน เตรียมสะบัดไม้' 
-    : 'เริ่มเกม บอทได้สิทธิ์เสิร์ฟก่อน สวมหูฟังเตรียมรับลูก';
-  announceStatus(firstTurnMsg);
-  
-  activeTimer = setTimeout(startRally, 2000);
+  startNewSet();
 });
 </script>
 </body>
