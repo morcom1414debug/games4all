@@ -440,6 +440,7 @@ let activeTimer = null;
 let currentBallDir = 'center'; 
 let currentOriginDir = 'center';
 let lastBallPower = 'normal';
+let ballBounceTime = 0; // บันทึกเวลาที่ลูกตกกระทบโต๊ะเพื่อใช้วัด Timing
 
 // DOM Elements
 const homeScreen = document.getElementById('home-screen');
@@ -457,6 +458,13 @@ function announceStatus(text) {
 function getRandomDirection() {
   const dirs = ['left', 'center', 'right'];
   return dirs[Math.floor(Math.random() * dirs.length)];
+}
+
+// ฟังก์ชันหาทิศตรงข้ามเพื่อฉีกมุมหนีบอท
+function getOppositeDirection(dir) {
+  if (dir === 'left') return 'right';
+  if (dir === 'right') return 'left';
+  return Math.random() < 0.5 ? 'left' : 'right'; // ถ้าลูกมาตรงกลาง ฉีกออกซ้ายหรือขวา
 }
 
 function getRandomPower() {
@@ -563,7 +571,27 @@ function onPlayerSwing(swingDirection, powerLevel) {
   }
   sound.play('hit', startPan, hitVol, false, hitRate);
 
-  const targetDir = (rallyCount === 1) ? swingDirection : getRandomDirection();
+  // คำนวณทิศทางส่งกลับฝั่งบอทตาม Timing
+  let targetDir;
+  if (rallyCount === 1) {
+    targetDir = swingDirection; // จังหวะเสิร์ฟ: ไปตามทิศที่สะบัด
+  } else {
+    const currentHitWindow = DIFFICULTY_LEVELS[currentDifficultyIndex];
+    const reactionTime = performance.now() - ballBounceTime;
+    const ratio = reactionTime / currentHitWindow;
+
+    if (ratio < 0.38) {
+      // ตีเร็วมาก (Perfect Timing): ตีฉีกมุมหนีบอททันที
+      targetDir = getOppositeDirection(currentBallDir);
+    } else if (ratio > 0.78) {
+      // ตีเกือบไม่ทัน (Late Timing): ลูกคืนกลับไปทางเดิมที่บอทยืน
+      targetDir = currentBallDir;
+    } else {
+      // ตีจังหวะปกติ: ใช้ระบบสุ่มเดิม (ซ้าย/กลาง/ขวา)
+      targetDir = getRandomDirection();
+    }
+  }
+
   const endPan = DIRECTIONS[targetDir].pan;
   const flightTime = FLIGHT_DURATIONS[powerLevel];
 
@@ -628,6 +656,7 @@ function botStrikeBall() {
     sound.play('bounce', endPan, bounceVol, false);
     announceStatus('ลูกตกโต๊ะแล้ว สะบัดตี!');
 
+    ballBounceTime = performance.now(); // บันทึกเวลาที่ลูกตกโต๊ะ
     canPlayerHit = true;
 
     // หน้าต่างเวลาในการตีโต้กลับตามระดับความยากปัจจุบัน
@@ -702,7 +731,8 @@ function handleSetWon(winner, reasonText) {
   } else {
     betweenSets = true;
     currentSetNumber++;
-    const setEndMsg = `${reasonText} จบเซตที่ ${currentSetNumber - 1}! คุณชนะ ${playerScore} ต่อ ${botScore} แต้ม (รวมเซต: คุณ ${playerSetsWon} - ${botSetsWon} บอท).${diffChangeMsg} กดปุ่มด้านล่างเพื่อเริ่มเซตที่ ${currentSetNumber}`;
+    const winnerText = (winner === 'player') ? 'คุณชนะเซตนี้' : 'บอทชนะเซตนี้';
+    const setEndMsg = `${reasonText} จบเซตที่ ${currentSetNumber - 1}! ${winnerText} ${playerScore} ต่อ ${botScore} แต้ม (รวมเซต: คุณ ${playerSetsWon} - ${botSetsWon} บอท).${diffChangeMsg} กดปุ่มด้านล่างเพื่อเริ่มเซตที่ ${currentSetNumber}`;
     announceStatus(setEndMsg);
 
     startBtn.textContent = `เริ่มเซตที่ ${currentSetNumber}`;
