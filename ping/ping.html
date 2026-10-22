@@ -108,25 +108,26 @@
       <p>เกมตีปิงปองสำหรับผู้พิการทางสายตา ควรสวมหูฟังเพื่อฟังมิติเสียงสมจริง 3 ทิศทาง: ซ้าย กลาง และขวา</p>
       <p style="margin-top: 12px;"><strong>วิธีเล่นและกติกา:</strong></p>
       <ul style="margin-left: 24px; margin-top: 8px;">
-        <li>แข่งขันระบบชนะ 3 ใน 5 เซต แต่ละเซต 11 แต้ม (ดิวซ์ตัดสินห่าง 2 แต้ม) สลับเสิร์ฟทุก 2 แต้ม</li>
+        <li>แข่งขันระบบชนะ 3 ใน 5 เซต โดยแต่ละเซตแข่งขัน 11 แต้ม (ดิวซ์ตัดสินห่าง 2 แต้ม) และสลับเสิร์ฟทุก 2 แต้ม</li>
         <li><strong>การควบคุมบนคอมพิวเตอร์:</strong>
           <br>- ลูกศรซ้าย = ตีทางซ้าย
           <br>- ลูกศรขึ้น = ตีตรงกลาง
           <br>- ลูกศรขวา = ตีทางขวา
+          <br>- กดแป้น Shift ค้างไว้พร้อมลูกศรเพื่อตบแรง
         </li>
-        <li><strong>การควบคุมบนมือถือ:</strong> สะบัดเครื่องไปทางซ้าย, ตรงไปข้างหน้า หรือขวา</li>
-        <li>เมื่อชนะเซต ความยากในเซตถัดไปจะเพิ่มขึ้นโดยให้เวลาตีกระชับขึ้น</li>
+        <li><strong>การควบคุมบนมือถือ:</strong> สะบัดเครื่องไปทางซ้าย, ตรงไปข้างหน้า หรือขวา (สะบัดแรง/เร็วเพื่อตบลูกพุ่งเร็ว)</li>
+        <li>เมื่อชนะเซต ความยากในเซตถัดไปจะเพิ่มขึ้นโดยให้เวลาตีกระชับขึ้น (1.2 วินาที &rarr; 1.05 วินาที &rarr; 0.95 วินาที) หากแพ้จะคงระดับความยากเดิมไว้</li>
       </ul>
     </div>
     <div id="permission-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
   </main>
 
   <!-- หน้าขณะเล่นเกม -->
-  <main id="game-screen" class="hidden" aria-label="หน้ากระดานแข่งขัน">
-    <h1 id="game-title">กำลังแข่งขัน</h1>
-    <div id="set-display" class="set-board" aria-live="polite">เซตที่ 1 (เซต: ผู้เล่น 0 - 0 บอท)</div>
-    <div id="score-display" class="score-board" aria-live="polite">แต้ม: ผู้เล่น 0 - 0 บอท</div>
-    <div id="game-status" class="status-box" aria-live="assertive">เตรียมพร้อม...</div>
+  <main id="game-screen" class="hidden" role="region" aria-label="หน้ากระดานแข่งขัน">
+    <h1 id="game-title" tabindex="0">กำลังแข่งขัน</h1>
+    <div id="set-display" class="set-board" aria-live="polite" tabindex="0">เซตที่ 1 (เซต: ผู้เล่น 0 - 0 บอท)</div>
+    <div id="score-display" class="score-board" aria-live="polite" tabindex="0">แต้ม: ผู้เล่น 0 - 0 บอท</div>
+    <div id="game-status" class="status-box" aria-live="assertive" tabindex="0">เตรียมพร้อม...</div>
   </main>
 
   <!-- ปุ่มด้านล่าง -->
@@ -160,9 +161,9 @@ class SoundEngine {
 
   async loadAllSounds() {
     const files = {
-      bounce: 'audio/1.mp3',
-      hit: 'audio/2.mp3',
-      miss: 'audio/3.mp3'
+      bounce: 'audio/1.mp3', // เสียงลูกตกกระทบโต๊ะ
+      hit: 'audio/2.mp3',    // เสียงตีโดนลูก
+      miss: 'audio/3.mp3'    // เสียงตีไม่โดน / วืด
     };
 
     const promises = Object.entries(files).map(async ([key, url]) => {
@@ -304,7 +305,6 @@ class MotionDetector {
         return false;
       }
     }
-    // หากอยู่บน Browser คอมพิวเตอร์หรืออุปกรณ์ที่ไม่มีเซ็นเซอร์ ให้ผ่านได้ทันที
     if (!('DeviceMotionEvent' in window) || !window.matchMedia('(pointer: coarse)').matches) {
       return true;
     }
@@ -448,30 +448,6 @@ const scoreDisplay = document.getElementById('score-display');
 const gameStatus = document.getElementById('game-status');
 const startBtn = document.getElementById('start-btn');
 
-/**
- * 4. ระบบสลับ Focus Mode / Browse Mode ให้ Screen Reader
- */
-function activateFocusMode() {
-  homeScreen.setAttribute('aria-hidden', 'true');
-  gameScreen.setAttribute('aria-hidden', 'false');
-  gameScreen.setAttribute('role', 'application');
-  gameScreen.setAttribute('tabindex', '-1');
-  try { 
-    gameScreen.focus(); 
-  } catch (e) {}
-}
-
-function deactivateFocusMode() {
-  gameScreen.removeAttribute('role');
-  gameScreen.removeAttribute('tabindex');
-  gameScreen.setAttribute('aria-hidden', 'true');
-  homeScreen.setAttribute('aria-hidden', 'false');
-  // คืนการโฟกัสไปที่ปุ่มสั่งการเพื่อให้ Screen Reader กลับเข้าสู่ Browse Mode ปกติ
-  try {
-    startBtn.focus();
-  } catch (e) {}
-}
-
 function announceStatus(text) {
   gameStatus.textContent = text;
 }
@@ -526,7 +502,7 @@ function startRally() {
   updateScoreUI();
 
   if (currentServer === 'player') {
-    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบคุณเสิร์ฟ`);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} ตาคุณเสิร์ฟ สะบัดมือถือหรือกดลูกศรตีได้เลย`);
     canPlayerHit = true;
     currentBallDir = 'center';
 
@@ -538,7 +514,7 @@ function startRally() {
       }
     }, 5000);
   } else {
-    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบบอทเสิร์ฟ เตรียมรับลูก`);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ ฟังเสียงเตรียมรับลูก`);
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
       botStrikeBall();
@@ -680,7 +656,7 @@ function handlePointWon(winner, reasonText) {
   }
 }
 
-// จัดการเมื่อจบเซต หรือจบเกม
+// จัดการเมื่อจบเซต หรือจบเกมตามต้นฉบับ ping old.html
 function handleSetWon(winner, reasonText) {
   gameActive = false;
   canPlayerHit = false;
@@ -705,9 +681,6 @@ function handleSetWon(winner, reasonText) {
 
   updateScoreUI();
 
-  // สลับ Screen Reader กลับเป็น Browse Mode ทันทีที่จบเซต/จบเกม
-  deactivateFocusMode();
-
   if (playerSetsWon === 3 || botSetsWon === 3) {
     motion.stop();
     const isOverallWin = playerSetsWon === 3;
@@ -731,7 +704,7 @@ function handleSetWon(winner, reasonText) {
   }
 }
 
-// เริ่มเซตใหม่ (สลับเข้า Focus Mode)
+// เริ่มเซตใหม่
 function startNewSet() {
   playerScore = 0;
   botScore = 0;
@@ -742,9 +715,6 @@ function startNewSet() {
   updateScoreUI();
   startBtn.textContent = 'กำลังแข่งขัน';
   startBtn.setAttribute('aria-label', `กำลังแข่งขันเซตที่ ${currentSetNumber}`);
-
-  // เปิด Focus Mode
-  activateFocusMode();
 
   const startMsg = initialServer === 'player'
     ? `เริ่มเซตที่ ${currentSetNumber} คุณได้เสิร์ฟก่อน กดลูกศรหรือสะบัดไม้เพื่อตี`
@@ -787,7 +757,6 @@ startBtn.addEventListener('click', async () => {
   clearTimeout(activeTimer);
   gameActive = false;
 
-  // เรียกขออนุญาตเซ็นเซอร์เป็นลำดับแรกสุด ก่อน await ใดๆ เพื่อรักษา User Activation Context บน iOS Safari
   const permissionPromise = motion.requestPermission();
   const soundInitPromise = sound.init();
 
