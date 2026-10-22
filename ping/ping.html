@@ -448,6 +448,26 @@ const scoreDisplay = document.getElementById('score-display');
 const gameStatus = document.getElementById('game-status');
 const startBtn = document.getElementById('start-btn');
 
+/**
+ * ฟังก์ชันจัดการ Focus Mode สำหรับ Screen Reader บน Windows
+ * ช่วยให้ปุ่มลูกศรส่งตรงถึงเกมระหว่างแข่งขัน และคืนกลับเป็น Browse Mode เมื่อจบเซต/จบเกม
+ */
+function activateFocusMode() {
+  gameScreen.setAttribute('role', 'application');
+  gameScreen.setAttribute('tabindex', '-1');
+  try {
+    gameScreen.focus();
+  } catch (e) {}
+}
+
+function deactivateFocusMode() {
+  gameScreen.removeAttribute('role');
+  gameScreen.removeAttribute('tabindex');
+  try {
+    startBtn.focus();
+  } catch (e) {}
+}
+
 function announceStatus(text) {
   gameStatus.textContent = text;
 }
@@ -681,6 +701,9 @@ function handleSetWon(winner, reasonText) {
 
   updateScoreUI();
 
+  // สลับ Screen Reader กลับสู่ Browse Mode เมื่อจบเซต/จบเกม
+  deactivateFocusMode();
+
   if (playerSetsWon === 3 || botSetsWon === 3) {
     motion.stop();
     const isOverallWin = playerSetsWon === 3;
@@ -715,6 +738,9 @@ function startNewSet() {
   updateScoreUI();
   startBtn.textContent = 'กำลังแข่งขัน';
   startBtn.setAttribute('aria-label', `กำลังแข่งขันเซตที่ ${currentSetNumber}`);
+
+  // เปิด Focus Mode ให้ Screen Reader ส่งผ่านปุ่มลูกศรเข้าเกมโดยตรง
+  activateFocusMode();
 
   const startMsg = initialServer === 'player'
     ? `เริ่มเซตที่ ${currentSetNumber} คุณได้เสิร์ฟก่อน กดลูกศรหรือสะบัดไม้เพื่อตี`

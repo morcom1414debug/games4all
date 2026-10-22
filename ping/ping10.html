@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Blind Ping Pong 3D - เกมตีปิงปองมิติเสียง 3 ทิศทาง</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --text: #FFFFFF;
+      --accent: #FFD700;
+      --btn-bg: #1A1A1A;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+      overflow: hidden;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 16px;
+      overflow-y: auto;
+    }
+    main:focus {
+      outline: none;
+    }
+    h1 {
+      font-size: 2.2rem;
+      color: var(--accent);
+      line-height: 1.3;
+    }
+    .desc {
+      font-size: 1.25rem;
+      line-height: 1.6;
+    }
+    .status-box {
+      background: #111;
+      border: 2px solid var(--accent);
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 1.3rem;
+      min-height: 110px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: bold;
+    }
+    .set-board {
+      font-size: 1.4rem;
+      text-align: center;
+      color: #00FFFF;
+      font-weight: bold;
+    }
+    .score-board {
+      font-size: 1.9rem;
+      text-align: center;
+      color: var(--accent);
+      font-weight: bold;
+      padding: 4px;
+    }
+    .bottom-bar {
+      width: 100%;
+      padding-top: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 26px;
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #000000;
+      background-color: var(--accent);
+      border: 4px solid #FFFFFF;
+      border-radius: 16px;
+      cursor: pointer;
+    }
+    button:focus, button:active {
+      outline: 6px solid #00FFFF;
+      background-color: #FFA500;
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- หน้าแรกของเกม -->
+  <main id="home-screen" role="region" aria-label="หน้าแรกของเกม">
+    <h1 tabindex="0">ปิงปองมิติเสียง 3D (Blind Ping Pong)</h1>
+    <div class="desc" tabindex="0">
+      <p>เกมตีปิงปองสำหรับผู้พิการทางสายตา ควรสวมหูฟังเพื่อฟังมิติเสียงสมจริง 3 ทิศทาง: ซ้าย กลาง และขวา</p>
+      <p style="margin-top: 12px;"><strong>วิธีเล่นและกติกา:</strong></p>
+      <ul style="margin-left: 24px; margin-top: 8px;">
+        <li>แข่งขันระบบชนะ 3 ใน 5 เซต โดยแต่ละเซตแข่งขัน 11 แต้ม (ดิวซ์ตัดสินห่าง 2 แต้ม) และสลับเสิร์ฟทุก 2 แต้ม</li>
+        <li><strong>การควบคุมบนคอมพิวเตอร์:</strong>
+          <br>- ลูกศรซ้าย = ตีทางซ้าย
+          <br>- ลูกศรขึ้น = ตีตรงกลาง
+          <br>- ลูกศรขวา = ตีทางขวา
+          <br>- กดแป้น Shift ค้างไว้พร้อมลูกศรเพื่อตบแรง
+        </li>
+        <li><strong>การควบคุมบนมือถือ:</strong> สะบัดเครื่องไปทางซ้าย, ตรงไปข้างหน้า หรือขวา (สะบัดแรง/เร็วเพื่อตบลูกพุ่งเร็ว)</li>
+        <li>เมื่อชนะเซต ความยากในเซตถัดไปจะเพิ่มขึ้นโดยให้เวลาตีกระชับขึ้น (1.2 วินาที &rarr; 1.05 วินาที &rarr; 0.95 วินาที) หากแพ้จะคงระดับความยากเดิมไว้</li>
+      </ul>
+    </div>
+    <div id="permission-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
+  </main>
+
+  <!-- หน้าขณะเล่นเกม -->
+  <main id="game-screen" class="hidden" role="region" aria-label="หน้ากระดานแข่งขัน">
+    <h1 id="game-title" tabindex="0">กำลังแข่งขัน</h1>
+    <div id="set-display" class="set-board" aria-live="polite" tabindex="0">เซตที่ 1 (เซต: ผู้เล่น 0 - 0 บอท)</div>
+    <div id="score-display" class="score-board" aria-live="polite" tabindex="0">แต้ม: ผู้เล่น 0 - 0 บอท</div>
+    <div id="game-status" class="status-box" aria-live="assertive" tabindex="0">เตรียมพร้อม...</div>
+  </main>
+
+  <!-- ปุ่มด้านล่าง -->
+  <div class="bottom-bar">
+    <button id="start-btn" type="button" aria-label="เริ่มเกม">เริ่มเกม</button>
+  </div>
+
+<script>
+/**
+ * 1. ระบบจัดการเสียงด้วย Web Audio API
+ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.buffers = {};
+    this.loaded = false;
+  }
+
+  async init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+    if (!this.loaded) {
+      await this.loadAllSounds();
+    }
+  }
+
+  async loadAllSounds() {
+    const files = {
+      bounce: 'audio/1.mp3', // เสียงลูกตกกระทบโต๊ะ
+      hit: 'audio/2.mp3',    // เสียงตีโดนลูก
+      miss: 'audio/3.mp3'    // เสียงตีไม่โดน / วืด
+    };
+
+    const promises = Object.entries(files).map(async ([key, url]) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        const arrayBuffer = await res.arrayBuffer();
+        this.buffers[key] = await this.ctx.decodeAudioData(arrayBuffer);
+      } catch (err) {
+        console.warn(`โหลดไฟล์ ${url} ไม่สำเร็จ ใช้เสียงสังเคราะห์สำรอง:`, err);
+        this.buffers[key] = this.createFallbackBuffer(key);
+      }
+    });
+
+    await Promise.all(promises);
+    this.loaded = true;
+  }
+
+  createFallbackBuffer(type) {
+    const sr = this.ctx.sampleRate;
+    const duration = type === 'miss' ? 0.35 : 0.12;
+    const buffer = this.ctx.createBuffer(1, sr * duration, sr);
+    const data = buffer.getChannelData(0);
+    const freq = type === 'bounce' ? 680 : (type === 'hit' ? 440 : 160);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / sr;
+      data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-18 * t);
+    }
+    return buffer;
+  }
+
+  play(name, pan = 0, volume = 1.0, isDistant = false, playbackRate = 1.0) {
+    if (!this.ctx || !this.buffers[name]) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers[name];
+    source.playbackRate.value = playbackRate;
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = volume;
+
+    let lastNode = source;
+
+    if (isDistant) {
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2200;
+      lastNode.connect(filter);
+      lastNode = filter;
+    }
+
+    lastNode.connect(gainNode);
+
+    if (this.ctx.createStereoPanner) {
+      const panner = this.ctx.createStereoPanner();
+      panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), this.ctx.currentTime);
+      gainNode.connect(panner);
+      panner.connect(this.ctx.destination);
+    } else {
+      gainNode.connect(this.ctx.destination);
+    }
+
+    source.start(0);
+  }
+
+  playBallFlight(startPan, endPan, durationMs, toOpponent = false, powerLevel = 'normal') {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+
+    const duration = durationMs / 1000;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'triangle';
+    filter.type = 'bandpass';
+    filter.Q.value = 3.0;
+
+    let freqMult = 1.0;
+    if (powerLevel === 'hard') freqMult = 1.35;
+    else if (powerLevel === 'soft') freqMult = 0.85;
+
+    if (toOpponent) {
+      osc.frequency.setValueAtTime(380 * freqMult, now);
+      osc.frequency.exponentialRampToValueAtTime(220 * freqMult, now + duration);
+      filter.frequency.setValueAtTime(800 * freqMult, now);
+      filter.frequency.exponentialRampToValueAtTime(320 * freqMult, now + duration);
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.03, now + duration);
+    } else {
+      osc.frequency.setValueAtTime(240 * freqMult, now);
+      osc.frequency.exponentialRampToValueAtTime(420 * freqMult, now + duration);
+      filter.frequency.setValueAtTime(400 * freqMult, now);
+      filter.frequency.exponentialRampToValueAtTime(950 * freqMult, now + duration);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.linearRampToValueAtTime(0.28, now + duration * 0.85);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    }
+
+    osc.connect(filter);
+    filter.connect(gain);
+
+    if (this.ctx.createStereoPanner) {
+      const panner = this.ctx.createStereoPanner();
+      panner.pan.setValueAtTime(startPan, now);
+      panner.pan.linearRampToValueAtTime(endPan, now + duration);
+      gain.connect(panner);
+      panner.connect(this.ctx.destination);
+    } else {
+      gain.connect(this.ctx.destination);
+    }
+
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+}
+
+/**
+ * 2. ระบบตรวจจับการเคลื่อนไหว (Motion Sensor)
+ */
+class MotionDetector {
+  constructor(onSwingCallback) {
+    this.onSwing = onSwingCallback;
+    this.lastSwingTime = 0;
+    this.cooldownMs = 350;
+    this.listening = false;
+    this.boundHandler = this.handleMotion.bind(this);
+  }
+
+  async requestPermission() {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try {
+        const state = await DeviceMotionEvent.requestPermission();
+        return state === 'granted';
+      } catch (e) {
+        return false;
+      }
+    }
+    if (!('DeviceMotionEvent' in window) || !window.matchMedia('(pointer: coarse)').matches) {
+      return true;
+    }
+    return true;
+  }
+
+  start() {
+    if (this.listening) return;
+    window.addEventListener('devicemotion', this.boundHandler, true);
+    this.listening = true;
+  }
+
+  stop() {
+    if (!this.listening) return;
+    window.removeEventListener('devicemotion', this.boundHandler, true);
+    this.listening = false;
+  }
+
+  handleMotion(event) {
+    const now = performance.now();
+    if (now - this.lastSwingTime < this.cooldownMs) return;
+
+    const acc = event.acceleration;
+    const rot = event.rotationRate;
+
+    let forwardForce = 0;
+    let horizontalForce = 0;
+    let wristSnap = 0;
+
+    if (acc) {
+      const ax = acc.x || 0;
+      const ay = acc.y || 0;
+      const az = acc.z || 0;
+      forwardForce = Math.sqrt(ay * ay + az * az);
+      horizontalForce = ax;
+    } else if (event.accelerationIncludingGravity) {
+      const ag = event.accelerationIncludingGravity;
+      const ax = ag.x || 0;
+      const total = Math.sqrt(ax * ax + (ag.y || 0) ** 2 + (ag.z || 0) ** 2);
+      forwardForce = Math.abs(total - 9.81);
+      horizontalForce = ax;
+    }
+
+    if (rot) {
+      wristSnap = Math.max(Math.abs(rot.alpha || 0), Math.abs(rot.beta || 0), Math.abs(rot.gamma || 0));
+    }
+
+    let isHit = false;
+    if (rallyCount === 0) {
+      if (forwardForce >= 4.5 || (forwardForce >= 2.5 && wristSnap >= 90)) {
+        isHit = true;
+      }
+    } else {
+      if (forwardForce >= 9.5 || (forwardForce >= 5.5 && wristSnap >= 140)) {
+        isHit = true;
+      }
+    }
+
+    if (isHit) {
+      this.lastSwingTime = now;
+
+      let direction = 'center';
+      const sideThreshold = 3.2;
+
+      if (horizontalForce > sideThreshold) {
+        direction = 'left';
+      } else if (horizontalForce < -sideThreshold) {
+        direction = 'right';
+      } else if (rot && rot.gamma) {
+        if (rot.gamma > 70) direction = 'left';
+        else if (rot.gamma < -70) direction = 'right';
+      }
+
+      const combinedPower = forwardForce + (wristSnap / 20);
+      let powerLevel = 'normal';
+
+      if (rallyCount === 0) {
+        if (combinedPower >= 14.0) powerLevel = 'hard';
+        else if (combinedPower <= 8.5) powerLevel = 'soft';
+      } else {
+        if (combinedPower >= 22.0) powerLevel = 'hard';
+        else if (combinedPower <= 13.5) powerLevel = 'soft';
+      }
+
+      this.onSwing(direction, powerLevel);
+    }
+  }
+}
+
+/**
+ * 3. การตั้งค่าระบบเวลา และตัวแปรเกม
+ */
+const TIMING = {
+  BOT_REACTION_MS: 380,
+  BOT_SERVE_DELAY_MS: 2000,
+  POINT_TRANSITION_MS: 2200
+};
+
+const FLIGHT_DURATIONS = {
+  soft: 880,
+  normal: 700,
+  hard: 520
+};
+
+const DIFFICULTY_LEVELS = [1200, 1050, 950];
+
+const DIRECTIONS = {
+  left: { name: 'ซ้าย', pan: -0.75 },
+  center: { name: 'ตรงกลาง', pan: 0.0 },
+  right: { name: 'ขวา', pan: 0.75 }
+};
+
+const sound = new SoundEngine();
+let gameActive = false;
+let betweenSets = false;
+
+let playerSetsWon = 0;
+let botSetsWon = 0;
+let currentSetNumber = 1;
+let currentDifficultyIndex = 0;
+
+let playerScore = 0;
+let botScore = 0;
+let initialServer = 'player';
+let currentServer = 'player';
+let canPlayerHit = false;
+let rallyCount = 0;
+let activeTimer = null;
+
+let currentBallDir = 'center'; 
+let currentOriginDir = 'center';
+let lastBallPower = 'normal';
+let ballBounceTime = 0;
+
+// DOM Elements
+const homeScreen = document.getElementById('home-screen');
+const gameScreen = document.getElementById('game-screen');
+const permissionMsg = document.getElementById('permission-msg');
+const setDisplay = document.getElementById('set-display');
+const scoreDisplay = document.getElementById('score-display');
+const gameStatus = document.getElementById('game-status');
+const startBtn = document.getElementById('start-btn');
+
+function announceStatus(text) {
+  gameStatus.textContent = text;
+}
+
+function getRandomDirection() {
+  const dirs = ['left', 'center', 'right'];
+  return dirs[Math.floor(Math.random() * dirs.length)];
+}
+
+function getOppositeDirection(dir) {
+  if (dir === 'left') return 'right';
+  if (dir === 'right') return 'left';
+  return Math.random() < 0.5 ? 'left' : 'right';
+}
+
+function getRandomPower() {
+  const r = Math.random();
+  if (r < 0.20) return 'soft';
+  if (r < 0.75) return 'normal';
+  return 'hard';
+}
+
+function updateServerTurn() {
+  const totalPoints = playerScore + botScore;
+  const oppositeServer = initialServer === 'player' ? 'bot' : 'player';
+
+  if (playerScore >= 10 && botScore >= 10) {
+    const deucePoints = totalPoints - 20;
+    currentServer = (deucePoints % 2 === 0) ? initialServer : oppositeServer;
+  } else {
+    const pairIndex = Math.floor(totalPoints / 2);
+    currentServer = (pairIndex % 2 === 0) ? initialServer : oppositeServer;
+  }
+}
+
+function checkSetWinner() {
+  if (playerScore >= 11 && playerScore - botScore >= 2) return 'player';
+  if (botScore >= 11 && botScore - playerScore >= 2) return 'bot';
+  return null;
+}
+
+function updateScoreUI() {
+  setDisplay.textContent = `เซตที่ ${currentSetNumber} (เซต: ผู้เล่น ${playerSetsWon} - ${botSetsWon} บอท)`;
+  scoreDisplay.textContent = `แต้ม: ผู้เล่น ${playerScore} - ${botScore} บอท`;
+}
+
+function startRally() {
+  if (!gameActive) return;
+  canPlayerHit = false;
+  rallyCount = 0;
+  updateServerTurn();
+  updateScoreUI();
+
+  if (currentServer === 'player') {
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} ตาคุณเสิร์ฟ สะบัดมือถือหรือกดลูกศรตีได้เลย`);
+    canPlayerHit = true;
+    currentBallDir = 'center';
+
+    activeTimer = setTimeout(() => {
+      if (canPlayerHit && gameActive) {
+        canPlayerHit = false;
+        sound.play('miss', 0, 1.0, false);
+        handlePointWon('bot', 'คุณเสิร์ฟไม่ทัน บอทได้แต้ม');
+      }
+    }, 5000);
+  } else {
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} ตาบอทเสิร์ฟ ฟังเสียงเตรียมรับลูก`);
+    activeTimer = setTimeout(() => {
+      if (!gameActive) return;
+      botStrikeBall();
+    }, TIMING.BOT_SERVE_DELAY_MS);
+  }
+}
+
+function onPlayerSwing(swingDirection, powerLevel = 'normal') {
+  if (!gameActive || !canPlayerHit) return;
+
+  clearTimeout(activeTimer);
+  canPlayerHit = false;
+
+  if (rallyCount > 0 && swingDirection !== currentBallDir) {
+    sound.play('miss', DIRECTIONS[currentBallDir].pan, 1.0, false);
+    handlePointWon('bot', `คุณตีผิดทิศทาง บอทได้แต้ม`);
+    return;
+  }
+
+  rallyCount++;
+  const startPan = DIRECTIONS[swingDirection].pan;
+
+  let hitRate = 1.0;
+  let hitVol = 1.0;
+  if (powerLevel === 'hard') {
+    hitRate = 1.25;
+    hitVol = 1.2;
+  } else if (powerLevel === 'soft') {
+    hitRate = 0.85;
+    hitVol = 0.8;
+  }
+  sound.play('hit', startPan, hitVol, false, hitRate);
+
+  let targetDir;
+  if (rallyCount === 1) {
+    targetDir = swingDirection;
+  } else {
+    const currentHitWindow = DIFFICULTY_LEVELS[currentDifficultyIndex];
+    const reactionTime = performance.now() - ballBounceTime;
+    const ratio = reactionTime / currentHitWindow;
+
+    if (ratio < 0.38) {
+      targetDir = getOppositeDirection(currentBallDir);
+    } else if (ratio > 0.78) {
+      targetDir = currentBallDir;
+    } else {
+      targetDir = getRandomDirection();
+    }
+  }
+
+  const endPan = DIRECTIONS[targetDir].pan;
+  const flightTime = FLIGHT_DURATIONS[powerLevel];
+
+  sound.playBallFlight(startPan, endPan, flightTime, true, powerLevel);
+
+  activeTimer = setTimeout(() => {
+    if (!gameActive) return;
+
+    sound.play('bounce', endPan, 0.32, true);
+
+    activeTimer = setTimeout(() => {
+      if (!gameActive) return;
+
+      let botSuccessChance = Math.max(0.40, 0.88 - (rallyCount * 0.035));
+      if (powerLevel === 'hard') botSuccessChance -= 0.25;
+      else if (powerLevel === 'soft') botSuccessChance += 0.05;
+
+      if (Math.random() < botSuccessChance) {
+        currentOriginDir = targetDir;
+        botStrikeBall();
+      } else {
+        sound.play('miss', endPan, 0.35, true);
+        handlePointWon('player', 'บอทตีไม่โดนลูก คุณได้แต้ม');
+      }
+    }, TIMING.BOT_REACTION_MS);
+
+  }, flightTime);
+}
+
+function botStrikeBall() {
+  if (!gameActive) return;
+
+  const startDir = (rallyCount === 0) ? getRandomDirection() : currentOriginDir;
+  const targetDir = getRandomDirection();
+  const powerLevel = getRandomPower();
+
+  currentBallDir = targetDir;
+  lastBallPower = powerLevel;
+
+  const startPan = DIRECTIONS[startDir].pan;
+  const endPan = DIRECTIONS[targetDir].pan;
+  const flightTime = FLIGHT_DURATIONS[powerLevel];
+
+  let botHitRate = 1.0;
+  if (powerLevel === 'hard') botHitRate = 1.25;
+  else if (powerLevel === 'soft') botHitRate = 0.85;
+
+  sound.play('hit', startPan, 0.32, true, botHitRate);
+  sound.playBallFlight(startPan, endPan, flightTime, false, powerLevel);
+
+  activeTimer = setTimeout(() => {
+    if (!gameActive) return;
+
+    const bounceVol = (targetDir === 'center') ? 1.30 : 1.0;
+    sound.play('bounce', endPan, bounceVol, false);
+
+    ballBounceTime = performance.now();
+    canPlayerHit = true;
+
+    const currentHitWindow = DIFFICULTY_LEVELS[currentDifficultyIndex];
+    activeTimer = setTimeout(() => {
+      if (canPlayerHit && gameActive) {
+        canPlayerHit = false;
+        sound.play('miss', endPan, 1.0, false);
+        handlePointWon('bot', 'คุณตีไม่ทัน บอทได้แต้ม');
+      }
+    }, currentHitWindow);
+
+  }, flightTime);
+}
+
+function handlePointWon(winner, reasonText) {
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+
+  if (winner === 'player') {
+    playerScore++;
+  } else {
+    botScore++;
+  }
+  updateScoreUI();
+
+  const setWinner = checkSetWinner();
+  if (setWinner) {
+    handleSetWon(setWinner, reasonText);
+  } else {
+    announceStatus(reasonText);
+    activeTimer = setTimeout(startRally, TIMING.POINT_TRANSITION_MS);
+  }
+}
+
+// จัดการเมื่อจบเซต หรือจบเกมตามต้นฉบับ ping old.html
+function handleSetWon(winner, reasonText) {
+  gameActive = false;
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+
+  let diffChangeMsg = "";
+
+  if (winner === 'player') {
+    playerSetsWon++;
+    if (currentDifficultyIndex < DIFFICULTY_LEVELS.length - 1) {
+      currentDifficultyIndex++;
+      const nextWindowSec = (DIFFICULTY_LEVELS[currentDifficultyIndex] / 1000).toFixed(2);
+      diffChangeMsg = ` ยอดเยี่ยม! ความยากเซตต่อไปจะเพิ่มขึ้น (เหลือเวลาตี ${nextWindowSec} วินาที)`;
+    } else {
+      diffChangeMsg = ` คุณยังคงอยู่ในระดับความยากสูงสุด!`;
+    }
+  } else {
+    botSetsWon++;
+    const currentWindowSec = (DIFFICULTY_LEVELS[currentDifficultyIndex] / 1000).toFixed(2);
+    diffChangeMsg = ` ไม่เป็นไร เซตต่อไปยังคงระดับความยากเดิมไว้ (เวลาตี ${currentWindowSec} วินาที) สู้ใหม่ครับ`;
+  }
+
+  updateScoreUI();
+
+  if (playerSetsWon === 3 || botSetsWon === 3) {
+    motion.stop();
+    const isOverallWin = playerSetsWon === 3;
+    const finalMsg = isOverallWin 
+      ? `${reasonText} จบการแข่งขัน ยินดีด้วย! คุณชนะการแข่งขัน ${playerSetsWon} ต่อ ${botSetsWon} เซต กดปุ่มด้านล่างเพื่อเริ่มการแข่งขันใหม่`
+      : `${reasonText} จบการแข่งขัน บอทชนะการแข่งขัน ${botSetsWon} ต่อ ${playerSetsWon} เซต กดปุ่มด้านล่างเพื่อเริ่มการแข่งขันใหม่`;
+    
+    announceStatus(finalMsg);
+    startBtn.textContent = 'เริ่มการแข่งขันใหม่';
+    startBtn.setAttribute('aria-label', 'เริ่มการแข่งขันใหม่');
+    betweenSets = false;
+  } else {
+    betweenSets = true;
+    currentSetNumber++;
+    const winnerText = (winner === 'player') ? 'คุณชนะเซตนี้' : 'บอทชนะเซตนี้';
+    const setEndMsg = `${reasonText} จบเซตที่ ${currentSetNumber - 1}! ${winnerText} ${playerScore} ต่อ ${botScore} แต้ม (รวมเซต: คุณ ${playerSetsWon} - ${botSetsWon} บอท).${diffChangeMsg} กดปุ่มด้านล่างเพื่อเริ่มเซตที่ ${currentSetNumber}`;
+    announceStatus(setEndMsg);
+
+    startBtn.textContent = `เริ่มเซตที่ ${currentSetNumber}`;
+    startBtn.setAttribute('aria-label', `เริ่มเซตที่ ${currentSetNumber}`);
+  }
+}
+
+// เริ่มเซตใหม่
+function startNewSet() {
+  playerScore = 0;
+  botScore = 0;
+  initialServer = (currentSetNumber % 2 === 1) ? 'player' : 'bot';
+  gameActive = true;
+  betweenSets = false;
+
+  updateScoreUI();
+  startBtn.textContent = 'กำลังแข่งขัน';
+  startBtn.setAttribute('aria-label', `กำลังแข่งขันเซตที่ ${currentSetNumber}`);
+
+  const startMsg = initialServer === 'player'
+    ? `เริ่มเซตที่ ${currentSetNumber} คุณได้เสิร์ฟก่อน กดลูกศรหรือสะบัดไม้เพื่อตี`
+    : `เริ่มเซตที่ ${currentSetNumber} บอทได้เสิร์ฟก่อน สวมหูฟังเตรียมรับลูก`;
+  announceStatus(startMsg);
+
+  activeTimer = setTimeout(startRally, 2000);
+}
+
+const motion = new MotionDetector(onPlayerSwing);
+
+// ควบคุมด้วยแป้นพิมพ์ลัด
+document.addEventListener('keydown', (e) => {
+  if (!gameActive || !canPlayerHit) return;
+
+  const key = e.key || e.code;
+  let dir = null;
+
+  if (key === 'ArrowLeft' || key === 'Left') {
+    dir = 'left';
+  } else if (key === 'ArrowUp' || key === 'Up') {
+    dir = 'center';
+  } else if (key === 'ArrowRight' || key === 'Right') {
+    dir = 'right';
+  }
+
+  if (dir) {
+    e.preventDefault();
+    const power = e.shiftKey ? 'hard' : 'normal';
+    onPlayerSwing(dir, power);
+  }
+});
+
+startBtn.addEventListener('click', async () => {
+  if (betweenSets) {
+    startNewSet();
+    return;
+  }
+
+  clearTimeout(activeTimer);
+  gameActive = false;
+
+  const permissionPromise = motion.requestPermission();
+  const soundInitPromise = sound.init();
+
+  const [granted] = await Promise.all([permissionPromise, soundInitPromise]);
+
+  if (!granted) {
+    console.warn("ไม่สามารถใช้งานเซ็นเซอร์ได้ สลับไปใช้โหมดคีย์บอร์ด");
+  }
+
+  permissionMsg.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  gameScreen.classList.remove('hidden');
+
+  motion.start();
+
+  // รีเซ็ตการแข่งขัน 3 ใน 5 เซต
+  playerSetsWon = 0;
+  botSetsWon = 0;
+  currentSetNumber = 1;
+  currentDifficultyIndex = 0;
+
+  startNewSet();
+});
+</script>
+</body>
+</html>
