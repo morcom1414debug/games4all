@@ -208,8 +208,8 @@
         <input type="text" id="login-username" maxlength="20" autocomplete="username" required aria-required="true" placeholder="ระบุชื่อผู้เล่น">
       </div>
       <div class="form-group">
-        <label for="login-password">รหัสผ่าน (อย่างน้อย 4 ตัวอักษร):</label>
-        <input type="password" id="login-password" minlength="4" autocomplete="current-password" required aria-required="true" placeholder="ระบุรหัสผ่าน">
+        <label for="login-password">รหัสผ่าน (อย่างน้อย 6 ตัวอักษร):</label>
+        <input type="password" id="login-password" minlength="6" autocomplete="current-password" required aria-required="true" placeholder="ระบุรหัสผ่าน">
       </div>
       <div style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
         <button id="submit-login-btn" type="button" aria-label="ยืนยันเข้าสู่ระบบ">เข้าสู่ระบบ</button>
@@ -222,15 +222,15 @@
       <h2 tabindex="0">สมัครสมาชิกใหม่</h2>
       <div class="desc" tabindex="0">
         <p>• ชื่อผู้เล่น: ความยาวไม่เกิน 20 ตัวอักษร (ภาษาไทยหรืออังกฤษ) และต้องเป็นคำสุภาพ</p>
-        <p>• รหัสผ่าน: ตัวเลขหรือตัวอักษรอย่างน้อย 4 ตัวอักษรขึ้นไป</p>
+        <p>• รหัสผ่าน: ตัวเลขหรือตัวอักษรอย่างน้อย 6 ตัวอักษรขึ้นไป</p>
       </div>
       <div class="form-group" style="margin-top:12px;">
         <label for="reg-username">ตั้งชื่อผู้เล่น:</label>
         <input type="text" id="reg-username" maxlength="20" autocomplete="off" required aria-required="true" placeholder="ชื่อผู้เล่น (คำสุภาพ)">
       </div>
       <div class="form-group">
-        <label for="reg-password">ตั้งรหัสผ่าน (อย่างน้อย 4 ตัวอักษร):</label>
-        <input type="password" id="reg-password" minlength="4" autocomplete="new-password" required aria-required="true" placeholder="รหัสผ่าน">
+        <label for="reg-password">ตั้งรหัสผ่าน (อย่างน้อย 6 ตัวอักษร):</label>
+        <input type="password" id="reg-password" minlength="6" autocomplete="new-password" required aria-required="true" placeholder="รหัสผ่าน">
       </div>
       <div style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
         <button id="submit-reg-btn" type="button" aria-label="ยืนยันการสมัครสมาชิก">ยืนยันการสมัครสมาชิก</button>
@@ -313,180 +313,10 @@
   </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, get, set, child, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { AuthManager } from './auth.js';
 
-/**
- * =========================================================================
- * Helper: จัดการคุกกี้ (Cookie Management)
- * =========================================================================
- */
-function setCookie(name, value, days = 365) {
-  const date = new Date();
-  date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-  const expires = "; expires=" + date.toUTCString();
-  document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/; SameSite=Lax";
-}
-
-function getCookie(name) {
-  const nameEQ = name + "=";
-  const ca = document.cookie.split(';');
-  for (let i = 0; i < ca.length; i++) {
-    let c = ca[i];
-    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-    if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
-  }
-  return null;
-}
-
-/**
- * =========================================================================
- * A. ระบบจัดการข้อมูลผู้เล่นผ่าน Firebase Realtime Database (Game ID: PingPong)
- * =========================================================================
- */
-const firebaseConfig = {
-  apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
-  authDomain: "xo-game-134ec.firebaseapp.com",
-  databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "xo-game-134ec",
-  storageBucket: "xo-game-134ec.firebasestorage.app",
-  messagingSenderId: "318375224157",
-  appId: "1:318375224157:web:35a997751e82f7b6b77eb4"
-};
-
-const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-const GAME_ID = "PingPong";
-const gameRef = ref(database, `${GAME_ID}/players`);
-
-// ข้อมูลเริ่มต้นสำหรับระบบ
-const DEFAULT_INITIAL_DATA = [
-  {
-    "username": "Somchai",
-    "password": "pass1234",
-    "checkpoint": "รอบชิงชนะเลิศ",
-    "roundIndex": 2,
-    "wins": 3
-  },
-  {
-    "username": "Aommy",
-    "password": "secure99",
-    "checkpoint": "รอบรองชนะเลิศ",
-    "roundIndex": 1,
-    "wins": 1
-  },
-  {
-    "username": "NewbiePlayer",
-    "password": "pwd2026",
-    "checkpoint": "รอบ 8 คนสุดท้าย",
-    "roundIndex": 0,
-    "wins": 0
-  }
-];
-
-class DatabaseManager {
-  constructor() {
-    this.players = [];
-    this.init();
-  }
-
-  // แปลง username ให้ปลอดภัยสำหรับใช้เป็น key บน Firebase
-  encodeUserKey(username) {
-    return encodeURIComponent(username.trim().toLowerCase()).replace(/\./g, '%2E');
-  }
-
-  async init() {
-    // ซิงค์ข้อมูล Realtime จาก Firebase เสมอ
-    onValue(gameRef, async (snapshot) => {
-      if (snapshot.exists()) {
-        const val = snapshot.val();
-        this.players = Object.values(val);
-      } else {
-        // หากใน Firebase ยังไม่มีข้อมูล ให้บันทึกค่าเริ่มต้นขึ้น Firebase ให้อัตโนมัติ
-        const initialMap = {};
-        DEFAULT_INITIAL_DATA.forEach(user => {
-          const key = this.encodeUserKey(user.username);
-          initialMap[key] = user;
-        });
-        await set(gameRef, initialMap);
-        this.players = [...DEFAULT_INITIAL_DATA];
-      }
-    });
-  }
-
-  async getPlayers() {
-    try {
-      const snapshot = await get(gameRef);
-      if (snapshot.exists()) {
-        this.players = Object.values(snapshot.val());
-        return this.players;
-      }
-    } catch (e) {
-      console.warn("ไม่สามารถอ่านข้อมูลจาก Firebase ได้:", e);
-    }
-    return this.players.length > 0 ? this.players : DEFAULT_INITIAL_DATA;
-  }
-
-  async findUser(username) {
-    const key = this.encodeUserKey(username);
-    const userSnapshot = await get(child(gameRef, key));
-    if (userSnapshot.exists()) {
-      return userSnapshot.val();
-    }
-    return null;
-  }
-
-  async registerUser(username, password) {
-    const newUser = {
-      username: username.trim(),
-      password: password,
-      checkpoint: "รอบ 8 คนสุดท้าย",
-      roundIndex: 0,
-      wins: 0
-    };
-    const key = this.encodeUserKey(username);
-    await set(child(gameRef, key), newUser);
-    return newUser;
-  }
-
-  async updateProgress(username, roundIndex, checkpointName, incrementWin = false) {
-    const user = await this.findUser(username);
-    if (user) {
-      user.roundIndex = roundIndex;
-      user.checkpoint = checkpointName;
-      if (incrementWin) {
-        user.wins = (user.wins || 0) + 1;
-      }
-      const key = this.encodeUserKey(username);
-      await set(child(gameRef, key), user);
-      return user;
-    }
-    return null;
-  }
-
-  async getTop20() {
-    const allPlayers = await this.getPlayers();
-    return [...allPlayers].sort((a, b) => {
-      if (b.wins !== a.wins) return b.wins - a.wins;
-      return b.roundIndex - a.roundIndex;
-    }).slice(0, 20);
-  }
-}
-
-const db = new DatabaseManager();
+const authManager = new AuthManager();
 let currentUser = null;
-
-// รายการคำไม่สุภาพและคำหยาบ (Bad words filter)
-const BANNED_WORDS = [
-  'ควย', 'เหี้ย', 'เย็ด', 'มึง', 'กู', 'สัส', 'ห่า', 'ดอกทอง', 'ระยำ', 'จัญไร',
-  'ชาติชั่ว', 'สันดาน', 'หน้าด้าน', 'กะหรี่', 'อีสัตว์', 'ไอ้สัตว์', 'แม่เย็ด',
-  'fuck', 'shit', 'bitch', 'asshole', 'dick', 'bastard', 'cunt', 'pussy'
-];
-
-function checkProfanity(text) {
-  const clean = text.toLowerCase().replace(/\s+/g, '');
-  return BANNED_WORDS.some(word => clean.includes(word.toLowerCase()));
-}
 
 /**
  * =========================================================================
@@ -1141,7 +971,7 @@ async function handleSetWon(winner, reasonText) {
 
     if (isRoundWin) {
       if (currentUser) {
-        currentUser = await db.updateProgress(currentUser.username, currentRoundIndex, round.roundTitle, true);
+        currentUser = await authManager.saveProgress(currentRoundIndex, round.roundTitle, true);
         refreshUserBadgeUI();
       }
 
@@ -1150,7 +980,7 @@ async function handleSetWon(winner, reasonText) {
         const nextRound = TOURNAMENT_ROUNDS[currentRoundIndex + 1];
         
         if (currentUser) {
-          currentUser = await db.updateProgress(currentUser.username, currentRoundIndex + 1, nextRound.roundTitle, false);
+          currentUser = await authManager.saveProgress(currentRoundIndex + 1, nextRound.roundTitle, false);
           refreshUserBadgeUI();
         }
 
@@ -1163,7 +993,7 @@ async function handleSetWon(winner, reasonText) {
         motion.stop();
         
         if (currentUser) {
-          currentUser = await db.updateProgress(currentUser.username, 0, TOURNAMENT_ROUNDS[0].roundTitle, false);
+          currentUser = await authManager.saveProgress(0, TOURNAMENT_ROUNDS[0].roundTitle, false);
           refreshUserBadgeUI();
         }
 
@@ -1177,7 +1007,7 @@ async function handleSetWon(winner, reasonText) {
       motion.stop();
 
       if (currentUser) {
-        currentUser = await db.updateProgress(currentUser.username, currentRoundIndex, round.roundTitle, false);
+        currentUser = await authManager.saveProgress(currentRoundIndex, round.roundTitle, false);
         refreshUserBadgeUI();
       }
 
@@ -1287,7 +1117,7 @@ function refreshUserBadgeUI() {
 async function renderLeaderboardTable() {
   const tbody = document.getElementById('leaderboard-tbody');
   tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">กำลังโหลดข้อมูล...</td></tr>';
-  const top20 = await db.getTop20();
+  const top20 = await authManager.getLeaderboard();
   tbody.innerHTML = '';
 
   if (top20.length === 0) {
@@ -1404,24 +1234,31 @@ document.getElementById('submit-login-btn').addEventListener('click', async () =
   }
 
   showAuthStatus("กำลังตรวจสอบข้อมูล...");
-  const existingUser = await db.findUser(usernameInput);
-  if (!existingUser) {
-    showAuthStatus("ไม่พบบัญชีผู้เล่นนี้ในระบบ กรุณาตรวจสอบชื่อหรือสมัครสมาชิกใหม่");
-    return;
+  try {
+    const profile = await authManager.login(usernameInput, passwordInput);
+    currentUser = profile;
+    enterGameHomeScreen();
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+      showAuthStatus("ชื่อผู้เล่นหรือรหัสผ่านไม่ถูกต้อง");
+    } else {
+      showAuthStatus("เข้าสู่ระบบไม่สำเร็จ: " + (err.message || "เกิดข้อผิดพลาด"));
+    }
   }
-
-  if (existingUser.password !== passwordInput) {
-    showAuthStatus("รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง");
-    return;
-  }
-
-  // บันทึกลง Cookie สำหรับการเข้าใช้อัตโนมัติในครั้งต่อไป
-  setCookie("pingpong_username", existingUser.username, 365);
-  setCookie("pingpong_password", existingUser.password, 365);
-
-  currentUser = existingUser;
-  enterGameHomeScreen();
 });
+
+// รายการคำไม่สุภาพและคำหยาบ (Bad words filter)
+const BANNED_WORDS = [
+  'ควย', 'เหี้ย', 'เย็ด', 'มึง', 'กู', 'สัส', 'ห่า', 'ดอกทอง', 'ระยำ', 'จัญไร',
+  'ชาติชั่ว', 'สันดาน', 'หน้าด้าน', 'กะหรี่', 'อีสัตว์', 'ไอ้สัตว์', 'แม่เย็ด',
+  'fuck', 'shit', 'bitch', 'asshole', 'dick', 'bastard', 'cunt', 'pussy'
+];
+
+function checkProfanity(text) {
+  const clean = text.toLowerCase().replace(/\s+/g, '');
+  return BANNED_WORDS.some(word => clean.includes(word.toLowerCase()));
+}
 
 // ฟังก์ชันสมัครสมาชิกใหม่
 document.getElementById('submit-reg-btn').addEventListener('click', async () => {
@@ -1443,26 +1280,24 @@ document.getElementById('submit-reg-btn').addEventListener('click', async () => 
     return;
   }
 
-  if (passwordInput.length < 4) {
-    showAuthStatus("รหัสผ่านต้องมีความยาวอย่างน้อย 4 ตัวอักษรขึ้นไป");
+  if (passwordInput.length < 6) {
+    showAuthStatus("รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษรขึ้นไปตามมาตรฐานความปลอดภัย");
     return;
   }
 
   showAuthStatus("กำลังบันทึกข้อมูล...");
-  const existingUser = await db.findUser(usernameInput);
-  if (existingUser) {
-    showAuthStatus("ชื่อผู้เล่นนี้มีอยู่ในระบบแล้ว กรุณาเลือกชื่ออื่น หรือเข้าสู่ระบบ");
-    return;
+  try {
+    const profile = await authManager.register(usernameInput, passwordInput);
+    currentUser = profile;
+    enterGameHomeScreen();
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'auth/email-already-in-use') {
+      showAuthStatus("ชื่อผู้เล่นนี้มีอยู่ในระบบแล้ว กรุณาเลือกชื่ออื่น หรือเข้าสู่ระบบ");
+    } else {
+      showAuthStatus("สมัครสมาชิกไม่สำเร็จ: " + (err.message || "เกิดข้อผิดพลาด"));
+    }
   }
-
-  const registeredUser = await db.registerUser(usernameInput, passwordInput);
-
-  // บันทึกลง Cookie สำหรับการเข้าใช้อัตโนมัติในครั้งต่อไป
-  setCookie("pingpong_username", registeredUser.username, 365);
-  setCookie("pingpong_password", registeredUser.password, 365);
-
-  currentUser = registeredUser;
-  enterGameHomeScreen();
 });
 
 function enterGameHomeScreen() {
@@ -1484,30 +1319,24 @@ function enterGameHomeScreen() {
   }, 150);
 }
 
-// ตรวจสอบข้อมูลล็อกอินจาก Cookie และ Double Check กับ Firebase อัตโนมัติเมื่อเปิดหน้าเว็บ
-async function autoLoginFromCookie() {
-  const savedUser = getCookie("pingpong_username");
-  const savedPass = getCookie("pingpong_password");
-
-  if (savedUser && savedPass) {
-    showAuthStatus("กำลังตรวจสอบข้อมูลผู้เล่นเดิม...");
-    try {
-      const user = await db.findUser(savedUser);
-      if (user && user.password === savedPass) {
-        currentUser = user;
-        authStatusMsg.classList.add('hidden');
-        enterGameHomeScreen();
-        return;
-      }
-    } catch (err) {
-      console.warn("ตรวจสอบผู้เล่นอัตโนมัติไม่สำเร็จ:", err);
-    }
+// ตรวจสอบเซสชันผู้เล่นอัตโนมัติ (ข้าม In-App Browser -> Safari หรือเมื่อกด Refresh)
+authManager.initAuthStateListener(
+  (profile) => {
+    currentUser = profile;
     authStatusMsg.classList.add('hidden');
+    enterGameHomeScreen();
+  },
+  () => {
+    currentUser = null;
+    authScreen.classList.remove('hidden');
+    homeScreen.classList.add('hidden');
+    gameScreen.classList.add('hidden');
+    leaderboardScreen.classList.add('hidden');
+    startBtn.classList.add('hidden');
+    inGameLeaderboardBtn.classList.add('hidden');
+    backFromLeaderboardBtn.classList.add('hidden');
   }
-}
-
-// รันตรวจสอบ Auto Login ทันที
-autoLoginFromCookie();
+);
 
 /**
  * =========================================================================
