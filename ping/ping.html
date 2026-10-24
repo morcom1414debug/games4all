@@ -318,6 +318,29 @@ import { getDatabase, ref, get, set, child, onValue } from "https://www.gstatic.
 
 /**
  * =========================================================================
+ * Helper: จัดการคุกกี้ (Cookie Management)
+ * =========================================================================
+ */
+function setCookie(name, value, days = 365) {
+  const date = new Date();
+  date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+  const expires = "; expires=" + date.toUTCString();
+  document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/; SameSite=Lax";
+}
+
+function getCookie(name) {
+  const nameEQ = name + "=";
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+  }
+  return null;
+}
+
+/**
+ * =========================================================================
  * A. ระบบจัดการข้อมูลผู้เล่นผ่าน Firebase Realtime Database (Game ID: PingPong)
  * =========================================================================
  */
@@ -1392,6 +1415,10 @@ document.getElementById('submit-login-btn').addEventListener('click', async () =
     return;
   }
 
+  // บันทึกลง Cookie สำหรับการเข้าใช้อัตโนมัติในครั้งต่อไป
+  setCookie("pingpong_username", existingUser.username, 365);
+  setCookie("pingpong_password", existingUser.password, 365);
+
   currentUser = existingUser;
   enterGameHomeScreen();
 });
@@ -1429,6 +1456,11 @@ document.getElementById('submit-reg-btn').addEventListener('click', async () => 
   }
 
   const registeredUser = await db.registerUser(usernameInput, passwordInput);
+
+  // บันทึกลง Cookie สำหรับการเข้าใช้อัตโนมัติในครั้งต่อไป
+  setCookie("pingpong_username", registeredUser.username, 365);
+  setCookie("pingpong_password", registeredUser.password, 365);
+
   currentUser = registeredUser;
   enterGameHomeScreen();
 });
@@ -1451,6 +1483,31 @@ function enterGameHomeScreen() {
     } catch (e) {}
   }, 150);
 }
+
+// ตรวจสอบข้อมูลล็อกอินจาก Cookie และ Double Check กับ Firebase อัตโนมัติเมื่อเปิดหน้าเว็บ
+async function autoLoginFromCookie() {
+  const savedUser = getCookie("pingpong_username");
+  const savedPass = getCookie("pingpong_password");
+
+  if (savedUser && savedPass) {
+    showAuthStatus("กำลังตรวจสอบข้อมูลผู้เล่นเดิม...");
+    try {
+      const user = await db.findUser(savedUser);
+      if (user && user.password === savedPass) {
+        currentUser = user;
+        authStatusMsg.classList.add('hidden');
+        enterGameHomeScreen();
+        return;
+      }
+    } catch (err) {
+      console.warn("ตรวจสอบผู้เล่นอัตโนมัติไม่สำเร็จ:", err);
+    }
+    authStatusMsg.classList.add('hidden');
+  }
+}
+
+// รันตรวจสอบ Auto Login ทันที
+autoLoginFromCookie();
 
 /**
  * =========================================================================
