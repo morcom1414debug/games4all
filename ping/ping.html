@@ -312,16 +312,31 @@
     <button id="back-from-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ปิดหอเกียรติยศและย้อนกลับ">ย้อนกลับ</button>
   </div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, get, set, child, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
 /**
  * =========================================================================
- * A. ระบบจัดการข้อมูลผู้เล่น (Database Manager: JSON & LocalStorage)
+ * A. ระบบจัดการข้อมูลผู้เล่นผ่าน Firebase Realtime Database (Game ID: PingPong)
  * =========================================================================
  */
-const DB_STORAGE_KEY = 'blind_pingpong_players_data_v1';
-const CURRENT_USER_KEY = 'blind_pingpong_current_user_v1';
+const firebaseConfig = {
+  apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
+  authDomain: "xo-game-134ec.firebaseapp.com",
+  databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "xo-game-134ec",
+  storageBucket: "xo-game-134ec.firebasestorage.app",
+  messagingSenderId: "318375224157",
+  appId: "1:318375224157:web:35a997751e82f7b6b77eb4"
+};
 
-// ค่าเริ่มต้นตรงตาม data.JSON
+const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
+const GAME_ID = "PingPong";
+const gameRef = ref(database, `${GAME_ID}/players`);
+
+// ข้อมูลเริ่มต้นสำหรับระบบ
 const DEFAULT_INITIAL_DATA = [
   {
     "username": "Somchai",
@@ -348,45 +363,57 @@ const DEFAULT_INITIAL_DATA = [
 
 class DatabaseManager {
   constructor() {
+    this.players = [];
     this.init();
   }
 
+  // แปลง username ให้ปลอดภัยสำหรับใช้เป็น key บน Firebase
+  encodeUserKey(username) {
+    return encodeURIComponent(username.trim().toLowerCase()).replace(/\./g, '%2E');
+  }
+
   async init() {
-    if (!localStorage.getItem(DB_STORAGE_KEY)) {
-      try {
-        const res = await fetch('data.JSON');
-        if (res.ok) {
-          const remoteData = await res.json();
-          localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(remoteData));
-          return;
-        }
-      } catch (e) {
-        // Fallback หากเปิดจาก file:// หรือ fetch ไม่ได้
+    // ซิงค์ข้อมูล Realtime จาก Firebase เสมอ
+    onValue(gameRef, async (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        this.players = Object.values(val);
+      } else {
+        // หากใน Firebase ยังไม่มีข้อมูล ให้บันทึกค่าเริ่มต้นขึ้น Firebase ให้อัตโนมัติ
+        const initialMap = {};
+        DEFAULT_INITIAL_DATA.forEach(user => {
+          const key = this.encodeUserKey(user.username);
+          initialMap[key] = user;
+        });
+        await set(gameRef, initialMap);
+        this.players = [...DEFAULT_INITIAL_DATA];
       }
-      localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(DEFAULT_INITIAL_DATA));
-    }
+    });
   }
 
-  getPlayers() {
+  async getPlayers() {
     try {
-      const data = localStorage.getItem(DB_STORAGE_KEY);
-      return data ? JSON.parse(data) : DEFAULT_INITIAL_DATA;
+      const snapshot = await get(gameRef);
+      if (snapshot.exists()) {
+        this.players = Object.values(snapshot.val());
+        return this.players;
+      }
     } catch (e) {
-      return DEFAULT_INITIAL_DATA;
+      console.warn("ไม่สามารถอ่านข้อมูลจาก Firebase ได้:", e);
     }
+    return this.players.length > 0 ? this.players : DEFAULT_INITIAL_DATA;
   }
 
-  savePlayers(players) {
-    localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(players));
+  async findUser(username) {
+    const key = this.encodeUserKey(username);
+    const userSnapshot = await get(child(gameRef, key));
+    if (userSnapshot.exists()) {
+      return userSnapshot.val();
+    }
+    return null;
   }
 
-  findUser(username) {
-    const players = this.getPlayers();
-    return players.find(p => p.username.toLowerCase() === username.trim().toLowerCase());
-  }
-
-  registerUser(username, password) {
-    const players = this.getPlayers();
+  async registerUser(username, password) {
     const newUser = {
       username: username.trim(),
       password: password,
@@ -394,29 +421,29 @@ class DatabaseManager {
       roundIndex: 0,
       wins: 0
     };
-    players.push(newUser);
-    this.savePlayers(players);
+    const key = this.encodeUserKey(username);
+    await set(child(gameRef, key), newUser);
     return newUser;
   }
 
-  updateProgress(username, roundIndex, checkpointName, incrementWin = false) {
-    const players = this.getPlayers();
-    const idx = players.findIndex(p => p.username.toLowerCase() === username.toLowerCase());
-    if (idx !== -1) {
-      players[idx].roundIndex = roundIndex;
-      players[idx].checkpoint = checkpointName;
+  async updateProgress(username, roundIndex, checkpointName, incrementWin = false) {
+    const user = await this.findUser(username);
+    if (user) {
+      user.roundIndex = roundIndex;
+      user.checkpoint = checkpointName;
       if (incrementWin) {
-        players[idx].wins = (players[idx].wins || 0) + 1;
+        user.wins = (user.wins || 0) + 1;
       }
-      this.savePlayers(players);
-      return players[idx];
+      const key = this.encodeUserKey(username);
+      await set(child(gameRef, key), user);
+      return user;
     }
     return null;
   }
 
-  getTop20() {
-    const players = this.getPlayers();
-    return [...players].sort((a, b) => {
+  async getTop20() {
+    const allPlayers = await this.getPlayers();
+    return [...allPlayers].sort((a, b) => {
       if (b.wins !== a.wins) return b.wins - a.wins;
       return b.roundIndex - a.roundIndex;
     }).slice(0, 20);
@@ -787,7 +814,6 @@ let currentOriginDir = 'center';
 let lastBallPower = 'normal';
 let ballBounceTime = 0;
 
-// คืนชื่อผู้เล่นที่ล็อกอินอยู่เสมอ
 function getPlayerName() {
   return currentUser ? currentUser.username : "คุณ";
 }
@@ -817,7 +843,7 @@ const playerGreeting = document.getElementById('player-greeting');
 const checkpointBadge = document.getElementById('checkpoint-badge');
 const winsBadge = document.getElementById('wins-badge');
 
-let previousScreen = 'home'; // จำหน้าจอก่อนเปิด Leaderboard ('home', 'game', 'auth')
+let previousScreen = 'home';
 
 function getCurrentRound() {
   return TOURNAMENT_ROUNDS[currentRoundIndex];
@@ -1060,8 +1086,7 @@ function handlePointWon(winner, reasonText) {
   }
 }
 
-// จัดการเมื่อจบเซต หรือจบการแข่งขันในรอบนั้นๆ
-function handleSetWon(winner, reasonText) {
+async function handleSetWon(winner, reasonText) {
   gameActive = false;
   canPlayerHit = false;
   clearTimeout(activeTimer);
@@ -1092,9 +1117,8 @@ function handleSetWon(winner, reasonText) {
     const isRoundWin = playerSetsWon === 3;
 
     if (isRoundWin) {
-      // ชนะบอท 3 ใน 5 เซต -> บันทึกชัยชนะสะสมเพิ่ม 1 ครั้ง
       if (currentUser) {
-        currentUser = db.updateProgress(currentUser.username, currentRoundIndex, round.roundTitle, true);
+        currentUser = await db.updateProgress(currentUser.username, currentRoundIndex, round.roundTitle, true);
         refreshUserBadgeUI();
       }
 
@@ -1102,9 +1126,8 @@ function handleSetWon(winner, reasonText) {
         tournamentState = 'round_won';
         const nextRound = TOURNAMENT_ROUNDS[currentRoundIndex + 1];
         
-        // อัปเดต Checkpoint เป็นรอบถัดไปทันที
         if (currentUser) {
-          currentUser = db.updateProgress(currentUser.username, currentRoundIndex + 1, nextRound.roundTitle, false);
+          currentUser = await db.updateProgress(currentUser.username, currentRoundIndex + 1, nextRound.roundTitle, false);
           refreshUserBadgeUI();
         }
 
@@ -1116,9 +1139,8 @@ function handleSetWon(winner, reasonText) {
         tournamentState = 'tournament_won';
         motion.stop();
         
-        // ชนะทัวร์นาเมนต์ครบ -> รีเซ็ต Checkpoint กลับรอบแรกเพื่อความท้าทายใหม่
         if (currentUser) {
-          currentUser = db.updateProgress(currentUser.username, 0, TOURNAMENT_ROUNDS[0].roundTitle, false);
+          currentUser = await db.updateProgress(currentUser.username, 0, TOURNAMENT_ROUNDS[0].roundTitle, false);
           refreshUserBadgeUI();
         }
 
@@ -1131,9 +1153,8 @@ function handleSetWon(winner, reasonText) {
       tournamentState = 'tournament_lost';
       motion.stop();
 
-      // แพ้ในรอบนั้น: บันทึก checkpoint คงไว้ที่รอบเดิมเพื่อให้กลับมาเล่นซ้ำรอบนี้ได้ทันที
       if (currentUser) {
-        currentUser = db.updateProgress(currentUser.username, currentRoundIndex, round.roundTitle, false);
+        currentUser = await db.updateProgress(currentUser.username, currentRoundIndex, round.roundTitle, false);
         refreshUserBadgeUI();
       }
 
@@ -1143,7 +1164,6 @@ function handleSetWon(winner, reasonText) {
       startBtn.setAttribute('aria-label', `ลองสู้อีกครั้งใน${round.roundTitle} พบกับ ${round.botName}`);
     }
     
-    // แสดงปุ่มดูหอเกียรติยศเมื่อจบการแข่งขันแต่ละรอบ
     inGameLeaderboardBtn.classList.remove('hidden');
     betweenSets = false;
   } else {
@@ -1159,7 +1179,6 @@ function handleSetWon(winner, reasonText) {
   }
 }
 
-// เริ่มเซตใหม่
 function startNewSet() {
   const round = getCurrentRound();
   const pName = getPlayerName();
@@ -1184,7 +1203,6 @@ function startNewSet() {
   activeTimer = setTimeout(startRally, 2000);
 }
 
-// เริ่มรอบใหม่ใน Tournament
 function startNewMatch(roundIdx) {
   currentRoundIndex = roundIdx;
   playerSetsWon = 0;
@@ -1200,7 +1218,6 @@ function startNewMatch(roundIdx) {
 
 const motion = new MotionDetector(onPlayerSwing);
 
-// ควบคุมด้วยแป้นพิมพ์ลัด
 document.addEventListener('keydown', (e) => {
   if (!gameActive || !canPlayerHit) return;
 
@@ -1244,10 +1261,11 @@ function refreshUserBadgeUI() {
   winsBadge.textContent = `ชนะสะสม: ${currentUser.wins || 0} ครั้ง`;
 }
 
-function renderLeaderboardTable() {
+async function renderLeaderboardTable() {
   const tbody = document.getElementById('leaderboard-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">กำลังโหลดข้อมูล...</td></tr>';
+  const top20 = await db.getTop20();
   tbody.innerHTML = '';
-  const top20 = db.getTop20();
 
   if (top20.length === 0) {
     const tr = document.createElement('tr');
@@ -1312,7 +1330,6 @@ function closeLeaderboard() {
   }
 }
 
-// ผูกเหตุการณ์ปุ่มระบบสมาชิก
 document.getElementById('show-login-btn').addEventListener('click', () => {
   authNav.classList.add('hidden');
   loginForm.classList.remove('hidden');
@@ -1354,7 +1371,7 @@ backFromLeaderboardBtn.addEventListener('click', () => {
 });
 
 // ฟังก์ชันเข้าสู่ระบบ
-document.getElementById('submit-login-btn').addEventListener('click', () => {
+document.getElementById('submit-login-btn').addEventListener('click', async () => {
   const usernameInput = document.getElementById('login-username').value.trim();
   const passwordInput = document.getElementById('login-password').value;
 
@@ -1363,7 +1380,8 @@ document.getElementById('submit-login-btn').addEventListener('click', () => {
     return;
   }
 
-  const existingUser = db.findUser(usernameInput);
+  showAuthStatus("กำลังตรวจสอบข้อมูล...");
+  const existingUser = await db.findUser(usernameInput);
   if (!existingUser) {
     showAuthStatus("ไม่พบบัญชีผู้เล่นนี้ในระบบ กรุณาตรวจสอบชื่อหรือสมัครสมาชิกใหม่");
     return;
@@ -1379,47 +1397,42 @@ document.getElementById('submit-login-btn').addEventListener('click', () => {
 });
 
 // ฟังก์ชันสมัครสมาชิกใหม่
-document.getElementById('submit-reg-btn').addEventListener('click', () => {
+document.getElementById('submit-reg-btn').addEventListener('click', async () => {
   const usernameInput = document.getElementById('reg-username').value.trim();
   const passwordInput = document.getElementById('reg-password').value;
 
-  // 1. ตรวจสอบการกรอกครบทุกช่อง
   if (!usernameInput || !passwordInput) {
     showAuthStatus("กรุณากรอกข้อมูลให้ครบทุกช่อง ไม่สามารถเว้นว่างได้");
     return;
   }
 
-  // 2. ตรวจสอบความยาวชื่อผู้เล่น (ไม่เกิน 20 ตัวอักษร)
   if (usernameInput.length > 20) {
     showAuthStatus("ชื่อผู้เล่นต้องมีความยาวไม่เกิน 20 ตัวอักษร");
     return;
   }
 
-  // 3. ตรวจสอบคำสุภาพ (ห้ามมีคำไม่สุภาพ)
   if (checkProfanity(usernameInput)) {
     showAuthStatus("ชื่อผู้เล่นมีคำไม่สุภาพหรือคำต้องห้าม กรุณาใช้คำสุภาพในการตั้งชื่อ");
     return;
   }
 
-  // 4. ตรวจสอบรหัสผ่าน (อย่างน้อย 4 ตัวอักษร)
   if (passwordInput.length < 4) {
     showAuthStatus("รหัสผ่านต้องมีความยาวอย่างน้อย 4 ตัวอักษรขึ้นไป");
     return;
   }
 
-  // 5. ตรวจสอบชื่อซ้ำ
-  if (db.findUser(usernameInput)) {
+  showAuthStatus("กำลังบันทึกข้อมูล...");
+  const existingUser = await db.findUser(usernameInput);
+  if (existingUser) {
     showAuthStatus("ชื่อผู้เล่นนี้มีอยู่ในระบบแล้ว กรุณาเลือกชื่ออื่น หรือเข้าสู่ระบบ");
     return;
   }
 
-  // สมัครสมาชิกและบันทึกลง JSON
-  const registeredUser = db.registerUser(usernameInput, passwordInput);
+  const registeredUser = await db.registerUser(usernameInput, passwordInput);
   currentUser = registeredUser;
   enterGameHomeScreen();
 });
 
-// เมื่อเข้าสู่ระบบสำเร็จ เปลี่ยนหน้าไปหน้าคำแนะนำเดิม และปรับ Checkpoint ตามข้อมูลผู้เล่น
 function enterGameHomeScreen() {
   authScreen.classList.add('hidden');
   homeScreen.classList.remove('hidden');
@@ -1445,25 +1458,21 @@ function enterGameHomeScreen() {
  * =========================================================================
  */
 startBtn.addEventListener('click', async () => {
-  // กรณีกำลังแข่งขันระหว่างเซต
   if (betweenSets) {
     startNewSet();
     return;
   }
 
-  // กรณีชนะรอบ และกำลังขึ้นรอบถัดไป
   if (tournamentState === 'round_won') {
     startNewMatch(currentRoundIndex + 1);
     return;
   }
 
-  // กรณีแพ้ และต้องการลองใหม่ในรอบเดิม
   if (tournamentState === 'tournament_lost') {
     startNewMatch(currentRoundIndex);
     return;
   }
 
-  // กรณีเริ่มเกมจากหน้า Home
   clearTimeout(activeTimer);
   gameActive = false;
 
@@ -1480,7 +1489,6 @@ startBtn.addEventListener('click', async () => {
   homeScreen.classList.add('hidden');
   gameScreen.classList.remove('hidden');
 
-  // เข้าเล่นในรอบ Checkpoint ล่าสุดของผู้เล่นทันที
   const resumeRound = currentUser ? (currentUser.roundIndex || 0) : 0;
   startNewMatch(resumeRound);
 });
