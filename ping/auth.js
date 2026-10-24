@@ -131,7 +131,7 @@ export class AuthManager {
     const newUser = {
       username: username.trim(),
       password: password,
-      checkpoint: "รอบ 8 คนสุดท้าย",
+      checkpoint: "รอบ 16 คนสุดท้าย",
       roundIndex: 0,
       wins: 0,
       updatedAt: Date.now()
