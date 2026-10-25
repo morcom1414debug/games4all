@@ -13,7 +13,7 @@ import {
   onDisconnect,
   runTransaction
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-import { database, GAME_ID, encodeUserKey } from "./auth.js";
+import { database, GAME_ID, encodeUserKey, SessionStorage } from "./auth.js";
 
 /**
  * ตั้งค่า ICE / STUN / TURN Server สำหรับ PeerJS WebRTC
@@ -42,7 +42,8 @@ const ONLINE_CONFIG = {
   POINT_TRANSITION_MS: 2400,
   RECONNECT_GRACE_MS: 30000,
   PEER_CONNECT_TIMEOUT_MS: 15000,
-  PING_INTERVAL_MS: 2000
+  PING_INTERVAL_MS: 2000,
+  WIN_REWARD_POINTS: 100
 };
 
 /**
@@ -62,6 +63,7 @@ export class OnlineMatchController {
     this.directions = options.directions;
     this.flightDurations = options.flightDurations;
     this.getCurrentUser = options.getCurrentUser;
+    this.onUserUpdated = options.onUserUpdated;
     this.addAccessibleClickListener = options.addAccessibleClickListener;
     this.onExitToHome = options.onExitToHome;
     this.ui = options.ui;
@@ -1550,7 +1552,10 @@ export class OnlineMatchController {
       this.sound.play(didIWin ? 'winner' : 'loser', 0, 1.0, false);
 
       const winnerName = data.matchWinner === 'host' ? this.hostUsername : this.clientUsername;
-      const finalMsg = `${data.reasonText} จบการแข่งขันออนไลน์! ผู้ชนะคือ ${winnerName} ชนะไปด้วยสกอร์ ${this.hostSetsWon} ต่อ ${this.clientSetsWon} เซต กดปุ่มออกจากห้องด้านล่างเพื่อกลับสู่หน้าหลัก`;
+      const rewardMsg = didIWin
+        ? ` คุณได้รับชัยชนะสะสม +1 ครั้ง พร้อมคะแนนสะสม +${ONLINE_CONFIG.WIN_REWARD_POINTS} แต้ม!`
+        : '';
+      const finalMsg = `${data.reasonText} จบการแข่งขันออนไลน์! ผู้ชนะคือ ${winnerName} ชนะไปด้วยสกอร์ ${this.hostSetsWon} ต่อ ${this.clientSetsWon} เซต.${rewardMsg} กดปุ่มออกจากห้องด้านล่างเพื่อกลับสู่หน้าหลัก`;
       this.announcePolite(finalMsg, true);
 
       this.recordMatchStatsIdempotent('completed', data.matchWinner);
@@ -1726,7 +1731,7 @@ export class OnlineMatchController {
 
   /**
    * บันทึกสถิติออนไลน์ลง PingPong/onlineStats/ โดยรับประกันว่าบันทึกเพียงครั้งเดียวต่อ Match ID (Idempotent Transaction)
-   * และไม่กระทบคะแนน Tournament หรือ Hall of Fame เดิม
+   * และหากผู้เล่นชนะการแข่งขัน จะเพิ่มสถิติชนะสะสม +1 ครั้ง และคะแนนสะสม +100 แต้ม ในโปรไฟล์ผู้เล่นหลักด้วย
    */
   async recordMatchStatsIdempotent(outcomeType, winnerRole) {
     const user = this.getCurrentUser();
@@ -1739,8 +1744,10 @@ export class OnlineMatchController {
     const isLoss = outcomeType === 'completed' && winnerRole && winnerRole !== this.role;
     const isAborted = outcomeType === 'aborted';
 
+    let newlyRecorded = false;
+
     try {
-      await runTransaction(statsRef, (currentStats) => {
+      const txResult = await runTransaction(statsRef, (currentStats) => {
         const st = currentStats || {
           username: user.username,
           totalMatches: 0,
@@ -1754,7 +1761,7 @@ export class OnlineMatchController {
         if (!st.processedMatches) st.processedMatches = {};
         if (st.processedMatches[matchId]) {
           // เคยบันทึก Match ID นี้ไปแล้ว ไม่เพิ่มซ้ำ
-          return st;
+          return;
         }
 
         st.processedMatches[matchId] = {
@@ -1770,6 +1777,29 @@ export class OnlineMatchController {
 
         return st;
       });
+
+      newlyRecorded = Boolean(txResult.committed);
+
+      // หากเป็นผู้ชนะและเป็นการบันทึกผลแมตช์นี้ครั้งแรก ให้บวกสถิติชนะสะสม +1 ครั้ง และคะแนนสะสม +100 แต้มในโปรไฟล์หลักของผู้เล่น
+      if (newlyRecorded && isWin) {
+        const playerRef = ref(this.db, `${GAME_ID}/players/${myKey}`);
+        const playerTx = await runTransaction(playerRef, (profile) => {
+          if (!profile) return profile;
+          profile.wins = (profile.wins || 0) + 1;
+          profile.points = (profile.points || 0) + ONLINE_CONFIG.WIN_REWARD_POINTS;
+          profile.updatedAt = Date.now();
+          return profile;
+        });
+
+        if (playerTx.committed && playerTx.snapshot.exists()) {
+          const updatedProfile = playerTx.snapshot.val();
+          SessionStorage.save(updatedProfile);
+          if (typeof this.onUserUpdated === 'function') {
+            this.onUserUpdated(updatedProfile);
+          }
+        }
+      }
+
       await this.loadPlayerOnlineStatsUI();
     } catch (e) {
       console.warn("บันทึกสถิติออนไลน์ไม่สำเร็จ:", e);

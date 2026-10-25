@@ -1,0 +1,1926 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>World audio PingPong Championships</title>
+  <!-- PeerJS Library สำหรับ WebRTC DataChannel ในโหมดแข่งขันออนไลน์ 1 ต่อ 1 -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg: #000000;
+      --text: #FFFFFF;
+      --accent: #FFD700;
+      --btn-bg: #1A1A1A;
+      --focus-ring: #00FFFF;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+      overflow: hidden;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 16px;
+      overflow-y: auto;
+    }
+    main:focus {
+      outline: none;
+    }
+    h1 {
+      font-size: 2rem;
+      color: var(--accent);
+      line-height: 1.3;
+    }
+    h2 {
+      font-size: 1.6rem;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .desc {
+      font-size: 1.25rem;
+      line-height: 1.6;
+    }
+    .status-box {
+      background: #111;
+      border: 2px solid var(--accent);
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 1.3rem;
+      min-height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: bold;
+    }
+    .tournament-board {
+      font-size: 1.5rem;
+      text-align: center;
+      color: #FFD700;
+      font-weight: bold;
+    }
+    .set-board {
+      font-size: 1.4rem;
+      text-align: center;
+      color: #00FFFF;
+      font-weight: bold;
+    }
+    .score-board {
+      font-size: 1.9rem;
+      text-align: center;
+      color: var(--accent);
+      font-weight: bold;
+      padding: 4px;
+    }
+    .bottom-bar {
+      width: 100%;
+      flex-shrink: 0;
+      margin-top: auto;
+      padding-top: 16px;
+      padding-bottom: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+      z-index: 20;
+    }
+    button {
+      width: 100%;
+      padding: 22px;
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: #000000;
+      background-color: var(--accent);
+      border: 4px solid #FFFFFF;
+      border-radius: 16px;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-touch-callout: none;
+      position: relative;
+      z-index: 10;
+    }
+    button:focus, button:active {
+      outline: 6px solid var(--focus-ring);
+      background-color: #FFA500;
+    }
+    .btn-secondary {
+      background-color: #222222;
+      color: #FFFFFF;
+      border: 3px solid #777777;
+      padding: 16px;
+      font-size: 1.3rem;
+    }
+    .btn-secondary:focus, .btn-secondary:active {
+      outline: 6px solid var(--focus-ring);
+      background-color: #444444;
+      color: #FFD700;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+      text-align: left;
+    }
+    label {
+      font-size: 1.3rem;
+      color: var(--accent);
+      font-weight: bold;
+    }
+    input[type="text"], input[type="password"] {
+      padding: 16px;
+      font-size: 1.3rem;
+      border-radius: 10px;
+      border: 2px solid var(--accent);
+      background-color: #111;
+      color: #fff;
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+    input[type="text"]:focus, input[type="password"]:focus {
+      outline: 4px solid var(--focus-ring);
+      background-color: #222;
+    }
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 1.25rem;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #444;
+    }
+    th {
+      background-color: #222;
+      color: var(--accent);
+    }
+    tr.current-user-row {
+      background-color: #332b00;
+      font-weight: bold;
+      color: #00FFFF;
+    }
+    .user-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #222;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      color: #00FFFF;
+      font-size: 1.2rem;
+      margin-top: 4px;
+    }
+    .round-list-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .room-card {
+      background: #141414;
+      border: 2px solid #00FFFF;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 1.25rem;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ตัวประกาศสถานะสำหรับ Screen Reader ในโหมดออนไลน์ -->
+  <div id="online-sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- 1. หน้าล็อบบี้: เข้าสู่ระบบ / สมัครสมาชิก -->
+  <main id="auth-screen" role="region" aria-label="หน้าเข้าสู่ระบบและสมัครสมาชิก">
+    <h1 tabindex="0">World audio PingPong Championships</h1>
+    <p class="desc" tabindex="0">ยินดีต้อนรับสู่ศึกชิงแชมป์ปิงปองโลก กรุณาเข้าสู่ระบบหรือลงทะเบียนเพื่อบันทึกประวัติการแข่งขันและจัดอันดับในหอเกียรติยศ</p>
+
+    <!-- ส่วนเลือกเมนูหลักของ Auth -->
+    <div id="auth-nav" style="display:flex; flex-direction:column; gap:16px; margin-top:20px;">
+      <button id="show-login-btn" type="button" aria-label="เข้าสู่ระบบด้วยบัญชีเดิม">เข้าสู่ระบบ</button>
+      <button id="show-register-btn" type="button" class="btn-secondary" aria-label="สมัครสมาชิกใหม่">สมัครสมาชิกใหม่</button>
+      <button id="auth-view-leaderboard-btn" type="button" class="btn-secondary" aria-label="ดูตารางอันดับหอเกียรติยศ 20 อันดับแรก">ตารางสรุปลำดับหอเกียรติยศ</button>
+    </div>
+
+    <!-- ฟอร์มเข้าสู่ระบบ -->
+    <form id="login-form" class="hidden" onsubmit="return false;" style="margin-top:16px;">
+      <h2 tabindex="0">เข้าสู่ระบบ</h2>
+      <div class="form-group">
+        <label for="login-username">ชื่อผู้เล่น:</label>
+        <input type="text" id="login-username" maxlength="20" autocomplete="username" required aria-required="true" placeholder="ระบุชื่อผู้เล่น">
+      </div>
+      <div class="form-group">
+        <label for="login-password">รหัสผ่าน (อย่างน้อย 4 ตัวอักษร):</label>
+        <input type="password" id="login-password" minlength="4" autocomplete="current-password" required aria-required="true" placeholder="ระบุรหัสผ่าน">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
+        <button id="submit-login-btn" type="button" aria-label="ยืนยันเข้าสู่ระบบ">เข้าสู่ระบบ</button>
+        <button id="back-to-auth-btn-1" type="button" class="btn-secondary" aria-label="ย้อนกลับไปเมนูก่อนหน้า">ย้อนกลับ</button>
+      </div>
+    </form>
+
+    <!-- ฟอร์มสมัครสมาชิกใหม่ -->
+    <form id="register-form" class="hidden" onsubmit="return false;" style="margin-top:16px;">
+      <h2 tabindex="0">สมัครสมาชิกใหม่</h2>
+      <div class="desc" tabindex="0">
+        <p>• ชื่อผู้เล่น: ความยาวไม่เกิน 20 ตัวอักษร (ภาษาไทยหรืออังกฤษ) และต้องเป็นคำสุภาพ</p>
+        <p>• รหัสผ่าน: ตัวเลขหรือตัวอักษรอย่างน้อย 4 ตัวอักษรขึ้นไป</p>
+      </div>
+      <div class="form-group" style="margin-top:12px;">
+        <label for="reg-username">ตั้งชื่อผู้เล่น:</label>
+        <input type="text" id="reg-username" maxlength="20" autocomplete="off" required aria-required="true" placeholder="ชื่อผู้เล่น (คำสุภาพ)">
+      </div>
+      <div class="form-group">
+        <label for="reg-password">ตั้งรหัสผ่าน (อย่างน้อย 4 ตัวอักษร):</label>
+        <input type="password" id="reg-password" minlength="4" autocomplete="new-password" required aria-required="true" placeholder="รหัสผ่าน">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
+        <button id="submit-reg-btn" type="button" aria-label="ยืนยันการสมัครสมาชิก">ยืนยันการสมัครสมาชิก</button>
+        <button id="back-to-auth-btn-2" type="button" class="btn-secondary" aria-label="ย้อนกลับไปเมนูก่อนหน้า">ย้อนกลับ</button>
+      </div>
+    </form>
+
+    <div id="auth-status-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
+  </main>
+
+  <!-- 2. หน้าแรกของเกม (คำแนะนำและเริ่มแข่ง) -->
+  <main id="home-screen" class="hidden" role="region" aria-label="หน้าแรกของเกม">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h1 tabindex="0">ชิงแชมป์ปิงปองโลก มิติเสียง 3D</h1>
+    </div>
+    <div tabindex="0">
+      <span class="user-badge" id="player-greeting">ผู้เล่น: -</span>
+      <span class="user-badge" id="checkpoint-badge">ด่านปัจจุบัน: รอบ 16 คนสุดท้าย</span>
+      <span class="user-badge" id="wins-badge">ชนะสะสม: 0 ครั้ง</span>
+      <span class="user-badge" id="points-badge">คะแนนสะสม: 0 แต้ม</span>
+    </div>
+    <div class="desc" tabindex="0">
+      <p>ศึกชิงแชมป์ปิงปองโลกสำหรับผู้พิการทางสายตา ควรสวมหูฟังเพื่อฟังมิติเสียงสมจริง 3 ทิศทาง: ซ้าย กลาง และขวา</p>
+      <p style="margin-top: 12px;"><strong>ระบบการแข่งขันแบบ Tournament (นักกีฬาจาก 20 ประเทศทั่วโลก):</strong></p>
+    </div>
+    <div id="permission-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
+  </main>
+
+  <!-- หน้า Lobby สำหรับแข่งขันออนไลน์ 1 ต่อ 1 -->
+  <main id="online-lobby-screen" class="hidden" role="region" aria-label="หน้าล็อบบี้แข่งขันปิงปองออนไลน์หนึ่งต่อหนึ่ง">
+    <h1 tabindex="0">ล็อบบี้แข่งขันออนไลน์ 1 ต่อ 1</h1>
+    <div tabindex="0">
+      <span class="user-badge" id="online-stats-badge">สถิติออนไลน์: แข่ง 0 | ชนะ 0 | แพ้ 0 | ยุติ 0</span>
+    </div>
+    <div id="lobby-status-box" class="status-box" aria-live="polite" tabindex="0">
+      สร้างห้องใหม่หรือเลือกเข้าร่วมห้องที่กำลังรอผู้เล่นด้านล่าง
+    </div>
+
+    <!-- กล่องแสดงสถานะห้องปัจจุบันเมื่อสร้างหรือเข้าร่วมแล้ว -->
+    <div id="active-room-card" class="room-card hidden" role="region" aria-label="ข้อมูลห้องแข่งขันปัจจุบัน">
+      <h2 id="room-code-display" tabindex="0">รหัสห้อง: -</h2>
+      <p id="room-host-display" tabindex="0">หัวหน้าห้อง (Host): -</p>
+      <p id="room-client-display" tabindex="0">ผู้ท้าชิง (Client): รอผู้เล่นเข้าร่วม...</p>
+      <p id="room-connection-display" tabindex="0">สถานะห้อง: รอผู้เล่นคนที่ 2</p>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <button id="create-room-btn" type="button" aria-label="สร้างห้องแข่งขันออนไลน์ใหม่">สร้างห้อง</button>
+      <button id="refresh-rooms-btn" type="button" class="btn-secondary" aria-label="รีเฟรชรายการห้องที่กำลังรอผู้เล่น">รีเฟรชรายการห้อง</button>
+    </div>
+
+    <h2 tabindex="0" style="margin-top:8px;">รายการห้องที่กำลังรอผู้เล่น</h2>
+    <div id="waiting-rooms-container" class="round-list-container" role="group" aria-label="รายการห้องออนไลน์ที่เปิดรอผู้เล่น">
+      <p class="desc" tabindex="0">กำลังโหลดรายการห้อง...</p>
+    </div>
+  </main>
+
+  <!-- หน้าต่างวิธีเล่นและกติกา (Rules & How to Play) -->
+  <main id="rules-screen" class="hidden" role="region" aria-label="หน้าต่างวิธีเล่นและกติกา">
+    <h1 tabindex="0">วิธีเล่นและกติกาการแข่งขัน</h1>
+    <div class="desc" tabindex="0">
+      <p>• แข่งขันระบบชนะ 3 ใน 5 เซต โดยแต่ละเซตแข่งขัน 11 แต้ม (ดิวซ์ตัดสินห่าง 2 แต้ม) สลับเสิร์ฟทุก 2 แต้ม</p>
+      <p style="margin-top: 12px;"><strong>การควบคุมบนคอมพิวเตอร์:</strong></p>
+      <ul style="margin-left: 24px; margin-top: 4px;">
+        <li>ลูกศรซ้าย = ตีทางซ้าย</li>
+        <li>ลูกศรขึ้น = ตีตรงกลาง</li>
+        <li>ลูกศรขวา = ตีทางขวา</li>
+        <li>กดแป้น Shift ค้างไว้พร้อมลูกศรเพื่อตบแรง</li>
+      </ul>
+      <p style="margin-top: 12px;"><strong>การควบคุมบนมือถือ:</strong></p>
+      <ul style="margin-left: 24px; margin-top: 4px;">
+        <li>สะบัดเครื่องไปทางซ้าย, ตรงไปข้างหน้า หรือขวา (สะบัดแรง/เร็วเพื่อตบลูกพุ่งเร็ว)</li>
+      </ul>
+      <p style="margin-top: 12px;"><strong>ระบบคะแนนสะสมและการเลือกรอบ:</strong></p>
+      <ul style="margin-left: 24px; margin-top: 4px;">
+        <li>ชนะรอบ 16 คนสุดท้าย รับ 10 แต้ม</li>
+        <li>ชนะรอบ 8 คนสุดท้าย รับ 40 แต้ม</li>
+        <li>ชนะรอบรองชนะเลิศ (4 คนสุดท้าย) รับ 100 แต้ม</li>
+        <li>ชนะรอบชิงชนะเลิศ รับ 300 แต้ม</li>
+        <li>สามารถกดปุ่ม "เลือกรอบที่จะเล่น" เพื่อย้อนกลับไปฝึกซ้อมในรอบที่เคยผ่านแล้วได้ โดยจุด Checkpoint จะย้ายไปยังรอบที่เลือกทันที</li>
+      </ul>
+    </div>
+  </main>
+
+  <!-- หน้าต่างเลือกรอบที่จะเล่น (Round Selection Screen) -->
+  <main id="round-select-screen" class="hidden" role="region" aria-label="หน้าต่างเลือกรอบที่จะเล่น">
+    <h1 tabindex="0">เลือกรอบที่จะเล่น</h1>
+    <p class="desc" tabindex="0">เลือกรอบการแข่งขันที่คุณปลดล็อกแล้วเพื่อเข้าแข่งขันทันที เมื่อกดเลือกรอบใด จุด Checkpoint ปัจจุบันจะย้ายไปอยู่ที่รอบนั้นทันที</p>
+    <div id="round-buttons-container" class="round-list-container" role="group" aria-label="รายการรอบที่เปิดให้เลือกเล่น">
+      <!-- ปุ่มเลือกรอบจะถูกสร้างด้วย JavaScript -->
+    </div>
+  </main>
+
+  <!-- 3. หน้าขณะเล่นเกม -->
+  <main id="game-screen" class="hidden" role="region" aria-label="หน้ากระดานแข่งขัน">
+    <h1 id="game-title" tabindex="0">กำลังแข่งขัน</h1>
+    <div id="tournament-display" class="tournament-board" aria-live="polite" tabindex="0">รอบ 16 คนสุดท้าย</div>
+    <div id="set-display" class="set-board" aria-live="polite" tabindex="0">เซตที่ 1</div>
+    <div id="score-display" class="score-board" aria-live="polite" tabindex="0">แต้ม: 0 ต่อ 0</div>
+    <div id="game-status" class="status-box" aria-live="assertive" tabindex="0">เตรียมพร้อม...</div>
+  </main>
+
+  <!-- 4. หน้าตารางสรุปลำดับหอเกียรติยศ (Leaderboard Top 20) -->
+  <main id="leaderboard-screen" class="hidden" role="region" aria-label="ตารางสรุปลำดับหอเกียรติยศ 20 อันดับแรก">
+    <h1 tabindex="0">หอเกียรติยศ 20 อันดับแรก (Hall of Fame)</h1>
+    <p class="desc" tabindex="0">สรุปลำดับสุดยอดนักกีฬาปิงปองโลก เรียงตามคะแนนสะสมและจำนวนครั้งที่ชนะสูงสุด</p>
+    <div class="table-container" tabindex="0" role="region" aria-label="ตารางอันดับผู้เล่น">
+      <table id="leaderboard-table">
+        <thead>
+          <tr>
+            <th scope="col">อันดับ</th>
+            <th scope="col">ชื่อผู้เล่น</th>
+            <th scope="col">ด่านปัจจุบัน</th>
+            <th scope="col">สถิติชนะ (ครั้ง)</th>
+            <th scope="col">คะแนนสะสม (แต้ม)</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard-tbody">
+          <!-- ข้อมูลจะถูกใส่ด้วย JavaScript -->
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- ส่วนปุ่ม Action ด้านล่าง (คงที่ระดับ body ไม่ถูกเคลื่อนย้าย DOM เพื่อให้ VoiceOver จับตำแหน่งได้แม่นยำ) -->
+  <div id="bottom-bar" class="bottom-bar">
+    <button id="in-game-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ดูลำดับหอเกียรติยศ">ตารางสรุปลำดับหอเกียรติยศ</button>
+    <button id="rules-btn" type="button" class="btn-secondary hidden" aria-label="ดูวิธีเล่นและกติกา">วิธีเล่นและกติกา</button>
+    <button id="select-round-btn" type="button" class="btn-secondary hidden" aria-label="เลือกรอบที่จะเล่นจากด่านที่ผ่านแล้ว">เลือกรอบที่จะเล่น</button>
+    <button id="start-btn" type="button" class="hidden" aria-label="เริ่มการแข่งขันชิงแชมป์โลก">เริ่มการแข่งขัน</button>
+    <button id="online-mode-btn" type="button" class="btn-secondary hidden" aria-label="เล่นปิงปองออนไลน์กับเพื่อนแบบหนึ่งต่อหนึ่ง">เล่นออนไลน์</button>
+    <button id="start-online-match-btn" type="button" class="hidden" aria-label="เริ่มการแข่งขันออนไลน์กับผู้เล่นในห้อง">เริ่มการแข่งขันออนไลน์</button>
+    <button id="leave-room-btn" type="button" class="btn-secondary hidden" aria-label="ออกจากห้องแข่งขันออนไลน์">ออกจากห้อง</button>
+    <button id="back-from-lobby-btn" type="button" class="btn-secondary hidden" aria-label="ย้อนกลับสู่หน้าแรก">ย้อนกลับหน้าแรก</button>
+    <button id="back-from-rules-btn" type="button" class="btn-secondary hidden" aria-label="ปิดวิธีเล่นและย้อนกลับ">ปิดและย้อนกลับ</button>
+    <button id="back-from-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ปิดหอเกียรติยศและย้อนกลับ">ย้อนกลับ</button>
+    <button id="back-from-round-select-btn" type="button" class="btn-secondary hidden" aria-label="ยกเลิกการเลือกรอบและย้อนกลับ">ย้อนกลับ</button>
+  </div>
+
+<script type="module">
+import { AuthManager } from './auth.js';
+import { OnlineMatchController } from './ping-online.js';
+
+const authManager = new AuthManager();
+let currentUser = null;
+let onlineController = null;
+
+/**
+ * Helper ผูก Event ให้ทำงานแม่นยำบน VoiceOver ทั้งกรณี click ปกติ, Enter/Spacebar และ touch
+ */
+function addAccessibleClickListener(element, callback) {
+  if (!element) return;
+  element.addEventListener('click', (e) => {
+    callback(e);
+  });
+  element.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      callback(e);
+    }
+  });
+}
+
+/**
+ * =========================================================================
+ * B. ระบบจัดการเสียงด้วย Web Audio API
+ * =========================================================================
+ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.buffers = {};
+    this.loaded = false;
+    this.bgmSource = null;
+    this.bgmGain = null;
+    this.bgmPlaying = false;
+  }
+
+  async init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+    if (!this.loaded) {
+      await this.loadAllSounds();
+    }
+  }
+
+  async loadAllSounds() {
+    const files = {
+      bounce: 'audio/1.mp3',
+      hit: 'audio/2.mp3',
+      miss: 'audio/3.mp3',
+      miss4: 'audio/4.mp3',
+      create: 'audio/create.mp3',
+      select: 'audio/select.mp3',
+      bot: 'audio/bot.mp3',
+      bgm: 'audio/bgm.mp3',
+      winset: 'audio/winset.mp3',
+      winnround: 'audio/winnround.mp3',
+      winner: 'audio/winner.mp3',
+      lose: 'audio/lose.mp3',
+      loser: 'audio/loser.mp3',
+      go: 'audio/go.mp3',
+      go1: 'audio/go1.mp3',
+      retry: 'audio/retry.mp3'
+    };
+
+    const promises = Object.entries(files).map(async ([key, url]) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+        const arrayBuffer = await res.arrayBuffer();
+        this.buffers[key] = await this.ctx.decodeAudioData(arrayBuffer);
+      } catch (err) {
+        console.warn(`โหลดไฟล์ ${url} ไม่สำเร็จ ใช้เสียงสังเคราะห์สำรอง:`, err);
+        this.buffers[key] = this.createFallbackBuffer(key);
+      }
+    });
+
+    await Promise.all(promises);
+    this.loaded = true;
+  }
+
+  createFallbackBuffer(type) {
+    const sr = this.ctx.sampleRate;
+    const duration = (type === 'miss' || type === 'miss4' || type === 'retry') ? 0.35 : 0.12;
+    const buffer = this.ctx.createBuffer(1, sr * duration, sr);
+    const data = buffer.getChannelData(0);
+    const freq = type === 'bounce' ? 680 : (type === 'hit' ? 440 : 160);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / sr;
+      data[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-18 * t);
+    }
+    return buffer;
+  }
+
+  playBGM(volume = 0.25) {
+    if (!this.ctx || !this.buffers.bgm) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.bgmPlaying) return;
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers.bgm;
+    source.loop = true;
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = volume;
+
+    source.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+
+    source.start(0);
+    this.bgmSource = source;
+    this.bgmGain = gainNode;
+    this.bgmPlaying = true;
+  }
+
+  play(name, pan = 0, volume = 1.0, isDistant = false, playbackRate = 1.0) {
+    if (!this.ctx || !this.buffers[name]) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffers[name];
+    source.playbackRate.value = playbackRate;
+
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.value = volume;
+
+    let lastNode = source;
+
+    if (isDistant) {
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 1400;
+      lastNode.connect(filter);
+      lastNode = filter;
+    }
+
+    lastNode.connect(gainNode);
+
+    if (this.ctx.createStereoPanner) {
+      const panner = this.ctx.createStereoPanner();
+      panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), this.ctx.currentTime);
+      gainNode.connect(panner);
+      panner.connect(this.ctx.destination);
+    } else {
+      gainNode.connect(this.ctx.destination);
+    }
+
+    source.start(0);
+  }
+
+  playBallFlight(startPan, endPan, durationMs, toOpponent = false, powerLevel = 'normal') {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+
+    const duration = durationMs / 1000;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'triangle';
+    filter.type = 'bandpass';
+    filter.Q.value = 3.0;
+
+    let freqMult = 1.0;
+    if (powerLevel === 'hard') freqMult = 1.35;
+    else if (powerLevel === 'soft') freqMult = 0.85;
+
+    if (toOpponent) {
+      osc.frequency.setValueAtTime(380 * freqMult, now);
+      osc.frequency.exponentialRampToValueAtTime(220 * freqMult, now + duration);
+      filter.frequency.setValueAtTime(800 * freqMult, now);
+      filter.frequency.exponentialRampToValueAtTime(320 * freqMult, now + duration);
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.03, now + duration);
+    } else {
+      osc.frequency.setValueAtTime(240 * freqMult, now);
+      osc.frequency.exponentialRampToValueAtTime(420 * freqMult, now + duration);
+      filter.frequency.setValueAtTime(400 * freqMult, now);
+      filter.frequency.exponentialRampToValueAtTime(950 * freqMult, now + duration);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.linearRampToValueAtTime(0.28, now + duration * 0.85);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    }
+
+    osc.connect(filter);
+    filter.connect(gain);
+
+    if (this.ctx.createStereoPanner) {
+      const panner = this.ctx.createStereoPanner();
+      panner.pan.setValueAtTime(startPan, now);
+      panner.pan.linearRampToValueAtTime(endPan, now + duration);
+      gain.connect(panner);
+      panner.connect(this.ctx.destination);
+    } else {
+      gain.connect(this.ctx.destination);
+    }
+
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+}
+
+/**
+ * =========================================================================
+ * C. ระบบ Motion Sensor สำหรับมือถือ (คงเดิม 100%)
+ * =========================================================================
+ */
+class MotionDetector {
+  constructor(onSwingCallback) {
+    this.onSwing = onSwingCallback;
+    this.lastSwingTime = 0;
+    this.cooldownMs = 350;
+    this.listening = false;
+    this.boundHandler = this.handleMotion.bind(this);
+  }
+
+  async requestPermission() {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try {
+        const state = await DeviceMotionEvent.requestPermission();
+        return state === 'granted';
+      } catch (e) {
+        return false;
+      }
+    }
+    if (!('DeviceMotionEvent' in window) || !window.matchMedia('(pointer: coarse)').matches) {
+      return true;
+    }
+    return true;
+  }
+
+  start() {
+    if (this.listening) return;
+    window.addEventListener('devicemotion', this.boundHandler, true);
+    this.listening = true;
+  }
+
+  stop() {
+    if (!this.listening) return;
+    window.removeEventListener('devicemotion', this.boundHandler, true);
+    this.listening = false;
+  }
+
+  handleMotion(event) {
+    const now = performance.now();
+    if (now - this.lastSwingTime < this.cooldownMs) return;
+
+    const acc = event.acceleration;
+    const rot = event.rotationRate;
+
+    let forwardForce = 0;
+    let horizontalForce = 0;
+    let wristSnap = 0;
+
+    if (acc) {
+      const ax = acc.x || 0;
+      const ay = acc.y || 0;
+      const az = acc.z || 0;
+      forwardForce = Math.sqrt(ay * ay + az * az);
+      horizontalForce = ax;
+    } else if (event.accelerationIncludingGravity) {
+      const ag = event.accelerationIncludingGravity;
+      const ax = ag.x || 0;
+      const total = Math.sqrt(ax * ax + (ag.y || 0) ** 2 + (ag.z || 0) ** 2);
+      forwardForce = Math.abs(total - 9.81);
+      horizontalForce = ax;
+    }
+
+    if (rot) {
+      wristSnap = Math.max(Math.abs(rot.alpha || 0), Math.abs(rot.beta || 0), Math.abs(rot.gamma || 0));
+    }
+
+    const activeRallyCount = (onlineController && onlineController.inMatch)
+      ? onlineController.rallyCount
+      : rallyCount;
+
+    let isHit = false;
+    if (activeRallyCount === 0) {
+      if (forwardForce >= 4.5 || (forwardForce >= 2.5 && wristSnap >= 90)) {
+        isHit = true;
+      }
+    } else {
+      if (forwardForce >= 9.5 || (forwardForce >= 5.5 && wristSnap >= 140)) {
+        isHit = true;
+      }
+    }
+
+    if (isHit) {
+      this.lastSwingTime = now;
+
+      let direction = 'center';
+      const sideThreshold = 3.2;
+
+      if (horizontalForce > sideThreshold) {
+        direction = 'left';
+      } else if (horizontalForce < -sideThreshold) {
+        direction = 'right';
+      } else if (rot && rot.gamma) {
+        if (rot.gamma > 70) direction = 'left';
+        else if (rot.gamma < -70) direction = 'right';
+      }
+
+      const combinedPower = forwardForce + (wristSnap / 20);
+      let powerLevel = 'normal';
+
+      if (activeRallyCount === 0) {
+        if (combinedPower >= 14.0) powerLevel = 'hard';
+        else if (combinedPower <= 8.5) powerLevel = 'soft';
+      } else {
+        if (combinedPower >= 22.0) powerLevel = 'hard';
+        else if (combinedPower <= 13.5) powerLevel = 'soft';
+      }
+
+      this.onSwing(direction, powerLevel);
+    }
+  }
+}
+
+/**
+ * =========================================================================
+ * D. การตั้งค่าระบบทัวร์นาเมนต์ และตัวแปรเกม
+ * =========================================================================
+ */
+
+// คลังรายชื่อบอท 20 รายชื่อจากชาติต่างๆ ทั่วโลก
+const BOT_ROSTER = [
+  { botName: 'เคนจิ', botFullName: 'เคนจิ (Kenji จากญี่ปุ่น)' },
+  { botName: 'มาร์คัส', botFullName: 'มาร์คัส (Marcus จากเยอรมนี)' },
+  { botName: 'หลงเฉิน', botFullName: 'หลงเฉิน (Long Chen จากจีน)' },
+  { botName: 'ตะวัน', botFullName: 'ตะวัน (Tawan จากไทย)' },
+  { botName: 'มินจุน', botFullName: 'มินจุน (Min-jun จากเกาหลีใต้)' },
+  { botName: 'อาร์เธอร์', botFullName: 'อาร์เธอร์ (Arthur จากฝรั่งเศส)' },
+  { botName: 'ดิมิทรี', botFullName: 'ดิมิทรี (Dmitry จากรัสเซีย)' },
+  { botName: 'ลูคัส', botFullName: 'ลูคัส (Lucas จากบราซิล)' },
+  { botName: 'อเล็กซ์', botFullName: 'อเล็กซ์ (Alex จากสหรัฐอเมริกา)' },
+  { botName: 'ฮารุโตะ', botFullName: 'ฮารุโตะ (Haruto จากญี่ปุ่น)' },
+  { botName: 'การ์ลอส', botFullName: 'การ์ลอส (Carlos จากสเปน)' },
+  { botName: 'มัตเตโอ', botFullName: 'มัตเตโอ (Matteo จากอิตาลี)' },
+  { botName: 'วิกรม', botFullName: 'วิกรม (Vikram จากอินเดีย)' },
+  { botName: 'โอลิเวอร์', botFullName: 'โอลิเวอร์ (Oliver จากสหราชอาณาจักร)' },
+  { botName: 'ฮวน', botFullName: 'ฮวน (Juan จากอาร์เจนตินา)' },
+  { botName: 'เอริค', botFullName: 'เอริค (Erik จากสวีเดน)' },
+  { botName: 'เฟลิกซ์', botFullName: 'เฟลิกซ์ (Felix จากออสเตรีย)' },
+  { botName: 'หวังเว่ย', botFullName: 'หวังเว่ย (Wang Wei จากไต้หวัน)' },
+  { botName: 'เหงียน', botFullName: 'เหงียน (Nguyen จากเวียดนาม)' },
+  { botName: 'ทาริก', botFullName: 'ทาริก (Tariq จากอียิปต์)' }
+];
+
+const TOURNAMENT_ROUNDS = [
+  {
+    roundTitle: 'รอบ 16 คนสุดท้าย',
+    rewardPoints: 10,
+    botName: 'ตะวัน',
+    botFullName: 'ตะวัน (Tawan จากไทย)',
+    difficultyLevels: [1500, 1400, 1300],
+    botBaseAccuracy: 0.82,
+    botMinAccuracy: 0.35,
+    botDecayPerRally: 0.040,
+    botHardPenalty: 0.30,
+    botSoftBonus: 0.06,
+    powerChances: { soft: 0.25, normal: 0.60, hard: 0.15 }
+  },
+  {
+    roundTitle: 'รอบ 8 คนสุดท้าย',
+    rewardPoints: 40,
+    botName: 'เคนจิ',
+    botFullName: 'เคนจิ (Kenji จากญี่ปุ่น)',
+    difficultyLevels: [1200, 1050, 950],
+    botBaseAccuracy: 0.88,
+    botMinAccuracy: 0.40,
+    botDecayPerRally: 0.035,
+    botHardPenalty: 0.25,
+    botSoftBonus: 0.05,
+    powerChances: { soft: 0.20, normal: 0.55, hard: 0.25 }
+  },
+  {
+    roundTitle: 'รอบรองชนะเลิศ',
+    rewardPoints: 100,
+    botName: 'มาร์คัส',
+    botFullName: 'มาร์คัส (Marcus จากเยอรมนี)',
+    difficultyLevels: [1000, 900, 800],
+    botBaseAccuracy: 0.92,
+    botMinAccuracy: 0.45,
+    botDecayPerRally: 0.030,
+    botHardPenalty: 0.20,
+    botSoftBonus: 0.04,
+    powerChances: { soft: 0.15, normal: 0.45, hard: 0.40 }
+  },
+  {
+    roundTitle: 'รอบชิงชนะเลิศ',
+    rewardPoints: 300,
+    botName: 'หลงเฉิน',
+    botFullName: 'หลงเฉิน (Long Chen จากจีน)',
+    difficultyLevels: [900, 800, 700],
+    botBaseAccuracy: 0.95,
+    botMinAccuracy: 0.50,
+    botDecayPerRally: 0.025,
+    botHardPenalty: 0.18,
+    botSoftBonus: 0.03,
+    powerChances: { soft: 0.15, normal: 0.25, hard: 0.60 }
+  }
+];
+
+// ฟังก์ชันสุ่มคู่แข่ง 4 คนไม่ซ้ำกันสำหรับทัวร์นาเมนต์
+function randomizeTournamentBots() {
+  const shuffled = [...BOT_ROSTER].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < TOURNAMENT_ROUNDS.length; i++) {
+    TOURNAMENT_ROUNDS[i].botName = shuffled[i].botName;
+    TOURNAMENT_ROUNDS[i].botFullName = shuffled[i].botFullName;
+  }
+}
+
+// สุ่มจับคู่แข่งครั้งแรกเมื่อโหลดเกม
+randomizeTournamentBots();
+
+let currentRoundIndex = 0;
+
+const TIMING = {
+  BOT_REACTION_MS: 380,
+  BOT_SERVE_DELAY_MS: 2000,
+  POINT_TRANSITION_MS: 2200
+};
+
+const FLIGHT_DURATIONS = {
+  soft: 880,
+  normal: 700,
+  hard: 520
+};
+
+const DIRECTIONS = {
+  left: { name: 'ซ้าย', pan: -0.95 },
+  center: { name: 'ตรงกลาง', pan: 0.0 },
+  right: { name: 'ขวา', pan: 0.95 }
+};
+
+const sound = new SoundEngine();
+let gameActive = false;
+let betweenSets = false;
+let tournamentState = 'active';
+
+let playerSetsWon = 0;
+let botSetsWon = 0;
+let currentSetNumber = 1;
+let currentDifficultyIndex = 0;
+
+let playerScore = 0;
+let botScore = 0;
+let initialServer = 'player';
+let currentServer = 'player';
+let canPlayerHit = false;
+let rallyCount = 0;
+let activeTimer = null;
+
+let currentBallDir = 'center'; 
+let currentOriginDir = 'center';
+let lastBallPower = 'normal';
+let ballBounceTime = 0;
+
+function getPlayerName() {
+  return currentUser ? currentUser.username : "คุณ";
+}
+
+// DOM Elements
+const authScreen = document.getElementById('auth-screen');
+const authNav = document.getElementById('auth-nav');
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const authStatusMsg = document.getElementById('auth-status-msg');
+
+const homeScreen = document.getElementById('home-screen');
+const onlineLobbyScreen = document.getElementById('online-lobby-screen');
+const rulesScreen = document.getElementById('rules-screen');
+const roundSelectScreen = document.getElementById('round-select-screen');
+const roundButtonsContainer = document.getElementById('round-buttons-container');
+const gameScreen = document.getElementById('game-screen');
+const leaderboardScreen = document.getElementById('leaderboard-screen');
+
+const permissionMsg = document.getElementById('permission-msg');
+const tournamentDisplay = document.getElementById('tournament-display');
+const setDisplay = document.getElementById('set-display');
+const scoreDisplay = document.getElementById('score-display');
+const gameStatus = document.getElementById('game-status');
+
+const startBtn = document.getElementById('start-btn');
+const onlineModeBtn = document.getElementById('online-mode-btn');
+const selectRoundBtn = document.getElementById('select-round-btn');
+const rulesBtn = document.getElementById('rules-btn');
+const inGameLeaderboardBtn = document.getElementById('in-game-leaderboard-btn');
+const backFromRulesBtn = document.getElementById('back-from-rules-btn');
+const backFromLeaderboardBtn = document.getElementById('back-from-leaderboard-btn');
+const backFromRoundSelectBtn = document.getElementById('back-from-round-select-btn');
+
+const playerGreeting = document.getElementById('player-greeting');
+const checkpointBadge = document.getElementById('checkpoint-badge');
+const winsBadge = document.getElementById('wins-badge');
+const pointsBadge = document.getElementById('points-badge');
+
+let previousScreen = 'home';
+
+function getCurrentRound() {
+  return TOURNAMENT_ROUNDS[currentRoundIndex];
+}
+
+function activateFocusMode() {
+  gameScreen.setAttribute('role', 'application');
+  gameScreen.setAttribute('tabindex', '-1');
+  try {
+    gameScreen.focus();
+  } catch (e) {}
+}
+
+function deactivateFocusMode() {
+  gameScreen.removeAttribute('role');
+  gameScreen.removeAttribute('tabindex');
+  setTimeout(() => {
+    try {
+      startBtn.focus();
+    } catch (e) {}
+  }, 3000);
+}
+
+function announceStatus(text) {
+  gameStatus.textContent = text;
+}
+
+function getRandomDirection() {
+  const dirs = ['left', 'center', 'right'];
+  return dirs[Math.floor(Math.random() * dirs.length)];
+}
+
+function getOppositeDirection(dir) {
+  if (dir === 'left') return 'right';
+  if (dir === 'right') return 'left';
+  return Math.random() < 0.5 ? 'left' : 'right';
+}
+
+function getRandomPower() {
+  const round = getCurrentRound();
+  const r = Math.random();
+  if (r < round.powerChances.soft) return 'soft';
+  if (r < round.powerChances.soft + round.powerChances.normal) return 'normal';
+  return 'hard';
+}
+
+function updateServerTurn() {
+  const totalPoints = playerScore + botScore;
+  const oppositeServer = initialServer === 'player' ? 'bot' : 'player';
+
+  if (playerScore >= 10 && botScore >= 10) {
+    const deucePoints = totalPoints - 20;
+    currentServer = (deucePoints % 2 === 0) ? initialServer : oppositeServer;
+  } else {
+    const pairIndex = Math.floor(totalPoints / 2);
+    currentServer = (pairIndex % 2 === 0) ? initialServer : oppositeServer;
+  }
+}
+
+function checkSetWinner() {
+  if (playerScore >= 11 && playerScore - botScore >= 2) return 'player';
+  if (botScore >= 11 && botScore - playerScore >= 2) return 'bot';
+  return null;
+}
+
+function updateScoreUI() {
+  const round = getCurrentRound();
+  const pName = getPlayerName();
+  tournamentDisplay.textContent = `${round.roundTitle}: พบกับ ${round.botFullName}`;
+  setDisplay.textContent = `เซตที่ ${currentSetNumber} (เซต: ${pName} ${playerSetsWon} - ${botSetsWon} ${round.botName})`;
+  scoreDisplay.textContent = `แต้ม: ${pName} ${playerScore} ต่อ ${botScore} ${round.botName}`;
+}
+
+function startRally() {
+  if (!gameActive) return;
+  canPlayerHit = false;
+  rallyCount = 0;
+  updateServerTurn();
+  updateScoreUI();
+
+  const round = getCurrentRound();
+  const pName = getPlayerName();
+
+  if (currentServer === 'player') {
+    sound.play('go1', 0, 1.0, false);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบ${pName}เสิร์ฟ เริ่มเลย`);
+    canPlayerHit = true;
+    currentBallDir = 'center';
+
+    activeTimer = setTimeout(() => {
+      if (canPlayerHit && gameActive) {
+        canPlayerHit = false;
+        sound.play('retry', 0, 1.0, false);
+        handlePointWon('bot', `${pName}เสิร์ฟไม่ทัน ${round.botName}ได้แต้ม`);
+      }
+    }, 5000);
+  } else {
+    sound.play('bot', 0, 1.0, false);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบ${round.botName}เสิร์ฟ เตรียมตีโต้`);
+    activeTimer = setTimeout(() => {
+      if (!gameActive) return;
+      botStrikeBall();
+    }, TIMING.BOT_SERVE_DELAY_MS);
+  }
+}
+
+function onPlayerSwing(swingDirection, powerLevel = 'normal') {
+  if (onlineController && onlineController.inMatch) {
+    onlineController.handleLocalPlayerSwing(swingDirection, powerLevel);
+    return;
+  }
+
+  if (!gameActive || !canPlayerHit) return;
+
+  const round = getCurrentRound();
+  const pName = getPlayerName();
+  clearTimeout(activeTimer);
+  canPlayerHit = false;
+
+  if (rallyCount > 0 && swingDirection !== currentBallDir) {
+    sound.play('miss', DIRECTIONS[currentBallDir].pan, 1.0, false);
+    handlePointWon('bot', `${pName}ตีวืด ${round.botName}ได้แต้ม`);
+    return;
+  }
+
+  rallyCount++;
+  const startPan = DIRECTIONS[swingDirection].pan;
+
+  let hitRate = 1.0;
+  let hitVol = 1.0;
+  if (powerLevel === 'hard') {
+    hitRate = 1.25;
+    hitVol = 1.2;
+  } else if (powerLevel === 'soft') {
+    hitRate = 0.85;
+    hitVol = 0.8;
+  }
+  sound.play('hit', startPan, hitVol, false, hitRate);
+
+  let targetDir;
+  if (rallyCount === 1) {
+    targetDir = swingDirection;
+  } else {
+    const currentHitWindow = round.difficultyLevels[currentDifficultyIndex];
+    const reactionTime = performance.now() - ballBounceTime;
+    const ratio = reactionTime / currentHitWindow;
+
+    if (ratio < 0.38) {
+      targetDir = getOppositeDirection(currentBallDir);
+    } else if (ratio > 0.78) {
+      targetDir = currentBallDir;
+    } else {
+      targetDir = getRandomDirection();
+    }
+  }
+
+  const endPan = DIRECTIONS[targetDir].pan;
+  const flightTime = FLIGHT_DURATIONS[powerLevel];
+
+  sound.playBallFlight(startPan, endPan, flightTime, true, powerLevel);
+
+  activeTimer = setTimeout(() => {
+    if (!gameActive) return;
+
+    sound.play('bounce', endPan, 0.20, true);
+
+    activeTimer = setTimeout(() => {
+      if (!gameActive) return;
+
+      let botSuccessChance = Math.max(round.botMinAccuracy, round.botBaseAccuracy - (rallyCount * round.botDecayPerRally));
+      if (powerLevel === 'hard') botSuccessChance -= round.botHardPenalty;
+      else if (powerLevel === 'soft') botSuccessChance += round.botSoftBonus;
+
+      if (Math.random() < botSuccessChance) {
+        currentOriginDir = targetDir;
+        botStrikeBall();
+      } else {
+        sound.play('miss4', endPan, 0.35, true);
+        handlePointWon('player', `${round.botName}ตีวืด ${pName}ได้แต้ม`);
+      }
+    }, TIMING.BOT_REACTION_MS);
+
+  }, flightTime);
+}
+
+function botStrikeBall() {
+  if (!gameActive) return;
+
+  const round = getCurrentRound();
+  const pName = getPlayerName();
+  const startDir = (rallyCount === 0) ? getRandomDirection() : currentOriginDir;
+  const targetDir = getRandomDirection();
+  const powerLevel = getRandomPower();
+
+  currentBallDir = targetDir;
+  lastBallPower = powerLevel;
+
+  const startPan = DIRECTIONS[startDir].pan;
+  const endPan = DIRECTIONS[targetDir].pan;
+  const flightTime = FLIGHT_DURATIONS[powerLevel];
+
+  let botHitRate = 1.0;
+  if (powerLevel === 'hard') botHitRate = 1.25;
+  else if (powerLevel === 'soft') botHitRate = 0.85;
+
+  sound.play('hit', startPan, 0.32, true, botHitRate);
+  sound.playBallFlight(startPan, endPan, flightTime, false, powerLevel);
+
+  activeTimer = setTimeout(() => {
+    if (!gameActive) return;
+
+    const bounceVol = (targetDir === 'center') ? 1.30 : 1.0;
+    sound.play('bounce', endPan, bounceVol, false);
+
+    ballBounceTime = performance.now();
+    canPlayerHit = true;
+
+    const currentHitWindow = round.difficultyLevels[currentDifficultyIndex];
+    activeTimer = setTimeout(() => {
+      if (canPlayerHit && gameActive) {
+        canPlayerHit = false;
+        sound.play('miss', endPan, 1.0, false);
+        handlePointWon('bot', `${pName}ตีไม่ทัน ${round.botName}ได้แต้ม`);
+      }
+    }, currentHitWindow);
+
+  }, flightTime);
+}
+
+function handlePointWon(winner, reasonText) {
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+
+  if (winner === 'player') {
+    playerScore++;
+  } else {
+    botScore++;
+  }
+  updateScoreUI();
+
+  const setWinner = checkSetWinner();
+  if (setWinner) {
+    handleSetWon(setWinner, reasonText);
+  } else {
+    announceStatus(reasonText);
+    activeTimer = setTimeout(startRally, TIMING.POINT_TRANSITION_MS);
+  }
+}
+
+async function handleSetWon(winner, reasonText) {
+  gameActive = false;
+  canPlayerHit = false;
+  clearTimeout(activeTimer);
+
+  const round = getCurrentRound();
+  const pName = getPlayerName();
+  let diffChangeMsg = "";
+
+  if (winner === 'player') {
+    playerSetsWon++;
+    if (currentDifficultyIndex < round.difficultyLevels.length - 1) {
+      currentDifficultyIndex++;
+      const nextWindowSec = (round.difficultyLevels[currentDifficultyIndex] / 1000).toFixed(2);
+      diffChangeMsg = ` ยอดเยี่ยม! ความยากเซตต่อไปจะเพิ่มขึ้น (เหลือเวลาตี ${nextWindowSec} วินาที)`;
+    } else {
+      diffChangeMsg = ` ${pName}ยังคงอยู่ในระดับความเร็วสูงสุดของรอบนี้!`;
+    }
+  } else {
+    botSetsWon++;
+    const currentWindowSec = (round.difficultyLevels[currentDifficultyIndex] / 1000).toFixed(2);
+    diffChangeMsg = ` ไม่เป็นไร เซตต่อไปยังคงระดับความยากเดิมไว้ (เวลาตี ${currentWindowSec} วินาที) สู้ใหม่ครับ`;
+  }
+
+  updateScoreUI();
+  deactivateFocusMode();
+
+  if (playerSetsWon === 3 || botSetsWon === 3) {
+    const isRoundWin = playerSetsWon === 3;
+
+    if (isRoundWin) {
+      const earnedPts = round.rewardPoints || 0;
+      if (currentUser) {
+        currentUser = await authManager.saveProgress(currentRoundIndex, round.roundTitle, true, earnedPts);
+        refreshUserBadgeUI();
+      }
+
+      if (currentRoundIndex < TOURNAMENT_ROUNDS.length - 1) {
+        sound.play('winnround', 0, 1.0, false);
+        tournamentState = 'round_won';
+        const nextRound = TOURNAMENT_ROUNDS[currentRoundIndex + 1];
+        
+        if (currentUser) {
+          currentUser = await authManager.saveProgress(currentRoundIndex + 1, nextRound.roundTitle, false, 0);
+          refreshUserBadgeUI();
+        }
+
+        const winRoundMsg = `${reasonText} จบการแข่งขัน! ${pName}ชนะ ${round.botName} ${playerSetsWon} ต่อ ${botSetsWon} เซต ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม และผ่านเข้าสู่ ${nextRound.roundTitle} พบกับ ${nextRound.botFullName}! กดปุ่มด้านล่างเพื่อเริ่มการแข่งขันรอบถัดไป เลือกรอบที่จะเล่น หรือตรวจสอบหอเกียรติยศ`;
+        announceStatus(winRoundMsg);
+        startBtn.textContent = `เข้าสู่ ${nextRound.roundTitle}`;
+        startBtn.setAttribute('aria-label', `เข้าสู่ ${nextRound.roundTitle} พบกับ ${nextRound.botFullName}`);
+      } else {
+        sound.play('winner', 0, 1.0, false);
+        tournamentState = 'tournament_won';
+        motion.stop();
+        
+        if (currentUser) {
+          currentUser = await authManager.saveProgress(0, TOURNAMENT_ROUNDS[0].roundTitle, false, 0);
+          refreshUserBadgeUI();
+        }
+
+        // เมื่อจบทัวร์นาเมนต์และได้แชมป์ ทำการสุ่มรายชื่อบอทชุดใหม่สำหรับทัวร์นาเมนต์ถัดไป
+        randomizeTournamentBots();
+
+        const championMsg = `${reasonText} สุดยอดประวัติศาสตร์! ${pName}โค่น ${round.botName} คว้าแชมป์ปิงปองโลกได้สำเร็จ ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม ยินดีด้วยกับตำแหน่งแชมเปียน! กดปุ่มด้านล่างเพื่อเริ่มทัวร์นาเมนต์ใหม่ เลือกรอบที่จะเล่น หรือดูสรุปหอเกียรติยศ`;
+        announceStatus(championMsg);
+        startBtn.textContent = 'เริ่มการแข่งขันชิงแชมป์โลกใหม่';
+        startBtn.setAttribute('aria-label', 'เริ่มการแข่งขันชิงแชมป์โลกใหม่');
+      }
+    } else {
+      sound.play('loser', 0, 1.0, false);
+      tournamentState = 'tournament_lost';
+      motion.stop();
+
+      if (currentUser) {
+        currentUser = await authManager.saveProgress(currentRoundIndex, round.roundTitle, false, 0);
+        refreshUserBadgeUI();
+      }
+
+      const defeatMsg = `${reasonText} จบการแข่งขัน ${round.botName} ชนะ ${botSetsWon} ต่อ ${playerSetsWon} เซต ${pName}ตกรอบใน${round.roundTitle} ระบบได้บันทึก Checkpoint รอบนี้ไว้แล้ว สามารถกดปุ่มเพื่อลองสู้ต่อในรอบนี้ หรือกดเลือกรอบที่จะเล่นเพื่อกลับไปฝึกซ้อมรอบก่อนหน้าได้ทันที`;
+      announceStatus(defeatMsg);
+      startBtn.textContent = `ลองสู้อีกครั้งใน${round.roundTitle}`;
+      startBtn.setAttribute('aria-label', `ลองสู้อีกครั้งใน${round.roundTitle} พบกับ ${round.botName}`);
+    }
+    
+    inGameLeaderboardBtn.classList.remove('hidden');
+    selectRoundBtn.classList.remove('hidden');
+    rulesBtn.classList.add('hidden');
+    betweenSets = false;
+  } else {
+    if (winner === 'player') {
+      sound.play('winset', 0, 1.0, false);
+    } else {
+      sound.play('lose', 0, 1.0, false);
+    }
+    betweenSets = true;
+    currentSetNumber++;
+    const winnerText = (winner === 'player') ? `${pName}ชนะเซตนี้` : `${round.botName}ชนะเซตนี้`;
+    const setEndMsg = `${reasonText} จบเซตที่ ${currentSetNumber - 1}! ${winnerText} ${playerScore} ต่อ ${botScore} แต้ม (รวมเซต: ${pName} ${playerSetsWon} - ${botSetsWon} ${round.botName}).${diffChangeMsg} กดปุ่มด้านล่างเพื่อเริ่มเซตที่ ${currentSetNumber}`;
+    announceStatus(setEndMsg);
+
+    startBtn.textContent = `เริ่มเซตที่ ${currentSetNumber}`;
+    startBtn.setAttribute('aria-label', `เริ่มเซตที่ ${currentSetNumber}`);
+    inGameLeaderboardBtn.classList.remove('hidden');
+    selectRoundBtn.classList.add('hidden');
+    rulesBtn.classList.add('hidden');
+  }
+}
+
+function startNewSet() {
+  const round = getCurrentRound();
+  const pName = getPlayerName();
+  playerScore = 0;
+  botScore = 0;
+  initialServer = (currentSetNumber % 2 === 1) ? 'player' : 'bot';
+  gameActive = true;
+  betweenSets = false;
+
+  inGameLeaderboardBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  rulesBtn.classList.add('hidden');
+  updateScoreUI();
+  startBtn.textContent = 'กำลังแข่งขัน';
+  startBtn.setAttribute('aria-label', `กำลังแข่งขันเซตที่ ${currentSetNumber} กับ ${round.botName}`);
+
+  activateFocusMode();
+
+  sound.play('go', 0, 1.0, false);
+
+  const startMsg = initialServer === 'player'
+    ? `เริ่มเซตที่ ${currentSetNumber} ${pName}ได้เสิร์ฟก่อน เริ่มเลย`
+    : `เริ่มเซตที่ ${currentSetNumber} ${round.botName}ได้เสิร์ฟก่อน เตรียมตีโต้`;
+  announceStatus(startMsg);
+
+  activeTimer = setTimeout(startRally, 2000);
+}
+
+function startNewMatch(roundIdx) {
+  // หากเริ่มทัวร์นาเมนต์ใหม่ตั้งแต่รอบแรก ให้ทำการสุ่มบอทชุดใหม่
+  if (roundIdx === 0 && (tournamentState === 'tournament_won' || currentRoundIndex === 0)) {
+    randomizeTournamentBots();
+  }
+
+  currentRoundIndex = roundIdx;
+  playerSetsWon = 0;
+  botSetsWon = 0;
+  currentSetNumber = 1;
+  currentDifficultyIndex = 0;
+  tournamentState = 'active';
+
+  inGameLeaderboardBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  rulesBtn.classList.add('hidden');
+  motion.start();
+  startNewSet();
+}
+
+const motion = new MotionDetector(onPlayerSwing);
+
+onlineController = new OnlineMatchController({
+  sound: sound,
+  motion: motion,
+  directions: DIRECTIONS,
+  flightDurations: FLIGHT_DURATIONS,
+  getCurrentUser: () => currentUser,
+  addAccessibleClickListener: addAccessibleClickListener,
+  onExitToHome: () => {
+    enterGameHomeScreen();
+  },
+  ui: {
+    homeScreen: homeScreen,
+    onlineLobbyScreen: onlineLobbyScreen,
+    rulesScreen: rulesScreen,
+    roundSelectScreen: roundSelectScreen,
+    leaderboardScreen: leaderboardScreen,
+    gameScreen: gameScreen,
+    permissionMsg: permissionMsg,
+    tournamentDisplay: tournamentDisplay,
+    setDisplay: setDisplay,
+    scoreDisplay: scoreDisplay,
+    gameStatus: gameStatus,
+    startBtn: startBtn,
+    onlineModeBtn: onlineModeBtn,
+    selectRoundBtn: selectRoundBtn,
+    rulesBtn: rulesBtn,
+    inGameLeaderboardBtn: inGameLeaderboardBtn,
+    onlineStatsBadge: document.getElementById('online-stats-badge'),
+    lobbyStatusBox: document.getElementById('lobby-status-box'),
+    activeRoomCard: document.getElementById('active-room-card'),
+    roomCodeDisplay: document.getElementById('room-code-display'),
+    roomHostDisplay: document.getElementById('room-host-display'),
+    roomClientDisplay: document.getElementById('room-client-display'),
+    roomConnectionDisplay: document.getElementById('room-connection-display'),
+    createRoomBtn: document.getElementById('create-room-btn'),
+    refreshRoomsBtn: document.getElementById('refresh-rooms-btn'),
+    waitingRoomsContainer: document.getElementById('waiting-rooms-container'),
+    startOnlineMatchBtn: document.getElementById('start-online-match-btn'),
+    leaveRoomBtn: document.getElementById('leave-room-btn'),
+    backFromLobbyBtn: document.getElementById('back-from-lobby-btn'),
+    onlineSrAnnouncer: document.getElementById('online-sr-announcer')
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  const key = e.key || e.code;
+  let dir = null;
+
+  if (key === 'ArrowLeft' || key === 'Left') {
+    dir = 'left';
+  } else if (key === 'ArrowUp' || key === 'Up') {
+    dir = 'center';
+  } else if (key === 'ArrowRight' || key === 'Right') {
+    dir = 'right';
+  }
+
+  if (!dir) return;
+
+  if (onlineController && onlineController.inMatch) {
+    if (onlineController.canLocalPlayerHit) {
+      e.preventDefault();
+      const power = e.shiftKey ? 'hard' : 'normal';
+      onlineController.handleLocalPlayerSwing(dir, power);
+    }
+    return;
+  }
+
+  if (!gameActive || !canPlayerHit) return;
+
+  e.preventDefault();
+  const power = e.shiftKey ? 'hard' : 'normal';
+  onPlayerSwing(dir, power);
+});
+
+/**
+ * =========================================================================
+ * E. ระบบหน้าจอ Auth, Registration, Login, Leaderboard, Rules & เลือกรอบ
+ * =========================================================================
+ */
+function showAuthStatus(msg, isSuccess = false) {
+  authStatusMsg.textContent = msg;
+  authStatusMsg.classList.remove('hidden');
+  authStatusMsg.style.borderColor = isSuccess ? '#00FF00' : 'var(--accent)';
+  authStatusMsg.style.color = isSuccess ? '#00FF00' : '#FFFFFF';
+  try {
+    authStatusMsg.focus();
+  } catch (e) {}
+}
+
+function refreshUserBadgeUI() {
+  if (!currentUser) return;
+  const idx = currentUser.roundIndex || 0;
+  const currentTitle = (TOURNAMENT_ROUNDS[idx] && TOURNAMENT_ROUNDS[idx].roundTitle) ? TOURNAMENT_ROUNDS[idx].roundTitle : (currentUser.checkpoint || 'รอบ 16 คนสุดท้าย');
+
+  playerGreeting.textContent = `ผู้เล่น: ${currentUser.username}`;
+  checkpointBadge.textContent = `ด่านปัจจุบัน: ${currentTitle}`;
+  winsBadge.textContent = `ชนะสะสม: ${currentUser.wins || 0} ครั้ง`;
+  pointsBadge.textContent = `คะแนนสะสม: ${currentUser.points || 0} แต้ม`;
+}
+
+async function renderLeaderboardTable() {
+  const tbody = document.getElementById('leaderboard-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">กำลังโหลดข้อมูล...</td></tr>';
+  const top20 = await authManager.getLeaderboard();
+  tbody.innerHTML = '';
+
+  if (top20.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="5" style="text-align:center; padding:20px;">ยังไม่มีข้อมูลในหอเกียรติยศ</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  top20.forEach((player, index) => {
+    const tr = document.createElement('tr');
+    if (currentUser && player.username.toLowerCase() === currentUser.username.toLowerCase()) {
+      tr.classList.add('current-user-row');
+    }
+    tr.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${player.username}</td>
+      <td>${player.checkpoint || '-'}</td>
+      <td>${player.wins || 0}</td>
+      <td>${player.points || 0}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function openLeaderboard(fromScreen) {
+  previousScreen = fromScreen;
+  authScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  rulesScreen.classList.add('hidden');
+  roundSelectScreen.classList.add('hidden');
+  gameScreen.classList.add('hidden');
+
+  renderLeaderboardTable();
+  leaderboardScreen.classList.remove('hidden');
+
+  startBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  rulesBtn.classList.add('hidden');
+  inGameLeaderboardBtn.classList.add('hidden');
+  backFromRulesBtn.classList.add('hidden');
+  backFromRoundSelectBtn.classList.add('hidden');
+  backFromLeaderboardBtn.classList.remove('hidden');
+
+  setTimeout(() => {
+    try {
+      leaderboardScreen.querySelector('h1').focus();
+    } catch (e) {}
+  }, 100);
+}
+
+function closeLeaderboard() {
+  leaderboardScreen.classList.add('hidden');
+  backFromLeaderboardBtn.classList.add('hidden');
+
+  if (previousScreen === 'auth') {
+    authScreen.classList.remove('hidden');
+    startBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
+    selectRoundBtn.classList.add('hidden');
+    rulesBtn.classList.add('hidden');
+    inGameLeaderboardBtn.classList.add('hidden');
+  } else if (previousScreen === 'home') {
+    homeScreen.classList.remove('hidden');
+    inGameLeaderboardBtn.classList.remove('hidden');
+    rulesBtn.classList.remove('hidden');
+    selectRoundBtn.classList.remove('hidden');
+    onlineModeBtn.classList.remove('hidden');
+    startBtn.classList.remove('hidden');
+    startBtn.focus();
+  } else if (previousScreen === 'game') {
+    gameScreen.classList.remove('hidden');
+    inGameLeaderboardBtn.classList.remove('hidden');
+    rulesBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
+    if (!betweenSets) {
+      selectRoundBtn.classList.remove('hidden');
+    }
+    startBtn.classList.remove('hidden');
+    startBtn.focus();
+  }
+}
+
+function openRules(fromScreen) {
+  previousScreen = fromScreen;
+  authScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  roundSelectScreen.classList.add('hidden');
+  gameScreen.classList.add('hidden');
+  leaderboardScreen.classList.add('hidden');
+
+  rulesScreen.classList.remove('hidden');
+
+  startBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  rulesBtn.classList.add('hidden');
+  inGameLeaderboardBtn.classList.add('hidden');
+  backFromLeaderboardBtn.classList.add('hidden');
+  backFromRoundSelectBtn.classList.add('hidden');
+  backFromRulesBtn.classList.remove('hidden');
+
+  setTimeout(() => {
+    try {
+      rulesScreen.querySelector('h1').focus();
+    } catch (e) {}
+  }, 100);
+}
+
+function closeRules() {
+  rulesScreen.classList.add('hidden');
+  backFromRulesBtn.classList.add('hidden');
+
+  homeScreen.classList.remove('hidden');
+  inGameLeaderboardBtn.classList.remove('hidden');
+  rulesBtn.classList.remove('hidden');
+  selectRoundBtn.classList.remove('hidden');
+  onlineModeBtn.classList.remove('hidden');
+  startBtn.classList.remove('hidden');
+  startBtn.focus();
+}
+
+function renderRoundSelectButtons() {
+  roundButtonsContainer.innerHTML = '';
+  const maxUnlocked = currentUser
+    ? Math.max(currentUser.unlockedRoundIndex || 0, currentUser.roundIndex || 0)
+    : 0;
+
+  for (let i = 0; i <= maxUnlocked && i < TOURNAMENT_ROUNDS.length; i++) {
+    const r = TOURNAMENT_ROUNDS[i];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const isCurrentCheckpoint = (currentUser && currentUser.roundIndex === i);
+    if (!isCurrentCheckpoint) {
+      btn.className = 'btn-secondary';
+    }
+    const currentTag = isCurrentCheckpoint ? ' (ด่านปัจจุบัน)' : '';
+    btn.textContent = `${r.roundTitle} - ชนะรับ ${r.rewardPoints} แต้ม${currentTag}`;
+    btn.setAttribute('aria-label', `เข้าเล่น ${r.roundTitle} พบกับ ${r.botFullName} ชนะรับ ${r.rewardPoints} แต้ม${currentTag}`);
+
+    addAccessibleClickListener(btn, async () => {
+      await selectAndStartRound(i);
+    });
+
+    roundButtonsContainer.appendChild(btn);
+  }
+}
+
+function openRoundSelect(fromScreen) {
+  previousScreen = fromScreen;
+  authScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  rulesScreen.classList.add('hidden');
+  gameScreen.classList.add('hidden');
+  leaderboardScreen.classList.add('hidden');
+
+  renderRoundSelectButtons();
+  roundSelectScreen.classList.remove('hidden');
+
+  startBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  rulesBtn.classList.add('hidden');
+  inGameLeaderboardBtn.classList.add('hidden');
+  backFromRulesBtn.classList.add('hidden');
+  backFromLeaderboardBtn.classList.add('hidden');
+  backFromRoundSelectBtn.classList.remove('hidden');
+
+  setTimeout(() => {
+    try {
+      roundSelectScreen.querySelector('h1').focus();
+    } catch (e) {}
+  }, 100);
+}
+
+function closeRoundSelect() {
+  roundSelectScreen.classList.add('hidden');
+  backFromRoundSelectBtn.classList.add('hidden');
+
+  if (previousScreen === 'game') {
+    gameScreen.classList.remove('hidden');
+    inGameLeaderboardBtn.classList.remove('hidden');
+    rulesBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
+    selectRoundBtn.classList.remove('hidden');
+    startBtn.classList.remove('hidden');
+    selectRoundBtn.focus();
+  } else {
+    homeScreen.classList.remove('hidden');
+    inGameLeaderboardBtn.classList.remove('hidden');
+    rulesBtn.classList.remove('hidden');
+    selectRoundBtn.classList.remove('hidden');
+    onlineModeBtn.classList.remove('hidden');
+    startBtn.classList.remove('hidden');
+    selectRoundBtn.focus();
+  }
+}
+
+async function selectAndStartRound(selectedRoundIdx) {
+  clearTimeout(activeTimer);
+  gameActive = false;
+
+  // การขออนุญาต Motion Sensor และ Sound Init ต้องเกิดก่อนการเรียก await งานอื่นๆ อย่างเช่น saveProgress ทันที
+  // เพื่อไม่ให้สูญเสียสถานะ Transient User Activation ของ iOS Safari
+  const permissionPromise = motion.requestPermission();
+  const soundInitPromise = sound.init();
+  const [granted] = await Promise.all([permissionPromise, soundInitPromise]);
+
+  sound.playBGM(0.25);
+
+  if (!granted) {
+    console.warn("ไม่สามารถใช้งานเซ็นเซอร์ได้ สลับไปใช้โหมดคีย์บอร์ด");
+    permissionMsg.textContent = "ระบบไม่สามารถเข้าถึง Motion Sensor ได้ คุณสามารถใช้คีย์บอร์ดเพื่อควบคุมแทนได้";
+    permissionMsg.classList.remove('hidden');
+  } else {
+    permissionMsg.classList.add('hidden');
+  }
+
+  // หลังจากดำเนินการขออนุญาตแล้ว จึงค่อยบันทึก Checkpoint ตามปกติ
+  const targetRound = TOURNAMENT_ROUNDS[selectedRoundIdx];
+  if (currentUser && targetRound) {
+    currentUser = await authManager.saveProgress(selectedRoundIdx, targetRound.roundTitle, false, 0);
+    refreshUserBadgeUI();
+  }
+
+  roundSelectScreen.classList.add('hidden');
+  backFromRoundSelectBtn.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  rulesScreen.classList.add('hidden');
+  leaderboardScreen.classList.add('hidden');
+
+  rulesBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  inGameLeaderboardBtn.classList.add('hidden');
+  startBtn.classList.remove('hidden');
+  gameScreen.classList.remove('hidden');
+
+  startNewMatch(selectedRoundIdx);
+}
+
+addAccessibleClickListener(document.getElementById('show-login-btn'), () => {
+  authNav.classList.add('hidden');
+  loginForm.classList.remove('hidden');
+  authStatusMsg.classList.add('hidden');
+  document.getElementById('login-username').focus();
+});
+
+addAccessibleClickListener(document.getElementById('show-register-btn'), () => {
+  authNav.classList.add('hidden');
+  registerForm.classList.remove('hidden');
+  authStatusMsg.classList.add('hidden');
+  document.getElementById('reg-username').focus();
+});
+
+addAccessibleClickListener(document.getElementById('back-to-auth-btn-1'), () => {
+  loginForm.classList.add('hidden');
+  authNav.classList.remove('hidden');
+  authStatusMsg.classList.add('hidden');
+  document.getElementById('show-login-btn').focus();
+});
+
+addAccessibleClickListener(document.getElementById('back-to-auth-btn-2'), () => {
+  registerForm.classList.add('hidden');
+  authNav.classList.remove('hidden');
+  authStatusMsg.classList.add('hidden');
+  document.getElementById('show-register-btn').focus();
+});
+
+addAccessibleClickListener(document.getElementById('auth-view-leaderboard-btn'), () => {
+  openLeaderboard('auth');
+});
+
+addAccessibleClickListener(rulesBtn, () => {
+  openRules('home');
+});
+
+addAccessibleClickListener(backFromRulesBtn, () => {
+  closeRules();
+});
+
+addAccessibleClickListener(selectRoundBtn, () => {
+  openRoundSelect(!gameScreen.classList.contains('hidden') ? 'game' : 'home');
+});
+
+addAccessibleClickListener(backFromRoundSelectBtn, () => {
+  closeRoundSelect();
+});
+
+addAccessibleClickListener(inGameLeaderboardBtn, () => {
+  openLeaderboard(!gameScreen.classList.contains('hidden') ? 'game' : 'home');
+});
+
+addAccessibleClickListener(backFromLeaderboardBtn, () => {
+  closeLeaderboard();
+});
+
+addAccessibleClickListener(onlineModeBtn, async () => {
+  clearTimeout(activeTimer);
+  gameActive = false;
+  await onlineController.openLobby();
+});
+
+// ฟังก์ชันเข้าสู่ระบบ
+addAccessibleClickListener(document.getElementById('submit-login-btn'), async () => {
+  const usernameInput = document.getElementById('login-username').value.trim();
+  const passwordInput = document.getElementById('login-password').value;
+
+  if (!usernameInput || !passwordInput) {
+    showAuthStatus("กรุณากรอกทั้งชื่อผู้เล่นและรหัสผ่านให้ครบถ้วน");
+    return;
+  }
+
+  showAuthStatus("กำลังตรวจสอบข้อมูล...");
+  try {
+    const profile = await authManager.login(usernameInput, passwordInput);
+    currentUser = profile;
+    enterGameHomeScreen();
+  } catch (err) {
+    console.error(err);
+    showAuthStatus(err.message || "เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+  }
+});
+
+// รายการคำไม่สุภาพและคำหยาบ (Bad words filter)
+const BANNED_WORDS = [
+  'ควย', 'เหี้ย', 'เย็ด', 'มึง', 'กู', 'สัส', 'ห่า', 'ดอกทอง', 'ระยำ', 'จัญไร',
+  'ชาติชั่ว', 'สันดาน', 'หน้าด้าน', 'กะหรี่', 'อีสัตว์', 'ไอ้สัตว์', 'แม่เย็ด',
+  'fuck', 'shit', 'bitch', 'asshole', 'dick', 'bastard', 'cunt', 'pussy'
+];
+
+function checkProfanity(text) {
+  const clean = text.toLowerCase().replace(/\s+/g, '');
+  return BANNED_WORDS.some(word => clean.includes(word.toLowerCase()));
+}
+
+// ฟังก์ชันสมัครสมาชิกใหม่
+addAccessibleClickListener(document.getElementById('submit-reg-btn'), async () => {
+  const usernameInput = document.getElementById('reg-username').value.trim();
+  const passwordInput = document.getElementById('reg-password').value;
+
+  if (!usernameInput || !passwordInput) {
+    showAuthStatus("กรุณากรอกข้อมูลให้ครบทุกช่อง ไม่สามารถเว้นว่างได้");
+    return;
+  }
+
+  if (usernameInput.length > 20) {
+    showAuthStatus("ชื่อผู้เล่นต้องมีความยาวไม่เกิน 20 ตัวอักษร");
+    return;
+  }
+
+  if (checkProfanity(usernameInput)) {
+    showAuthStatus("ชื่อผู้เล่นมีคำไม่สุภาพหรือคำต้องห้าม กรุณาใช้คำสุภาพในการตั้งชื่อ");
+    return;
+  }
+
+  if (passwordInput.length < 4) {
+    showAuthStatus("รหัสผ่านต้องมีความยาวอย่างน้อย 4 ตัวอักษรขึ้นไป");
+    return;
+  }
+
+  showAuthStatus("กำลังบันทึกข้อมูล...");
+  try {
+    const profile = await authManager.register(usernameInput, passwordInput);
+    currentUser = profile;
+    enterGameHomeScreen();
+  } catch (err) {
+    console.error(err);
+    showAuthStatus(err.message || "สมัครสมาชิกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+  }
+});
+
+function enterGameHomeScreen() {
+  authScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  rulesScreen.classList.add('hidden');
+  roundSelectScreen.classList.add('hidden');
+  gameScreen.classList.add('hidden');
+  leaderboardScreen.classList.add('hidden');
+
+  homeScreen.classList.remove('hidden');
+  inGameLeaderboardBtn.classList.remove('hidden');
+  rulesBtn.classList.remove('hidden');
+  selectRoundBtn.classList.remove('hidden');
+  onlineModeBtn.classList.remove('hidden');
+  startBtn.classList.remove('hidden');
+
+  document.getElementById('start-online-match-btn').classList.add('hidden');
+  document.getElementById('leave-room-btn').classList.add('hidden');
+  document.getElementById('back-from-lobby-btn').classList.add('hidden');
+
+  currentRoundIndex = currentUser.roundIndex || 0;
+  refreshUserBadgeUI();
+
+  const round = getCurrentRound();
+  startBtn.textContent = `เริ่มการแข่งขัน (${round.roundTitle})`;
+  startBtn.setAttribute('aria-label', `เริ่มการแข่งขันในด่าน ${round.roundTitle} พบกับ ${round.botFullName}`);
+
+  setTimeout(() => {
+    try {
+      homeScreen.querySelector('h1').focus();
+    } catch (e) {}
+  }, 150);
+}
+
+// ตรวจสอบเซสชันผู้เล่นอัตโนมัติ (ข้าม In-App Browser -> Safari หรือเมื่อกด Refresh)
+authManager.initAuthStateListener(
+  (profile) => {
+    currentUser = profile;
+    authStatusMsg.classList.add('hidden');
+    enterGameHomeScreen();
+  },
+  () => {
+    currentUser = null;
+    authScreen.classList.remove('hidden');
+    homeScreen.classList.add('hidden');
+    onlineLobbyScreen.classList.add('hidden');
+    rulesScreen.classList.add('hidden');
+    roundSelectScreen.classList.add('hidden');
+    gameScreen.classList.add('hidden');
+    leaderboardScreen.classList.add('hidden');
+    startBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
+    selectRoundBtn.classList.add('hidden');
+    rulesBtn.classList.add('hidden');
+    inGameLeaderboardBtn.classList.add('hidden');
+    backFromRulesBtn.classList.add('hidden');
+    backFromRoundSelectBtn.classList.add('hidden');
+    backFromLeaderboardBtn.classList.add('hidden');
+  }
+);
+
+/**
+ * =========================================================================
+ * F. การจัดการปุ่มเริ่มเกมและการแข่งขัน
+ * =========================================================================
+ */
+addAccessibleClickListener(startBtn, async () => {
+  if (betweenSets) {
+    startNewSet();
+    return;
+  }
+
+  if (tournamentState === 'round_won') {
+    startNewMatch(currentRoundIndex + 1);
+    return;
+  }
+
+  if (tournamentState === 'tournament_lost') {
+    startNewMatch(currentRoundIndex);
+    return;
+  }
+
+  clearTimeout(activeTimer);
+  gameActive = false;
+
+  // เรียกสิทธิ์ก่อนเช่นเดียวกับปุ่มเลือกรอบ
+  const permissionPromise = motion.requestPermission();
+  const soundInitPromise = sound.init();
+
+  const [granted] = await Promise.all([permissionPromise, soundInitPromise]);
+
+  sound.playBGM(0.25);
+
+  if (!granted) {
+    console.warn("ไม่สามารถใช้งานเซ็นเซอร์ได้ สลับไปใช้โหมดคีย์บอร์ด");
+    permissionMsg.textContent = "ระบบไม่สามารถเข้าถึง Motion Sensor ได้ คุณสามารถใช้คีย์บอร์ดเพื่อควบคุมแทนได้";
+    permissionMsg.classList.remove('hidden');
+  } else {
+    permissionMsg.classList.add('hidden');
+  }
+
+  homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  rulesScreen.classList.add('hidden');
+  roundSelectScreen.classList.add('hidden');
+  rulesBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  gameScreen.classList.remove('hidden');
+
+  const resumeRound = currentUser ? (currentUser.roundIndex || 0) : 0;
+  startNewMatch(resumeRound);
+});
+</script>
+</body>
+</html>

@@ -351,6 +351,7 @@
         <li>ชนะรอบ 8 คนสุดท้าย รับ 40 แต้ม</li>
         <li>ชนะรอบรองชนะเลิศ (4 คนสุดท้าย) รับ 100 แต้ม</li>
         <li>ชนะรอบชิงชนะเลิศ รับ 300 แต้ม</li>
+        <li>ชนะในโหมดเล่นออนไลน์กับเพื่อน รับสถิติชนะสะสม 1 ครั้ง และรับ 100 แต้ม</li>
         <li>สามารถกดปุ่ม "เลือกรอบที่จะเล่น" เพื่อย้อนกลับไปฝึกซ้อมในรอบที่เคยผ่านแล้วได้ โดยจุด Checkpoint จะย้ายไปยังรอบที่เลือกทันที</li>
       </ul>
     </div>
@@ -832,7 +833,7 @@ function randomizeTournamentBots() {
   }
 }
 
-// สุ่มจับคู่แข่งครั้งแรกเมื่อโหลดเกม
+// สุ่มจับคู่แข่งครั้งแรกเมื่อโหลดเกม เพื่อให้ชื่อตรงกันทั้งที่ปุ่มและตอนเข้าเล่นจริง
 randomizeTournamentBots();
 
 let currentRoundIndex = 0;
@@ -1219,6 +1220,7 @@ async function handleSetWon(winner, reasonText) {
         startBtn.textContent = `เข้าสู่ ${nextRound.roundTitle}`;
         startBtn.setAttribute('aria-label', `เข้าสู่ ${nextRound.roundTitle} พบกับ ${nextRound.botFullName}`);
       } else {
+        const defeatedFinalBotName = round.botName;
         sound.play('winner', 0, 1.0, false);
         tournamentState = 'tournament_won';
         motion.stop();
@@ -1228,13 +1230,14 @@ async function handleSetWon(winner, reasonText) {
           refreshUserBadgeUI();
         }
 
-        // เมื่อจบทัวร์นาเมนต์และได้แชมป์ ทำการสุ่มรายชื่อบอทชุดใหม่สำหรับทัวร์นาเมนต์ถัดไป
+        // เมื่อจบทัวร์นาเมนต์และได้แชมป์ ทำการสุ่มรายชื่อบอทชุดใหม่สำหรับทัวร์นาเมนต์ถัดไปทันที
         randomizeTournamentBots();
+        const nextFirstRound = TOURNAMENT_ROUNDS[0];
 
-        const championMsg = `${reasonText} สุดยอดประวัติศาสตร์! ${pName}โค่น ${round.botName} คว้าแชมป์ปิงปองโลกได้สำเร็จ ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม ยินดีด้วยกับตำแหน่งแชมเปียน! กดปุ่มด้านล่างเพื่อเริ่มทัวร์นาเมนต์ใหม่ เลือกรอบที่จะเล่น หรือดูสรุปหอเกียรติยศ`;
+        const championMsg = `${reasonText} สุดยอดประวัติศาสตร์! ${pName}โค่น ${defeatedFinalBotName} คว้าแชมป์ปิงปองโลกได้สำเร็จ ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม ยินดีด้วยกับตำแหน่งแชมเปียน! กดปุ่มด้านล่างเพื่อเริ่มทัวร์นาเมนต์ใหม่ เลือกรอบที่จะเล่น หรือดูสรุปหอเกียรติยศ`;
         announceStatus(championMsg);
         startBtn.textContent = 'เริ่มการแข่งขันชิงแชมป์โลกใหม่';
-        startBtn.setAttribute('aria-label', 'เริ่มการแข่งขันชิงแชมป์โลกใหม่');
+        startBtn.setAttribute('aria-label', `เริ่มการแข่งขันชิงแชมป์โลกใหม่ ใน${nextFirstRound.roundTitle} พบกับ ${nextFirstRound.botFullName}`);
       }
     } else {
       sound.play('loser', 0, 1.0, false);
@@ -1249,7 +1252,7 @@ async function handleSetWon(winner, reasonText) {
       const defeatMsg = `${reasonText} จบการแข่งขัน ${round.botName} ชนะ ${botSetsWon} ต่อ ${playerSetsWon} เซต ${pName}ตกรอบใน${round.roundTitle} ระบบได้บันทึก Checkpoint รอบนี้ไว้แล้ว สามารถกดปุ่มเพื่อลองสู้ต่อในรอบนี้ หรือกดเลือกรอบที่จะเล่นเพื่อกลับไปฝึกซ้อมรอบก่อนหน้าได้ทันที`;
       announceStatus(defeatMsg);
       startBtn.textContent = `ลองสู้อีกครั้งใน${round.roundTitle}`;
-      startBtn.setAttribute('aria-label', `ลองสู้อีกครั้งใน${round.roundTitle} พบกับ ${round.botName}`);
+      startBtn.setAttribute('aria-label', `ลองสู้อีกครั้งใน${round.roundTitle} พบกับ ${round.botFullName}`);
     }
     
     inGameLeaderboardBtn.classList.remove('hidden');
@@ -1306,11 +1309,6 @@ function startNewSet() {
 }
 
 function startNewMatch(roundIdx) {
-  // หากเริ่มทัวร์นาเมนต์ใหม่ตั้งแต่รอบแรก ให้ทำการสุ่มบอทชุดใหม่
-  if (roundIdx === 0 && (tournamentState === 'tournament_won' || currentRoundIndex === 0)) {
-    randomizeTournamentBots();
-  }
-
   currentRoundIndex = roundIdx;
   playerSetsWon = 0;
   botSetsWon = 0;
@@ -1334,6 +1332,11 @@ onlineController = new OnlineMatchController({
   directions: DIRECTIONS,
   flightDurations: FLIGHT_DURATIONS,
   getCurrentUser: () => currentUser,
+  onUserUpdated: (updatedUser) => {
+    currentUser = updatedUser;
+    authManager.currentUser = updatedUser;
+    refreshUserBadgeUI();
+  },
   addAccessibleClickListener: addAccessibleClickListener,
   onExitToHome: () => {
     enterGameHomeScreen();
@@ -1572,7 +1575,7 @@ function renderRoundSelectButtons() {
       btn.className = 'btn-secondary';
     }
     const currentTag = isCurrentCheckpoint ? ' (ด่านปัจจุบัน)' : '';
-    btn.textContent = `${r.roundTitle} - ชนะรับ ${r.rewardPoints} แต้ม${currentTag}`;
+    btn.textContent = `${r.roundTitle} - พบกับ ${r.botName} (ชนะรับ ${r.rewardPoints} แต้ม)${currentTag}`;
     btn.setAttribute('aria-label', `เข้าเล่น ${r.roundTitle} พบกับ ${r.botFullName} ชนะรับ ${r.rewardPoints} แต้ม${currentTag}`);
 
     addAccessibleClickListener(btn, async () => {
@@ -1832,7 +1835,7 @@ function enterGameHomeScreen() {
   refreshUserBadgeUI();
 
   const round = getCurrentRound();
-  startBtn.textContent = `เริ่มการแข่งขัน (${round.roundTitle})`;
+  startBtn.textContent = `เริ่มการแข่งขัน (${round.roundTitle} พบกับ ${round.botName})`;
   startBtn.setAttribute('aria-label', `เริ่มการแข่งขันในด่าน ${round.roundTitle} พบกับ ${round.botFullName}`);
 
   setTimeout(() => {
