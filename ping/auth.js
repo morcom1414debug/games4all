@@ -87,6 +87,10 @@ export class AuthManager {
         const snap = await get(ref(this.db, `${GAME_ID}/players/${key}`));
         if (snap.exists()) {
           const profile = snap.val();
+          if (typeof profile.points !== 'number') profile.points = 0;
+          if (typeof profile.unlockedRoundIndex !== 'number') {
+            profile.unlockedRoundIndex = profile.roundIndex || 0;
+          }
           this.currentUser = profile;
           SessionStorage.save(profile);
           if (typeof onUserAuthenticated === 'function') {
@@ -116,6 +120,10 @@ export class AuthManager {
       err.code = "auth/wrong-password";
       throw err;
     }
+    if (typeof user.points !== 'number') user.points = 0;
+    if (typeof user.unlockedRoundIndex !== 'number') {
+      user.unlockedRoundIndex = user.roundIndex || 0;
+    }
     this.currentUser = user;
     SessionStorage.save(user);
     return user;
@@ -133,7 +141,9 @@ export class AuthManager {
       password: password,
       checkpoint: "รอบ 16 คนสุดท้าย",
       roundIndex: 0,
+      unlockedRoundIndex: 0,
       wins: 0,
+      points: 0,
       updatedAt: Date.now()
     };
     const key = encodeUserKey(username);
@@ -143,20 +153,31 @@ export class AuthManager {
     return newUser;
   }
 
-  async saveProgress(roundIndex, checkpointName, incrementWin = false) {
+  async saveProgress(roundIndex, checkpointName, incrementWin = false, earnedPoints = 0) {
     if (!this.currentUser || !this.currentUser.username) return null;
     const key = encodeUserKey(this.currentUser.username);
     this.currentUser.roundIndex = roundIndex;
     this.currentUser.checkpoint = checkpointName;
+
+    const currentUnlocked = typeof this.currentUser.unlockedRoundIndex === 'number'
+      ? this.currentUser.unlockedRoundIndex
+      : 0;
+    this.currentUser.unlockedRoundIndex = Math.max(currentUnlocked, roundIndex);
+
     if (incrementWin) {
       this.currentUser.wins = (this.currentUser.wins || 0) + 1;
+    }
+    if (earnedPoints > 0) {
+      this.currentUser.points = (this.currentUser.points || 0) + earnedPoints;
     }
     this.currentUser.updatedAt = Date.now();
 
     await update(ref(this.db, `${GAME_ID}/players/${key}`), {
       roundIndex: this.currentUser.roundIndex,
+      unlockedRoundIndex: this.currentUser.unlockedRoundIndex,
       checkpoint: this.currentUser.checkpoint,
-      wins: this.currentUser.wins,
+      wins: this.currentUser.wins || 0,
+      points: this.currentUser.points || 0,
       updatedAt: this.currentUser.updatedAt
     });
 
@@ -170,6 +191,7 @@ export class AuthManager {
       if (snap.exists()) {
         const list = Object.values(snap.val());
         return list.sort((a, b) => {
+          if ((b.points || 0) !== (a.points || 0)) return (b.points || 0) - (a.points || 0);
           if ((b.wins || 0) !== (a.wins || 0)) return (b.wins || 0) - (a.wins || 0);
           return (b.roundIndex || 0) - (a.roundIndex || 0);
         }).slice(0, 20);
