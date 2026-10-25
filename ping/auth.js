@@ -24,7 +24,7 @@ const firebaseConfig = {
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const database = getDatabase(app);
-const GAME_ID = "PingPong";
+export const GAME_ID = "PingPong";
 
 export function encodeUserKey(username) {
   return encodeURIComponent(username.trim().toLowerCase()).replace(/\./g, '%2E');
@@ -183,6 +183,28 @@ export class AuthManager {
 
     SessionStorage.save(this.currentUser);
     return this.currentUser;
+  }
+
+  async getOnlineStats(username) {
+    const targetName = username || (this.currentUser ? this.currentUser.username : null);
+    if (!targetName) return null;
+    const key = encodeUserKey(targetName);
+    try {
+      const snap = await get(ref(this.db, `${GAME_ID}/onlineStats/${key}`));
+      if (snap.exists()) {
+        return snap.val();
+      }
+    } catch (e) {
+      console.warn("ไม่สามารถดึงสถิติออนไลน์ได้:", e);
+    }
+    return {
+      username: targetName,
+      totalMatches: 0,
+      wins: 0,
+      losses: 0,
+      aborted: 0,
+      lastPlayedAt: null
+    };
   }
 
   async getLeaderboard() {

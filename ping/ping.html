@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>World audio PingPong Championships</title>
+  <!-- PeerJS Library สำหรับ WebRTC DataChannel ในโหมดแข่งขันออนไลน์ 1 ต่อ 1 -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     :root {
       --bg: #000000;
@@ -196,12 +198,36 @@
       gap: 12px;
       margin-top: 8px;
     }
+    .room-card {
+      background: #141414;
+      border: 2px solid #00FFFF;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 1.25rem;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
     .hidden {
       display: none !important;
     }
   </style>
 </head>
 <body>
+
+  <!-- ตัวประกาศสถานะสำหรับ Screen Reader ในโหมดออนไลน์ -->
+  <div id="online-sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <!-- 1. หน้าล็อบบี้: เข้าสู่ระบบ / สมัครสมาชิก -->
   <main id="auth-screen" role="region" aria-label="หน้าเข้าสู่ระบบและสมัครสมาชิก">
@@ -272,6 +298,35 @@
       <p style="margin-top: 12px;"><strong>ระบบการแข่งขันแบบ Tournament (นักกีฬาจาก 20 ประเทศทั่วโลก):</strong></p>
     </div>
     <div id="permission-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
+  </main>
+
+  <!-- หน้า Lobby สำหรับแข่งขันออนไลน์ 1 ต่อ 1 -->
+  <main id="online-lobby-screen" class="hidden" role="region" aria-label="หน้าล็อบบี้แข่งขันปิงปองออนไลน์หนึ่งต่อหนึ่ง">
+    <h1 tabindex="0">ล็อบบี้แข่งขันออนไลน์ 1 ต่อ 1</h1>
+    <div tabindex="0">
+      <span class="user-badge" id="online-stats-badge">สถิติออนไลน์: แข่ง 0 | ชนะ 0 | แพ้ 0 | ยุติ 0</span>
+    </div>
+    <div id="lobby-status-box" class="status-box" aria-live="polite" tabindex="0">
+      สร้างห้องใหม่หรือเลือกเข้าร่วมห้องที่กำลังรอผู้เล่นด้านล่าง
+    </div>
+
+    <!-- กล่องแสดงสถานะห้องปัจจุบันเมื่อสร้างหรือเข้าร่วมแล้ว -->
+    <div id="active-room-card" class="room-card hidden" role="region" aria-label="ข้อมูลห้องแข่งขันปัจจุบัน">
+      <h2 id="room-code-display" tabindex="0">รหัสห้อง: -</h2>
+      <p id="room-host-display" tabindex="0">หัวหน้าห้อง (Host): -</p>
+      <p id="room-client-display" tabindex="0">ผู้ท้าชิง (Client): รอผู้เล่นเข้าร่วม...</p>
+      <p id="room-connection-display" tabindex="0">สถานะห้อง: รอผู้เล่นคนที่ 2</p>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <button id="create-room-btn" type="button" aria-label="สร้างห้องแข่งขันออนไลน์ใหม่">สร้างห้อง</button>
+      <button id="refresh-rooms-btn" type="button" class="btn-secondary" aria-label="รีเฟรชรายการห้องที่กำลังรอผู้เล่น">รีเฟรชรายการห้อง</button>
+    </div>
+
+    <h2 tabindex="0" style="margin-top:8px;">รายการห้องที่กำลังรอผู้เล่น</h2>
+    <div id="waiting-rooms-container" class="round-list-container" role="group" aria-label="รายการห้องออนไลน์ที่เปิดรอผู้เล่น">
+      <p class="desc" tabindex="0">กำลังโหลดรายการห้อง...</p>
+    </div>
   </main>
 
   <!-- หน้าต่างวิธีเล่นและกติกา (Rules & How to Play) -->
@@ -346,7 +401,11 @@
     <button id="in-game-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ดูลำดับหอเกียรติยศ">ตารางสรุปลำดับหอเกียรติยศ</button>
     <button id="rules-btn" type="button" class="btn-secondary hidden" aria-label="ดูวิธีเล่นและกติกา">วิธีเล่นและกติกา</button>
     <button id="select-round-btn" type="button" class="btn-secondary hidden" aria-label="เลือกรอบที่จะเล่นจากด่านที่ผ่านแล้ว">เลือกรอบที่จะเล่น</button>
+    <button id="online-mode-btn" type="button" class="btn-secondary hidden" aria-label="เล่นปิงปองออนไลน์กับเพื่อนแบบหนึ่งต่อหนึ่ง">เล่นออนไลน์</button>
     <button id="start-btn" type="button" class="hidden" aria-label="เริ่มการแข่งขันชิงแชมป์โลก">เริ่มการแข่งขัน</button>
+    <button id="start-online-match-btn" type="button" class="hidden" aria-label="เริ่มการแข่งขันออนไลน์กับผู้เล่นในห้อง">เริ่มการแข่งขันออนไลน์</button>
+    <button id="leave-room-btn" type="button" class="btn-secondary hidden" aria-label="ออกจากห้องแข่งขันออนไลน์">ออกจากห้อง</button>
+    <button id="back-from-lobby-btn" type="button" class="btn-secondary hidden" aria-label="ย้อนกลับสู่หน้าแรก">ย้อนกลับหน้าแรก</button>
     <button id="back-from-rules-btn" type="button" class="btn-secondary hidden" aria-label="ปิดวิธีเล่นและย้อนกลับ">ปิดและย้อนกลับ</button>
     <button id="back-from-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ปิดหอเกียรติยศและย้อนกลับ">ย้อนกลับ</button>
     <button id="back-from-round-select-btn" type="button" class="btn-secondary hidden" aria-label="ยกเลิกการเลือกรอบและย้อนกลับ">ย้อนกลับ</button>
@@ -354,9 +413,11 @@
 
 <script type="module">
 import { AuthManager } from './auth.js';
+import { OnlineMatchController } from './ping-online.js';
 
 const authManager = new AuthManager();
 let currentUser = null;
+let onlineController = null;
 
 /**
  * Helper ผูก Event ให้ทำงานแม่นยำบน VoiceOver ทั้งกรณี click ปกติ, Enter/Spacebar และ touch
@@ -624,8 +685,12 @@ class MotionDetector {
       wristSnap = Math.max(Math.abs(rot.alpha || 0), Math.abs(rot.beta || 0), Math.abs(rot.gamma || 0));
     }
 
+    const activeRallyCount = (onlineController && onlineController.inMatch)
+      ? onlineController.rallyCount
+      : rallyCount;
+
     let isHit = false;
-    if (rallyCount === 0) {
+    if (activeRallyCount === 0) {
       if (forwardForce >= 4.5 || (forwardForce >= 2.5 && wristSnap >= 90)) {
         isHit = true;
       }
@@ -653,7 +718,7 @@ class MotionDetector {
       const combinedPower = forwardForce + (wristSnap / 20);
       let powerLevel = 'normal';
 
-      if (rallyCount === 0) {
+      if (activeRallyCount === 0) {
         if (combinedPower >= 14.0) powerLevel = 'hard';
         else if (combinedPower <= 8.5) powerLevel = 'soft';
       } else {
@@ -818,6 +883,7 @@ const registerForm = document.getElementById('register-form');
 const authStatusMsg = document.getElementById('auth-status-msg');
 
 const homeScreen = document.getElementById('home-screen');
+const onlineLobbyScreen = document.getElementById('online-lobby-screen');
 const rulesScreen = document.getElementById('rules-screen');
 const roundSelectScreen = document.getElementById('round-select-screen');
 const roundButtonsContainer = document.getElementById('round-buttons-container');
@@ -831,6 +897,7 @@ const scoreDisplay = document.getElementById('score-display');
 const gameStatus = document.getElementById('game-status');
 
 const startBtn = document.getElementById('start-btn');
+const onlineModeBtn = document.getElementById('online-mode-btn');
 const selectRoundBtn = document.getElementById('select-round-btn');
 const rulesBtn = document.getElementById('rules-btn');
 const inGameLeaderboardBtn = document.getElementById('in-game-leaderboard-btn');
@@ -949,6 +1016,11 @@ function startRally() {
 }
 
 function onPlayerSwing(swingDirection, powerLevel = 'normal') {
+  if (onlineController && onlineController.inMatch) {
+    onlineController.handleLocalPlayerSwing(swingDirection, powerLevel);
+    return;
+  }
+
   if (!gameActive || !canPlayerHit) return;
 
   const round = getCurrentRound();
@@ -1206,6 +1278,7 @@ function startNewSet() {
 
   inGameLeaderboardBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
   rulesBtn.classList.add('hidden');
   updateScoreUI();
   startBtn.textContent = 'กำลังแข่งขัน';
@@ -1236,6 +1309,7 @@ function startNewMatch(roundIdx) {
 
   inGameLeaderboardBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
   rulesBtn.classList.add('hidden');
   motion.start();
   startNewSet();
@@ -1243,9 +1317,51 @@ function startNewMatch(roundIdx) {
 
 const motion = new MotionDetector(onPlayerSwing);
 
-document.addEventListener('keydown', (e) => {
-  if (!gameActive || !canPlayerHit) return;
+onlineController = new OnlineMatchController({
+  sound: sound,
+  motion: motion,
+  directions: DIRECTIONS,
+  flightDurations: FLIGHT_DURATIONS,
+  getCurrentUser: () => currentUser,
+  addAccessibleClickListener: addAccessibleClickListener,
+  onExitToHome: () => {
+    enterGameHomeScreen();
+  },
+  ui: {
+    homeScreen: homeScreen,
+    onlineLobbyScreen: onlineLobbyScreen,
+    rulesScreen: rulesScreen,
+    roundSelectScreen: roundSelectScreen,
+    leaderboardScreen: leaderboardScreen,
+    gameScreen: gameScreen,
+    permissionMsg: permissionMsg,
+    tournamentDisplay: tournamentDisplay,
+    setDisplay: setDisplay,
+    scoreDisplay: scoreDisplay,
+    gameStatus: gameStatus,
+    startBtn: startBtn,
+    onlineModeBtn: onlineModeBtn,
+    selectRoundBtn: selectRoundBtn,
+    rulesBtn: rulesBtn,
+    inGameLeaderboardBtn: inGameLeaderboardBtn,
+    onlineStatsBadge: document.getElementById('online-stats-badge'),
+    lobbyStatusBox: document.getElementById('lobby-status-box'),
+    activeRoomCard: document.getElementById('active-room-card'),
+    roomCodeDisplay: document.getElementById('room-code-display'),
+    roomHostDisplay: document.getElementById('room-host-display'),
+    roomClientDisplay: document.getElementById('room-client-display'),
+    roomConnectionDisplay: document.getElementById('room-connection-display'),
+    createRoomBtn: document.getElementById('create-room-btn'),
+    refreshRoomsBtn: document.getElementById('refresh-rooms-btn'),
+    waitingRoomsContainer: document.getElementById('waiting-rooms-container'),
+    startOnlineMatchBtn: document.getElementById('start-online-match-btn'),
+    leaveRoomBtn: document.getElementById('leave-room-btn'),
+    backFromLobbyBtn: document.getElementById('back-from-lobby-btn'),
+    onlineSrAnnouncer: document.getElementById('online-sr-announcer')
+  }
+});
 
+document.addEventListener('keydown', (e) => {
   const key = e.key || e.code;
   let dir = null;
 
@@ -1257,11 +1373,22 @@ document.addEventListener('keydown', (e) => {
     dir = 'right';
   }
 
-  if (dir) {
-    e.preventDefault();
-    const power = e.shiftKey ? 'hard' : 'normal';
-    onPlayerSwing(dir, power);
+  if (!dir) return;
+
+  if (onlineController && onlineController.inMatch) {
+    if (onlineController.canLocalPlayerHit) {
+      e.preventDefault();
+      const power = e.shiftKey ? 'hard' : 'normal';
+      onlineController.handleLocalPlayerSwing(dir, power);
+    }
+    return;
   }
+
+  if (!gameActive || !canPlayerHit) return;
+
+  e.preventDefault();
+  const power = e.shiftKey ? 'hard' : 'normal';
+  onPlayerSwing(dir, power);
 });
 
 /**
@@ -1323,6 +1450,7 @@ function openLeaderboard(fromScreen) {
   previousScreen = fromScreen;
   authScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
@@ -1331,6 +1459,7 @@ function openLeaderboard(fromScreen) {
   leaderboardScreen.classList.remove('hidden');
 
   startBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
   rulesBtn.classList.add('hidden');
   inGameLeaderboardBtn.classList.add('hidden');
@@ -1352,6 +1481,7 @@ function closeLeaderboard() {
   if (previousScreen === 'auth') {
     authScreen.classList.remove('hidden');
     startBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
     selectRoundBtn.classList.add('hidden');
     rulesBtn.classList.add('hidden');
     inGameLeaderboardBtn.classList.add('hidden');
@@ -1360,12 +1490,14 @@ function closeLeaderboard() {
     inGameLeaderboardBtn.classList.remove('hidden');
     rulesBtn.classList.remove('hidden');
     selectRoundBtn.classList.remove('hidden');
+    onlineModeBtn.classList.remove('hidden');
     startBtn.classList.remove('hidden');
     startBtn.focus();
   } else if (previousScreen === 'game') {
     gameScreen.classList.remove('hidden');
     inGameLeaderboardBtn.classList.remove('hidden');
     rulesBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
     if (!betweenSets) {
       selectRoundBtn.classList.remove('hidden');
     }
@@ -1378,6 +1510,7 @@ function openRules(fromScreen) {
   previousScreen = fromScreen;
   authScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
@@ -1385,6 +1518,7 @@ function openRules(fromScreen) {
   rulesScreen.classList.remove('hidden');
 
   startBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
   rulesBtn.classList.add('hidden');
   inGameLeaderboardBtn.classList.add('hidden');
@@ -1407,6 +1541,7 @@ function closeRules() {
   inGameLeaderboardBtn.classList.remove('hidden');
   rulesBtn.classList.remove('hidden');
   selectRoundBtn.classList.remove('hidden');
+  onlineModeBtn.classList.remove('hidden');
   startBtn.classList.remove('hidden');
   startBtn.focus();
 }
@@ -1441,6 +1576,7 @@ function openRoundSelect(fromScreen) {
   previousScreen = fromScreen;
   authScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
@@ -1449,6 +1585,7 @@ function openRoundSelect(fromScreen) {
   roundSelectScreen.classList.remove('hidden');
 
   startBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
   rulesBtn.classList.add('hidden');
   inGameLeaderboardBtn.classList.add('hidden');
@@ -1471,6 +1608,7 @@ function closeRoundSelect() {
     gameScreen.classList.remove('hidden');
     inGameLeaderboardBtn.classList.remove('hidden');
     rulesBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
     selectRoundBtn.classList.remove('hidden');
     startBtn.classList.remove('hidden');
     selectRoundBtn.focus();
@@ -1479,6 +1617,7 @@ function closeRoundSelect() {
     inGameLeaderboardBtn.classList.remove('hidden');
     rulesBtn.classList.remove('hidden');
     selectRoundBtn.classList.remove('hidden');
+    onlineModeBtn.classList.remove('hidden');
     startBtn.classList.remove('hidden');
     selectRoundBtn.focus();
   }
@@ -1514,11 +1653,13 @@ async function selectAndStartRound(selectedRoundIdx) {
   roundSelectScreen.classList.add('hidden');
   backFromRoundSelectBtn.classList.add('hidden');
   homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
 
   rulesBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
   inGameLeaderboardBtn.classList.add('hidden');
   startBtn.classList.remove('hidden');
   gameScreen.classList.remove('hidden');
@@ -1580,6 +1721,12 @@ addAccessibleClickListener(inGameLeaderboardBtn, () => {
 
 addAccessibleClickListener(backFromLeaderboardBtn, () => {
   closeLeaderboard();
+});
+
+addAccessibleClickListener(onlineModeBtn, async () => {
+  clearTimeout(activeTimer);
+  gameActive = false;
+  await onlineController.openLobby();
 });
 
 // ฟังก์ชันเข้าสู่ระบบ
@@ -1653,13 +1800,22 @@ addAccessibleClickListener(document.getElementById('submit-reg-btn'), async () =
 
 function enterGameHomeScreen() {
   authScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
+  gameScreen.classList.add('hidden');
+  leaderboardScreen.classList.add('hidden');
+
   homeScreen.classList.remove('hidden');
   inGameLeaderboardBtn.classList.remove('hidden');
   rulesBtn.classList.remove('hidden');
   selectRoundBtn.classList.remove('hidden');
+  onlineModeBtn.classList.remove('hidden');
   startBtn.classList.remove('hidden');
+
+  document.getElementById('start-online-match-btn').classList.add('hidden');
+  document.getElementById('leave-room-btn').classList.add('hidden');
+  document.getElementById('back-from-lobby-btn').classList.add('hidden');
 
   currentRoundIndex = currentUser.roundIndex || 0;
   refreshUserBadgeUI();
@@ -1686,11 +1842,13 @@ authManager.initAuthStateListener(
     currentUser = null;
     authScreen.classList.remove('hidden');
     homeScreen.classList.add('hidden');
+    onlineLobbyScreen.classList.add('hidden');
     rulesScreen.classList.add('hidden');
     roundSelectScreen.classList.add('hidden');
     gameScreen.classList.add('hidden');
     leaderboardScreen.classList.add('hidden');
     startBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
     selectRoundBtn.classList.add('hidden');
     rulesBtn.classList.add('hidden');
     inGameLeaderboardBtn.classList.add('hidden');
@@ -1741,10 +1899,12 @@ addAccessibleClickListener(startBtn, async () => {
   }
 
   homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
   rulesBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
   gameScreen.classList.remove('hidden');
 
   const resumeRound = currentUser ? (currentUser.roundIndex || 0) : 0;
