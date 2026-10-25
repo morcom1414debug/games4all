@@ -89,7 +89,9 @@
     }
     .bottom-bar {
       width: 100%;
+      margin-top: auto;
       padding-top: 16px;
+      padding-bottom: 8px;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -256,6 +258,15 @@
       <p style="margin-top: 12px;"><strong>ระบบการแข่งขันแบบ Tournament (นักกีฬาจาก 20 ประเทศทั่วโลก):</strong></p>
     </div>
     <div id="permission-msg" class="status-box hidden" role="alert" aria-live="assertive"></div>
+
+    <!-- ปุ่มด้านล่างแบบ Dynamic ถูกย้ายเข้ามาอยู่ใน main เพื่อให้อยู่ใน Scroll Container เดียวกัน -->
+    <div id="bottom-bar" class="bottom-bar">
+      <button id="start-btn" type="button" class="hidden" aria-label="เริ่มการแข่งขันชิงแชมป์โลก">เริ่มการแข่งขัน</button>
+      <button id="rules-btn" type="button" class="btn-secondary hidden" aria-label="ดูวิธีเล่นและกติกา">วิธีเล่นและกติกา</button>
+      <button id="in-game-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ดูลำดับหอเกียรติยศ">ตารางสรุปลำดับหอเกียรติยศ</button>
+      <button id="back-from-rules-btn" type="button" class="btn-secondary hidden" aria-label="ปิดวิธีเล่นและย้อนกลับ">ปิดและย้อนกลับ</button>
+      <button id="back-from-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ปิดหอเกียรติยศและย้อนกลับ">ย้อนกลับ</button>
+    </div>
   </main>
 
   <!-- หน้าต่างวิธีเล่นและกติกา (Rules & How to Play) -->
@@ -307,15 +318,6 @@
       </table>
     </div>
   </main>
-
-  <!-- ปุ่มด้านล่างแบบ Dynamic -->
-  <div class="bottom-bar">
-    <button id="start-btn" type="button" class="hidden" aria-label="เริ่มการแข่งขันชิงแชมป์โลก">เริ่มการแข่งขัน</button>
-    <button id="rules-btn" type="button" class="btn-secondary hidden" aria-label="ดูวิธีเล่นและกติกา">วิธีเล่นและกติกา</button>
-    <button id="in-game-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ดูลำดับหอเกียรติยศ">ตารางสรุปลำดับหอเกียรติยศ</button>
-    <button id="back-from-rules-btn" type="button" class="btn-secondary hidden" aria-label="ปิดวิธีเล่นและย้อนกลับ">ปิดและย้อนกลับ</button>
-    <button id="back-from-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ปิดหอเกียรติยศและย้อนกลับ">ย้อนกลับ</button>
-  </div>
 
 <script type="module">
 import { AuthManager } from './auth.js';
@@ -736,6 +738,7 @@ const homeScreen = document.getElementById('home-screen');
 const rulesScreen = document.getElementById('rules-screen');
 const gameScreen = document.getElementById('game-screen');
 const leaderboardScreen = document.getElementById('leaderboard-screen');
+const bottomBar = document.getElementById('bottom-bar');
 
 const permissionMsg = document.getElementById('permission-msg');
 const tournamentDisplay = document.getElementById('tournament-display');
@@ -754,6 +757,13 @@ const checkpointBadge = document.getElementById('checkpoint-badge');
 const winsBadge = document.getElementById('wins-badge');
 
 let previousScreen = 'home';
+
+// ฟังก์ชันย้ายกล่อง bottom-bar เข้าไปไว้ใน <main> ของหน้าจอที่กำลังเปิดใช้งาน
+function attachBottomBarTo(screenEl) {
+  if (screenEl && bottomBar && bottomBar.parentElement !== screenEl) {
+    screenEl.appendChild(bottomBar);
+  }
+}
 
 function getCurrentRound() {
   return TOURNAMENT_ROUNDS[currentRoundIndex];
@@ -1222,6 +1232,7 @@ function openLeaderboard(fromScreen) {
   gameScreen.classList.add('hidden');
 
   renderLeaderboardTable();
+  attachBottomBarTo(leaderboardScreen);
   leaderboardScreen.classList.remove('hidden');
 
   startBtn.classList.add('hidden');
@@ -1242,17 +1253,20 @@ function closeLeaderboard() {
   backFromLeaderboardBtn.classList.add('hidden');
 
   if (previousScreen === 'auth') {
+    attachBottomBarTo(authScreen);
     authScreen.classList.remove('hidden');
     startBtn.classList.add('hidden');
     rulesBtn.classList.add('hidden');
     inGameLeaderboardBtn.classList.add('hidden');
   } else if (previousScreen === 'home') {
+    attachBottomBarTo(homeScreen);
     homeScreen.classList.remove('hidden');
     startBtn.classList.remove('hidden');
     rulesBtn.classList.remove('hidden');
     inGameLeaderboardBtn.classList.add('hidden');
     startBtn.focus();
   } else if (previousScreen === 'game') {
+    attachBottomBarTo(gameScreen);
     gameScreen.classList.remove('hidden');
     startBtn.classList.remove('hidden');
     rulesBtn.classList.add('hidden');
@@ -1268,6 +1282,7 @@ function openRules(fromScreen) {
   gameScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
 
+  attachBottomBarTo(rulesScreen);
   rulesScreen.classList.remove('hidden');
 
   startBtn.classList.add('hidden');
@@ -1288,12 +1303,14 @@ function closeRules() {
   backFromRulesBtn.classList.add('hidden');
 
   if (previousScreen === 'home') {
+    attachBottomBarTo(homeScreen);
     homeScreen.classList.remove('hidden');
     startBtn.classList.remove('hidden');
     rulesBtn.classList.remove('hidden');
     inGameLeaderboardBtn.classList.add('hidden');
     startBtn.focus();
   } else {
+    attachBottomBarTo(homeScreen);
     homeScreen.classList.remove('hidden');
     startBtn.classList.remove('hidden');
     rulesBtn.classList.remove('hidden');
@@ -1421,6 +1438,7 @@ document.getElementById('submit-reg-btn').addEventListener('click', async () => 
 function enterGameHomeScreen() {
   authScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
+  attachBottomBarTo(homeScreen);
   homeScreen.classList.remove('hidden');
   startBtn.classList.remove('hidden');
   rulesBtn.classList.remove('hidden');
@@ -1448,6 +1466,7 @@ authManager.initAuthStateListener(
   },
   () => {
     currentUser = null;
+    attachBottomBarTo(authScreen);
     authScreen.classList.remove('hidden');
     homeScreen.classList.add('hidden');
     rulesScreen.classList.add('hidden');
@@ -1498,6 +1517,7 @@ startBtn.addEventListener('click', async () => {
   homeScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   rulesBtn.classList.add('hidden');
+  attachBottomBarTo(gameScreen);
   gameScreen.classList.remove('hidden');
 
   const resumeRound = currentUser ? (currentUser.roundIndex || 0) : 0;
