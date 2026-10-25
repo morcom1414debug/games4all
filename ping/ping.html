@@ -1450,21 +1450,27 @@ async function selectAndStartRound(selectedRoundIdx) {
   clearTimeout(activeTimer);
   gameActive = false;
 
-  const targetRound = TOURNAMENT_ROUNDS[selectedRoundIdx];
-  if (currentUser && targetRound) {
-    currentUser = await authManager.saveProgress(selectedRoundIdx, targetRound.roundTitle, false, 0);
-    refreshUserBadgeUI();
-  }
-
+  // การขออนุญาต Motion Sensor และ Sound Init ต้องเกิดก่อนการเรียก await งานอื่นๆ อย่างเช่น saveProgress ทันที
+  // เพื่อไม่ให้สูญเสียสถานะ Transient User Activation ของ iOS Safari
   const permissionPromise = motion.requestPermission();
   const soundInitPromise = sound.init();
   const [granted] = await Promise.all([permissionPromise, soundInitPromise]);
 
   if (!granted) {
     console.warn("ไม่สามารถใช้งานเซ็นเซอร์ได้ สลับไปใช้โหมดคีย์บอร์ด");
+    permissionMsg.textContent = "ระบบไม่สามารถเข้าถึง Motion Sensor ได้ คุณสามารถใช้คีย์บอร์ดเพื่อควบคุมแทนได้";
+    permissionMsg.classList.remove('hidden');
+  } else {
+    permissionMsg.classList.add('hidden');
   }
 
-  permissionMsg.classList.add('hidden');
+  // หลังจากดำเนินการขออนุญาตแล้ว จึงค่อยบันทึก Checkpoint ตามปกติ
+  const targetRound = TOURNAMENT_ROUNDS[selectedRoundIdx];
+  if (currentUser && targetRound) {
+    currentUser = await authManager.saveProgress(selectedRoundIdx, targetRound.roundTitle, false, 0);
+    refreshUserBadgeUI();
+  }
+
   roundSelectScreen.classList.add('hidden');
   backFromRoundSelectBtn.classList.add('hidden');
   homeScreen.classList.add('hidden');
@@ -1678,6 +1684,7 @@ addAccessibleClickListener(startBtn, async () => {
   clearTimeout(activeTimer);
   gameActive = false;
 
+  // เรียกสิทธิ์ก่อนเช่นเดียวกับปุ่มเลือกรอบ
   const permissionPromise = motion.requestPermission();
   const soundInitPromise = sound.init();
 
@@ -1685,9 +1692,12 @@ addAccessibleClickListener(startBtn, async () => {
 
   if (!granted) {
     console.warn("ไม่สามารถใช้งานเซ็นเซอร์ได้ สลับไปใช้โหมดคีย์บอร์ด");
+    permissionMsg.textContent = "ระบบไม่สามารถเข้าถึง Motion Sensor ได้ คุณสามารถใช้คีย์บอร์ดเพื่อควบคุมแทนได้";
+    permissionMsg.classList.remove('hidden');
+  } else {
+    permissionMsg.classList.add('hidden');
   }
 
-  permissionMsg.classList.add('hidden');
   homeScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
