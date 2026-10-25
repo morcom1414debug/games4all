@@ -173,6 +173,7 @@ export class OnlineMatchController {
 
   /**
    * ระบบจัดการคิวประกาศเสียงสำหรับ Screen Reader เพื่อไม่ให้ตัดคำสำคัญและไม่รบกวนเสียงลูกปิงปองระหว่างตี
+   * ปรับปรุงให้ประกาศผ่านกล่องสถานะหลักเพียงจุดเดียว ป้องกัน VoiceOver อ่านซ้ำ 2 ครั้ง
    */
   announcePolite(message, forceDuringRally = false) {
     if (!message) return;
@@ -190,29 +191,37 @@ export class OnlineMatchController {
 
     if (this.ui.onlineSrAnnouncer) {
       this.ui.onlineSrAnnouncer.textContent = '';
-      setTimeout(() => {
-        if (this.ui.onlineSrAnnouncer) {
-          this.ui.onlineSrAnnouncer.textContent = nextMsg;
-        }
-      }, 40);
     }
 
     if (this.inMatch && this.ui.gameStatus) {
-      this.ui.gameStatus.textContent = nextMsg;
+      if (this.ui.gameStatus.textContent === nextMsg) {
+        this.ui.gameStatus.textContent = '';
+        setTimeout(() => {
+          if (this.ui.gameStatus) this.ui.gameStatus.textContent = nextMsg;
+        }, 20);
+      } else {
+        this.ui.gameStatus.textContent = nextMsg;
+      }
     } else if (this.ui.lobbyStatusBox) {
-      this.ui.lobbyStatusBox.textContent = nextMsg;
+      if (this.ui.lobbyStatusBox.textContent === nextMsg) {
+        this.ui.lobbyStatusBox.textContent = '';
+        setTimeout(() => {
+          if (this.ui.lobbyStatusBox) this.ui.lobbyStatusBox.textContent = nextMsg;
+        }, 20);
+      } else {
+        this.ui.lobbyStatusBox.textContent = nextMsg;
+      }
+    } else if (this.ui.onlineSrAnnouncer) {
+      this.ui.onlineSrAnnouncer.textContent = nextMsg;
     }
 
     clearTimeout(this.announceClearTimer);
     this.announceClearTimer = setTimeout(() => {
-      if (this.ui.onlineSrAnnouncer && this.announceQueue.length === 0) {
-        this.ui.onlineSrAnnouncer.textContent = '';
-      }
       this.isAnnouncing = false;
       if (this.announceQueue.length > 0) {
         this.processAnnounceQueue();
       }
-    }, 1100);
+    }, 450);
   }
 
   async openLobby() {
@@ -869,9 +878,19 @@ export class OnlineMatchController {
     const myPts = this.role === 'host' ? this.hostScore : this.clientScore;
     const oppPts = this.role === 'host' ? this.clientScore : this.hostScore;
 
-    this.ui.tournamentDisplay.textContent = `แมตช์ออนไลน์ 1 ต่อ 1 (${this.currentRoomId}): ${myName} พบกับ ${oppName}`;
-    this.ui.setDisplay.textContent = `เซตที่ ${this.currentSetNumber} (เซต: ${myName} ${mySets} - ${oppSets} ${oppName})`;
-    this.ui.scoreDisplay.textContent = `แต้ม: ${myName} ${myPts} ต่อ ${oppPts} ${oppName}`;
+    const newTournamentText = `แมตช์ออนไลน์ 1 ต่อ 1 (${this.currentRoomId}): ${myName} พบกับ ${oppName}`;
+    const newSetText = `เซตที่ ${this.currentSetNumber} (เซต: ${myName} ${mySets} - ${oppSets} ${oppName})`;
+    const newScoreText = `แต้ม: ${myName} ${myPts} ต่อ ${oppPts} ${oppName}`;
+
+    if (this.ui.tournamentDisplay && this.ui.tournamentDisplay.textContent !== newTournamentText) {
+      this.ui.tournamentDisplay.textContent = newTournamentText;
+    }
+    if (this.ui.setDisplay && this.ui.setDisplay.textContent !== newSetText) {
+      this.ui.setDisplay.textContent = newSetText;
+    }
+    if (this.ui.scoreDisplay && this.ui.scoreDisplay.textContent !== newScoreText) {
+      this.ui.scoreDisplay.textContent = newScoreText;
+    }
   }
 
   /**
@@ -994,6 +1013,8 @@ export class OnlineMatchController {
       }
     } else {
       this.canLocalPlayerHit = false;
+      // เล่นเสียง bot.mp3 เพื่อแจ้งให้อุปกรณ์ฝั่งรับทราบว่าถึงรอบที่ฝั่งตรงข้ามกำลังจะเสิร์ฟลูกมา
+      this.sound.play('bot', 0, 1.0, false);
       this.announcePolite(`แต้ม ${myPts} ต่อ ${oppPts} รอบ ${serverName} เสิร์ฟ เตรียมตีโต้`, true);
 
       if (this.role === 'host' && this.currentServer === 'client') {
