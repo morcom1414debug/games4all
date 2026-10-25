@@ -883,6 +883,8 @@ export class OnlineMatchController {
     this.updateOnlineScoreboardUI();
     this.activateFocusMode();
 
+    this.sound.play('go', 0, 1.0, false);
+
     const serverName = initialSrv === 'host' ? this.hostUsername : this.clientUsername;
     const isMyServe = initialSrv === this.role;
 
@@ -954,6 +956,7 @@ export class OnlineMatchController {
     const serverName = this.currentServer === 'host' ? this.hostUsername : this.clientUsername;
 
     if (this.currentServer === this.role) {
+      this.sound.play('go1', 0, 1.0, false);
       this.expectedLocalDir = 'center';
       this.canLocalPlayerHit = true;
       this.announcePolite(`แต้ม ${myPts} ต่อ ${oppPts} ตาคุณเสิร์ฟ เริ่มเลย`, true);
@@ -962,8 +965,8 @@ export class OnlineMatchController {
         this.activeRallyTimer = setTimeout(() => {
           if (this.matchStatus === 'playing' && this.rallyCount === 0 && this.currentServer === 'host') {
             this.canLocalPlayerHit = false;
-            this.sound.play('miss', 0, 1.0, false);
-            this.hostResolvePoint('client', `${this.hostUsername} เสิร์ฟไม่ทันเวลา ${this.clientUsername} ได้แต้ม`, 0, 'center');
+            this.sound.play('retry', 0, 1.0, false);
+            this.hostResolvePoint('client', `${this.hostUsername} เสิร์ฟไม่ทันเวลา ${this.clientUsername} ได้แต้ม`, 0, 'center', true);
           }
         }, ONLINE_CONFIG.SERVE_TIMEOUT_MS);
       }
@@ -974,7 +977,8 @@ export class OnlineMatchController {
       if (this.role === 'host' && this.currentServer === 'client') {
         this.activeRallyTimer = setTimeout(() => {
           if (this.matchStatus === 'playing' && this.rallyCount === 0 && this.currentServer === 'client') {
-            this.hostResolvePoint('host', `${this.clientUsername} เสิร์ฟไม่ทันเวลา ${this.hostUsername} ได้แต้ม`, 0, 'center');
+            this.sound.play('retry', 0, 1.0, false);
+            this.hostResolvePoint('host', `${this.clientUsername} เสิร์ฟไม่ทันเวลา ${this.hostUsername} ได้แต้ม`, 0, 'center', true);
           }
         }, ONLINE_CONFIG.SERVE_TIMEOUT_MS + Math.min(this.rttMs, 400));
       }
@@ -1380,7 +1384,7 @@ export class OnlineMatchController {
   /**
    * Host ตัดสินผลแต้ม เซต และแมตช์ พร้อมซิงก์ไปยัง Client และ Firebase
    */
-  async hostResolvePoint(pointWinner, reasonText, rallyId, hostPanDir = 'center') {
+  async hostResolvePoint(pointWinner, reasonText, rallyId, hostPanDir = 'center', isServeTimeout = false) {
     if (this.role !== 'host' || this.matchStatus !== 'playing') return;
     clearTimeout(this.activeRallyTimer);
     this.canLocalPlayerHit = false;
@@ -1418,7 +1422,8 @@ export class OnlineMatchController {
       clientSetsWon: this.clientSetsWon,
       currentSetNumber: this.currentSetNumber,
       setWinner: setWinner,
-      matchWinner: matchWinner
+      matchWinner: matchWinner,
+      isServeTimeout: isServeTimeout
     };
 
     this.sendPeerMessage(resultPayload);
@@ -1429,6 +1434,9 @@ export class OnlineMatchController {
   clientApplyPointResult(data) {
     clearTimeout(this.activeRallyTimer);
     this.canLocalPlayerHit = false;
+    if (data.isServeTimeout) {
+      this.sound.play('retry', 0, 1.0, false);
+    }
     this.hostScore = data.hostScore;
     this.clientScore = data.clientScore;
     this.hostSetsWon = data.hostSetsWon;

@@ -473,7 +473,10 @@ class SoundEngine {
       winnround: 'audio/winnround.mp3',
       winner: 'audio/winner.mp3',
       lose: 'audio/lose.mp3',
-      loser: 'audio/loser.mp3'
+      loser: 'audio/loser.mp3',
+      go: 'audio/go.mp3',
+      go1: 'audio/go1.mp3',
+      retry: 'audio/retry.mp3'
     };
 
     const promises = Object.entries(files).map(async ([key, url]) => {
@@ -494,7 +497,7 @@ class SoundEngine {
 
   createFallbackBuffer(type) {
     const sr = this.ctx.sampleRate;
-    const duration = type === 'miss' ? 0.35 : 0.12;
+    const duration = (type === 'miss' || type === 'retry') ? 0.35 : 0.12;
     const buffer = this.ctx.createBuffer(1, sr * duration, sr);
     const data = buffer.getChannelData(0);
     const freq = type === 'bounce' ? 680 : (type === 'hit' ? 440 : 160);
@@ -995,6 +998,7 @@ function startRally() {
   const pName = getPlayerName();
 
   if (currentServer === 'player') {
+    sound.play('go1', 0, 1.0, false);
     announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบ${pName}เสิร์ฟ เริ่มเลย`);
     canPlayerHit = true;
     currentBallDir = 'center';
@@ -1002,7 +1006,7 @@ function startRally() {
     activeTimer = setTimeout(() => {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
-        sound.play('miss', 0, 1.0, false);
+        sound.play('retry', 0, 1.0, false);
         handlePointWon('bot', `${pName}เสิร์ฟไม่ทัน ${round.botName}ได้แต้ม`);
       }
     }, 5000);
@@ -1285,6 +1289,8 @@ function startNewSet() {
   startBtn.setAttribute('aria-label', `กำลังแข่งขันเซตที่ ${currentSetNumber} กับ ${round.botName}`);
 
   activateFocusMode();
+
+  sound.play('go', 0, 1.0, false);
 
   const startMsg = initialServer === 'player'
     ? `เริ่มเซตที่ ${currentSetNumber} ${pName}ได้เสิร์ฟก่อน เริ่มเลย`
