@@ -11,7 +11,8 @@ import {
   remove,
   onValue,
   onDisconnect,
-  runTransaction
+  runTransaction,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { database, GAME_ID, encodeUserKey, SessionStorage } from "./auth.js";
 
@@ -44,6 +45,25 @@ const ONLINE_CONFIG = {
   PEER_CONNECT_TIMEOUT_MS: 15000,
   PING_INTERVAL_MS: 2000,
   WIN_REWARD_POINTS: 100
+};
+
+/**
+ * ค่ากำหนดระบบ Presence / Heartbeat / ตรวจสอบห้องหมดอายุ (เฉพาะห้องสถานะ waiting)
+ * - HEARTBEAT_INTERVAL_MS: เจ้าของห้องส่งสัญญาณว่ายังออนไลน์ทุก 20 วินาที (ไม่ถี่เกินจำเป็น)
+ * - HEARTBEAT_STALE_MS: ไม่มี Heartbeat เกิน 75 วินาที (ประมาณ 3-4 รอบที่ขาดหาย) จึงถือว่าหมดอายุ ไม่ตัดสินจากความล่าช้าครั้งเดียว
+ * - DISCONNECT_GRACE_MS: หลัง onDisconnect ทำงาน ให้เวลาผ่อนผัน 30 วินาทีสำหรับ Refresh / สลับแอปแล้วกลับมา
+ * - LEGACY_STALE_MS: ห้องรุ่นเก่าที่ไม่มี Heartbeat ใช้เกณฑ์ปลอดภัย 5 นาที
+ */
+const ROOM_PRESENCE_CONFIG = {
+  HEARTBEAT_INTERVAL_MS: 20000,
+  HEARTBEAT_STALE_MS: 75000,
+  DISCONNECT_GRACE_MS: 30000,
+  LEGACY_STALE_MS: 300000,
+  LEGACY_CLOCK_SKEW_TOLERANCE_MS: 600000,
+  LOBBY_SWEEP_MS: 30000,
+  CLEANUP_COOLDOWN_MS: 10000,
+  CLOCK_WAIT_TIMEOUT_MS: 4000,
+  ONDISCONNECT_RETRIES: 3
 };
 
 /**
@@ -85,6 +105,29 @@ export class OnlineMatchController {
     this.roomUnsubscribe = null;
     this.lobbyUnsubscribe = null;
     this.presenceDisconnectRef = null;
+
+    // ระบบ Presence / Heartbeat / Cleanup ห้องค้าง
+    this.sessionId = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    this.localPeerId = null;
+    this.serverTimeOffset = 0;
+    this.serverClockReady = false;
+    this.serverClockWaiters = [];
+    this.serverOffsetUnsub = null;
+    this.presenceToken = 0;
+    this.presenceActive = false;
+    this.presenceAnnounced = false;
+    this.presenceConnUnsub = null;
+    this.presenceBusyToken = null;
+    this.presenceRerun = false;
+    this.presenceWakeHandler = null;
+    this.firebaseConnected = false;
+    this.heartbeatTimer = null;
+    this.heartbeatInFlight = false;
+    this.heartbeatInFlightSince = 0;
+    this.lobbySweepTimer = null;
+    this.lastRoomsObj = null;
+    this.renderedRoomsSig = '';
+    this.cleanupAttemptAt = {};
 
     this.rttMs = 80;
     this.pingTimer = null;
@@ -245,10 +288,18 @@ export class OnlineMatchController {
     this.ui.backFromLobbyBtn.classList.remove('hidden');
 
     await this.loadPlayerOnlineStatsUI();
+
+    // ซิงก์เวลา Firebase Server ก่อนตรวจสอบห้องหมดอายุ เพื่อไม่ให้นาฬิกาเครื่องที่ไม่ตรงทำให้ลบห้องผิด
+    this.ensureServerClockSync();
+    await this.waitForServerClock(ROOM_PRESENCE_CONFIG.CLOCK_WAIT_TIMEOUT_MS);
+
     this.subscribeWaitingRooms();
 
     // ตรวจสอบว่าผู้เล่นมีห้องที่กำลังเปิดค้างไว้หรือไม่ (เช่น กรณีกด Refresh)
     await this.tryRecoverExistingRoom();
+
+    // Auto Cleanup: ลบห้อง waiting ที่ยืนยันแล้วว่าหมดอายุ (ใช้ Transaction ตรวจซ้ำก่อนลบทุกห้อง)
+    await this.runLobbyCleanupNow();
 
     setTimeout(() => {
       try {
@@ -294,8 +345,15 @@ export class OnlineMatchController {
     this.unsubscribeWaitingRooms();
     const roomsRef = ref(this.db, `${GAME_ID}/onlineRooms`);
     this.lobbyUnsubscribe = onValue(roomsRef, (snapshot) => {
-      this.renderWaitingRoomsList(snapshot.exists() ? snapshot.val() : {});
+      this.handleRoomsUpdate(snapshot.exists() ? snapshot.val() : {});
     });
+
+    // Timer ตรวจรอบเดียวเท่านั้น (ล้างของเดิมก่อนสร้างใหม่เสมอ) เพื่อจับห้องที่หมดอายุโดยไม่มีข้อมูลเปลี่ยนแปลง
+    clearInterval(this.lobbySweepTimer);
+    this.lobbySweepTimer = setInterval(() => {
+      if (!this.activeMode) return;
+      this.sweepLobbyRooms();
+    }, ROOM_PRESENCE_CONFIG.LOBBY_SWEEP_MS);
   }
 
   unsubscribeWaitingRooms() {
@@ -303,12 +361,190 @@ export class OnlineMatchController {
       this.lobbyUnsubscribe();
       this.lobbyUnsubscribe = null;
     }
+    clearInterval(this.lobbySweepTimer);
+    this.lobbySweepTimer = null;
+    this.lastRoomsObj = null;
   }
 
   RefreshRoomsManual() {
     get(ref(this.db, `${GAME_ID}/onlineRooms`)).then((snap) => {
-      this.renderWaitingRoomsList(snap.exists() ? snap.val() : {});
+      this.handleRoomsUpdate(snap.exists() ? snap.val() : {});
     }).catch(() => {});
+  }
+
+  /**
+   * รับข้อมูลรายการห้องล่าสุด: แสดงเฉพาะห้องที่ยังใช้งานได้ และสั่งลบห้องที่ยืนยันว่าหมดอายุออกจาก Firebase
+   */
+  handleRoomsUpdate(roomsObj) {
+    this.lastRoomsObj = roomsObj || {};
+    this.renderWaitingRoomsList(this.lastRoomsObj);
+    this.cleanupExpiredRooms(this.lastRoomsObj).catch(() => {});
+  }
+
+  sweepLobbyRooms() {
+    const rooms = this.lastRoomsObj;
+    if (!rooms) return;
+    const sig = this.getJoinableRooms(rooms).map((r) => r.roomId).sort().join('|');
+    if (sig !== this.renderedRoomsSig) {
+      this.renderWaitingRoomsList(rooms);
+    }
+    this.cleanupExpiredRooms(rooms).catch(() => {});
+  }
+
+  async runLobbyCleanupNow() {
+    try {
+      const snap = await get(ref(this.db, `${GAME_ID}/onlineRooms`));
+      await this.cleanupExpiredRooms(snap.exists() ? snap.val() : {});
+    } catch (e) {
+      console.warn("ตรวจสอบห้องค้างไม่สำเร็จ:", e);
+    }
+  }
+
+  // ---------- เวลา Firebase Server ----------
+  ensureServerClockSync() {
+    if (this.serverOffsetUnsub) return;
+    try {
+      this.serverOffsetUnsub = onValue(ref(this.db, '.info/serverTimeOffset'), (snap) => {
+        const v = snap.val();
+        if (typeof v === 'number' && isFinite(v)) {
+          this.serverTimeOffset = v;
+          this.serverClockReady = true;
+          const waiters = this.serverClockWaiters;
+          this.serverClockWaiters = [];
+          waiters.forEach((fn) => fn());
+        }
+      });
+    } catch (e) {
+      this.serverOffsetUnsub = null;
+    }
+  }
+
+  waitForServerClock(timeoutMs) {
+    if (this.serverClockReady) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(this.serverClockReady), timeoutMs);
+      this.serverClockWaiters.push(() => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+  }
+
+  getServerNow() {
+    return Date.now() + (this.serverTimeOffset || 0);
+  }
+
+  // ---------- ประเมินสถานะห้อง waiting ----------
+  isOrphanRoomFragment(room) {
+    if (room === null || room === undefined) return false;
+    if (typeof room !== 'object') return true;
+    return !room.roomId && !room.status && !room.matchId;
+  }
+
+  /**
+   * ประเมินห้อง waiting ด้วยเวลา Firebase Server
+   * joinable = แสดงปุ่มเข้าร่วมได้ | expired = ยืนยันว่าหมดอายุและลบได้
+   * ห้องที่ไม่ใช่ waiting (ready / playing / finished ...) จะไม่ถูกตัดสินว่าหมดอายุที่นี่ เพื่อไม่กระทบการแข่งขันและระบบกลับเข้าห้อง
+   */
+  evaluateWaitingRoom(room, now) {
+    const C = ROOM_PRESENCE_CONFIG;
+    const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+    if (!room || typeof room !== 'object') return { joinable: false, expired: false };
+    if (room.status !== 'waiting') return { joinable: false, expired: false };
+
+    const host = room.host;
+    if (!host || typeof host !== 'object') return { joinable: false, expired: true };
+    if (room.client) return { joinable: false, expired: false };
+
+    const hb = num(host.heartbeatAt);
+    const dc = num(host.disconnectedAt);
+
+    // ห้องที่ใช้ระบบ Presence ใหม่ (เวลาจาก Firebase Server)
+    if (hb !== null) {
+      const evidence = Math.max(hb, dc !== null ? dc : 0);
+      const age = now - evidence;
+      if (host.connected === false) {
+        return { joinable: false, expired: age > C.DISCONNECT_GRACE_MS };
+      }
+      return { joinable: age <= C.HEARTBEAT_STALE_MS, expired: age > C.HEARTBEAT_STALE_MS };
+    }
+
+    // ห้องรุ่นเก่า (ไม่มี Heartbeat) ใช้เกณฑ์ปลอดภัยจากเวลาที่บันทึกไว้
+    const candidates = [host.lastSeen, room.updatedAt, room.createdAt, host.joinedAt]
+      .map(num)
+      .filter((v) => v !== null);
+    if (candidates.length === 0) return { joinable: false, expired: true };
+    const evidence = Math.max(...candidates);
+    const age = now - evidence;
+    if (age < -C.LEGACY_CLOCK_SKEW_TOLERANCE_MS) {
+      return { joinable: false, expired: true };
+    }
+    if (host.connected === false) {
+      return { joinable: false, expired: age > C.DISCONNECT_GRACE_MS };
+    }
+    return { joinable: age <= C.LEGACY_STALE_MS, expired: age > C.LEGACY_STALE_MS };
+  }
+
+  getJoinableRooms(roomsObj) {
+    const now = this.getServerNow();
+    return Object.values(roomsObj || {}).filter((r) => {
+      return r && typeof r === 'object' && r.roomId && r.status === 'waiting' && r.host && !r.client &&
+        this.evaluateWaitingRoom(r, now).joinable;
+    });
+  }
+
+  /**
+   * ลบห้อง waiting ที่หมดอายุ (และเศษข้อมูลห้องที่ไม่สมบูรณ์) ออกจาก Firebase
+   * - ข้ามห้องของตัวเองที่กำลังใช้งาน
+   * - ลบผ่าน Transaction ที่ตรวจเงื่อนไขซ้ำกับข้อมูลล่าสุดบน Server ก่อนลบทุกครั้ง
+   * - ไม่แตะข้อมูลผู้เล่น สถิติ หรือห้องที่ไม่ใช่ waiting
+   */
+  async cleanupExpiredRooms(roomsObj) {
+    if (!this.serverClockReady) return;
+    const now = this.getServerNow();
+    const targets = [];
+    Object.keys(roomsObj || {}).forEach((key) => {
+      if (key === this.currentRoomId) return;
+      const last = this.cleanupAttemptAt[key] || 0;
+      if (Date.now() - last < ROOM_PRESENCE_CONFIG.CLEANUP_COOLDOWN_MS) return;
+      const room = roomsObj[key];
+      if (this.isOrphanRoomFragment(room) || this.evaluateWaitingRoom(room, now).expired) {
+        targets.push(key);
+      }
+    });
+    for (const key of targets) {
+      this.cleanupAttemptAt[key] = Date.now();
+      await this.removeRoomIfExpired(key);
+    }
+  }
+
+  async removeRoomIfExpired(roomKey) {
+    if (!roomKey || !this.serverClockReady) return false;
+    if (roomKey === this.currentRoomId) return false;
+    try {
+      const res = await runTransaction(ref(this.db, `${GAME_ID}/onlineRooms/${roomKey}`), (room) => {
+        if (room === null) return room;
+        if (this.isOrphanRoomFragment(room)) return null;
+        if (this.evaluateWaitingRoom(room, this.getServerNow()).expired) return null;
+        return; // ห้องกลับมาใช้งานแล้วหรือไม่ใช่ waiting: ยกเลิกการลบ
+      });
+      return Boolean(res.committed && !res.snapshot.exists());
+    } catch (e) {
+      console.warn("ลบห้องหมดอายุไม่สำเร็จ (อาจถูกจำกัดโดย Firebase Rules):", roomKey, e);
+      return false;
+    }
+  }
+
+  /**
+   * ลบห้องของตัวเองเมื่อออกจากห้อง โดยไม่ลบหากห้องถูกกู้คืนโดยเซสชันอื่นแล้ว
+   */
+  async removeRoomIfOwned(roomRef) {
+    await runTransaction(roomRef, (room) => {
+      if (room === null) return room;
+      const hostSession = room.host && room.host.sessionId;
+      if (hostSession && hostSession !== this.sessionId) return;
+      return null;
+    });
   }
 
   renderWaitingRoomsList(roomsObj) {
@@ -316,9 +552,8 @@ export class OnlineMatchController {
     if (!container) return;
     container.innerHTML = '';
 
-    const entries = Object.values(roomsObj || {}).filter((r) => {
-      return r && r.roomId && r.status === 'waiting' && r.host && !r.client;
-    });
+    const entries = this.getJoinableRooms(roomsObj);
+    this.renderedRoomsSig = entries.map((r) => r.roomId).sort().join('|');
 
     if (entries.length === 0) {
       const emptyEl = document.createElement('p');
@@ -374,6 +609,20 @@ export class OnlineMatchController {
       }
 
       const myKey = encodeUserKey(user.username);
+
+      // ห้อง waiting ที่หมดช่วงผ่อนผันแล้ว ไม่สามารถกู้คืนได้ และต้องถูกลบ
+      if (
+        room.status === 'waiting' &&
+        room.host && room.host.userKey === myKey &&
+        this.serverClockReady &&
+        this.evaluateWaitingRoom(room, this.getServerNow()).expired
+      ) {
+        sessionStorage.removeItem('pingpong_active_online_room');
+        await this.removeRoomIfExpired(savedRoomId);
+        this.announcePolite(`ห้อง ${savedRoomId} หมดอายุแล้ว ไม่สามารถกู้คืนได้ กรุณาสร้างห้องใหม่`, true);
+        return;
+      }
+
       if (room.host && room.host.userKey === myKey) {
         this.currentRoomId = savedRoomId;
         this.role = 'host';
@@ -437,6 +686,8 @@ export class OnlineMatchController {
           userKey: myKey,
           peerId: '',
           connected: true,
+          sessionId: this.sessionId,
+          heartbeatAt: serverTimestamp(),
           joinedAt: Date.now()
         },
         client: null,
@@ -488,6 +739,7 @@ export class OnlineMatchController {
     try {
       this.announcePolite(`กำลังเข้าร่วมห้อง ${roomId}...`);
       let rejectReason = "";
+      let expiredDetected = false;
 
       const txResult = await runTransaction(roomRef, (room) => {
         if (room === null) {
@@ -495,6 +747,16 @@ export class OnlineMatchController {
         }
         if (room.host && room.host.userKey === myKey) {
           rejectReason = "คุณเป็นเจ้าของห้องนี้อยู่แล้ว";
+          return;
+        }
+        if (
+          this.serverClockReady &&
+          room.status === 'waiting' &&
+          !room.client &&
+          !this.evaluateWaitingRoom(room, this.getServerNow()).joinable
+        ) {
+          expiredDetected = true;
+          rejectReason = `ห้อง ${roomId} หมดอายุแล้ว เพราะเจ้าของห้องไม่ได้ออนไลน์ ระบบกำลังอัปเดตรายการห้อง`;
           return;
         }
         if (room.status !== 'waiting' || (room.client && room.client.userKey && room.client.userKey !== myKey)) {
@@ -507,6 +769,7 @@ export class OnlineMatchController {
           userKey: myKey,
           peerId: '',
           connected: true,
+          sessionId: this.sessionId,
           joinedAt: Date.now()
         };
         room.playerCount = 2;
@@ -517,6 +780,10 @@ export class OnlineMatchController {
 
       if (!txResult.committed || !txResult.snapshot.exists()) {
         this.announcePolite(rejectReason || "ไม่สามารถเข้าร่วมห้องนี้ได้ ห้องอาจเต็มหรือถูกปิดไปแล้ว");
+        if (expiredDetected) {
+          await this.removeRoomIfExpired(roomId);
+        }
+        this.RefreshRoomsManual();
         return;
       }
 
@@ -562,18 +829,11 @@ export class OnlineMatchController {
       }
     });
 
-    this.peer.on('open', async (peerId) => {
+    this.peer.on('open', (peerId) => {
       this.peerReady = true;
-      const peerPath = `${GAME_ID}/onlineRooms/${roomId}/${role}`;
-      await update(ref(this.db, peerPath), {
-        peerId: peerId,
-        connected: true,
-        lastSeen: Date.now()
-      });
-
-      const connFieldRef = ref(this.db, `${peerPath}/connected`);
-      this.presenceDisconnectRef = onDisconnect(connFieldRef);
-      await this.presenceDisconnectRef.set(false);
+      this.localPeerId = peerId;
+      // ลงทะเบียน onDisconnect ก่อน แล้วจึงประกาศสถานะออนไลน์ + เริ่ม Heartbeat
+      this.startPresence(roomId, role);
     });
 
     this.peer.on('connection', (incomingConn) => {
@@ -588,6 +848,190 @@ export class OnlineMatchController {
     });
 
     this.subscribeRoomChanges(roomId);
+  }
+
+  // =====================================================================
+  // Presence / Heartbeat (Firebase onDisconnect + .info/connected + Heartbeat เวลา Server)
+  // =====================================================================
+
+  startPresence(roomId, role) {
+    this.stopPresence();
+    this.ensureServerClockSync();
+    const token = ++this.presenceToken;
+    this.presenceActive = true;
+    this.presenceAnnounced = false;
+    this.presenceRerun = false;
+
+    // ทุกครั้งที่ Firebase เชื่อมต่อใหม่ (เช่น เน็ตกลับมา / สลับแอปกลับมา) ต้องลงทะเบียน onDisconnect และประกาศออนไลน์ใหม่
+    this.presenceConnUnsub = onValue(ref(this.db, '.info/connected'), (snap) => {
+      const isConn = snap.val() === true;
+      this.firebaseConnected = isConn;
+      if (isConn) {
+        this.registerPresenceAndAnnounce(roomId, role, token);
+      }
+    });
+
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
+      this.sendHeartbeat(roomId, role, token);
+    }, ROOM_PRESENCE_CONFIG.HEARTBEAT_INTERVAL_MS);
+
+    // Safari iOS อาจหยุด JavaScript ขณะอยู่เบื้องหลัง: ส่ง Heartbeat ทันทีเมื่อกลับมาใช้งาน
+    this.presenceWakeHandler = () => {
+      if (document.visibilityState === 'hidden') return;
+      this.sendHeartbeat(roomId, role, token);
+    };
+    document.addEventListener('visibilitychange', this.presenceWakeHandler);
+    window.addEventListener('pageshow', this.presenceWakeHandler);
+    window.addEventListener('online', this.presenceWakeHandler);
+  }
+
+  stopPresence() {
+    this.presenceToken++;
+    this.presenceActive = false;
+    this.presenceAnnounced = false;
+    this.presenceRerun = false;
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+    if (this.presenceConnUnsub) {
+      try {
+        this.presenceConnUnsub();
+      } catch (e) {}
+      this.presenceConnUnsub = null;
+    }
+    if (this.presenceWakeHandler) {
+      document.removeEventListener('visibilitychange', this.presenceWakeHandler);
+      window.removeEventListener('pageshow', this.presenceWakeHandler);
+      window.removeEventListener('online', this.presenceWakeHandler);
+      this.presenceWakeHandler = null;
+    }
+  }
+
+  async registerPresenceAndAnnounce(roomId, role, token) {
+    const isCurrent = () => token === this.presenceToken && this.currentRoomId === roomId && this.role === role;
+    if (this.presenceBusyToken === token) {
+      this.presenceRerun = true;
+      return;
+    }
+    this.presenceBusyToken = token;
+    try {
+      do {
+        this.presenceRerun = false;
+        if (!isCurrent()) break;
+
+        const roleRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}/${role}`);
+
+        // 1) ลงทะเบียน onDisconnect ให้สำเร็จก่อนประกาศออนไลน์ (ลองซ้ำได้หลายครั้ง)
+        let registered = false;
+        for (let attempt = 1; attempt <= ROOM_PRESENCE_CONFIG.ONDISCONNECT_RETRIES && !registered && isCurrent(); attempt++) {
+          try {
+            const od = onDisconnect(roleRef);
+            await od.update({
+              connected: false,
+              disconnectedAt: serverTimestamp()
+            });
+            this.presenceDisconnectRef = od;
+            registered = true;
+          } catch (e) {
+            console.warn(`ลงทะเบียน onDisconnect ไม่สำเร็จ (ครั้งที่ ${attempt}):`, e);
+            if (attempt < ROOM_PRESENCE_CONFIG.ONDISCONNECT_RETRIES) {
+              await new Promise((r) => setTimeout(r, 1500));
+            }
+          }
+        }
+        if (!isCurrent()) break;
+        if (!registered) {
+          // สำรอง: ยังคงมี Heartbeat ให้ระบบตัดห้องหมดอายุได้ แม้ onDisconnect ลงทะเบียนไม่สำเร็จ และจะลองใหม่เมื่อเชื่อมต่อ Firebase ครั้งถัดไป
+          console.warn("onDisconnect ไม่พร้อมใช้งาน ใช้ Heartbeat เป็นตัวตรวจสอบสำรอง");
+        }
+
+        // 2) ประกาศสถานะออนไลน์
+        const result = await this.announceOnline(roomId, role);
+        if (!isCurrent()) break;
+        if (result === 'ok') {
+          this.presenceAnnounced = true;
+        } else if (result === 'lost') {
+          await this.handlePresenceLost(roomId, role);
+          break;
+        }
+      } while (this.presenceRerun && isCurrent());
+    } finally {
+      if (this.presenceBusyToken === token) {
+        this.presenceBusyToken = null;
+      }
+    }
+  }
+
+  async announceOnline(roomId, role) {
+    const roleRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}/${role}`);
+    try {
+      const res = await runTransaction(roleRef, (node) => {
+        if (node === null) return node; // ห้อง/ผู้เล่นนี้ไม่มีอยู่แล้ว: ไม่สร้างข้อมูลขึ้นมาใหม่
+        const now = this.getServerNow();
+        node.sessionId = this.sessionId;
+        node.connected = true;
+        node.heartbeatAt = now;
+        node.lastSeen = now;
+        if (this.localPeerId) node.peerId = this.localPeerId;
+        delete node.disconnectedAt;
+        return node;
+      }, { applyLocally: false });
+      if (!res.snapshot.exists()) return 'lost';
+      return res.committed ? 'ok' : 'failed';
+    } catch (e) {
+      console.warn("ประกาศสถานะออนไลน์ไม่สำเร็จ:", e);
+      return 'failed';
+    }
+  }
+
+  async sendHeartbeat(roomId, role, token) {
+    if (token !== this.presenceToken || !this.presenceAnnounced || !this.firebaseConnected) return;
+    if (this.currentRoomId !== roomId || this.role !== role) return;
+
+    const nowTs = Date.now();
+    if (this.heartbeatInFlight && nowTs - this.heartbeatInFlightSince < 60000) return;
+    this.heartbeatInFlight = true;
+    this.heartbeatInFlightSince = nowTs;
+
+    const roleRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}/${role}`);
+    try {
+      const res = await runTransaction(roleRef, (node) => {
+        if (node === null) return node;
+        // เซสชันอื่น (แท็บใหม่ / กู้คืนห้อง) เข้าครองห้องแล้ว: แท็บเก่าต้องไม่เขียนทับ
+        if (node.sessionId && node.sessionId !== this.sessionId) return;
+        const now = this.getServerNow();
+        node.sessionId = this.sessionId;
+        node.connected = true;
+        node.heartbeatAt = now;
+        node.lastSeen = now;
+        delete node.disconnectedAt;
+        return node;
+      }, { applyLocally: false });
+
+      if (token !== this.presenceToken) return;
+      if (!res.snapshot.exists()) {
+        await this.handlePresenceLost(roomId, role);
+      } else if (!res.committed) {
+        await this.handleSessionTakenOver(roomId, role);
+      }
+    } catch (e) {
+      console.warn("ส่ง Heartbeat ไม่สำเร็จ:", e);
+    } finally {
+      this.heartbeatInFlight = false;
+    }
+  }
+
+  async handlePresenceLost(roomId, role) {
+    if (this.currentRoomId !== roomId || this.role !== role) return;
+    if (this.inMatch) return; // ห้ามกระทบการแข่งขันที่กำลังดำเนินอยู่
+    this.announcePolite("ห้องนี้หมดอายุหรือถูกปิดไปแล้ว ไม่สามารถกู้คืนได้ กรุณาสร้างห้องใหม่หรือเลือกห้องอื่น", true);
+    await this.leaveCurrentRoom(false, true);
+  }
+
+  async handleSessionTakenOver(roomId, role) {
+    if (this.currentRoomId !== roomId || this.role !== role) return;
+    this.announcePolite("ห้องนี้ถูกเปิดใช้งานจากหน้าต่างหรือแท็บอื่นแล้ว หน้านี้จะออกจากห้องโดยไม่กระทบห้องเดิม", true);
+    await this.leaveCurrentRoom(false, true);
   }
 
   subscribeRoomChanges(roomId) {
@@ -1822,6 +2266,8 @@ export class OnlineMatchController {
   cleanupPeerOnly() {
     clearTimeout(this.peerConnectTimer);
     clearInterval(this.pingTimer);
+    this.stopPresence();
+    this.localPeerId = null;
     this.channelReady = false;
     this.peerReady = false;
 
@@ -1843,7 +2289,7 @@ export class OnlineMatchController {
   /**
    * ออกจากห้องพร้อม Cleanup Firebase Listener, PeerJS Connection, Event Listener และ Timer ทั้งหมด
    */
-  async leaveCurrentRoom(notifyUser = true) {
+  async leaveCurrentRoom(notifyUser = true, skipRemote = false) {
     clearTimeout(this.activeRallyTimer);
     clearTimeout(this.reconnectTimer);
     clearInterval(this.reconnectCountdownInterval);
@@ -1877,17 +2323,17 @@ export class OnlineMatchController {
     this.motion.stop();
     this.deactivateFocusMode();
 
-    if (leavingRoomId) {
+    if (leavingRoomId && !skipRemote) {
       const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${leavingRoomId}`);
       try {
         const snap = await get(roomRef);
         if (snap.exists()) {
           const room = snap.val();
           if (room.status === 'waiting' && leavingRole === 'host') {
-            await remove(roomRef);
+            await this.removeRoomIfOwned(roomRef);
           } else if (room.status === 'ready' && !wasInMatch) {
             if (leavingRole === 'host') {
-              await remove(roomRef);
+              await this.removeRoomIfOwned(roomRef);
             } else if (leavingRole === 'client') {
               await update(roomRef, {
                 client: null,
