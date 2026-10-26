@@ -41,7 +41,7 @@ const ONLINE_CONFIG = {
   MAX_LATENCY_COMPENSATION_MS: 450,
   HIGH_PING_PAUSE_THRESHOLD_MS: 650,
   POINT_TRANSITION_MS: 2400,
-  RECONNECT_GRACE_MS: 30000,
+  RECONNECT_GRACE_MS: 3000,
   PEER_CONNECT_TIMEOUT_MS: 15000,
   PING_INTERVAL_MS: 2000,
   WIN_REWARD_POINTS: 100
@@ -284,6 +284,9 @@ export class OnlineMatchController {
     this.ui.rulesBtn.classList.add('hidden');
     this.ui.inGameLeaderboardBtn.classList.add('hidden');
 
+    if (this.ui.btnHomeMain) {
+      this.ui.btnHomeMain.classList.remove('hidden');
+    }
     this.ui.onlineLobbyScreen.classList.remove('hidden');
     this.ui.backFromLobbyBtn.classList.remove('hidden');
 
@@ -1283,6 +1286,9 @@ export class OnlineMatchController {
 
   enterMatchScreenUI() {
     this.inMatch = true;
+    if (this.ui.btnHomeMain) {
+      this.ui.btnHomeMain.classList.add('hidden');
+    }
     this.ui.onlineLobbyScreen.classList.add('hidden');
     this.ui.backFromLobbyBtn.classList.add('hidden');
     this.ui.startOnlineMatchBtn.classList.add('hidden');
@@ -1992,6 +1998,10 @@ export class OnlineMatchController {
       this.deactivateFocusMode();
       this.motion.stop();
 
+      if (this.ui.btnHomeMain) {
+        this.ui.btnHomeMain.classList.remove('hidden');
+      }
+
       const didIWin = data.matchWinner === this.role;
       this.sound.play(didIWin ? 'winner' : 'loser', 0, 1.0, false);
 
@@ -2074,38 +2084,33 @@ export class OnlineMatchController {
   }
 
   /**
-   * จัดการเมื่อผู้เล่นอีกฝ่ายหลุดจากห้องระหว่างแข่ง: พักเกมและจับเวลารอ 30 วินาที
+   * จัดการเมื่อผู้เล่นอีกฝ่ายหลุดจากห้องระหว่างแข่ง: แจ้งเตือน หน่วงเวลา 3 วินาที แล้วพากลับไปที่ ../index.html
    */
   handleOpponentDisconnect() {
     if (this.opponentDisconnected || this.matchStatus === 'finished' || this.matchStatus === 'aborted') return;
     this.opponentDisconnected = true;
     this.canLocalPlayerHit = false;
     clearTimeout(this.activeRallyTimer);
+    clearInterval(this.reconnectCountdownInterval);
+    clearTimeout(this.reconnectTimer);
 
     const oppName = this.getOpponentRoleLabel();
-    let remainingSec = Math.floor(ONLINE_CONFIG.RECONNECT_GRACE_MS / 1000);
+    const disconnectMsg = `ผู้เล่น ${oppName} หลุดการเชื่อมต่อ ระบบกำลังพากลับสู่หน้าหลัก`;
 
-    this.announcePolite(
-      `ผู้เล่น ${oppName} การเชื่อมต่อหลุด ระบบพักการแข่งขันชั่วคราวและรอการเชื่อมต่อกลับภายใน ${remainingSec} วินาที`,
-      true
-    );
+    this.announcePolite(disconnectMsg, true);
 
-    clearInterval(this.reconnectCountdownInterval);
-    this.reconnectCountdownInterval = setInterval(() => {
-      remainingSec--;
-      if (remainingSec > 0 && this.inMatch && this.ui.gameStatus) {
-        this.ui.gameStatus.textContent = `รอผู้เล่น ${oppName} เชื่อมต่อกลับ... เหลือเวลา ${remainingSec} วินาที`;
-      }
-    }, 1000);
+    if (this.currentRoomId) {
+      update(ref(this.db, `${GAME_ID}/onlineRooms/${this.currentRoomId}`), {
+        status: 'aborted',
+        abortReason: disconnectMsg,
+        finishedAt: Date.now(),
+        updatedAt: Date.now()
+      }).catch(() => {});
+    }
 
-    clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(async () => {
-      clearInterval(this.reconnectCountdownInterval);
-      if (this.opponentDisconnected && this.matchStatus !== 'finished' && this.matchStatus !== 'aborted') {
-        await this.abortMatchDueToDisconnect(
-          `ผู้เล่น ${oppName} ไม่สามารถเชื่อมต่อกลับมาได้ภายใน 30 วินาที ยุติการแข่งขันโดยไม่นับผลแพ้ชนะปกติ`
-        );
-      }
+    this.reconnectTimer = setTimeout(() => {
+      sessionStorage.removeItem('pingpong_active_online_room');
+      window.location.href = '../index.html';
     }, ONLINE_CONFIG.RECONNECT_GRACE_MS);
   }
 
@@ -2171,6 +2176,11 @@ export class OnlineMatchController {
     this.motion.stop();
     this.announcePolite(reason, true);
     this.recordMatchStatsIdempotent('aborted', null);
+
+    setTimeout(() => {
+      sessionStorage.removeItem('pingpong_active_online_room');
+      window.location.href = '../index.html';
+    }, ONLINE_CONFIG.RECONNECT_GRACE_MS);
   }
 
   /**
@@ -2254,10 +2264,28 @@ export class OnlineMatchController {
     if (inRoom) {
       this.ui.activeRoomCard.classList.remove('hidden');
       this.ui.createRoomBtn.classList.add('hidden');
+      if (this.ui.refreshRoomsBtn) {
+        this.ui.refreshRoomsBtn.classList.add('hidden');
+      }
+      if (this.ui.waitingRoomsHeading) {
+        this.ui.waitingRoomsHeading.classList.add('hidden');
+      }
+      if (this.ui.waitingRoomsContainer) {
+        this.ui.waitingRoomsContainer.classList.add('hidden');
+      }
       this.ui.leaveRoomBtn.classList.remove('hidden');
     } else {
       this.ui.activeRoomCard.classList.add('hidden');
       this.ui.createRoomBtn.classList.remove('hidden');
+      if (this.ui.refreshRoomsBtn) {
+        this.ui.refreshRoomsBtn.classList.remove('hidden');
+      }
+      if (this.ui.waitingRoomsHeading) {
+        this.ui.waitingRoomsHeading.classList.remove('hidden');
+      }
+      if (this.ui.waitingRoomsContainer) {
+        this.ui.waitingRoomsContainer.classList.remove('hidden');
+      }
       this.ui.leaveRoomBtn.classList.add('hidden');
       this.ui.startOnlineMatchBtn.classList.add('hidden');
     }
@@ -2363,6 +2391,9 @@ export class OnlineMatchController {
       this.ui.gameScreen.classList.add('hidden');
       this.ui.onlineLobbyScreen.classList.remove('hidden');
       this.ui.backFromLobbyBtn.classList.remove('hidden');
+      if (this.ui.btnHomeMain) {
+        this.ui.btnHomeMain.classList.remove('hidden');
+      }
       await this.loadPlayerOnlineStatsUI();
     }
 
