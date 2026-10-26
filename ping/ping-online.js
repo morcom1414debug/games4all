@@ -1,8 +1,7 @@
 /**
  * ping-online.js
  * ระบบจัดการห้องแข่งขันออนไลน์ 1 ต่อ 1 ด้วย Firebase Realtime Database + PeerJS WebRTC DataChannel
- * รองรับ Host-Authoritative Gameplay, 3D Spatial Audio Mirroring, Latency Compensation,
- * ระบบชวนเพื่อนที่กำลังออนไลน์มาเล่นด้วยกันแบบห้องส่วนตัว (Private Room Invite) และ Screen Reader Accessibility
+ * รองรับ Host-Authoritative Gameplay, 3D Spatial Audio Mirroring, Latency Compensation และ Screen Reader Accessibility
  */
 import {
   ref,
@@ -44,8 +43,7 @@ const ONLINE_CONFIG = {
   RECONNECT_GRACE_MS: 30000,
   PEER_CONNECT_TIMEOUT_MS: 15000,
   PING_INTERVAL_MS: 2000,
-  WIN_REWARD_POINTS: 100,
-  INVITE_EXPIRE_MS: 60000
+  WIN_REWARD_POINTS: 100
 };
 
 /**
@@ -66,10 +64,6 @@ export class OnlineMatchController {
     this.flightDurations = options.flightDurations;
     this.getCurrentUser = options.getCurrentUser;
     this.onUserUpdated = options.onUserUpdated;
-    this.updateUserActivity = options.updateUserActivity || (() => {});
-    this.isBotRallyInProgress = options.isBotRallyInProgress || (() => false);
-    this.onAcceptInviteInterruptBot = options.onAcceptInviteInterruptBot || (() => {});
-    this.onDeclineInviteResumeBot = options.onDeclineInviteResumeBot || (() => {});
     this.addAccessibleClickListener = options.addAccessibleClickListener;
     this.onExitToHome = options.onExitToHome;
     this.ui = options.ui;
@@ -91,15 +85,6 @@ export class OnlineMatchController {
     this.roomUnsubscribe = null;
     this.lobbyUnsubscribe = null;
     this.presenceDisconnectRef = null;
-
-    // ระบบชวนเพื่อนและดักฟังคำเชิญออนไลน์
-    this.friendsListUnsubscribe = null;
-    this.incomingInviteUnsubscribe = null;
-    this.outgoingInviteUnsubscribe = null;
-    this.sentInviteTargetKey = null;
-    this.pendingInviteData = null;
-    this.displayedInviteId = null;
-    this.previousFocusedElement = null;
 
     this.rttMs = 80;
     this.pingTimer = null;
@@ -141,10 +126,6 @@ export class OnlineMatchController {
   bindLobbyEvents() {
     const {
       createRoomBtn,
-      inviteFriendBtn,
-      closeInvitePanelBtn,
-      acceptInviteBtn,
-      declineInviteBtn,
       refreshRoomsBtn,
       backFromLobbyBtn,
       startOnlineMatchBtn,
@@ -153,34 +134,8 @@ export class OnlineMatchController {
 
     this.addAccessibleClickListener(createRoomBtn, async () => {
       await this.requestSensorAndAudioOnGesture();
-      await this.createRoom(false);
+      await this.createRoom();
     });
-
-    if (inviteFriendBtn) {
-      this.addAccessibleClickListener(inviteFriendBtn, async () => {
-        await this.requestSensorAndAudioOnGesture();
-        await this.openInviteFriendsPanel();
-      });
-    }
-
-    if (closeInvitePanelBtn) {
-      this.addAccessibleClickListener(closeInvitePanelBtn, () => {
-        this.closeInviteFriendsPanel(true);
-      });
-    }
-
-    if (acceptInviteBtn) {
-      this.addAccessibleClickListener(acceptInviteBtn, async () => {
-        await this.requestSensorAndAudioOnGesture();
-        await this.acceptIncomingInvite();
-      });
-    }
-
-    if (declineInviteBtn) {
-      this.addAccessibleClickListener(declineInviteBtn, async () => {
-        await this.declineIncomingInvite();
-      });
-    }
 
     this.addAccessibleClickListener(refreshRoomsBtn, () => {
       this.announcePolite("กำลังอัปเดตรายการห้องออนไลน์");
@@ -249,7 +204,7 @@ export class OnlineMatchController {
       } else {
         this.ui.gameStatus.textContent = nextMsg;
       }
-    } else if (this.activeMode && this.ui.lobbyStatusBox) {
+    } else if (this.ui.lobbyStatusBox) {
       if (this.ui.lobbyStatusBox.textContent === nextMsg) {
         this.ui.lobbyStatusBox.textContent = '';
         setTimeout(() => {
@@ -271,405 +226,7 @@ export class OnlineMatchController {
     }, 450);
   }
 
-  /**
-   * =========================================================================
-   * ระบบชวนเพื่อนที่ออนไลน์และรับคำเชิญ (Online Friend Invite System)
-   * =========================================================================
-   */
-  getActivityLabelThai(activity) {
-    switch (activity) {
-      case 'bot_match':
-        return 'กำลังเล่นกับบอท';
-      case 'lobby':
-        return 'อยู่ที่หน้าล็อบบี้ออนไลน์';
-      case 'waiting_room':
-        return 'กำลังเปิดห้องรอผู้เล่น';
-      case 'home':
-      default:
-        return 'อยู่ในเกม (ว่าง)';
-    }
-  }
-
-  async openInviteFriendsPanel() {
-    const user = this.getCurrentUser();
-    if (!user) return;
-    if (this.currentRoomId) {
-      this.announcePolite("คุณอยู่ในห้องเรียบร้อยแล้ว กรุณาออกจากห้องเดิมหากต้องการชวนเพื่อนใหม่");
-      return;
-    }
-    if (!this.ui.inviteFriendsPanel || !this.ui.onlineFriendsListContainer) return;
-
-    this.ui.inviteFriendsPanel.classList.remove('hidden');
-    this.ui.onlineFriendsListContainer.innerHTML = '<p class="desc" tabindex="0">กำลังค้นหารายชื่อเพื่อนที่ออนไลน์...</p>';
-
-    this.unsubscribeFriendsList();
-    const presenceRef = ref(this.db, `${GAME_ID}/presence`);
-    const roomsRef = ref(this.db, `${GAME_ID}/onlineRooms`);
-
-    this.friendsListUnsubscribe = onValue(presenceRef, async (snap) => {
-      const presenceMap = snap.exists() ? snap.val() : {};
-      let roomsMap = {};
-      try {
-        const roomsSnap = await get(roomsRef);
-        if (roomsSnap.exists()) {
-          roomsMap = roomsSnap.val();
-        }
-      } catch (e) {}
-
-      this.renderInviteFriendsList(presenceMap, roomsMap);
-    });
-
-    setTimeout(() => {
-      try {
-        if (this.ui.inviteFriendsHeading) {
-          this.ui.inviteFriendsHeading.focus();
-        }
-      } catch (e) {}
-    }, 80);
-  }
-
-  closeInviteFriendsPanel(restoreFocus = false) {
-    this.unsubscribeFriendsList();
-    if (this.ui.inviteFriendsPanel) {
-      this.ui.inviteFriendsPanel.classList.add('hidden');
-    }
-    if (restoreFocus && this.ui.inviteFriendBtn && !this.ui.inviteFriendBtn.classList.contains('hidden')) {
-      try {
-        this.ui.inviteFriendBtn.focus();
-      } catch (e) {}
-    }
-  }
-
-  unsubscribeFriendsList() {
-    if (this.friendsListUnsubscribe) {
-      this.friendsListUnsubscribe();
-      this.friendsListUnsubscribe = null;
-    }
-  }
-
-  renderInviteFriendsList(presenceMap, roomsMap) {
-    const container = this.ui.onlineFriendsListContainer;
-    if (!container) return;
-    container.innerHTML = '';
-
-    const user = this.getCurrentUser();
-    if (!user) return;
-    const myKey = encodeUserKey(user.username);
-
-    // ตรวจสอบรายชื่อผู้เล่นที่อยู่ในห้องที่มีคนครบ 2 คนแล้ว หรือกำลังแข่งออนไลน์อยู่ เพื่อยกเว้นไม่นำมาแสดง
-    const busyInTwoPlayerRoomKeys = new Set();
-    Object.values(roomsMap || {}).forEach((room) => {
-      if (!room) return;
-      const isRoomFullOrPlaying =
-        (room.playerCount && room.playerCount >= 2) ||
-        (room.host && room.client) ||
-        room.status === 'ready' ||
-        room.status === 'playing';
-
-      if (isRoomFullOrPlaying) {
-        if (room.host && room.host.userKey) busyInTwoPlayerRoomKeys.add(room.host.userKey);
-        if (room.client && room.client.userKey) busyInTwoPlayerRoomKeys.add(room.client.userKey);
-      }
-    });
-
-    const availableFriends = Object.values(presenceMap || {}).filter((p) => {
-      if (!p || !p.online || !p.userKey || !p.username) return false;
-      if (p.userKey === myKey) return false;
-      if (p.activity === 'online_match') return false;
-      if (busyInTwoPlayerRoomKeys.has(p.userKey)) return false;
-      return true;
-    });
-
-    if (availableFriends.length === 0) {
-      const emptyEl = document.createElement('p');
-      emptyEl.className = 'desc';
-      emptyEl.setAttribute('tabindex', '0');
-      emptyEl.textContent = 'ตอนนี้ยังไม่มีเพื่อนที่ว่างออนไลน์อยู่ในเกม';
-      container.appendChild(emptyEl);
-      return;
-    }
-
-    availableFriends.sort((a, b) => a.username.localeCompare(b.username, 'th'));
-
-    availableFriends.forEach((friend) => {
-      const statusText = this.getActivityLabelThai(friend.activity);
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn-secondary';
-      btn.textContent = `${friend.username} (${statusText})`;
-      btn.setAttribute('aria-label', `ชวน ${friend.username} มาเล่นด้วยกัน สถานะปัจจุบัน ${statusText}`);
-
-      this.addAccessibleClickListener(btn, async () => {
-        await this.inviteFriendToPrivateRoom(friend);
-      });
-
-      container.appendChild(btn);
-    });
-  }
-
-  async inviteFriendToPrivateRoom(friend) {
-    if (!friend || !friend.userKey || !friend.username) return;
-    const user = this.getCurrentUser();
-    if (!user) return;
-    if (this.currentRoomId) {
-      this.announcePolite("คุณอยู่ในห้องแล้ว ไม่สามารถสร้างห้องซ้ำได้");
-      return;
-    }
-
-    this.closeInviteFriendsPanel(false);
-
-    // สร้างห้องออนไลน์ตามฟังก์ชันปกติ แต่ระบุ isPrivate = true เพื่อไม่ให้แสดงในรายการห้องสาธารณะ
-    const createdRoomId = await this.createRoom(true, friend.username);
-    if (!createdRoomId) return;
-
-    const myKey = encodeUserKey(user.username);
-    const inviteId = `${createdRoomId}_${Date.now()}`;
-    const inviteData = {
-      inviteId: inviteId,
-      roomId: createdRoomId,
-      fromUsername: user.username,
-      fromUserKey: myKey,
-      toUsername: friend.username,
-      toUserKey: friend.userKey,
-      status: 'pending',
-      createdAt: Date.now()
-    };
-
-    const inviteRef = ref(this.db, `${GAME_ID}/invites/${friend.userKey}`);
-    try {
-      await set(inviteRef, inviteData);
-      this.sentInviteTargetKey = friend.userKey;
-      this.listenOutgoingInviteResponse(friend.userKey, friend.username, createdRoomId);
-    } catch (err) {
-      console.error("ส่งคำเชิญไม่สำเร็จ:", err);
-      this.announcePolite("ไม่สามารถส่งคำเชิญหาเพื่อนได้ กรุณาลองใหม่อีกครั้ง");
-    }
-  }
-
-  listenOutgoingInviteResponse(friendUserKey, friendUsername, roomId) {
-    this.cleanupOutgoingInviteListener();
-    const inviteRef = ref(this.db, `${GAME_ID}/invites/${friendUserKey}`);
-
-    this.outgoingInviteUnsubscribe = onValue(inviteRef, async (snap) => {
-      if (!snap.exists()) return;
-      const inv = snap.val();
-      if (!inv || inv.roomId !== roomId) return;
-
-      if (inv.status === 'declined') {
-        this.announcePolite(`${friendUsername} ปฏิเสธคำเชิญเล่นปิงปอง`, true);
-        if (this.ui.roomConnectionDisplay) {
-          this.ui.roomConnectionDisplay.textContent = `สถานะห้อง: ${friendUsername} ปฏิเสธคำเชิญ`;
-        }
-        try {
-          await remove(inviteRef);
-        } catch (e) {}
-        this.cleanupOutgoingInviteListener();
-      } else if (inv.status === 'accepted') {
-        this.announcePolite(`${friendUsername} ตอบรับคำเชิญแล้ว กำลังเข้าร่วมห้อง...`, true);
-        try {
-          await remove(inviteRef);
-        } catch (e) {}
-        this.cleanupOutgoingInviteListener();
-      }
-    });
-  }
-
-  cleanupOutgoingInviteListener() {
-    if (this.outgoingInviteUnsubscribe) {
-      this.outgoingInviteUnsubscribe();
-      this.outgoingInviteUnsubscribe = null;
-    }
-  }
-
-  async clearSentInviteIfPending() {
-    this.cleanupOutgoingInviteListener();
-    if (this.sentInviteTargetKey) {
-      const targetKey = this.sentInviteTargetKey;
-      this.sentInviteTargetKey = null;
-      try {
-        const inviteRef = ref(this.db, `${GAME_ID}/invites/${targetKey}`);
-        const snap = await get(inviteRef);
-        if (snap.exists()) {
-          const val = snap.val();
-          const user = this.getCurrentUser();
-          const myKey = user ? encodeUserKey(user.username) : '';
-          if (val && val.fromUserKey === myKey) {
-            await remove(inviteRef);
-          }
-        }
-      } catch (e) {}
-    }
-  }
-
-  /**
-   * เริ่มดักฟังคำเชิญที่ส่งมาหาผู้เล่นคนนี้แบบ Realtime ตลอดเวลาที่อยู่ในเกม
-   */
-  startGlobalInviteListener() {
-    const user = this.getCurrentUser();
-    if (!user || !user.username) return;
-    this.stopGlobalInviteListener();
-
-    const myKey = encodeUserKey(user.username);
-    const myInviteRef = ref(this.db, `${GAME_ID}/invites/${myKey}`);
-
-    this.incomingInviteUnsubscribe = onValue(myInviteRef, async (snap) => {
-      if (!snap.exists()) {
-        this.pendingInviteData = null;
-        this.hideIncomingInviteModal();
-        return;
-      }
-
-      const invite = snap.val();
-      if (!invite || invite.status !== 'pending' || !invite.roomId || !invite.fromUsername) {
-        return;
-      }
-
-      // ข้ามคำเชิญที่เก่าเกินเวลาที่กำหนด
-      if (invite.createdAt && (Date.now() - invite.createdAt > ONLINE_CONFIG.INVITE_EXPIRE_MS)) {
-        try {
-          await remove(myInviteRef);
-        } catch (e) {}
-        return;
-      }
-
-      // หากผู้เล่นกำลังอยู่ในแมตช์ออนไลน์กับคนอื่น หรืออยู่ในห้องที่มีผู้เล่นครบ 2 คนแล้ว ให้ปฏิเสธอัตโนมัติ
-      if (this.inMatch) {
-        try {
-          await update(myInviteRef, { status: 'declined', updatedAt: Date.now() });
-        } catch (e) {}
-        return;
-      }
-
-      this.pendingInviteData = invite;
-      this.tryDeliverPendingInvite();
-    });
-  }
-
-  stopGlobalInviteListener() {
-    if (this.incomingInviteUnsubscribe) {
-      this.incomingInviteUnsubscribe();
-      this.incomingInviteUnsubscribe = null;
-    }
-    this.pendingInviteData = null;
-    this.hideIncomingInviteModal();
-  }
-
-  hasPendingInvite() {
-    return Boolean(this.pendingInviteData && this.pendingInviteData.status === 'pending');
-  }
-
-  /**
-   * ตรวจสอบจังหวะที่ปลอดภัยก่อนแสดงหน้าต่างถาม:
-   * หากกำลังตีโต้ลูกกับบอทอยู่กลางแต้ม จะรอจนกว่าลูกนั้นจะตายก่อนแล้วค่อยเด้งหน้าต่างถาม
-   */
-  tryDeliverPendingInvite() {
-    if (!this.hasPendingInvite()) return false;
-
-    if (typeof this.isBotRallyInProgress === 'function' && this.isBotRallyInProgress()) {
-      // รอให้ลูกตายก่อน (ping.html จะเรียก tryDeliverPendingInvite ซ้ำทันทีเมื่อจบแต้ม)
-      return false;
-    }
-
-    const invite = this.pendingInviteData;
-    if (this.displayedInviteId === invite.inviteId && this.ui.incomingInviteModal && !this.ui.incomingInviteModal.classList.contains('hidden')) {
-      return true;
-    }
-
-    this.displayedInviteId = invite.inviteId;
-    this.showIncomingInviteModal(invite);
-    return true;
-  }
-
-  showIncomingInviteModal(invite) {
-    if (!this.ui.incomingInviteModal || !this.ui.incomingInviteText) return;
-
-    this.previousFocusedElement = document.activeElement;
-    const promptMsg = `${invite.fromUsername} ชวนมาตีปิงปองด้วยกัน จะรับไหม`;
-    this.ui.incomingInviteText.textContent = promptMsg;
-    this.ui.incomingInviteModal.classList.remove('hidden');
-
-    this.sound.play('select', 0, 0.9, false);
-
-    setTimeout(() => {
-      try {
-        if (this.ui.incomingInviteText) {
-          this.ui.incomingInviteText.focus();
-        } else if (this.ui.acceptInviteBtn) {
-          this.ui.acceptInviteBtn.focus();
-        }
-      } catch (e) {}
-    }, 60);
-  }
-
-  hideIncomingInviteModal() {
-    this.displayedInviteId = null;
-    if (this.ui.incomingInviteModal) {
-      this.ui.incomingInviteModal.classList.add('hidden');
-    }
-  }
-
-  async acceptIncomingInvite() {
-    const invite = this.pendingInviteData;
-    this.pendingInviteData = null;
-    this.hideIncomingInviteModal();
-
-    const user = this.getCurrentUser();
-    if (!user || !invite || !invite.roomId) return;
-
-    const myKey = encodeUserKey(user.username);
-    const myInviteRef = ref(this.db, `${GAME_ID}/invites/${myKey}`);
-
-    try {
-      await update(myInviteRef, {
-        status: 'accepted',
-        respondedAt: Date.now()
-      });
-    } catch (e) {}
-
-    // หยุดโหมดเล่นกับบอททันที (ถ้ากำลังอยู่ในหน้าแข่งกับบอท)
-    if (typeof this.onAcceptInviteInterruptBot === 'function') {
-      this.onAcceptInviteInterruptBot();
-    }
-
-    // หากผู้เล่นเปิดห้องว่างรอคนอื่นค้างไว้ ให้ปิดห้องเดิมก่อนไปเข้าห้องเพื่อน
-    if (this.currentRoomId && this.currentRoomId !== invite.roomId) {
-      await this.leaveCurrentRoom(false);
-    }
-
-    // เปิดหน้าล็อบบี้ออนไลน์และเข้าร่วมห้องของเพื่อนด้วยฟังก์ชัน joinRoom เดิมอัตโนมัติ
-    await this.openLobby(true);
-    await this.joinRoom(invite.roomId);
-  }
-
-  async declineIncomingInvite() {
-    const invite = this.pendingInviteData;
-    this.pendingInviteData = null;
-    this.hideIncomingInviteModal();
-
-    const user = this.getCurrentUser();
-    if (user && invite) {
-      const myKey = encodeUserKey(user.username);
-      const myInviteRef = ref(this.db, `${GAME_ID}/invites/${myKey}`);
-      try {
-        await update(myInviteRef, {
-          status: 'declined',
-          respondedAt: Date.now()
-        });
-      } catch (e) {}
-    }
-
-    if (typeof this.onDeclineInviteResumeBot === 'function') {
-      this.onDeclineInviteResumeBot();
-    }
-
-    if (this.previousFocusedElement && typeof this.previousFocusedElement.focus === 'function') {
-      try {
-        this.previousFocusedElement.focus();
-      } catch (e) {}
-    }
-  }
-
-  async openLobby(skipRecover = false) {
+  async openLobby() {
     this.activeMode = true;
     this.inMatch = false;
     this.ui.homeScreen.classList.add('hidden');
@@ -687,17 +244,11 @@ export class OnlineMatchController {
     this.ui.onlineLobbyScreen.classList.remove('hidden');
     this.ui.backFromLobbyBtn.classList.remove('hidden');
 
-    if (!this.currentRoomId) {
-      this.updateUserActivity('lobby', null);
-    }
-
     await this.loadPlayerOnlineStatsUI();
     this.subscribeWaitingRooms();
 
     // ตรวจสอบว่าผู้เล่นมีห้องที่กำลังเปิดค้างไว้หรือไม่ (เช่น กรณีกด Refresh)
-    if (!skipRecover) {
-      await this.tryRecoverExistingRoom();
-    }
+    await this.tryRecoverExistingRoom();
 
     setTimeout(() => {
       try {
@@ -724,7 +275,6 @@ export class OnlineMatchController {
   }
 
   async closeLobbyAndExit() {
-    this.closeInviteFriendsPanel(false);
     await this.leaveCurrentRoom(true);
     this.unsubscribeWaitingRooms();
     this.activeMode = false;
@@ -766,16 +316,15 @@ export class OnlineMatchController {
     if (!container) return;
     container.innerHTML = '';
 
-    // กรองเฉพาะห้องที่กำลังรอผู้เล่นและไม่ใช่ห้องส่วนตัวที่สร้างจากการกดชวนเพื่อน (isPrivate !== true)
     const entries = Object.values(roomsObj || {}).filter((r) => {
-      return r && r.roomId && r.status === 'waiting' && !r.isPrivate && r.host && !r.client;
+      return r && r.roomId && r.status === 'waiting' && r.host && !r.client;
     });
 
     if (entries.length === 0) {
       const emptyEl = document.createElement('p');
       emptyEl.className = 'desc';
       emptyEl.setAttribute('tabindex', '0');
-      emptyEl.textContent = 'ยังไม่มีห้องที่กำลังรอผู้เล่น กดปุ่มสร้างห้องใหม่หรือชวนเพื่อนเพื่อเริ่มได้เลย';
+      emptyEl.textContent = 'ยังไม่มีห้องที่กำลังรอผู้เล่น กดปุ่มสร้างห้องใหม่เพื่อเริ่มได้เลย';
       container.appendChild(emptyEl);
       return;
     }
@@ -862,21 +411,16 @@ export class OnlineMatchController {
     return `PingPong${String(seqNum).padStart(5, '0')}`;
   }
 
-  async createRoom(isPrivate = false, invitedFriendUsername = null) {
+  async createRoom() {
     const user = this.getCurrentUser();
-    if (!user) return null;
+    if (!user) return;
     if (this.currentRoomId) {
       this.announcePolite("คุณอยู่ในห้องเรียบร้อยแล้ว");
-      return null;
+      return;
     }
 
     try {
-      this.closeInviteFriendsPanel(false);
-      this.announcePolite(
-        isPrivate && invitedFriendUsername
-          ? `กำลังสร้างห้องและส่งคำเชิญไปยัง ${invitedFriendUsername}...`
-          : "กำลังสร้างห้องแข่งขันออนไลน์..."
-      );
+      this.announcePolite("กำลังสร้างห้องแข่งขันออนไลน์...");
       const roomId = await this.generateNextRoomId();
       const myKey = encodeUserKey(user.username);
       const matchId = `${roomId}_${Date.now()}`;
@@ -885,8 +429,6 @@ export class OnlineMatchController {
         roomId: roomId,
         matchId: matchId,
         status: 'waiting',
-        isPrivate: Boolean(isPrivate),
-        invitedUsername: invitedFriendUsername || null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         playerCount: 1,
@@ -918,22 +460,14 @@ export class OnlineMatchController {
       this.lastJoinedClientKey = null;
       sessionStorage.setItem('pingpong_active_online_room', roomId);
 
-      this.updateUserActivity('waiting_room', roomId);
-
       // 1. เล่นเสียง create.mp3 เมื่อกดสร้างห้องสำเร็จ (เฉพาะฝั่ง Host)
       this.sound.play('create', 0, 1.0, false);
 
       await this.initPeerAndBindRoom(roomId, 'host');
-      if (isPrivate && invitedFriendUsername) {
-        this.announcePolite(`ส่งคำเชิญหา ${invitedFriendUsername} เรียบร้อยแล้ว กำลังรอเพื่อนกดตอบรับเข้าห้อง ${roomId}`);
-      } else {
-        this.announcePolite(`สร้างห้องสำเร็จ รหัสห้อง ${roomId} กำลังรอผู้เล่นคนที่สองเข้าร่วม`);
-      }
-      return roomId;
+      this.announcePolite(`สร้างห้องสำเร็จ รหัสห้อง ${roomId} กำลังรอผู้เล่นคนที่สองเข้าร่วม`);
     } catch (err) {
       console.error(err);
       this.announcePolite(err.message || "เกิดข้อผิดพลาดในการสร้างห้อง");
-      return null;
     }
   }
 
@@ -948,7 +482,6 @@ export class OnlineMatchController {
       return;
     }
 
-    this.closeInviteFriendsPanel(false);
     const myKey = encodeUserKey(user.username);
     const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}`);
 
@@ -998,8 +531,6 @@ export class OnlineMatchController {
       this.matchId = updatedRoom.matchId;
       this.lastJoinedClientKey = myKey;
       sessionStorage.setItem('pingpong_active_online_room', roomId);
-
-      this.updateUserActivity('online_match', roomId);
 
       // 2. เล่นเสียง select.mp3 เมื่อกดเข้าร่วมห้องสำเร็จ (ฝั่ง Client)
       this.sound.play('select', 0, 1.0, false);
@@ -1082,9 +613,7 @@ export class OnlineMatchController {
   handleRoomSnapshot(room) {
     if (!room) return;
     this.hostUsername = room.host ? room.host.username : '-';
-    this.clientUsername = room.client
-      ? room.client.username
-      : (room.isPrivate && room.invitedUsername ? `รอ ${room.invitedUsername} ตอบรับคำเชิญ...` : 'รอผู้เล่นเข้าร่วม...');
+    this.clientUsername = room.client ? room.client.username : 'รอผู้เล่นเข้าร่วม...';
 
     // 2. เล่นเสียง select.mp3 บนฝั่ง Host ทันทีเมื่อมีผู้เล่นกดเข้าร่วมห้องสำเร็จ
     if (this.role === 'host') {
@@ -1092,19 +621,14 @@ export class OnlineMatchController {
       if (currentClientKey && currentClientKey !== this.lastJoinedClientKey) {
         this.lastJoinedClientKey = currentClientKey;
         this.sound.play('select', 0, 1.0, false);
-        this.updateUserActivity('online_match', room.roomId);
       } else if (!currentClientKey) {
         this.lastJoinedClientKey = null;
-        if (!this.inMatch) {
-          this.updateUserActivity('waiting_room', room.roomId);
-        }
       }
     }
 
     // อัปเดตข้อมูลในหน้า Lobby
     if (this.ui.roomCodeDisplay) {
-      const privateLabel = room.isPrivate ? ' (ห้องชวนเพื่อน)' : '';
-      this.ui.roomCodeDisplay.textContent = `รหัสห้อง: ${room.roomId}${privateLabel}`;
+      this.ui.roomCodeDisplay.textContent = `รหัสห้อง: ${room.roomId}`;
     }
     if (this.ui.roomHostDisplay) {
       this.ui.roomHostDisplay.textContent = `หัวหน้าห้อง (Host): ${this.hostUsername}`;
@@ -1142,9 +666,7 @@ export class OnlineMatchController {
     // อัปเดตสถานะในหน้าห้องรอ
     if (!this.inMatch) {
       if (!hasBothPlayers) {
-        this.ui.roomConnectionDisplay.textContent = room.isPrivate && room.invitedUsername
-          ? `สถานะห้อง: รอ ${room.invitedUsername} กดรับคำเชิญ (1/2)`
-          : 'สถานะห้อง: รอผู้เล่นคนที่ 2 เข้าร่วม (1/2)';
+        this.ui.roomConnectionDisplay.textContent = 'สถานะห้อง: รอผู้เล่นคนที่ 2 เข้าร่วม (1/2)';
         this.ui.startOnlineMatchBtn.classList.add('hidden');
       } else if (!this.channelReady) {
         this.ui.roomConnectionDisplay.textContent = 'สถานะห้อง: ผู้เล่นครบ 2 คนแล้ว กำลังเชื่อมสัญญาณ PeerJS...';
@@ -1317,9 +839,6 @@ export class OnlineMatchController {
 
   enterMatchScreenUI() {
     this.inMatch = true;
-    this.closeInviteFriendsPanel(false);
-    this.updateUserActivity('online_match', this.currentRoomId);
-
     this.ui.onlineLobbyScreen.classList.add('hidden');
     this.ui.backFromLobbyBtn.classList.add('hidden');
     this.ui.startOnlineMatchBtn.classList.add('hidden');
@@ -2291,17 +1810,10 @@ export class OnlineMatchController {
     if (inRoom) {
       this.ui.activeRoomCard.classList.remove('hidden');
       this.ui.createRoomBtn.classList.add('hidden');
-      if (this.ui.inviteFriendBtn) {
-        this.ui.inviteFriendBtn.classList.add('hidden');
-      }
-      this.closeInviteFriendsPanel(false);
       this.ui.leaveRoomBtn.classList.remove('hidden');
     } else {
       this.ui.activeRoomCard.classList.add('hidden');
       this.ui.createRoomBtn.classList.remove('hidden');
-      if (this.ui.inviteFriendBtn) {
-        this.ui.inviteFriendBtn.classList.remove('hidden');
-      }
       this.ui.leaveRoomBtn.classList.add('hidden');
       this.ui.startOnlineMatchBtn.classList.add('hidden');
     }
@@ -2335,8 +1847,6 @@ export class OnlineMatchController {
     clearTimeout(this.activeRallyTimer);
     clearTimeout(this.reconnectTimer);
     clearInterval(this.reconnectCountdownInterval);
-
-    await this.clearSentInviteIfPending();
 
     const leavingRoomId = this.currentRoomId;
     const leavingRole = this.role;
@@ -2402,10 +1912,6 @@ export class OnlineMatchController {
     }
 
     this.updateRoomPanelVisibility(false);
-
-    if (this.activeMode) {
-      this.updateUserActivity('lobby', null);
-    }
 
     if (wasInMatch) {
       this.ui.gameScreen.classList.add('hidden');

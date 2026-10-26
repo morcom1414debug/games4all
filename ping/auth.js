@@ -2,7 +2,6 @@
  * auth.js
  * ระบบยืนยันตัวตนและจัดการเซสชันผู้เล่น (PingPong Realtime Database + Session Persistence)
  * รองรับการจำสถานะข้าม Safari iOS / In-App Browser และทนต่อการกด Refresh 100%
- * พร้อมระบบ Presence ติดตามสถานะผู้เล่นออนไลน์และกิจกรรมปัจจุบันแบบ Realtime
  */
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { 
@@ -10,10 +9,7 @@ import {
   ref, 
   get, 
   set, 
-  update,
-  remove,
-  onValue,
-  onDisconnect
+  update 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -72,10 +68,6 @@ export class AuthManager {
   constructor() {
     this.currentUser = null;
     this.db = database;
-    this.currentActivity = 'home';
-    this.currentRoomId = null;
-    this.presenceUnsubscribe = null;
-    this.presenceDisconnectRef = null;
   }
 
   async findUser(username) {
@@ -85,86 +77,6 @@ export class AuthManager {
       return snap.val();
     }
     return null;
-  }
-
-  /**
-   * เริ่มต้นระบบติดตามสถานะออนไลน์ (Presence) ของผู้เล่นที่ล็อกอินอยู่
-   * เมื่อปิดแท็บหรือเน็ตหลุด Firebase จะลบข้อมูลออกจากโหนด presence โดยอัตโนมัติ
-   */
-  setupPresence(username) {
-    if (!username) return;
-    this.cleanupPresenceListenerOnly();
-
-    const userKey = encodeUserKey(username);
-    const presenceRef = ref(this.db, `${GAME_ID}/presence/${userKey}`);
-    const connectedRef = ref(this.db, ".info/connected");
-
-    this.presenceUnsubscribe = onValue(connectedRef, async (snap) => {
-      if (snap.val() === true && this.currentUser) {
-        try {
-          this.presenceDisconnectRef = onDisconnect(presenceRef);
-          await this.presenceDisconnectRef.remove();
-          await set(presenceRef, {
-            username: this.currentUser.username,
-            userKey: userKey,
-            online: true,
-            activity: this.currentActivity || 'home',
-            roomId: this.currentRoomId || null,
-            updatedAt: Date.now()
-          });
-        } catch (err) {
-          console.warn("ไม่สามารถตั้งค่าสถานะออนไลน์ได้:", err);
-        }
-      }
-    });
-  }
-
-  /**
-   * อัปเดตสถานะกิจกรรมปัจจุบันของผู้เล่น เช่น
-   * 'home' | 'bot_match' | 'lobby' | 'waiting_room' | 'online_match'
-   */
-  async updateActivity(activity, roomId = null) {
-    this.currentActivity = activity;
-    this.currentRoomId = roomId;
-    if (!this.currentUser || !this.currentUser.username) return;
-
-    const userKey = encodeUserKey(this.currentUser.username);
-    const presenceRef = ref(this.db, `${GAME_ID}/presence/${userKey}`);
-    try {
-      await update(presenceRef, {
-        username: this.currentUser.username,
-        userKey: userKey,
-        online: true,
-        activity: activity,
-        roomId: roomId,
-        updatedAt: Date.now()
-      });
-    } catch (err) {
-      console.warn("ไม่สามารถอัปเดตสถานะกิจกรรมได้:", err);
-    }
-  }
-
-  cleanupPresenceListenerOnly() {
-    if (this.presenceUnsubscribe) {
-      this.presenceUnsubscribe();
-      this.presenceUnsubscribe = null;
-    }
-  }
-
-  async clearPresence() {
-    this.cleanupPresenceListenerOnly();
-    if (this.presenceDisconnectRef) {
-      try {
-        await this.presenceDisconnectRef.cancel();
-      } catch (e) {}
-      this.presenceDisconnectRef = null;
-    }
-    if (this.currentUser && this.currentUser.username) {
-      const userKey = encodeUserKey(this.currentUser.username);
-      try {
-        await remove(ref(this.db, `${GAME_ID}/presence/${userKey}`));
-      } catch (e) {}
-    }
   }
 
   // เรียกใช้อัตโนมัติเมื่อเปิดหน้าเว็บ เพื่อดึงเซสชันเดิมกลับมา
@@ -181,7 +93,6 @@ export class AuthManager {
           }
           this.currentUser = profile;
           SessionStorage.save(profile);
-          this.setupPresence(profile.username);
           if (typeof onUserAuthenticated === 'function') {
             onUserAuthenticated(profile);
           }
@@ -215,7 +126,6 @@ export class AuthManager {
     }
     this.currentUser = user;
     SessionStorage.save(user);
-    this.setupPresence(user.username);
     return user;
   }
 
@@ -240,7 +150,6 @@ export class AuthManager {
     await set(ref(this.db, `${GAME_ID}/players/${key}`), newUser);
     this.currentUser = newUser;
     SessionStorage.save(newUser);
-    this.setupPresence(newUser.username);
     return newUser;
   }
 
@@ -316,7 +225,6 @@ export class AuthManager {
   }
 
   async logout() {
-    await this.clearPresence();
     this.currentUser = null;
     SessionStorage.clear();
   }

@@ -208,28 +208,6 @@
       gap: 8px;
       font-size: 1.25rem;
     }
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.88);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      z-index: 999;
-    }
-    .modal-box {
-      background: #111111;
-      border: 4px solid var(--accent);
-      border-radius: 16px;
-      padding: 24px;
-      width: 100%;
-      max-width: 520px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      text-align: center;
-    }
     .sr-only {
       position: absolute;
       width: 1px;
@@ -250,18 +228,6 @@
 
   <!-- ตัวประกาศสถานะสำหรับ Screen Reader ในโหมดออนไลน์ -->
   <div id="online-sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-
-  <!-- หน้าต่างแจ้งเตือนเมื่อมีเพื่อนชวนเล่นออนไลน์ (Global Incoming Invite Modal) -->
-  <div id="incoming-invite-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="incoming-invite-title" aria-describedby="incoming-invite-text">
-    <div class="modal-box">
-      <h2 id="incoming-invite-title" tabindex="0">คำเชิญเล่นออนไลน์</h2>
-      <p id="incoming-invite-text" class="desc" tabindex="0">เพื่อนชวนมาตีปิงปองด้วยกัน จะรับไหม</p>
-      <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
-        <button id="accept-invite-btn" type="button" aria-label="ใช่ ตอบรับคำเชิญและเข้าร่วมห้องแข่งขัน">ใช่</button>
-        <button id="decline-invite-btn" type="button" class="btn-secondary" aria-label="ไม่ ปฏิเสธคำเชิญ">ไม่</button>
-      </div>
-    </div>
-  </div>
 
   <!-- 1. หน้าล็อบบี้: เข้าสู่ระบบ / สมัครสมาชิก -->
   <main id="auth-screen" role="region" aria-label="หน้าเข้าสู่ระบบและสมัครสมาชิก">
@@ -341,7 +307,7 @@
       <span class="user-badge" id="online-stats-badge">สถิติออนไลน์: แข่ง 0 | ชนะ 0 | แพ้ 0 | ยุติ 0</span>
     </div>
     <div id="lobby-status-box" class="status-box" aria-live="polite" tabindex="0">
-      สร้างห้องใหม่ ชวนเพื่อน หรือเลือกเข้าร่วมห้องที่กำลังรอผู้เล่นด้านล่าง
+      สร้างห้องใหม่หรือเลือกเข้าร่วมห้องที่กำลังรอผู้เล่นด้านล่าง
     </div>
 
     <!-- กล่องแสดงสถานะห้องปัจจุบันเมื่อสร้างหรือเข้าร่วมแล้ว -->
@@ -354,17 +320,7 @@
 
     <div style="display:flex; flex-direction:column; gap:12px;">
       <button id="create-room-btn" type="button" aria-label="สร้างห้องแข่งขันออนไลน์ใหม่">สร้างห้อง</button>
-      <button id="invite-friend-btn" type="button" class="btn-secondary" aria-label="ชวนเพื่อนที่กำลังออนไลน์มาเล่นด้วยกัน">ชวนเพื่อนมาเล่นด้วยกัน</button>
       <button id="refresh-rooms-btn" type="button" class="btn-secondary" aria-label="รีเฟรชรายการห้องที่กำลังรอผู้เล่น">รีเฟรชรายการห้อง</button>
-    </div>
-
-    <!-- ส่วนแสดงรายชื่อเพื่อนที่กำลังออนไลน์และสามารถชวนเล่นได้ -->
-    <div id="invite-friends-panel" class="room-card hidden" role="region" aria-label="รายชื่อเพื่อนที่ออนไลน์อยู่">
-      <h2 id="invite-friends-heading" tabindex="0">เลือกเพื่อนที่ออนไลน์เพื่อชวนเล่น</h2>
-      <div id="online-friends-list-container" class="round-list-container" role="group" aria-label="รายชื่อผู้เล่นที่สามารถชวนมาเล่นด้วยกันได้">
-        <p class="desc" tabindex="0">กำลังค้นหาเพื่อนที่ออนไลน์...</p>
-      </div>
-      <button id="close-invite-panel-btn" type="button" class="btn-secondary" style="margin-top:8px;" aria-label="ปิดรายชื่อเพื่อน">ปิดรายชื่อเพื่อน</button>
     </div>
 
     <h2 tabindex="0" style="margin-top:8px;">รายการห้องที่กำลังรอผู้เล่น</h2>
@@ -904,8 +860,6 @@ const sound = new SoundEngine();
 let gameActive = false;
 let betweenSets = false;
 let tournamentState = 'active';
-let botRallyInProgress = false;
-let botPausedForInvite = false;
 
 let playerSetsWon = 0;
 let botSetsWon = 0;
@@ -1040,17 +994,6 @@ function updateScoreUI() {
 
 function startRally() {
   if (!gameActive) return;
-
-  // หากมีคำเชิญค้างอยู่ ให้หยุดรอและเปิดหน้าต่างคำเชิญก่อนเริ่มแต้มถัดไป
-  if (onlineController && typeof onlineController.hasPendingInvite === 'function' && onlineController.hasPendingInvite()) {
-    botRallyInProgress = false;
-    botPausedForInvite = true;
-    onlineController.tryDeliverPendingInvite();
-    return;
-  }
-
-  botPausedForInvite = false;
-  botRallyInProgress = true;
   canPlayerHit = false;
   rallyCount = 0;
   updateServerTurn();
@@ -1207,7 +1150,6 @@ function botStrikeBall() {
 
 function handlePointWon(winner, reasonText) {
   canPlayerHit = false;
-  botRallyInProgress = false;
   clearTimeout(activeTimer);
 
   if (winner === 'player') {
@@ -1222,16 +1164,6 @@ function handlePointWon(winner, reasonText) {
     handleSetWon(setWinner, reasonText);
   } else {
     announceStatus(reasonText);
-
-    // เมื่อลูกตายแล้ว หากมีคำเชิญจากเพื่อนรออยู่ ให้แสดงหน้าต่างถามทันทีโดยยังไม่เริ่มเสิร์ฟแต้มใหม่
-    if (onlineController && typeof onlineController.hasPendingInvite === 'function' && onlineController.hasPendingInvite()) {
-      botPausedForInvite = true;
-      setTimeout(() => {
-        if (onlineController) onlineController.tryDeliverPendingInvite();
-      }, 600);
-      return;
-    }
-
     activeTimer = setTimeout(startRally, TIMING.POINT_TRANSITION_MS);
   }
 }
@@ -1239,8 +1171,6 @@ function handlePointWon(winner, reasonText) {
 async function handleSetWon(winner, reasonText) {
   gameActive = false;
   canPlayerHit = false;
-  botRallyInProgress = false;
-  botPausedForInvite = false;
   clearTimeout(activeTimer);
 
   const round = getCurrentRound();
@@ -1347,13 +1277,6 @@ async function handleSetWon(winner, reasonText) {
     selectRoundBtn.classList.add('hidden');
     rulesBtn.classList.add('hidden');
   }
-
-  // หากจบเซตหรือจบแมตช์แล้วมีคำเชิญจากเพื่อนค้างอยู่ ให้แสดงหน้าต่างแจ้งเตือนทันที
-  if (onlineController && typeof onlineController.hasPendingInvite === 'function' && onlineController.hasPendingInvite()) {
-    setTimeout(() => {
-      if (onlineController) onlineController.tryDeliverPendingInvite();
-    }, 600);
-  }
 }
 
 function startNewSet() {
@@ -1364,10 +1287,6 @@ function startNewSet() {
   initialServer = (currentSetNumber % 2 === 1) ? 'player' : 'bot';
   gameActive = true;
   betweenSets = false;
-  botRallyInProgress = false;
-  botPausedForInvite = false;
-
-  authManager.updateActivity('bot_match');
 
   inGameLeaderboardBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
@@ -1405,26 +1324,6 @@ function startNewMatch(roundIdx) {
   startNewSet();
 }
 
-function stopBotMatchForOnlineInvite() {
-  clearTimeout(activeTimer);
-  gameActive = false;
-  canPlayerHit = false;
-  betweenSets = false;
-  botRallyInProgress = false;
-  botPausedForInvite = false;
-  motion.stop();
-  gameScreen.removeAttribute('role');
-  gameScreen.removeAttribute('tabindex');
-}
-
-function resumeBotMatchAfterDeclineInvite() {
-  if (gameActive && botPausedForInvite && !botRallyInProgress) {
-    botPausedForInvite = false;
-    activateFocusMode();
-    activeTimer = setTimeout(startRally, 1500);
-  }
-}
-
 const motion = new MotionDetector(onPlayerSwing);
 
 onlineController = new OnlineMatchController({
@@ -1437,16 +1336,6 @@ onlineController = new OnlineMatchController({
     currentUser = updatedUser;
     authManager.currentUser = updatedUser;
     refreshUserBadgeUI();
-  },
-  updateUserActivity: (activity, roomId = null) => {
-    authManager.updateActivity(activity, roomId);
-  },
-  isBotRallyInProgress: () => Boolean(gameActive && botRallyInProgress),
-  onAcceptInviteInterruptBot: () => {
-    stopBotMatchForOnlineInvite();
-  },
-  onDeclineInviteResumeBot: () => {
-    resumeBotMatchAfterDeclineInvite();
   },
   addAccessibleClickListener: addAccessibleClickListener,
   onExitToHome: () => {
@@ -1477,16 +1366,6 @@ onlineController = new OnlineMatchController({
     roomClientDisplay: document.getElementById('room-client-display'),
     roomConnectionDisplay: document.getElementById('room-connection-display'),
     createRoomBtn: document.getElementById('create-room-btn'),
-    inviteFriendBtn: document.getElementById('invite-friend-btn'),
-    inviteFriendsPanel: document.getElementById('invite-friends-panel'),
-    inviteFriendsHeading: document.getElementById('invite-friends-heading'),
-    onlineFriendsListContainer: document.getElementById('online-friends-list-container'),
-    closeInvitePanelBtn: document.getElementById('close-invite-panel-btn'),
-    incomingInviteModal: document.getElementById('incoming-invite-modal'),
-    incomingInviteTitle: document.getElementById('incoming-invite-title'),
-    incomingInviteText: document.getElementById('incoming-invite-text'),
-    acceptInviteBtn: document.getElementById('accept-invite-btn'),
-    declineInviteBtn: document.getElementById('decline-invite-btn'),
     refreshRoomsBtn: document.getElementById('refresh-rooms-btn'),
     waitingRoomsContainer: document.getElementById('waiting-rooms-container'),
     startOnlineMatchBtn: document.getElementById('start-online-match-btn'),
@@ -1761,8 +1640,6 @@ function closeRoundSelect() {
 async function selectAndStartRound(selectedRoundIdx) {
   clearTimeout(activeTimer);
   gameActive = false;
-  botRallyInProgress = false;
-  botPausedForInvite = false;
 
   // การขออนุญาต Motion Sensor และ Sound Init ต้องเกิดก่อนการเรียก await งานอื่นๆ อย่างเช่น saveProgress ทันที
   // เพื่อไม่ให้สูญเสียสถานะ Transient User Activation ของ iOS Safari
@@ -1863,8 +1740,6 @@ addAccessibleClickListener(backFromLeaderboardBtn, () => {
 addAccessibleClickListener(onlineModeBtn, async () => {
   clearTimeout(activeTimer);
   gameActive = false;
-  botRallyInProgress = false;
-  botPausedForInvite = false;
   await onlineController.openLobby();
 });
 
@@ -1938,11 +1813,6 @@ addAccessibleClickListener(document.getElementById('submit-reg-btn'), async () =
 });
 
 function enterGameHomeScreen() {
-  clearTimeout(activeTimer);
-  gameActive = false;
-  botRallyInProgress = false;
-  botPausedForInvite = false;
-
   authScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
@@ -1963,11 +1833,6 @@ function enterGameHomeScreen() {
 
   currentRoundIndex = currentUser.roundIndex || 0;
   refreshUserBadgeUI();
-  authManager.updateActivity('home');
-
-  if (onlineController && typeof onlineController.startGlobalInviteListener === 'function') {
-    onlineController.startGlobalInviteListener();
-  }
 
   const round = getCurrentRound();
   startBtn.textContent = `เริ่มการแข่งขัน (${round.roundTitle} พบกับ ${round.botName})`;
@@ -1989,9 +1854,6 @@ authManager.initAuthStateListener(
   },
   () => {
     currentUser = null;
-    if (onlineController && typeof onlineController.stopGlobalInviteListener === 'function') {
-      onlineController.stopGlobalInviteListener();
-    }
     authScreen.classList.remove('hidden');
     homeScreen.classList.add('hidden');
     onlineLobbyScreen.classList.add('hidden');
@@ -2033,8 +1895,6 @@ addAccessibleClickListener(startBtn, async () => {
 
   clearTimeout(activeTimer);
   gameActive = false;
-  botRallyInProgress = false;
-  botPausedForInvite = false;
 
   // เรียกสิทธิ์ก่อนเช่นเดียวกับปุ่มเลือกรอบ
   const permissionPromise = motion.requestPermission();
