@@ -231,6 +231,11 @@
     .hidden {
       display: none !important;
     }
+    body.online-context-active #back-from-lobby-btn,
+    body.online-room-joined #leave-room-btn,
+    body.online-room-joined #back-from-lobby-btn {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
@@ -1395,6 +1400,53 @@ onlineController = new OnlineMatchController({
   }
 });
 
+/**
+ * ควบคุมการแสดงปุ่มในหน้าสร้างห้อง รายการห้อง และห้องแข่งขันออนไลน์ 1 ต่อ 1:
+ * - ในหน้าสร้างห้องและหน้ารายการห้อง: ซ่อนปุ่ม "ย้อนกลับสู่หน้าแรก" (#back-from-lobby-btn)
+ * - เมื่อสร้างห้องสำเร็จหรือเข้าร่วมห้องสำเร็จแล้ว: ซ่อนทั้งปุ่ม "ออกจากห้องแข่งขันออนไลน์" (#leave-room-btn) และ "ย้อนกลับสู่หน้าแรก" (#back-from-lobby-btn)
+ */
+const activeRoomCardEl = document.getElementById('active-room-card');
+const leaveRoomBtnEl = document.getElementById('leave-room-btn');
+const backFromLobbyBtnEl = document.getElementById('back-from-lobby-btn');
+
+function syncOnlineButtonsVisibility() {
+  const isLobbyVisible = !onlineLobbyScreen.classList.contains('hidden');
+  const isRoomCardVisible = activeRoomCardEl && !activeRoomCardEl.classList.contains('hidden');
+  const isOnlineActive = Boolean(onlineController && onlineController.activeMode);
+  const isInOnlineRoom = Boolean(
+    isRoomCardVisible ||
+    (onlineController && (onlineController.currentRoomId || onlineController.inMatch))
+  );
+
+  document.body.classList.toggle('online-context-active', isLobbyVisible || isOnlineActive);
+  document.body.classList.toggle('online-room-joined', isInOnlineRoom);
+
+  if (isLobbyVisible || isOnlineActive) {
+    if (backFromLobbyBtnEl && !backFromLobbyBtnEl.classList.contains('hidden')) {
+      backFromLobbyBtnEl.classList.add('hidden');
+    }
+  }
+
+  if (isInOnlineRoom) {
+    if (leaveRoomBtnEl && !leaveRoomBtnEl.classList.contains('hidden')) {
+      leaveRoomBtnEl.classList.add('hidden');
+    }
+    if (backFromLobbyBtnEl && !backFromLobbyBtnEl.classList.contains('hidden')) {
+      backFromLobbyBtnEl.classList.add('hidden');
+    }
+  }
+}
+
+const onlineVisibilityObserver = new MutationObserver(() => {
+  syncOnlineButtonsVisibility();
+});
+
+[onlineLobbyScreen, activeRoomCardEl, gameScreen, leaveRoomBtnEl, backFromLobbyBtnEl].forEach((el) => {
+  if (el) {
+    onlineVisibilityObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+  }
+});
+
 document.addEventListener('keydown', (e) => {
   const key = e.key || e.code;
   let dir = null;
@@ -1777,6 +1829,7 @@ addAccessibleClickListener(onlineModeBtn, async () => {
   clearTimeout(activeTimer);
   gameActive = false;
   await onlineController.openLobby();
+  syncOnlineButtonsVisibility();
 });
 
 // ฟังก์ชันเข้าสู่ระบบ
@@ -1849,6 +1902,7 @@ addAccessibleClickListener(document.getElementById('submit-reg-btn'), async () =
 });
 
 function enterGameHomeScreen() {
+  document.body.classList.remove('online-context-active', 'online-room-joined');
   authScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');

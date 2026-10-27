@@ -158,6 +158,11 @@ export class OnlineMatchController {
     this.activeRallyTimer = null;
     this.hostPendingReceive = null;
 
+    // ป้องกันการประมวลผลและเล่นเสียงเหตุการณ์แต้ม/ตีพลาดซ้ำจาก PeerJS หรือ Firebase Listener
+    this.pointEventSeq = 0;
+    this.lastProcessedPointEventId = null;
+    this.lastPlayedMissAudioEventId = null;
+
     // คิวประกาศสำหรับ Screen Reader
     this.announceQueue = [];
     this.isAnnouncing = false;
@@ -1128,6 +1133,17 @@ export class OnlineMatchController {
       }
     }
 
+    // ซิงก์เหตุการณ์ตัดสินแต้มและเสียง 3.mp3 / 4.mp3 จาก Firebase กรณีข้อความ PeerJS ล่าช้าหรือตกหล่น
+    if (
+      this.inMatch &&
+      this.role === 'client' &&
+      room.matchState &&
+      room.matchState.lastPointEvent &&
+      room.matchState.lastPointEvent.pointEventId
+    ) {
+      this.clientApplyPointResult(room.matchState.lastPointEvent);
+    }
+
     // กรณีห้องถูกบันทึกว่ายุติการแข่งขันจากอีกฝ่าย
     if (room.status === 'aborted' && this.matchStatus !== 'aborted' && this.matchStatus !== 'finished') {
       this.finishMatchAsAborted(room.abortReason || "การแข่งขันยุติลงเนื่องจากปัญหาการเชื่อมต่อ");
@@ -1254,6 +1270,9 @@ export class OnlineMatchController {
     this.initialServer = 'host';
     this.currentServer = 'host';
     this.matchStatus = 'playing';
+    this.pointEventSeq = 0;
+    this.lastProcessedPointEventId = null;
+    this.lastPlayedMissAudioEventId = null;
 
     await update(roomRef, {
       status: 'playing',
@@ -1290,11 +1309,15 @@ export class OnlineMatchController {
       this.ui.btnHomeMain.classList.add('hidden');
     }
     this.ui.onlineLobbyScreen.classList.add('hidden');
-    this.ui.backFromLobbyBtn.classList.add('hidden');
+    if (this.ui.backFromLobbyBtn) {
+      this.ui.backFromLobbyBtn.classList.add('hidden');
+    }
     this.ui.startOnlineMatchBtn.classList.add('hidden');
 
     this.ui.gameScreen.classList.remove('hidden');
-    this.ui.leaveRoomBtn.classList.remove('hidden');
+    if (this.ui.leaveRoomBtn) {
+      this.ui.leaveRoomBtn.classList.add('hidden');
+    }
 
     this.motion.start();
     this.activateFocusMode();
@@ -1458,7 +1481,6 @@ export class OnlineMatchController {
         this.activeRallyTimer = setTimeout(() => {
           if (this.matchStatus === 'playing' && this.rallyCount === 0 && this.currentServer === 'host') {
             this.canLocalPlayerHit = false;
-            this.sound.play('retry', 0, 1.0, false);
             this.hostResolvePoint('client', `${this.hostUsername} เสิร์ฟไม่ทันเวลา ${this.clientUsername} ได้แต้ม`, 0, 'center', true, null);
           }
         }, ONLINE_CONFIG.SERVE_TIMEOUT_MS);
@@ -1472,7 +1494,6 @@ export class OnlineMatchController {
       if (this.role === 'host' && this.currentServer === 'client') {
         this.activeRallyTimer = setTimeout(() => {
           if (this.matchStatus === 'playing' && this.rallyCount === 0 && this.currentServer === 'client') {
-            this.sound.play('retry', 0, 1.0, false);
             this.hostResolvePoint('host', `${this.clientUsername} เสิร์ฟไม่ทันเวลา ${this.hostUsername} ได้แต้ม`, 0, 'center', true, null);
           }
         }, ONLINE_CONFIG.SERVE_TIMEOUT_MS + Math.min(this.rttMs, 400));
@@ -1496,11 +1517,8 @@ export class OnlineMatchController {
 
     // ตรวจสอบว่าตีตรงทิศทางลูกหรือไม่ (กรณีรับลูก)
     if (!isServe && swingDir !== this.expectedLocalDir) {
-      const missPan = this.directions[this.expectedLocalDir].pan;
-
       if (this.role === 'host') {
-        // 3. โหมดออนไลน์: ฝั่ง Host ตีวืด/ตีผิดทิศทาง ให้เล่น 3.mp3 (miss) ทุกอุปกรณ์
-        this.sound.play('miss', missPan, 1.0, false);
+        // 3. โหมดออนไลน์: ฝั่ง Host ตีวืด/ตีผิดทิศทาง ให้ตัดสินแต้มและกระตุ้น 3.mp3 (miss) จากเหตุการณ์ร่วมเดียวกัน
         this.hostResolvePoint(
           'client',
           `${this.hostUsername} ตีผิดทิศทาง ${this.clientUsername} ได้แต้ม`,
@@ -1510,8 +1528,7 @@ export class OnlineMatchController {
           'host'
         );
       } else {
-        // 4. โหมดออนไลน์: ฝั่ง Client ตีวืด/ตีผิดทิศทาง ให้เล่น 4.mp3 (miss4) ทุกอุปกรณ์
-        this.sound.play('miss4', missPan, 1.0, false);
+        // 4. โหมดออนไลน์: ฝั่ง Client ตีวืด/ตีผิดทิศทาง ส่งเหตุการณ์ให้ Host ตัดสินแต้มและซิงก์เสียง 4.mp3 (miss4) พร้อมกันทั้งสองฝั่ง
         this.sendPeerMessage({
           type: 'client_swing',
           rallyId: this.rallyId,
@@ -1649,8 +1666,7 @@ export class OnlineMatchController {
           this.hostPendingReceive
         ) {
           this.hostPendingReceive = null;
-          // 4. โหมดออนไลน์: กรณี Client ตีไม่ทันจนหมดเวลาฝั่ง Host ให้เล่น 4.mp3 (miss4)
-          this.sound.play('miss4', this.directions[shooterTargetLocalDir].pan, 0.38, true);
+          // 4. โหมดออนไลน์: กรณี Client ตีไม่ทันจนหมดเวลาฝั่ง Host ให้ตัดสินแต้มและเล่น 4.mp3 (miss4) จากเหตุการณ์ร่วมเดียวกัน
           this.hostResolvePoint(
             'host',
             `${this.clientUsername} ตีไม่ทัน ${this.hostUsername} ได้แต้ม`,
@@ -1701,8 +1717,7 @@ export class OnlineMatchController {
           this.canLocalPlayerHit = false;
 
           if (this.role === 'host') {
-            // 3. โหมดออนไลน์: ฝั่ง Host ตีไม่ทัน ให้เล่น 3.mp3 (miss) ทุกอุปกรณ์
-            this.sound.play('miss', endPan, 1.0, false);
+            // 3. โหมดออนไลน์: ฝั่ง Host ตีไม่ทัน ให้ตัดสินแต้มและเล่น 3.mp3 (miss) จากเหตุการณ์ร่วมเดียวกัน
             this.hostResolvePoint(
               'client',
               `${this.hostUsername} ตีไม่ทัน ${this.clientUsername} ได้แต้ม`,
@@ -1712,8 +1727,7 @@ export class OnlineMatchController {
               'host'
             );
           } else {
-            // 4. โหมดออนไลน์: ฝั่ง Client ตีไม่ทัน ให้เล่น 4.mp3 (miss4) ทุกอุปกรณ์
-            this.sound.play('miss4', endPan, 1.0, false);
+            // 4. โหมดออนไลน์: ฝั่ง Client ตีไม่ทัน ส่งเหตุการณ์ให้ Host ตัดสินแต้มและซิงก์เสียง 4.mp3 (miss4) พร้อมกันทั้งสองฝั่ง
             this.sendPeerMessage({
               type: 'client_timeout_miss',
               rallyId: shotEvent.rallyId,
@@ -1758,6 +1772,9 @@ export class OnlineMatchController {
           this.clientUsername = data.clientUsername || this.clientUsername;
           this.hostSetsWon = 0;
           this.clientSetsWon = 0;
+          this.pointEventSeq = 0;
+          this.lastProcessedPointEventId = null;
+          this.lastPlayedMissAudioEventId = null;
           this.enterMatchScreenUI();
           this.startOnlineSet(data.currentSetNumber || 1, data.initialServer || 'host');
         }
@@ -1791,8 +1808,7 @@ export class OnlineMatchController {
           this.hostPendingReceive = null;
           clearTimeout(this.activeRallyTimer);
           const hostSideDir = mirrorDirection(pending.expectedClientDir);
-          // 4. โหมดออนไลน์: เล่น 4.mp3 (miss4) บนเครื่อง Host เมื่อ Client ตีไม่ทัน
-          this.sound.play('miss4', this.directions[hostSideDir].pan, 0.38, true);
+          // 4. โหมดออนไลน์: ตัดสินแต้มและเล่น 4.mp3 (miss4) จากเหตุการณ์ร่วมเดียวกันเมื่อ Client ตีไม่ทัน
           this.hostResolvePoint(
             'host',
             `${this.clientUsername} ตีไม่ทัน ${this.hostUsername} ได้แต้ม`,
@@ -1867,8 +1883,7 @@ export class OnlineMatchController {
 
     if (data.isMiss || data.swingDir !== pending.expectedClientDir) {
       const hostSideDir = mirrorDirection(pending.expectedClientDir);
-      // 4. โหมดออนไลน์: เล่น 4.mp3 (miss4) บนเครื่อง Host เมื่อ Client ตีวืด/ผิดทิศทาง
-      this.sound.play('miss4', this.directions[hostSideDir].pan, 0.38, true);
+      // 4. โหมดออนไลน์: ตัดสินแต้มและเล่น 4.mp3 (miss4) จากเหตุการณ์ร่วมเดียวกันเมื่อ Client ตีวืด/ผิดทิศทาง
       this.hostResolvePoint(
         'host',
         `${this.clientUsername} ตีวืด ${this.hostUsername} ได้แต้ม`,
@@ -1882,8 +1897,7 @@ export class OnlineMatchController {
 
     if (typeof data.reactionMs === 'number' && data.reactionMs > pending.maxReactionMs) {
       const hostSideDir = mirrorDirection(pending.expectedClientDir);
-      // 4. โหมดออนไลน์: เล่น 4.mp3 (miss4) บนเครื่อง Host เมื่อ Client ตีช้าเกินจังหวะ
-      this.sound.play('miss4', this.directions[hostSideDir].pan, 0.38, true);
+      // 4. โหมดออนไลน์: ตัดสินแต้มและเล่น 4.mp3 (miss4) จากเหตุการณ์ร่วมเดียวกันเมื่อ Client ตีช้าเกินจังหวะ
       this.hostResolvePoint(
         'host',
         `${this.clientUsername} ตีช้าเกินจังหวะ ${this.hostUsername} ได้แต้ม`,
@@ -1902,6 +1916,47 @@ export class OnlineMatchController {
       data.powerLevel || 'normal',
       data.swingDir
     );
+  }
+
+  /**
+   * เล่นเสียงเหตุการณ์จบแต้ม (3.mp3 สำหรับ Host ตีพลาด / 4.mp3 สำหรับ Client ตีพลาด / retry สำหรับเสิร์ฟไม่ทัน)
+   * จากข้อมูลเหตุการณ์ร่วมเดียวกันของทั้ง Host และ Client พร้อมป้องกันการเล่นซ้ำด้วย pointEventId
+   */
+  playSharedPointEventAudio(data) {
+    if (!data) return;
+    const eventId = data.pointEventId || `${data.currentSetNumber}_${data.rallyId}_${data.hostScore}_${data.clientScore}`;
+    if (this.lastPlayedMissAudioEventId === eventId) {
+      return;
+    }
+    this.lastPlayedMissAudioEventId = eventId;
+
+    if (data.isServeTimeout) {
+      this.sound.play('retry', 0, 1.0, false);
+      return;
+    }
+
+    const hostDir = (data.hostPanDir && this.directions[data.hostPanDir]) ? data.hostPanDir : 'center';
+    const clientDir = mirrorDirection(hostDir);
+
+    if (data.missedBy === 'host') {
+      // 3.mp3 (miss): Host เป็นผู้ตีพลาด
+      if (this.role === 'host') {
+        const pan = this.directions[hostDir] ? this.directions[hostDir].pan : 0;
+        this.sound.play('miss', pan, 1.0, false);
+      } else {
+        const pan = this.directions[clientDir] ? this.directions[clientDir].pan : 0;
+        this.sound.play('miss', pan, 0.38, true);
+      }
+    } else if (data.missedBy === 'client') {
+      // 4.mp3 (miss4): Client เป็นผู้ตีพลาด
+      if (this.role === 'host') {
+        const pan = this.directions[hostDir] ? this.directions[hostDir].pan : 0;
+        this.sound.play('miss4', pan, 0.38, true);
+      } else {
+        const pan = this.directions[clientDir] ? this.directions[clientDir].pan : 0;
+        this.sound.play('miss4', pan, 1.0, false);
+      }
+    }
   }
 
   /**
@@ -1942,8 +1997,12 @@ export class OnlineMatchController {
       matchWinner = 'client';
     }
 
+    this.pointEventSeq++;
+    const pointEventId = `${this.matchId || this.currentRoomId}_s${this.currentSetNumber}_r${rallyId}_p${this.pointEventSeq}`;
+
     const resultPayload = {
       type: 'point_result',
+      pointEventId: pointEventId,
       rallyId: rallyId,
       pointWinner: pointWinner,
       reasonText: reasonText,
@@ -1960,27 +2019,26 @@ export class OnlineMatchController {
       playClientLateMiss: playClientLateMiss
     };
 
+    this.lastProcessedPointEventId = pointEventId;
+    this.playSharedPointEventAudio(resultPayload);
     this.sendPeerMessage(resultPayload);
-    await this.syncMatchStateToFirebase(setWinner, matchWinner);
+    await this.syncMatchStateToFirebase(setWinner, matchWinner, resultPayload);
     this.presentPointOrSetOutcome(resultPayload);
   }
 
   clientApplyPointResult(data) {
+    if (!data) return;
+    const eventId = data.pointEventId || `${data.currentSetNumber}_${data.rallyId}_${data.hostScore}_${data.clientScore}`;
+    if (this.lastProcessedPointEventId === eventId) {
+      return;
+    }
+    this.lastProcessedPointEventId = eventId;
+
     clearTimeout(this.activeRallyTimer);
     this.canLocalPlayerHit = false;
-    if (data.isServeTimeout) {
-      this.sound.play('retry', 0, 1.0, false);
-    } else if (data.missedBy === 'host') {
-      // 3. โหมดออนไลน์: เล่น 3.mp3 (miss) บนเครื่อง Client เมื่อฝั่ง Host ตีวืด/ตีไม่ถูก/ตีผิดทิศทาง
-      const clientSideDir = mirrorDirection(data.hostPanDir || 'center');
-      const pan = this.directions[clientSideDir] ? this.directions[clientSideDir].pan : 0;
-      this.sound.play('miss', pan, 0.38, true);
-    } else if (data.missedBy === 'client' && data.playClientLateMiss) {
-      // 4. โหมดออนไลน์: เล่น 4.mp3 (miss4) บนเครื่อง Client กรณีที่ Host ตัดสินว่า Client ตีช้าเกินจังหวะ
-      const clientSideDir = mirrorDirection(data.hostPanDir || 'center');
-      const pan = this.directions[clientSideDir] ? this.directions[clientSideDir].pan : 0;
-      this.sound.play('miss4', pan, 1.0, false);
-    }
+
+    this.playSharedPointEventAudio(data);
+
     this.hostScore = data.hostScore;
     this.clientScore = data.clientScore;
     this.hostSetsWon = data.hostSetsWon;
@@ -2051,22 +2109,44 @@ export class OnlineMatchController {
     }
   }
 
-  async syncMatchStateToFirebase(setWinner, matchWinner) {
+  async syncMatchStateToFirebase(setWinner, matchWinner, lastPointEvent = null) {
     if (!this.currentRoomId || this.role !== 'host') return;
     const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${this.currentRoomId}`);
+    const matchState = {
+      hostSetsWon: this.hostSetsWon,
+      clientSetsWon: this.clientSetsWon,
+      currentSetNumber: this.currentSetNumber,
+      hostScore: this.hostScore,
+      clientScore: this.clientScore,
+      initialServer: this.initialServer,
+      currentServer: this.currentServer,
+      lastSetWinner: setWinner || null,
+      matchWinner: matchWinner || null
+    };
+
+    if (lastPointEvent) {
+      matchState.lastPointEvent = {
+        pointEventId: lastPointEvent.pointEventId,
+        rallyId: lastPointEvent.rallyId,
+        pointWinner: lastPointEvent.pointWinner,
+        reasonText: lastPointEvent.reasonText,
+        hostScore: lastPointEvent.hostScore,
+        clientScore: lastPointEvent.clientScore,
+        hostSetsWon: lastPointEvent.hostSetsWon,
+        clientSetsWon: lastPointEvent.clientSetsWon,
+        currentSetNumber: lastPointEvent.currentSetNumber,
+        setWinner: lastPointEvent.setWinner || null,
+        matchWinner: lastPointEvent.matchWinner || null,
+        isServeTimeout: Boolean(lastPointEvent.isServeTimeout),
+        missedBy: lastPointEvent.missedBy || null,
+        hostPanDir: lastPointEvent.hostPanDir || 'center',
+        playClientLateMiss: Boolean(lastPointEvent.playClientLateMiss)
+      };
+    }
+
     const updates = {
       updatedAt: Date.now(),
-      matchState: {
-        hostSetsWon: this.hostSetsWon,
-        clientSetsWon: this.clientSetsWon,
-        currentSetNumber: this.currentSetNumber,
-        hostScore: this.hostScore,
-        clientScore: this.clientScore,
-        initialServer: this.initialServer,
-        currentServer: this.currentServer,
-        lastSetWinner: setWinner || null,
-        matchWinner: matchWinner || null
-      }
+      matchState: matchState
     };
 
     if (matchWinner) {
@@ -2273,7 +2353,12 @@ export class OnlineMatchController {
       if (this.ui.waitingRoomsContainer) {
         this.ui.waitingRoomsContainer.classList.add('hidden');
       }
-      this.ui.leaveRoomBtn.classList.remove('hidden');
+      if (this.ui.leaveRoomBtn) {
+        this.ui.leaveRoomBtn.classList.add('hidden');
+      }
+      if (this.ui.backFromLobbyBtn) {
+        this.ui.backFromLobbyBtn.classList.add('hidden');
+      }
     } else {
       this.ui.activeRoomCard.classList.add('hidden');
       this.ui.createRoomBtn.classList.remove('hidden');
@@ -2286,7 +2371,12 @@ export class OnlineMatchController {
       if (this.ui.waitingRoomsContainer) {
         this.ui.waitingRoomsContainer.classList.remove('hidden');
       }
-      this.ui.leaveRoomBtn.classList.add('hidden');
+      if (this.ui.leaveRoomBtn) {
+        this.ui.leaveRoomBtn.classList.add('hidden');
+      }
+      if (this.ui.backFromLobbyBtn && this.activeMode && !this.inMatch) {
+        this.ui.backFromLobbyBtn.classList.remove('hidden');
+      }
       this.ui.startOnlineMatchBtn.classList.add('hidden');
     }
   }
@@ -2333,6 +2423,9 @@ export class OnlineMatchController {
     this.opponentDisconnected = false;
     this.canLocalPlayerHit = false;
     this.lastJoinedClientKey = null;
+    this.pointEventSeq = 0;
+    this.lastProcessedPointEventId = null;
+    this.lastPlayedMissAudioEventId = null;
     sessionStorage.removeItem('pingpong_active_online_room');
 
     if (this.roomUnsubscribe) {
