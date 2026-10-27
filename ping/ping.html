@@ -155,7 +155,7 @@
       border: 2px solid rgba(0, 255, 255, 0.4);
       border-radius: 14px;
       padding: 10px 16px;
-      margin-top: 4px;
+      margin-top: 2px;
       box-shadow: 0 6px 18px rgba(0,0,0,0.5);
       flex-shrink: 0;
       position: relative;
@@ -202,7 +202,7 @@
       width: 100%;
       flex: 1 1 auto;
       min-height: 165px;
-      max-height: 360px;
+      max-height: 430px;
       margin: 2px auto;
       border-radius: 16px;
       overflow: hidden;
@@ -425,12 +425,12 @@
       .scoreboard-hud-wrapper {
         padding: 7px 10px;
         gap: 2px;
-        margin-top: 2px;
+        margin-top: 0;
         border-radius: 12px;
       }
       #visual-stage {
-        min-height: 125px;
-        max-height: 225px;
+        min-height: 135px;
+        max-height: 295px;
         border-radius: 12px;
       }
       .status-box {
@@ -651,7 +651,6 @@
 
   <!-- 3. หน้าขณะเล่นเกม -->
   <main id="game-screen" class="hidden" role="region" aria-label="หน้ากระดานแข่งขัน">
-    <h1 id="game-title" class="sr-only" tabindex="0">กำลังแข่งขัน</h1>
     <div class="scoreboard-hud-wrapper">
       <div id="tournament-display" class="tournament-board" aria-live="polite" tabindex="0">รอบ 16 คนสุดท้าย</div>
       <div id="set-display" class="set-board" aria-live="polite" tabindex="0">เซตที่ 1</div>
@@ -1902,6 +1901,7 @@ function getPlayerName() {
 
 // DOM Elements
 const btnHomeMain = document.getElementById('btn-home-main');
+const bottomBar = document.getElementById('bottom-bar');
 
 const authScreen = document.getElementById('auth-screen');
 const authNav = document.getElementById('auth-nav');
@@ -2215,7 +2215,10 @@ async function handleSetWon(winner, reasonText) {
   }
 
   updateScoreUI();
-  deactivateFocusMode();
+
+  // แสดงแถบปุ่มด้านล่างและปุ่ม #start-btn กลับมาอัตโนมัติทันทีที่จบเซตหรือจบแมตช์
+  if (bottomBar) bottomBar.classList.remove('hidden');
+  startBtn.classList.remove('hidden');
 
   if (playerSetsWon === 3 || botSetsWon === 3) {
     const isRoundWin = playerSetsWon === 3;
@@ -2301,6 +2304,11 @@ async function handleSetWon(winner, reasonText) {
     rulesBtn.classList.add('hidden');
     btnHomeMain.classList.add('hidden');
   }
+
+  if (visualRenderer) {
+    visualRenderer.setupResize();
+  }
+  deactivateFocusMode();
 }
 
 function startNewSet() {
@@ -2320,6 +2328,10 @@ function startNewSet() {
   updateScoreUI();
   startBtn.textContent = 'กำลังแข่งขัน';
   startBtn.setAttribute('aria-label', `กำลังแข่งขันเซตที่ ${currentSetNumber} กับ ${round.botName}`);
+
+  // ซ่อนปุ่ม #start-btn และแถบ #bottom-bar ชั่วคราวเฉพาะตอนที่ลูกกำลังเล่นอยู่
+  startBtn.classList.add('hidden');
+  if (bottomBar) bottomBar.classList.add('hidden');
 
   if (visualRenderer) {
     visualRenderer.setupResize();
@@ -2408,9 +2420,8 @@ onlineController = new OnlineMatchController({
 });
 
 /**
- * ควบคุมการแสดงปุ่มในหน้าสร้างห้อง รายการห้อง และห้องแข่งขันออนไลน์ 1 ต่อ 1:
- * - ในหน้าสร้างห้องและหน้ารายการห้อง: ซ่อนปุ่ม "ย้อนกลับสู่หน้าแรก" (#back-from-lobby-btn)
- * - เมื่อสร้างห้องสำเร็จหรือเข้าร่วมห้องสำเร็จแล้ว: ซ่อนทั้งปุ่ม "ออกจากห้องแข่งขันออนไลน์" (#leave-room-btn) และ "ย้อนกลับสู่หน้าแรก" (#back-from-lobby-btn)
+ * ควบคุมการแสดงปุ่มในหน้าสร้างห้อง รายการห้อง และห้องแข่งขันออนไลน์ 1 ต่อ 1
+ * รวมถึงซ่อน #start-btn และ #bottom-bar ชั่วคราวเมื่อปุ่มค้างคำว่า "กำลังแข่งขัน"
  */
 const activeRoomCardEl = document.getElementById('active-room-card');
 const leaveRoomBtnEl = document.getElementById('leave-room-btn');
@@ -2443,8 +2454,23 @@ function syncOnlineButtonsVisibility() {
     }
   }
 
-  if (!gameScreen.classList.contains('hidden') && visualRenderer) {
-    visualRenderer.setupResize();
+  // ซ่อนปุ่ม #start-btn และ #bottom-bar ชั่วคราวขณะกำลังตีลูกแข่งขัน (ทั้งโหมดบอทและออนไลน์)
+  const isGameVisible = !gameScreen.classList.contains('hidden');
+  if (isGameVisible) {
+    const isPlayingRally = gameActive || (startBtn.textContent.trim() === 'กำลังแข่งขัน');
+    if (isPlayingRally) {
+      if (!startBtn.classList.contains('hidden')) startBtn.classList.add('hidden');
+      if (bottomBar && !bottomBar.classList.contains('hidden')) bottomBar.classList.add('hidden');
+    } else {
+      if (bottomBar && bottomBar.classList.contains('hidden')) bottomBar.classList.remove('hidden');
+    }
+    if (visualRenderer) {
+      visualRenderer.setupResize();
+    }
+  } else {
+    if (bottomBar && bottomBar.classList.contains('hidden')) {
+      bottomBar.classList.remove('hidden');
+    }
   }
 }
 
@@ -2457,6 +2483,16 @@ const onlineVisibilityObserver = new MutationObserver(() => {
     onlineVisibilityObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
   }
 });
+
+if (startBtn) {
+  onlineVisibilityObserver.observe(startBtn, {
+    attributes: true,
+    attributeFilter: ['class'],
+    childList: true,
+    characterData: true,
+    subtree: true
+  });
+}
 
 document.addEventListener('keydown', (e) => {
   const key = e.key || e.code;
@@ -2556,6 +2592,7 @@ function openLeaderboard(fromScreen) {
   renderLeaderboardTable();
   leaderboardScreen.classList.remove('hidden');
 
+  if (bottomBar) bottomBar.classList.remove('hidden');
   startBtn.classList.add('hidden');
   onlineModeBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
@@ -2575,6 +2612,7 @@ function openLeaderboard(fromScreen) {
 function closeLeaderboard() {
   leaderboardScreen.classList.add('hidden');
   backFromLeaderboardBtn.classList.add('hidden');
+  if (bottomBar) bottomBar.classList.remove('hidden');
 
   if (previousScreen === 'auth') {
     authScreen.classList.remove('hidden');
@@ -2621,6 +2659,7 @@ function openRules(fromScreen) {
 
   rulesScreen.classList.remove('hidden');
 
+  if (bottomBar) bottomBar.classList.remove('hidden');
   startBtn.classList.add('hidden');
   onlineModeBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
@@ -2640,6 +2679,7 @@ function openRules(fromScreen) {
 function closeRules() {
   rulesScreen.classList.add('hidden');
   backFromRulesBtn.classList.add('hidden');
+  if (bottomBar) bottomBar.classList.remove('hidden');
 
   homeScreen.classList.remove('hidden');
   btnHomeMain.classList.remove('hidden');
@@ -2690,6 +2730,7 @@ function openRoundSelect(fromScreen) {
   renderRoundSelectButtons();
   roundSelectScreen.classList.remove('hidden');
 
+  if (bottomBar) bottomBar.classList.remove('hidden');
   startBtn.classList.add('hidden');
   onlineModeBtn.classList.add('hidden');
   selectRoundBtn.classList.add('hidden');
@@ -2709,6 +2750,7 @@ function openRoundSelect(fromScreen) {
 function closeRoundSelect() {
   roundSelectScreen.classList.add('hidden');
   backFromRoundSelectBtn.classList.add('hidden');
+  if (bottomBar) bottomBar.classList.remove('hidden');
 
   if (previousScreen === 'game') {
     gameScreen.classList.remove('hidden');
@@ -2770,7 +2812,6 @@ async function selectAndStartRound(selectedRoundIdx) {
   selectRoundBtn.classList.add('hidden');
   onlineModeBtn.classList.add('hidden');
   inGameLeaderboardBtn.classList.add('hidden');
-  startBtn.classList.remove('hidden');
   gameScreen.classList.remove('hidden');
 
   startNewMatch(selectedRoundIdx);
@@ -2921,6 +2962,7 @@ function enterGameHomeScreen() {
   gameScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
 
+  if (bottomBar) bottomBar.classList.remove('hidden');
   btnHomeMain.classList.remove('hidden');
   homeScreen.classList.remove('hidden');
   inGameLeaderboardBtn.classList.remove('hidden');
@@ -2956,6 +2998,7 @@ authManager.initAuthStateListener(
   },
   () => {
     currentUser = null;
+    if (bottomBar) bottomBar.classList.remove('hidden');
     btnHomeMain.classList.remove('hidden');
     authScreen.classList.remove('hidden');
     homeScreen.classList.add('hidden');
