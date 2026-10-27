@@ -1319,6 +1319,10 @@ export class OnlineMatchController {
       this.ui.leaveRoomBtn.classList.add('hidden');
     }
 
+    if (window.visualRenderer) {
+      window.visualRenderer.setupResize();
+    }
+
     this.motion.start();
     this.activateFocusMode();
     this.updateOnlineScoreboardUI();
@@ -1517,6 +1521,9 @@ export class OnlineMatchController {
 
     // ตรวจสอบว่าตีตรงทิศทางลูกหรือไม่ (กรณีรับลูก)
     if (!isServe && swingDir !== this.expectedLocalDir) {
+      if (window.visualRenderer && this.directions[swingDir]) {
+        window.visualRenderer.triggerSwing(true, this.directions[swingDir].pan, powerLevel);
+      }
       if (this.role === 'host') {
         // 3. โหมดออนไลน์: ฝั่ง Host ตีวืด/ตีผิดทิศทาง ให้ตัดสินแต้มและกระตุ้น 3.mp3 (miss) จากเหตุการณ์ร่วมเดียวกัน
         this.hostResolvePoint(
