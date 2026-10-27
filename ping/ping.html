@@ -149,24 +149,36 @@
       background: linear-gradient(180deg, rgba(15, 32, 55, 0.92) 0%, rgba(8, 18, 32, 0.95) 100%);
       border: 2px solid rgba(0, 255, 255, 0.4);
       border-radius: 14px;
-      padding: 8px 12px;
+      padding: 10px 16px;
+      margin-top: 2px;
       box-shadow: 0 6px 18px rgba(0,0,0,0.5);
       flex-shrink: 0;
+      position: relative;
+      z-index: 6;
+    }
+    .tournament-board, .set-board, .score-board, .status-box {
+      outline-offset: 2px;
+    }
+    .tournament-board:focus, .set-board:focus, .score-board:focus, .status-box:focus {
+      outline: 2px solid var(--focus-ring);
+      border-radius: 6px;
     }
     .tournament-board {
       font-size: clamp(0.9rem, 3.6vw, 1.15rem);
-      line-height: 1.3;
+      line-height: 1.35;
       text-align: center;
       color: #FFD700;
       font-weight: bold;
+      padding: 2px 6px;
       overflow-wrap: break-word;
     }
     .set-board {
       font-size: clamp(0.9rem, 3.6vw, 1.1rem);
-      line-height: 1.3;
+      line-height: 1.35;
       text-align: center;
       color: #00FFFF;
       font-weight: bold;
+      padding: 2px 6px;
       overflow-wrap: break-word;
     }
     .score-board {
@@ -175,7 +187,7 @@
       text-align: center;
       color: var(--accent);
       font-weight: bold;
-      padding: 2px;
+      padding: 2px 6px;
       text-shadow: 0 0 10px rgba(255, 215, 0, 0.4);
       overflow-wrap: break-word;
     }
@@ -357,6 +369,9 @@
       white-space: nowrap;
       border: 0;
     }
+    .sr-only:focus {
+      outline: none;
+    }
     .hidden {
       display: none !important;
     }
@@ -403,8 +418,8 @@
         padding: 4px 9px;
       }
       .scoreboard-hud-wrapper {
-        padding: 6px 10px;
-        gap: 2px;
+        padding: 8px 12px;
+        gap: 3px;
         border-radius: 12px;
       }
       #visual-stage {
@@ -1033,7 +1048,7 @@ class VisualRenderer {
     ctx.moveTo(botL.x, botL.y);
     ctx.lineTo(botR.x, botR.y);
     ctx.lineTo(botR.x, botR.y + 12);
-    ctx.lineTo(botL.x, botL.y + 12);
+    ctx.lineTo(botL.x, botR.y + 12);
     ctx.closePath();
     ctx.fill();
 
@@ -1079,16 +1094,21 @@ class VisualRenderer {
       ctx.setLineDash([]);
     });
 
-    // ป้ายกำกับโซน ซ้าย - กลาง - ขวา ที่ปลายโต๊ะฝั่งเรา
-    const zoneY = botL.y - 10;
+    // ป้ายกำกับโซน ซ้าย - กลาง - ขวา ที่ด้านล่างขอบโต๊ะฝั่งเรา (พ้นบริเวณหน้าไม้ปิงปองสีแดง)
+    const zoneY = Math.min(h - 6, botL.y + (isCompact ? 22 : 26));
+    ctx.save();
     ctx.font = isCompact ? 'bold 11px Sarabun, sans-serif' : 'bold 12px Sarabun, sans-serif';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+    ctx.shadowBlur = 4;
     const leftZone = this.projectTablePoint(-0.75, 0.95);
     const centerZone = this.projectTablePoint(0, 0.95);
     const rightZone = this.projectTablePoint(0.75, 0.95);
     ctx.fillText('⬅️ ซ้าย', leftZone.x, zoneY);
     ctx.fillText('⬆️ กลาง', centerZone.x, zoneY);
     ctx.fillText('ขวา ➡️', rightZone.x, zoneY);
+    ctx.restore();
   }
 
   drawNet(ctx) {
@@ -1150,23 +1170,45 @@ class VisualRenderer {
         this.hitPrompt.active = false;
       } else {
         const progress = elapsed / this.hitPrompt.duration;
-        const pt = this.projectTablePoint(this.hitPrompt.pan, 0.83, 0);
-        const outerR = (44 * (1 - progress * 0.55)) * pt.scale;
+        const pt = this.projectTablePoint(this.hitPrompt.pan, 0.80, 0);
+        const outerR = (32 * (1 - progress * 0.45)) * pt.scale;
+        const ringY = pt.groundY - 4 * pt.scale;
 
         ctx.save();
         ctx.strokeStyle = '#00FFFF';
-        ctx.lineWidth = 3.5;
+        ctx.globalAlpha = 0.88;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.ellipse(pt.x, pt.groundY, outerR, outerR * 0.48, 0, 0, Math.PI * 2);
+        ctx.ellipse(pt.x, ringY, outerR, outerR * 0.42, 0, 0, Math.PI * 2);
         ctx.stroke();
 
-        // ป้ายเตือนให้กดปุ่มตามทิศทาง
-        ctx.fillStyle = '#FFD700';
-        ctx.font = this.width < 420 ? 'bold 13px Sarabun, sans-serif' : 'bold 15px Sarabun, sans-serif';
+        // ป้ายเตือนให้กดปุ่มตามทิศทาง (จัดวางเหนือวิถีลูกเด้งและหน้าไม้ปิงปอง ไม่ซ้อนทับกัน)
+        const isCompact = this.width < 420;
+        const labelText = `ตีเลย! (${this.panToThaiLabel(this.hitPrompt.pan)})`;
+        ctx.font = isCompact ? 'bold 13px Sarabun, sans-serif' : 'bold 15px Sarabun, sans-serif';
         ctx.textAlign = 'center';
+        const textWidth = ctx.measureText(labelText).width;
+        const padX = isCompact ? 10 : 12;
+        const pillW = textWidth + padX * 2;
+        const pillH = isCompact ? 24 : 26;
+        const safeX = Math.max(pillW * 0.5 + 8, Math.min(this.width - pillW * 0.5 - 8, pt.x));
+        const labelOffset = (isCompact ? 56 : 64) * pt.scale;
+        const labelY = Math.max(pillH + 10, ringY - labelOffset);
+
+        ctx.globalAlpha = 0.94;
+        ctx.fillStyle = 'rgba(6, 16, 30, 0.88)';
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(safeX - pillW * 0.5, labelY - pillH * 0.72, pillW, pillH, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#FFD700';
         ctx.shadowColor = '#000';
-        ctx.shadowBlur = 6;
-        ctx.fillText(`ตีเลย! (${this.panToThaiLabel(this.hitPrompt.pan)})`, pt.x, pt.groundY - 28);
+        ctx.shadowBlur = 4;
+        ctx.fillText(labelText, safeX, labelY);
         ctx.restore();
       }
     }
@@ -1865,7 +1907,7 @@ let lastBallPower = 'normal';
 let ballBounceTime = 0;
 
 function getPlayerName() {
-  return currentUser ? currentUser.username : "คุณ";
+  return currentUser ? String(currentUser.username).trim() : "คุณ";
 }
 
 // DOM Elements
@@ -1991,7 +2033,7 @@ function startRally() {
 
   if (currentServer === 'player') {
     sound.play('go1', 0, 1.0, false);
-    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบ${pName}เสิร์ฟ เริ่มเลย`);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบ ${pName} เสิร์ฟ เริ่มเลย`);
     canPlayerHit = true;
     currentBallDir = 'center';
 
@@ -1999,12 +2041,12 @@ function startRally() {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
         sound.play('retry', 0, 1.0, false);
-        handlePointWon('bot', `${pName}เสิร์ฟไม่ทัน ${round.botName}ได้แต้ม`);
+        handlePointWon('bot', `${pName} เสิร์ฟไม่ทัน ${round.botName} ได้แต้ม`);
       }
     }, 5000);
   } else {
     sound.play('bot', 0, 1.0, false);
-    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบ${round.botName}เสิร์ฟ เตรียมตีโต้`);
+    announceStatus(`แต้ม ${playerScore} ต่อ ${botScore} รอบ ${round.botName} เสิร์ฟ เตรียมตีโต้`);
     activeTimer = setTimeout(() => {
       if (!gameActive) return;
       botStrikeBall();
@@ -2030,7 +2072,7 @@ function onPlayerSwing(swingDirection, powerLevel = 'normal') {
       visualRenderer.triggerSwing(true, DIRECTIONS[swingDirection].pan, powerLevel);
     }
     sound.play('miss', DIRECTIONS[currentBallDir].pan, 1.0, false);
-    handlePointWon('bot', `${pName}ตีวืด ${round.botName}ได้แต้ม`);
+    handlePointWon('bot', `${pName} ตีวืด ${round.botName} ได้แต้ม`);
     return;
   }
 
@@ -2087,7 +2129,7 @@ function onPlayerSwing(swingDirection, powerLevel = 'normal') {
         botStrikeBall();
       } else {
         sound.play('miss4', endPan, 0.35, true);
-        handlePointWon('player', `${round.botName}ตีวืด ${pName}ได้แต้ม`);
+        handlePointWon('player', `${round.botName} ตีวืด ${pName} ได้แต้ม`);
       }
     }, TIMING.BOT_REACTION_MS);
 
@@ -2131,7 +2173,7 @@ function botStrikeBall() {
       if (canPlayerHit && gameActive) {
         canPlayerHit = false;
         sound.play('miss', endPan, 1.0, false);
-        handlePointWon('bot', `${pName}ตีไม่ทัน ${round.botName}ได้แต้ม`);
+        handlePointWon('bot', `${pName} ตีไม่ทัน ${round.botName} ได้แต้ม`);
       }
     }, currentHitWindow);
 
@@ -2174,7 +2216,7 @@ async function handleSetWon(winner, reasonText) {
       const nextWindowSec = (round.difficultyLevels[currentDifficultyIndex] / 1000).toFixed(2);
       diffChangeMsg = ` ยอดเยี่ยม! ความยากเซตต่อไปจะเพิ่มขึ้น (เหลือเวลาตี ${nextWindowSec} วินาที)`;
     } else {
-      diffChangeMsg = ` ${pName}ยังคงอยู่ในระดับความเร็วสูงสุดของรอบนี้!`;
+      diffChangeMsg = ` ${pName} ยังคงอยู่ในระดับความเร็วสูงสุดของรอบนี้!`;
     }
   } else {
     botSetsWon++;
@@ -2205,7 +2247,7 @@ async function handleSetWon(winner, reasonText) {
           refreshUserBadgeUI();
         }
 
-        const winRoundMsg = `${reasonText} จบการแข่งขัน! ${pName}ชนะ ${round.botName} ${playerSetsWon} ต่อ ${botSetsWon} เซต ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม และผ่านเข้าสู่ ${nextRound.roundTitle} พบกับ ${nextRound.botFullName}! กดปุ่มด้านล่างเพื่อเริ่มการแข่งขันรอบถัดไป เลือกรอบที่จะเล่น หรือตรวจสอบหอเกียรติยศ`;
+        const winRoundMsg = `${reasonText} จบการแข่งขัน! ${pName} ชนะ ${round.botName} ${playerSetsWon} ต่อ ${botSetsWon} เซต ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม และผ่านเข้าสู่ ${nextRound.roundTitle} พบกับ ${nextRound.botFullName}! กดปุ่มด้านล่างเพื่อเริ่มการแข่งขันรอบถัดไป เลือกรอบที่จะเล่น หรือตรวจสอบหอเกียรติยศ`;
         announceStatus(winRoundMsg);
         startBtn.textContent = `เข้าสู่ ${nextRound.roundTitle}`;
         startBtn.setAttribute('aria-label', `เข้าสู่ ${nextRound.roundTitle} พบกับ ${nextRound.botFullName}`);
@@ -2224,7 +2266,7 @@ async function handleSetWon(winner, reasonText) {
         randomizeTournamentBots();
         const nextFirstRound = TOURNAMENT_ROUNDS[0];
 
-        const championMsg = `${reasonText} สุดยอดประวัติศาสตร์! ${pName}โค่น ${defeatedFinalBotName} คว้าแชมป์ปิงปองโลกได้สำเร็จ ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม ยินดีด้วยกับตำแหน่งแชมเปียน! กดปุ่มด้านล่างเพื่อเริ่มทัวร์นาเมนต์ใหม่ เลือกรอบที่จะเล่น หรือดูสรุปหอเกียรติยศ`;
+        const championMsg = `${reasonText} สุดยอดประวัติศาสตร์! ${pName} โค่น ${defeatedFinalBotName} คว้าแชมป์ปิงปองโลกได้สำเร็จ ได้รับชัยชนะ 1 ครั้ง พร้อมคะแนนสะสม +${earnedPts} แต้ม ยินดีด้วยกับตำแหน่งแชมเปียน! กดปุ่มด้านล่างเพื่อเริ่มทัวร์นาเมนต์ใหม่ เลือกรอบที่จะเล่น หรือดูสรุปหอเกียรติยศ`;
         announceStatus(championMsg);
         startBtn.textContent = 'เริ่มการแข่งขันชิงแชมป์โลกใหม่';
         startBtn.setAttribute('aria-label', `เริ่มการแข่งขันชิงแชมป์โลกใหม่ ใน${nextFirstRound.roundTitle} พบกับ ${nextFirstRound.botFullName}`);
@@ -2239,7 +2281,7 @@ async function handleSetWon(winner, reasonText) {
         refreshUserBadgeUI();
       }
 
-      const defeatMsg = `${reasonText} จบการแข่งขัน ${round.botName} ชนะ ${botSetsWon} ต่อ ${playerSetsWon} เซต ${pName}ตกรอบใน${round.roundTitle} ระบบได้บันทึก Checkpoint รอบนี้ไว้แล้ว สามารถกดปุ่มเพื่อลองสู้ต่อในรอบนี้ หรือกดเลือกรอบที่จะเล่นเพื่อกลับไปฝึกซ้อมรอบก่อนหน้าได้ทันที`;
+      const defeatMsg = `${reasonText} จบการแข่งขัน ${round.botName} ชนะ ${botSetsWon} ต่อ ${playerSetsWon} เซต ${pName} ตกรอบใน${round.roundTitle} ระบบได้บันทึก Checkpoint รอบนี้ไว้แล้ว สามารถกดปุ่มเพื่อลองสู้ต่อในรอบนี้ หรือกดเลือกรอบที่จะเล่นเพื่อกลับไปฝึกซ้อมรอบก่อนหน้าได้ทันที`;
       announceStatus(defeatMsg);
       startBtn.textContent = `ลองสู้อีกครั้งใน${round.roundTitle}`;
       startBtn.setAttribute('aria-label', `ลองสู้อีกครั้งใน${round.roundTitle} พบกับ ${round.botFullName}`);
@@ -2258,7 +2300,7 @@ async function handleSetWon(winner, reasonText) {
     }
     betweenSets = true;
     currentSetNumber++;
-    const winnerText = (winner === 'player') ? `${pName}ชนะเซตนี้` : `${round.botName}ชนะเซตนี้`;
+    const winnerText = (winner === 'player') ? `${pName} ชนะเซตนี้` : `${round.botName} ชนะเซตนี้`;
     const setEndMsg = `${reasonText} จบเซตที่ ${currentSetNumber - 1}! ${winnerText} ${playerScore} ต่อ ${botScore} แต้ม (รวมเซต: ${pName} ${playerSetsWon} - ${botSetsWon} ${round.botName}).${diffChangeMsg} กดปุ่มด้านล่างเพื่อเริ่มเซตที่ ${currentSetNumber}`;
     announceStatus(setEndMsg);
 
@@ -2298,8 +2340,8 @@ function startNewSet() {
   sound.play('go', 0, 1.0, false);
 
   const startMsg = initialServer === 'player'
-    ? `เริ่มเซตที่ ${currentSetNumber} ${pName}ได้เสิร์ฟก่อน เริ่มเลย`
-    : `เริ่มเซตที่ ${currentSetNumber} ${round.botName}ได้เสิร์ฟก่อน เตรียมตีโต้`;
+    ? `เริ่มเซตที่ ${currentSetNumber} ${pName} ได้เสิร์ฟก่อน เริ่มเลย`
+    : `เริ่มเซตที่ ${currentSetNumber} ${round.botName} ได้เสิร์ฟก่อน เตรียมตีโต้`;
   announceStatus(startMsg);
 
   activeTimer = setTimeout(startRally, 2000);
