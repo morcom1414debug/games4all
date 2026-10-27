@@ -126,12 +126,14 @@ export class OnlineMatchController {
     this.currentRoomVisibility = 'public'; // 'public' | 'private'
     this.role = null; // 'host' | 'client'
     this.matchId = null;
+    this.latestRoomData = null;
 
     this.peer = null;
     this.conn = null;
     this.peerReady = false;
     this.channelReady = false;
     this.peerConnectTimer = null;
+    this.connectingHostPeerId = null;
 
     this.roomUnsubscribe = null;
     this.lobbyUnsubscribe = null;
@@ -173,6 +175,7 @@ export class OnlineMatchController {
     this.outgoingTargetPresenceUnsub = null;
     this.sendingInvitationBusy = false;
     this.acceptingInvitationBusy = false;
+    this.startingMatchBusy = false;
     this.inviteListFriendCountAnnounced = -1;
 
     this.rttMs = 80;
@@ -181,6 +184,7 @@ export class OnlineMatchController {
     this.reconnectCountdownInterval = null;
     this.opponentDisconnected = false;
     this.lastJoinedClientKey = null;
+    this.readyAnnouncedForRoomId = null;
 
     // สถานะการแข่งขัน (Host-Authoritative)
     this.matchStatus = 'idle'; // 'idle' | 'playing' | 'between_sets' | 'paused_disconnect' | 'finished' | 'aborted'
@@ -242,6 +246,7 @@ export class OnlineMatchController {
     });
 
     this.addAccessibleClickListener(startOnlineMatchBtn, async () => {
+      if (this.startingMatchBusy || this.inMatch) return;
       await this.requestSensorAndAudioOnGesture();
       await this.hostStartMatch();
     });
@@ -456,6 +461,88 @@ export class OnlineMatchController {
         this.processAnnounceQueue();
       }
     }, 450);
+  }
+
+  /**
+   * ตรวจสอบจาก Snapshot ของห้องว่ามีผู้เล่นทั้ง Host และ Client ครบ 2 คนแล้วจริงหรือไม่
+   */
+  hasBothPlayersInRoom(room) {
+    if (!room || typeof room !== 'object') return false;
+    const hasHost = Boolean(room.host && (room.host.userKey || room.host.username));
+    const hasClient = Boolean(room.client && (room.client.userKey || room.client.username));
+    const countOk = typeof room.playerCount === 'number' ? room.playerCount >= 2 : true;
+    return hasHost && hasClient && countOk;
+  }
+
+  /**
+   * อัปเดต UI สถานะห้องและปุ่มเริ่มการแข่งขันออนไลน์ให้ตรงกับสถานะจริงของทั้ง Firebase และ PeerJS
+   * ป้องกัน Race Condition ไม่ว่า Firebase Snapshot หรือ PeerJS DataChannel จะพร้อมก่อนหรือหลังกัน
+   */
+  syncRoomReadyUIAndAnnounce(room = this.latestRoomData) {
+    if (this.inMatch || !this.currentRoomId) return;
+
+    const activeRoom = room || this.latestRoomData;
+    const hasBothPlayers = this.hasBothPlayersInRoom(activeRoom);
+    const isPeerChannelOpen = Boolean(this.channelReady && this.conn && this.conn.open);
+
+    if (!hasBothPlayers) {
+      this.readyAnnouncedForRoomId = null;
+      if (this.ui.roomConnectionDisplay) {
+        this.ui.roomConnectionDisplay.textContent = 'สถานะห้อง: รอผู้เล่นคนที่ 2 เข้าร่วม (1/2)';
+      }
+      if (this.ui.startOnlineMatchBtn) {
+        this.ui.startOnlineMatchBtn.classList.add('hidden');
+        this.ui.startOnlineMatchBtn.disabled = false;
+      }
+      return;
+    }
+
+    if (!isPeerChannelOpen) {
+      if (this.ui.roomConnectionDisplay) {
+        this.ui.roomConnectionDisplay.textContent = 'สถานะห้อง: ผู้เล่นครบ 2 คนแล้ว กำลังเชื่อมสัญญาณ PeerJS...';
+      }
+      if (this.ui.startOnlineMatchBtn) {
+        this.ui.startOnlineMatchBtn.classList.add('hidden');
+      }
+      return;
+    }
+
+    // มีผู้เล่นครบ 2 คนใน Firebase และ PeerJS DataChannel เปิดพร้อมใช้งานจริงแล้วทั้งสองเงื่อนไข
+    if (this.ui.roomConnectionDisplay) {
+      this.ui.roomConnectionDisplay.textContent = `สถานะห้อง: เชื่อมต่อพร้อมแข่งขัน (Ping ${Math.round(this.rttMs)} ms)`;
+    }
+
+    if (this.role === 'host') {
+      if (this.ui.startOnlineMatchBtn) {
+        this.ui.startOnlineMatchBtn.disabled = false;
+        this.ui.startOnlineMatchBtn.classList.remove('hidden');
+      }
+      if (this.readyAnnouncedForRoomId !== this.currentRoomId) {
+        this.readyAnnouncedForRoomId = this.currentRoomId;
+        const oppName = (activeRoom && activeRoom.client && activeRoom.client.username)
+          ? activeRoom.client.username
+          : (this.clientUsername && this.clientUsername !== 'รอผู้เล่นเข้าร่วม...' ? this.clientUsername : 'ผู้ท้าชิง');
+        this.announcePolite(`ผู้เล่น ${oppName} เข้าร่วมครบ 2 คนและการเชื่อมต่อพร้อมแล้ว กดปุ่มเริ่มการแข่งขันออนไลน์ได้เลย`);
+        setTimeout(() => {
+          try {
+            if (!this.inMatch && this.ui.startOnlineMatchBtn && !this.ui.startOnlineMatchBtn.classList.contains('hidden')) {
+              this.ui.startOnlineMatchBtn.focus();
+            }
+          } catch (e) {}
+        }, 150);
+      }
+    } else {
+      if (this.ui.startOnlineMatchBtn) {
+        this.ui.startOnlineMatchBtn.classList.add('hidden');
+      }
+      if (this.readyAnnouncedForRoomId !== this.currentRoomId) {
+        this.readyAnnouncedForRoomId = this.currentRoomId;
+        const hostName = (activeRoom && activeRoom.host && activeRoom.host.username)
+          ? activeRoom.host.username
+          : (this.hostUsername || 'หัวหน้าห้อง');
+        this.announcePolite(`เชื่อมต่อกับ ${hostName} สำเร็จ รอหัวหน้าห้องกดเริ่มการแข่งขัน`);
+      }
+    }
   }
 
   /**
@@ -754,13 +841,17 @@ export class OnlineMatchController {
   restoreHostLobbyPresenceIfIdle() {
     if (this.inMatch) return;
     if (this.currentRoomId) {
-      this.updatePresenceStatusFn(this.presenceStates.WAITING_ROOM, {
-        roomId: this.currentRoomId,
-        roomRole: this.role || 'host',
-        roomPlayerCount: 1,
-        hasClientInRoom: false,
-        roomStatus: 'waiting'
-      }).catch(() => {});
+      const hasBoth = this.hasBothPlayersInRoom(this.latestRoomData);
+      this.updatePresenceStatusFn(
+        hasBoth ? this.presenceStates.ONLINE_READY : this.presenceStates.WAITING_ROOM,
+        {
+          roomId: this.currentRoomId,
+          roomRole: this.role || 'host',
+          roomPlayerCount: hasBoth ? 2 : 1,
+          hasClientInRoom: hasBoth,
+          roomStatus: hasBoth ? 'ready' : 'waiting'
+        }
+      ).catch(() => {});
     } else {
       this.updatePresenceStatusFn(this.presenceStates.ONLINE_LOBBY, {
         roomId: null,
@@ -788,13 +879,6 @@ export class OnlineMatchController {
 
     try {
       this.announcePolite(`${acceptedInv.toUsername} ตอบรับคำเชิญแล้ว กำลังสร้างห้องแข่งขันส่วนตัว`);
-
-      // ปิดหน้ารายชื่อเพื่อนเพื่อกลับมายังหน้า Lobby แสดงการ์ดห้อง Private
-      if (this.invitationBridge && typeof this.invitationBridge.closeInviteFriendsScreen === 'function') {
-        if (this.ui.inviteFriendsScreen && !this.ui.inviteFriendsScreen.classList.contains('hidden')) {
-          this.invitationBridge.closeInviteFriendsScreen();
-        }
-      }
 
       // หากผู้ชวนมีห้อง Public ที่เปิดรออยู่เดิม ให้ตรวจสอบว่ายังว่างและปิดอย่างปลอดภัยก่อน
       if (this.currentRoomId) {
@@ -863,8 +947,17 @@ export class OnlineMatchController {
       this.currentRoomVisibility = 'private';
       this.role = 'host';
       this.matchId = matchId;
+      this.latestRoomData = privateRoomData;
       this.lastJoinedClientKey = null;
+      this.readyAnnouncedForRoomId = null;
       sessionStorage.setItem('pingpong_active_online_room', roomId);
+
+      // ปิดหน้ารายชื่อเพื่อนโดยซิงก์กับ currentRoomId ที่ตั้งค่าแล้ว เพื่อไม่ให้ closeInviteFriendsScreen ยิง cancelOutgoingInvitation ซ้อน
+      if (this.invitationBridge && typeof this.invitationBridge.closeInviteFriendsScreen === 'function') {
+        if (this.ui.inviteFriendsScreen && !this.ui.inviteFriendsScreen.classList.contains('hidden')) {
+          this.invitationBridge.closeInviteFriendsScreen();
+        }
+      }
 
       // เล่นเสียงสร้างห้องตามระบบเดิม
       this.sound.play('create', 0, 1.0, false);
@@ -873,11 +966,11 @@ export class OnlineMatchController {
       this.ensureLobbyVisibleForRoomCard();
       await this.initPeerAndBindRoom(roomId, 'host');
 
-      // อัปเดตโหนดคำเชิญด้วย Transaction เพื่อส่งรหัสห้อง Private ให้ผู้รับเข้าห้องทันที
+      // อัปเดตโหนดคำเชิญด้วย Transaction เพื่อส่งรหัสห้อง Private ให้ผู้รับเข้าห้องทันที (รองรับกรณี status เป็น pending หรือ accepted)
       const targetInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${acceptedInv.toUserKey}`);
       const txRes = await runTransaction(targetInboxRef, (node) => {
         if (!node || node.invitationId !== acceptedInv.invitationId) return;
-        if (node.status !== 'accepted') return;
+        if (node.status !== 'accepted' && node.status !== 'pending') return;
         node.status = 'room_ready';
         node.roomId = roomId;
         node.visibility = 'private';
@@ -892,7 +985,7 @@ export class OnlineMatchController {
         return;
       }
 
-      // ตั้งเวลารอให้ผู้รับเข้าห้อง Private หากผู้รับหลุดไปก่อนเข้าห้อง ให้ล้างห้อง Private ทันทีไม่ให้ค้าง
+      // ตั้งเวลารอให้ผู้รับเข้าห้อง Private และเชื่อม PeerJS หากผู้รับหลุดไปก่อนเข้าห้อง ให้ล้างห้อง Private ทันทีไม่ให้ค้าง
       clearTimeout(this.outgoingInviteTimeoutTimer);
       this.outgoingInviteTimeoutTimer = setTimeout(async () => {
         if (this.currentRoomId === roomId && this.role === 'host' && !this.inMatch) {
@@ -981,7 +1074,7 @@ export class OnlineMatchController {
           txRejectReason = "คำเชิญนี้ถูกแทนที่หรือหมดอายุไปแล้ว";
           return;
         }
-        if (node.status !== 'pending' && node.status !== 'room_ready') {
+        if (node.status !== 'pending' && node.status !== 'room_ready' && node.status !== 'accepted') {
           txRejectReason = "คำเชิญนี้หมดอายุหรือถูกยกเลิกไปแล้ว";
           return;
         }
@@ -1141,7 +1234,9 @@ export class OnlineMatchController {
       this.currentRoomVisibility = 'public';
       this.role = null;
       this.matchId = null;
+      this.latestRoomData = null;
       this.lastJoinedClientKey = null;
+      this.readyAnnouncedForRoomId = null;
       sessionStorage.removeItem('pingpong_active_online_room');
       this.updateRoomPanelVisibility(false);
       return true;
@@ -1223,7 +1318,9 @@ export class OnlineMatchController {
       this.currentRoomVisibility = 'private';
       this.role = 'client';
       this.matchId = updatedRoom.matchId;
+      this.latestRoomData = updatedRoom;
       this.lastJoinedClientKey = myKey;
+      this.readyAnnouncedForRoomId = null;
       sessionStorage.setItem('pingpong_active_online_room', roomId);
 
       // เล่นเสียงเข้าร่วมห้องสำเร็จตามระบบเดิม
@@ -1694,7 +1791,9 @@ export class OnlineMatchController {
         this.currentRoomVisibility = this.isPrivateRoomRecord(room) ? 'private' : 'public';
         this.role = 'host';
         this.matchId = room.matchId;
+        this.latestRoomData = room;
         this.lastJoinedClientKey = room.client ? room.client.userKey : null;
+        this.readyAnnouncedForRoomId = null;
         await this.initPeerAndBindRoom(savedRoomId, 'host');
         this.announcePolite(`กู้คืนห้อง ${savedRoomId} สำเร็จในฐานะหัวหน้าห้อง`, true);
       } else if (room.client && room.client.userKey === myKey) {
@@ -1702,7 +1801,9 @@ export class OnlineMatchController {
         this.currentRoomVisibility = this.isPrivateRoomRecord(room) ? 'private' : 'public';
         this.role = 'client';
         this.matchId = room.matchId;
+        this.latestRoomData = room;
         this.lastJoinedClientKey = room.client.userKey;
+        this.readyAnnouncedForRoomId = null;
         await this.initPeerAndBindRoom(savedRoomId, 'client');
         this.announcePolite(`กู้คืนห้อง ${savedRoomId} สำเร็จในฐานะผู้ท้าชิง`, true);
       } else {
@@ -1779,7 +1880,9 @@ export class OnlineMatchController {
       this.currentRoomVisibility = 'public';
       this.role = 'host';
       this.matchId = matchId;
+      this.latestRoomData = roomData;
       this.lastJoinedClientKey = null;
+      this.readyAnnouncedForRoomId = null;
       sessionStorage.setItem('pingpong_active_online_room', roomId);
 
       // 1. เล่นเสียง create.mp3 เมื่อกดสร้างห้องสำเร็จ (เฉพาะฝั่ง Host)
@@ -1878,7 +1981,9 @@ export class OnlineMatchController {
       this.currentRoomVisibility = this.isPrivateRoomRecord(updatedRoom) ? 'private' : 'public';
       this.role = 'client';
       this.matchId = updatedRoom.matchId;
+      this.latestRoomData = updatedRoom;
       this.lastJoinedClientKey = myKey;
+      this.readyAnnouncedForRoomId = null;
       sessionStorage.setItem('pingpong_active_online_room', roomId);
 
       // 2. เล่นเสียง select.mp3 เมื่อกดเข้าร่วมห้องสำเร็จ (ฝั่ง Client)
@@ -1899,6 +2004,9 @@ export class OnlineMatchController {
     this.cleanupPeerOnly();
     this.updateRoomPanelVisibility(true);
 
+    // ผูก Firebase Room Listener ทันทีเพื่อรับข้อมูลสถานะห้องแบบ Real-time
+    this.subscribeRoomChanges(roomId);
+
     const PeerClass = window.Peer;
     if (!PeerClass) {
       this.announcePolite("ไม่พบไลบรารี PeerJS กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
@@ -1912,10 +2020,25 @@ export class OnlineMatchController {
     });
 
     this.peer.on('open', (peerId) => {
+      if (this.currentRoomId !== roomId || this.role !== role) return;
       this.peerReady = true;
       this.localPeerId = peerId;
+
       // ลงทะเบียน onDisconnect ก่อน แล้วจึงประกาศสถานะออนไลน์ + เริ่ม Heartbeat
       this.startPresence(roomId, role);
+
+      // แก้ปัญหา Race Condition: หาก Client ได้รับข้อมูลห้องจาก Firebase ก่อนที่ PeerJS ของ Client จะพร้อม
+      // ให้เริ่มเชื่อมต่อไปหา Host ทันทีที่ PeerJS เปิดสำเร็จ
+      if (
+        this.role === 'client' &&
+        !this.conn &&
+        this.latestRoomData &&
+        this.latestRoomData.host &&
+        this.latestRoomData.host.peerId &&
+        this.latestRoomData.host.connected !== false
+      ) {
+        this.connectToHostPeer(this.latestRoomData.host.peerId);
+      }
     });
 
     this.peer.on('connection', (incomingConn) => {
@@ -1928,8 +2051,6 @@ export class OnlineMatchController {
       console.warn("PeerJS error:", err);
       this.announcePolite("สัญญาณ PeerJS ขัดข้อง กำลังพยายามตรวจสอบการเชื่อมต่อ");
     });
-
-    this.subscribeRoomChanges(roomId);
   }
 
   // =====================================================================
@@ -2027,7 +2148,7 @@ export class OnlineMatchController {
           console.warn("onDisconnect ไม่พร้อมใช้งาน ใช้ Heartbeat เป็นตัวตรวจสอบสำรอง");
         }
 
-        // 2) ประกาศสถานะออนไลน์
+        // 2) ประกาศสถานะออนไลน์และบันทึก peerId ลง Firebase อย่างแน่นอน
         const result = await this.announceOnline(roomId, role);
         if (!isCurrent()) break;
         if (result === 'ok') {
@@ -2047,19 +2168,24 @@ export class OnlineMatchController {
   async announceOnline(roomId, role) {
     const roleRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}/${role}`);
     try {
-      const res = await runTransaction(roleRef, (node) => {
-        if (node === null) return node; // ห้อง/ผู้เล่นนี้ไม่มีอยู่แล้ว: ไม่สร้างข้อมูลขึ้นมาใหม่
-        const now = this.getServerNow();
-        node.sessionId = this.sessionId;
-        node.connected = true;
-        node.heartbeatAt = now;
-        node.lastSeen = now;
-        if (this.localPeerId) node.peerId = this.localPeerId;
-        delete node.disconnectedAt;
-        return node;
-      }, { applyLocally: false });
-      if (!res.snapshot.exists()) return 'lost';
-      return res.committed ? 'ok' : 'failed';
+      const now = this.getServerNow();
+      const patch = {
+        sessionId: this.sessionId,
+        connected: true,
+        heartbeatAt: now,
+        lastSeen: now,
+        disconnectedAt: null
+      };
+      if (this.localPeerId) {
+        patch.peerId = this.localPeerId;
+      }
+
+      // ใช้ update ร่วมกับตรวจสอบการมีอยู่ของโหนด เพื่อหลีกเลี่ยงปัญหา runTransaction ชนกับ set/runTransaction ของห้องเมื่อเพิ่งสร้างหรือเข้าร่วมห้องใหม่
+      const snap = await get(roleRef);
+      if (!snap.exists()) return 'lost';
+
+      await update(roleRef, patch);
+      return 'ok';
     } catch (e) {
       console.warn("ประกาศสถานะออนไลน์ไม่สำเร็จ:", e);
       return 'failed';
@@ -2086,6 +2212,9 @@ export class OnlineMatchController {
         node.connected = true;
         node.heartbeatAt = now;
         node.lastSeen = now;
+        if (this.localPeerId && !node.peerId) {
+          node.peerId = this.localPeerId;
+        }
         delete node.disconnectedAt;
         return node;
       }, { applyLocally: false });
@@ -2138,9 +2267,28 @@ export class OnlineMatchController {
 
   handleRoomSnapshot(room) {
     if (!room) return;
+    this.latestRoomData = room;
     this.hostUsername = room.host ? room.host.username : '-';
     this.clientUsername = room.client ? room.client.username : 'รอผู้เล่นเข้าร่วม...';
     this.currentRoomVisibility = this.isPrivateRoomRecord(room) ? 'private' : 'public';
+
+    const hasBothPlayers = this.hasBothPlayersInRoom(room);
+
+    // หยุด Timer รอเพื่อนเข้าห้อง Private ทันทีที่เห็นว่า Client เข้าห้องใน Firebase แล้ว
+    if (hasBothPlayers && this.outgoingInviteTimeoutTimer) {
+      clearTimeout(this.outgoingInviteTimeoutTimer);
+      this.outgoingInviteTimeoutTimer = null;
+    }
+
+    // หากตัวเราเปิด PeerJS สำเร็จแล้ว แต่ใน Snapshot ของห้องยังไม่มี peerId ของเรา (เช่น ถูกเขียนทับตอนสร้าง/อัปเดตห้อง) ให้ซิงก์กลับทันที
+    const myNode = this.role === 'host' ? room.host : room.client;
+    if (this.peerReady && this.localPeerId && myNode && myNode.peerId !== this.localPeerId) {
+      update(ref(this.db, `${GAME_ID}/onlineRooms/${room.roomId}/${this.role}`), {
+        peerId: this.localPeerId,
+        connected: true,
+        updatedAt: this.getServerNow()
+      }).catch(() => {});
+    }
 
     // 2. เล่นเสียง select.mp3 บนฝั่ง Host ทันทีเมื่อมีผู้เล่นกดเข้าร่วมห้องสำเร็จ
     if (this.role === 'host') {
@@ -2164,8 +2312,6 @@ export class OnlineMatchController {
     if (this.ui.roomClientDisplay) {
       this.ui.roomClientDisplay.textContent = `ผู้ท้าชิง (Client): ${this.clientUsername}`;
     }
-
-    const hasBothPlayers = Boolean(room.host && room.client && room.playerCount === 2);
 
     // ซิงก์สถานะ Presence ของผู้เล่นกับ auth.js ให้ตรงกับสถานะห้องจริงเสมอ
     if (!this.inMatch) {
@@ -2200,16 +2346,37 @@ export class OnlineMatchController {
       }
     }
 
-    // หากผู้เล่นเป็น Client และเห็น Peer ID ของ Host แล้ว แต่ยังไม่ได้เชื่อม DataChannel ให้เริ่มเชื่อมทันที
+    // หากผู้เล่นเป็น Client และเห็น Peer ID ของ Host แล้ว แต่ยังไม่ได้เชื่อม DataChannel (หรือ Host เปลี่ยน Peer ID) ให้เริ่มเชื่อมทันที
     if (
       this.role === 'client' &&
       this.peerReady &&
-      !this.conn &&
       room.host &&
       room.host.peerId &&
-      room.host.connected
+      room.host.connected !== false
     ) {
-      this.connectToHostPeer(room.host.peerId);
+      const needConnect = !this.conn || (!this.channelReady && this.connectingHostPeerId !== room.host.peerId);
+      if (needConnect) {
+        this.connectToHostPeer(room.host.peerId);
+      }
+    }
+
+    // กรณี Fallback สำหรับ Client: หาก Host กดเริ่มเกมและอัปเดตสถานะห้องใน Firebase เป็น playing แล้ว แต่ข้อความ match_start ผ่าน PeerJS ตกหล่น
+    if (
+      this.role === 'client' &&
+      !this.inMatch &&
+      room.status === 'playing' &&
+      this.channelReady &&
+      room.matchState
+    ) {
+      this.matchId = room.matchId || this.matchId;
+      this.hostSetsWon = room.matchState.hostSetsWon || 0;
+      this.clientSetsWon = room.matchState.clientSetsWon || 0;
+      this.pointEventSeq = 0;
+      this.lastProcessedPointEventId = null;
+      this.lastPlayedMissAudioEventId = null;
+      this.enterMatchScreenUI();
+      this.startOnlineSet(room.matchState.currentSetNumber || 1, room.matchState.initialServer || 'host');
+      return;
     }
 
     // ตรวจสอบการหลุดการเชื่อมต่อของคู่แข่งจาก Firebase Presence
@@ -2232,22 +2399,9 @@ export class OnlineMatchController {
       }
     }
 
-    // อัปเดตสถานะในหน้าห้องรอ
+    // อัปเดตสถานะในหน้าห้องรอและปุ่มเริ่มการแข่งขันของ Host ให้ตรงกับสถานะจริง
     if (!this.inMatch) {
-      if (!hasBothPlayers) {
-        this.ui.roomConnectionDisplay.textContent = 'สถานะห้อง: รอผู้เล่นคนที่ 2 เข้าร่วม (1/2)';
-        this.ui.startOnlineMatchBtn.classList.add('hidden');
-      } else if (!this.channelReady) {
-        this.ui.roomConnectionDisplay.textContent = 'สถานะห้อง: ผู้เล่นครบ 2 คนแล้ว กำลังเชื่อมสัญญาณ PeerJS...';
-        this.ui.startOnlineMatchBtn.classList.add('hidden');
-      } else {
-        this.ui.roomConnectionDisplay.textContent = `สถานะห้อง: เชื่อมต่อพร้อมแข่งขัน (Ping ${Math.round(this.rttMs)} ms)`;
-        if (this.role === 'host') {
-          this.ui.startOnlineMatchBtn.classList.remove('hidden');
-        } else {
-          this.ui.startOnlineMatchBtn.classList.add('hidden');
-        }
-      }
+      this.syncRoomReadyUIAndAnnounce(room);
     }
 
     // ซิงก์เหตุการณ์ตัดสินแต้มและเสียง 3.mp3 / 4.mp3 จาก Firebase กรณีข้อความ PeerJS ล่าช้าหรือตกหล่น
@@ -2269,7 +2423,12 @@ export class OnlineMatchController {
 
   connectToHostPeer(hostPeerId) {
     if (!this.peer || !hostPeerId) return;
+    if (this.channelReady && this.conn && this.conn.open && this.connectingHostPeerId === hostPeerId) {
+      return;
+    }
+
     clearTimeout(this.peerConnectTimer);
+    this.connectingHostPeerId = hostPeerId;
 
     const outgoingConn = this.peer.connect(hostPeerId, {
       reliable: true,
@@ -2280,12 +2439,15 @@ export class OnlineMatchController {
 
     this.peerConnectTimer = setTimeout(() => {
       if (!this.channelReady) {
+        this.connectingHostPeerId = null;
         this.announcePolite(
           "ไม่สามารถเชื่อมต่อ PeerJS โดยตรงได้ภายในเวลาที่กำหนด เครือข่ายอาจมีไฟร์วอลล์หรือต้องตั้งค่า TURN Server กรุณาลองสร้างห้องใหม่หรือสลับเครือข่าย",
           true
         );
         if (this.currentRoomVisibility === 'private' && !this.inMatch) {
           this.leaveCurrentRoom(false);
+        } else {
+          this.syncRoomReadyUIAndAnnounce();
         }
       }
     }, ONLINE_CONFIG.PEER_CONNECT_TIMEOUT_MS);
@@ -2300,45 +2462,55 @@ export class OnlineMatchController {
 
     this.conn = connection;
 
-    connection.on('open', () => {
+    const onChannelOpen = () => {
+      if (this.conn !== connection) return;
       clearTimeout(this.peerConnectTimer);
       clearTimeout(this.outgoingInviteTimeoutTimer);
       this.channelReady = true;
       this.startPingLoop();
 
+      // ส่งข้อมูล Handshake ทันทีที่ DataChannel เปิด เพื่อให้ทั้งสองฝั่งรับทราบชื่อผู้เล่นและสถานะความพร้อมทันทีแม้ Firebase Snapshot จะมาช้ากว่าเล็กน้อย
+      const user = this.getCurrentUser();
+      this.sendPeerMessage({
+        type: 'peer_ready_handshake',
+        roomId: this.currentRoomId,
+        role: this.role,
+        username: user && user.username ? user.username : (this.role === 'host' ? this.hostUsername : this.clientUsername),
+        userKey: user && user.username ? encodeUserKey(user.username) : null
+      });
+
       if (this.opponentDisconnected) {
         this.handleOpponentReconnected();
       } else {
-        const oppName = this.role === 'host' ? this.clientUsername : this.hostUsername;
-        if (this.role === 'host') {
-          this.announcePolite(`ผู้เล่น ${oppName} เข้าร่วมครบ 2 คนและการเชื่อมต่อพร้อมแล้ว กดปุ่มเริ่มการแข่งขันออนไลน์ได้เลย`);
-          this.ui.startOnlineMatchBtn.classList.remove('hidden');
-          setTimeout(() => {
-            try {
-              if (!this.inMatch && this.ui.startOnlineMatchBtn && !this.ui.startOnlineMatchBtn.classList.contains('hidden')) {
-                this.ui.startOnlineMatchBtn.focus();
-              }
-            } catch (e) {}
-          }, 150);
-        } else {
-          this.announcePolite(`เชื่อมต่อกับ ${oppName} สำเร็จ รอหัวหน้าห้องกดเริ่มการแข่งขัน`);
-        }
+        this.syncRoomReadyUIAndAnnounce();
       }
-    });
+    };
+
+    connection.on('open', onChannelOpen);
+    if (connection.open) {
+      onChannelOpen();
+    }
 
     connection.on('data', (data) => {
       this.handlePeerData(data);
     });
 
     connection.on('close', () => {
+      if (this.conn !== connection) return;
       this.channelReady = false;
+      this.connectingHostPeerId = null;
       if (this.inMatch && this.matchStatus !== 'finished' && this.matchStatus !== 'aborted') {
         this.handleOpponentDisconnect();
+      } else if (!this.inMatch) {
+        this.syncRoomReadyUIAndAnnounce();
       }
     });
 
     connection.on('error', (err) => {
       console.warn("DataChannel error:", err);
+      if (!this.inMatch) {
+        this.syncRoomReadyUIAndAnnounce();
+      }
     });
   }
 
@@ -2371,64 +2543,91 @@ export class OnlineMatchController {
    */
   async hostStartMatch() {
     if (this.role !== 'host' || !this.currentRoomId) return;
+    if (this.startingMatchBusy || this.inMatch) return;
 
-    const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${this.currentRoomId}`);
-    const snap = await get(roomRef);
-    if (!snap.exists()) {
-      this.announcePolite("ไม่พบข้อมูลห้อง");
-      return;
+    this.startingMatchBusy = true;
+    if (this.ui.startOnlineMatchBtn) {
+      this.ui.startOnlineMatchBtn.disabled = true;
     }
 
-    const room = snap.val();
-    if (!room.host || !room.client || room.playerCount !== 2) {
-      this.announcePolite("ยังไม่สามารถเริ่มได้ ต้องรอผู้เล่นครบ 2 คนก่อน");
-      return;
-    }
-
-    if (!this.channelReady || !this.conn || !this.conn.open) {
-      this.announcePolite("ยังไม่สามารถเริ่มได้ การเชื่อมต่อ PeerJS ยังไม่พร้อม");
-      return;
-    }
-
-    this.hostSetsWon = 0;
-    this.clientSetsWon = 0;
-    this.currentSetNumber = 1;
-    this.hostScore = 0;
-    this.clientScore = 0;
-    this.initialServer = 'host';
-    this.currentServer = 'host';
-    this.matchStatus = 'playing';
-    this.pointEventSeq = 0;
-    this.lastProcessedPointEventId = null;
-    this.lastPlayedMissAudioEventId = null;
-
-    await update(roomRef, {
-      status: 'playing',
-      startedAt: Date.now(),
-      updatedAt: Date.now(),
-      matchState: {
-        hostSetsWon: 0,
-        clientSetsWon: 0,
-        currentSetNumber: 1,
-        hostScore: 0,
-        clientScore: 0,
-        initialServer: 'host',
-        currentServer: 'host'
+    try {
+      const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${this.currentRoomId}`);
+      const snap = await get(roomRef);
+      if (!snap.exists()) {
+        this.announcePolite("ไม่พบข้อมูลห้อง");
+        return;
       }
-    });
 
-    this.enterMatchScreenUI();
+      const room = snap.val();
+      this.latestRoomData = room;
 
-    this.sendPeerMessage({
-      type: 'match_start',
-      matchId: this.matchId,
-      hostUsername: this.hostUsername,
-      clientUsername: this.clientUsername,
-      currentSetNumber: 1,
-      initialServer: 'host'
-    });
+      if (!this.hasBothPlayersInRoom(room)) {
+        this.announcePolite("ยังไม่สามารถเริ่มได้ ต้องรอผู้เล่นครบ 2 คนก่อน");
+        this.syncRoomReadyUIAndAnnounce(room);
+        return;
+      }
 
-    this.startOnlineSet(1, 'host');
+      if (!this.channelReady || !this.conn || !this.conn.open) {
+        this.announcePolite("ยังไม่สามารถเริ่มได้ การเชื่อมต่อ PeerJS ยังไม่พร้อม");
+        this.syncRoomReadyUIAndAnnounce(room);
+        return;
+      }
+
+      if (room.status === 'playing' && this.inMatch) {
+        return;
+      }
+
+      this.hostUsername = room.host ? room.host.username : this.hostUsername;
+      this.clientUsername = room.client ? room.client.username : this.clientUsername;
+      this.hostSetsWon = 0;
+      this.clientSetsWon = 0;
+      this.currentSetNumber = 1;
+      this.hostScore = 0;
+      this.clientScore = 0;
+      this.initialServer = 'host';
+      this.currentServer = 'host';
+      this.matchStatus = 'playing';
+      this.pointEventSeq = 0;
+      this.lastProcessedPointEventId = null;
+      this.lastPlayedMissAudioEventId = null;
+
+      await update(roomRef, {
+        status: 'playing',
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        matchState: {
+          hostSetsWon: 0,
+          clientSetsWon: 0,
+          currentSetNumber: 1,
+          hostScore: 0,
+          clientScore: 0,
+          initialServer: 'host',
+          currentServer: 'host'
+        }
+      });
+
+      this.enterMatchScreenUI();
+
+      this.sendPeerMessage({
+        type: 'match_start',
+        matchId: this.matchId,
+        hostUsername: this.hostUsername,
+        clientUsername: this.clientUsername,
+        currentSetNumber: 1,
+        initialServer: 'host'
+      });
+
+      this.startOnlineSet(1, 'host');
+    } catch (err) {
+      console.error("Host start match error:", err);
+      this.announcePolite("เกิดข้อผิดพลาดในการเริ่มการแข่งขัน กรุณาลองอีกครั้ง");
+      this.syncRoomReadyUIAndAnnounce();
+    } finally {
+      this.startingMatchBusy = false;
+      if (!this.inMatch && this.ui.startOnlineMatchBtn) {
+        this.ui.startOnlineMatchBtn.disabled = false;
+      }
+    }
   }
 
   enterMatchScreenUI() {
@@ -2888,6 +3087,40 @@ export class OnlineMatchController {
     if (!data || !data.type) return;
 
     switch (data.type) {
+      case 'peer_ready_handshake': {
+        if (this.role === 'host' && data.role === 'client') {
+          if (data.username && (!this.clientUsername || this.clientUsername === 'รอผู้เล่นเข้าร่วม...')) {
+            this.clientUsername = data.username;
+            if (this.ui.roomClientDisplay) {
+              this.ui.roomClientDisplay.textContent = `ผู้ท้าชิง (Client): ${this.clientUsername}`;
+            }
+          }
+          if (this.latestRoomData && !this.latestRoomData.client && data.username) {
+            this.latestRoomData = {
+              ...this.latestRoomData,
+              playerCount: 2,
+              status: 'ready',
+              client: {
+                username: data.username,
+                userKey: data.userKey || encodeUserKey(data.username),
+                connected: true
+              }
+            };
+          }
+        } else if (this.role === 'client' && data.role === 'host') {
+          if (data.username && (!this.hostUsername || this.hostUsername === '-')) {
+            this.hostUsername = data.username;
+            if (this.ui.roomHostDisplay) {
+              this.ui.roomHostDisplay.textContent = `หัวหน้าห้อง (Host): ${this.hostUsername}`;
+            }
+          }
+        }
+        if (!this.inMatch) {
+          this.syncRoomReadyUIAndAnnounce();
+        }
+        break;
+      }
+
       case 'ping': {
         this.sendPeerMessage({
           type: 'pong',
@@ -2900,15 +3133,15 @@ export class OnlineMatchController {
         if (typeof data.sentAt === 'number') {
           const sampleRtt = Math.max(5, performance.now() - data.sentAt);
           this.rttMs = (this.rttMs * 0.7) + (sampleRtt * 0.3);
-          if (!this.inMatch && this.channelReady && this.ui.roomConnectionDisplay) {
-            this.ui.roomConnectionDisplay.textContent = `สถานะห้อง: เชื่อมต่อพร้อมแข่งขัน (Ping ${Math.round(this.rttMs)} ms)`;
+          if (!this.inMatch && this.channelReady) {
+            this.syncRoomReadyUIAndAnnounce();
           }
         }
         break;
       }
 
       case 'match_start': {
-        if (this.role === 'client') {
+        if (this.role === 'client' && !this.inMatch) {
           this.matchId = data.matchId || this.matchId;
           this.hostUsername = data.hostUsername || this.hostUsername;
           this.clientUsername = data.clientUsername || this.clientUsername;
@@ -3542,6 +3775,7 @@ export class OnlineMatchController {
     clearInterval(this.pingTimer);
     this.stopPresence();
     this.localPeerId = null;
+    this.connectingHostPeerId = null;
     this.channelReady = false;
     this.peerReady = false;
 
@@ -3577,10 +3811,13 @@ export class OnlineMatchController {
     this.currentRoomId = null;
     this.currentRoomVisibility = 'public';
     this.role = null;
+    this.latestRoomData = null;
     this.inMatch = false;
+    this.startingMatchBusy = false;
     this.opponentDisconnected = false;
     this.canLocalPlayerHit = false;
     this.lastJoinedClientKey = null;
+    this.readyAnnouncedForRoomId = null;
     this.pointEventSeq = 0;
     this.lastProcessedPointEventId = null;
     this.lastPlayedMissAudioEventId = null;

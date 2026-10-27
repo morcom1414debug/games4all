@@ -483,13 +483,13 @@
   </div>
 
   <!-- หน้าต่างรับคำเชิญเข้าแข่งขัน (แสดงได้ทุกหน้าจอ รองรับ Screen Reader ครบถ้วน) -->
-  <div id="invitation-modal-overlay" class="invitation-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="invitation-modal-title" aria-describedby="invitation-modal-message">
+  <div id="invitation-modal-overlay" class="invitation-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="invitation-modal-title">
     <div class="invitation-dialog">
       <h2 id="invitation-modal-title" tabindex="-1">คำเชิญแข่งขันปิงปอง</h2>
-      <p id="invitation-modal-message" class="status-box" tabindex="0"></p>
+      <p id="invitation-modal-message" class="status-box" tabindex="-1"></p>
       <div class="invitation-actions">
-        <button id="invitation-accept-btn" type="button" aria-label="ใช่ ตอบรับคำเชิญ">ใช่</button>
-        <button id="invitation-decline-btn" type="button" class="btn-secondary" aria-label="ไม่ ปฏิเสธคำเชิญ">ไม่</button>
+        <button id="invitation-accept-btn" type="button">ใช่</button>
+        <button id="invitation-decline-btn" type="button" class="btn-secondary">ไม่</button>
       </div>
     </div>
   </div>
@@ -1943,6 +1943,11 @@ function presentInvitationModalNow(invitationData) {
   const questionText = `${inviterName} ชวนคุณมาตีปิงปองกับฉันไหม`;
   const announceKey = `${invitationData.invitationId || inviterName}:${questionText}`;
 
+  lastAnnouncedInvitationKey = announceKey;
+  if (onlineSrAnnouncer) {
+    onlineSrAnnouncer.textContent = '';
+  }
+
   invitationModalMessage.textContent = questionText;
   setBackgroundInertForInvitation(true);
   invitationModalOverlay.classList.remove('hidden');
@@ -1951,17 +1956,7 @@ function presentInvitationModalNow(invitationData) {
     roomId: invitationData.roomId || null
   }, true);
 
-  // ประกาศผ่าน aria-live เพียงครั้งเดียวและหน่วงเวลาการย้าย Focus เล็กน้อยเพื่อให้ VoiceOver iOS อ่านข้อความครบถ้วน
-  if (lastAnnouncedInvitationKey !== announceKey && onlineSrAnnouncer) {
-    lastAnnouncedInvitationKey = announceKey;
-    onlineSrAnnouncer.textContent = '';
-    setTimeout(() => {
-      if (onlineSrAnnouncer && !invitationModalOverlay.classList.contains('hidden')) {
-        onlineSrAnnouncer.textContent = questionText;
-      }
-    }, 30);
-  }
-
+  // ย้าย Focus ไปยังข้อความคำเชิญโดยตรงเพื่อให้ VoiceOver อ่านข้อความคำเชิญเพียงครั้งเดียวโดยไม่ชนกับ aria-live
   clearTimeout(invitationFocusTimer);
   invitationFocusTimer = setTimeout(() => {
     if (!invitationModalOverlay.classList.contains('hidden')) {
@@ -1969,7 +1964,7 @@ function presentInvitationModalNow(invitationData) {
         invitationModalMessage.focus();
       } catch (e) {}
     }
-  }, 350);
+  }, 120);
 }
 
 function closeInvitationModal(restoreFocus = true) {
