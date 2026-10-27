@@ -120,6 +120,10 @@
       outline: 6px solid var(--focus-ring);
       background-color: #FFA500;
     }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
     .btn-home-main {
       width: auto;
       align-self: flex-start;
@@ -217,6 +221,38 @@
       gap: 8px;
       font-size: 1.25rem;
     }
+    .invite-friends-section {
+      margin-top: 12px;
+      width: 100%;
+    }
+    .invitation-overlay {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(0, 0, 0, 0.92);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .invitation-dialog {
+      width: 100%;
+      max-width: 560px;
+      background-color: #111111;
+      border: 4px solid var(--accent);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      text-align: center;
+    }
+    .invitation-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
     .sr-only {
       position: absolute;
       width: 1px;
@@ -233,7 +269,8 @@
     }
     body.online-context-active #back-from-lobby-btn,
     body.online-room-joined #leave-room-btn,
-    body.online-room-joined #back-from-lobby-btn {
+    body.online-room-joined #back-from-lobby-btn,
+    body.online-room-joined #invite-friends-section {
       display: none !important;
     }
   </style>
@@ -344,6 +381,21 @@
     <div id="waiting-rooms-container" class="round-list-container" role="group" aria-label="รายการห้องออนไลน์ที่เปิดรอผู้เล่น">
       <p class="desc" tabindex="0">กำลังโหลดรายการห้อง...</p>
     </div>
+
+    <!-- ปุ่มชวนเพื่อนมาตีด้วยกัน อยู่ใต้รายการห้องออนไลน์ที่กำลังรอผู้เล่น -->
+    <div id="invite-friends-section" class="invite-friends-section">
+      <button id="invite-friends-btn" type="button" class="btn-secondary" aria-label="ชวนเพื่อนมาตีด้วยกัน">ชวนเพื่อนมาตีด้วยกัน</button>
+    </div>
+  </main>
+
+  <!-- หน้ารายชื่อเพื่อนออนไลน์ที่สามารถเชิญได้ -->
+  <main id="invite-friends-screen" class="hidden" role="region" aria-label="หน้ารายชื่อเพื่อนออนไลน์ที่สามารถเชิญได้">
+    <h1 id="invite-friends-heading" tabindex="0">ชวนเพื่อนมาตีด้วยกัน</h1>
+    <p class="desc" tabindex="0">เลือกชื่อเพื่อนออนไลน์ด้านล่างเพื่อส่งคำเชิญแข่งขันปิงปองแบบห้องส่วนตัว</p>
+    <div id="invite-friends-status-box" class="status-box hidden" aria-live="polite" tabindex="0"></div>
+    <div id="invite-friends-list-container" class="round-list-container" role="group" aria-label="รายชื่อเพื่อนออนไลน์ที่สามารถเชิญได้">
+      <p id="invite-friends-empty-msg" class="desc" tabindex="0">ขณะนี้ไม่มีเพื่อนออนไลน์ที่ว่างให้เชิญ</p>
+    </div>
   </main>
 
   <!-- หน้าต่างวิธีเล่นและกติกา (Rules & How to Play) -->
@@ -424,13 +476,34 @@
     <button id="start-online-match-btn" type="button" class="hidden" aria-label="เริ่มการแข่งขันออนไลน์กับผู้เล่นในห้อง">เริ่มการแข่งขันออนไลน์</button>
     <button id="leave-room-btn" type="button" class="btn-secondary hidden" aria-label="ออกจากห้องแข่งขันออนไลน์">ออกจากห้อง</button>
     <button id="back-from-lobby-btn" type="button" class="btn-secondary hidden" aria-label="ย้อนกลับสู่หน้าแรก">ย้อนกลับหน้าแรก</button>
+    <button id="back-from-invite-friends-btn" type="button" class="btn-secondary hidden" aria-label="ย้อนกลับสู่ล็อบบี้ออนไลน์">ย้อนกลับสู่ล็อบบี้</button>
     <button id="back-from-rules-btn" type="button" class="btn-secondary hidden" aria-label="ปิดวิธีเล่นและย้อนกลับ">ปิดและย้อนกลับ</button>
     <button id="back-from-leaderboard-btn" type="button" class="btn-secondary hidden" aria-label="ปิดหอเกียรติยศและย้อนกลับ">ย้อนกลับ</button>
     <button id="back-from-round-select-btn" type="button" class="btn-secondary hidden" aria-label="ยกเลิกการเลือกรอบและย้อนกลับ">ย้อนกลับ</button>
   </div>
 
+  <!-- หน้าต่างรับคำเชิญเข้าแข่งขัน (แสดงได้ทุกหน้าจอ รองรับ Screen Reader ครบถ้วน) -->
+  <div id="invitation-modal-overlay" class="invitation-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="invitation-modal-title" aria-describedby="invitation-modal-message">
+    <div class="invitation-dialog">
+      <h2 id="invitation-modal-title" tabindex="-1">คำเชิญแข่งขันปิงปอง</h2>
+      <p id="invitation-modal-message" class="status-box" tabindex="0"></p>
+      <div class="invitation-actions">
+        <button id="invitation-accept-btn" type="button" aria-label="ใช่ ตอบรับคำเชิญ">ใช่</button>
+        <button id="invitation-decline-btn" type="button" class="btn-secondary" aria-label="ไม่ ปฏิเสธคำเชิญ">ไม่</button>
+      </div>
+    </div>
+  </div>
+
 <script type="module">
-import { AuthManager } from './auth.js';
+import {
+  AuthManager,
+  PRESENCE_STATES,
+  updatePlayerPresence,
+  subscribeOnlinePlayers,
+  getInvitablePlayers,
+  verifyPlayerCanBeInvited,
+  verifyCanAcceptInvitation
+} from './auth.js';
 import { OnlineMatchController } from './ping-online.js';
 
 const authManager = new AuthManager();
@@ -896,12 +969,20 @@ let currentOriginDir = 'center';
 let lastBallPower = 'normal';
 let ballBounceTime = 0;
 
+// สถานะการตีลูกและพักเกมกับบอทเมื่อมีคำเชิญเข้ามาระหว่างแต้ม
+let botPointInProgress = false;
+let botPausedForInvitation = false;
+let botPausePhase = null; // 'next_rally' | 'between_sets' | 'match_ended' | null
+let botBackupSnapshot = null;
+
 function getPlayerName() {
   return currentUser ? currentUser.username : "คุณ";
 }
 
 // DOM Elements
 const btnHomeMain = document.getElementById('btn-home-main');
+const bottomBar = document.getElementById('bottom-bar');
+const onlineSrAnnouncer = document.getElementById('online-sr-announcer');
 
 const authScreen = document.getElementById('auth-screen');
 const authNav = document.getElementById('auth-nav');
@@ -911,6 +992,14 @@ const authStatusMsg = document.getElementById('auth-status-msg');
 
 const homeScreen = document.getElementById('home-screen');
 const onlineLobbyScreen = document.getElementById('online-lobby-screen');
+const inviteFriendsScreen = document.getElementById('invite-friends-screen');
+const inviteFriendsSection = document.getElementById('invite-friends-section');
+const inviteFriendsBtn = document.getElementById('invite-friends-btn');
+const inviteFriendsStatusBox = document.getElementById('invite-friends-status-box');
+const inviteFriendsListContainer = document.getElementById('invite-friends-list-container');
+const inviteFriendsEmptyMsg = document.getElementById('invite-friends-empty-msg');
+const backFromInviteFriendsBtn = document.getElementById('back-from-invite-friends-btn');
+
 const rulesScreen = document.getElementById('rules-screen');
 const roundSelectScreen = document.getElementById('round-select-screen');
 const roundButtonsContainer = document.getElementById('round-buttons-container');
@@ -937,7 +1026,26 @@ const checkpointBadge = document.getElementById('checkpoint-badge');
 const winsBadge = document.getElementById('wins-badge');
 const pointsBadge = document.getElementById('points-badge');
 
+const invitationModalOverlay = document.getElementById('invitation-modal-overlay');
+const invitationModalTitle = document.getElementById('invitation-modal-title');
+const invitationModalMessage = document.getElementById('invitation-modal-message');
+const invitationAcceptBtn = document.getElementById('invitation-accept-btn');
+const invitationDeclineBtn = document.getElementById('invitation-decline-btn');
+
 let previousScreen = 'home';
+let lastTrackedPresenceState = null;
+
+/**
+ * อัปเดตสถานะ Presence ผ่าน auth.js อย่างปลอดภัยและไม่เขียนซ้ำซ้อน
+ */
+function syncScreenPresence(state, meta = {}, force = false) {
+  if (!currentUser) return;
+  const metaSig = JSON.stringify(meta || {});
+  const keySig = `${state}|${metaSig}`;
+  if (!force && lastTrackedPresenceState === keySig) return;
+  lastTrackedPresenceState = keySig;
+  authManager.updatePresenceStatus(state, meta).catch(() => {});
+}
 
 function getCurrentRound() {
   return TOURNAMENT_ROUNDS[currentRoundIndex];
@@ -955,6 +1063,7 @@ function deactivateFocusMode() {
   gameScreen.removeAttribute('role');
   gameScreen.removeAttribute('tabindex');
   setTimeout(() => {
+    if (!invitationModalOverlay.classList.contains('hidden')) return;
     try {
       startBtn.focus();
     } catch (e) {}
@@ -1012,7 +1121,15 @@ function updateScoreUI() {
 }
 
 function startRally() {
-  if (!gameActive) return;
+  if (!gameActive || botPausedForInvitation) return;
+  if (pendingIncomingInvitation) {
+    pauseBotMatchAfterPointFinished('next_rally');
+    presentInvitationModalNow(pendingIncomingInvitation);
+    pendingIncomingInvitation = null;
+    return;
+  }
+
+  botPointInProgress = true;
   canPlayerHit = false;
   rallyCount = 0;
   updateServerTurn();
@@ -1045,12 +1162,14 @@ function startRally() {
 }
 
 function onPlayerSwing(swingDirection, powerLevel = 'normal') {
+  if (!invitationModalOverlay.classList.contains('hidden')) return;
+
   if (onlineController && onlineController.inMatch) {
     onlineController.handleLocalPlayerSwing(swingDirection, powerLevel);
     return;
   }
 
-  if (!gameActive || !canPlayerHit) return;
+  if (!gameActive || !canPlayerHit || botPausedForInvitation) return;
 
   const round = getCurrentRound();
   const pName = getPlayerName();
@@ -1124,7 +1243,7 @@ function onPlayerSwing(swingDirection, powerLevel = 'normal') {
 }
 
 function botStrikeBall() {
-  if (!gameActive) return;
+  if (!gameActive || botPausedForInvitation) return;
 
   const round = getCurrentRound();
   const pName = getPlayerName();
@@ -1169,7 +1288,9 @@ function botStrikeBall() {
 
 function handlePointWon(winner, reasonText) {
   canPlayerHit = false;
+  botPointInProgress = false;
   clearTimeout(activeTimer);
+  activeTimer = null;
 
   if (winner === 'player') {
     playerScore++;
@@ -1183,6 +1304,14 @@ function handlePointWon(winner, reasonText) {
     handleSetWon(setWinner, reasonText);
   } else {
     announceStatus(reasonText);
+    // หากมีคำเชิญที่รอคิวอยู่ระหว่างตีลูก ให้พักเกมทันทีหลังจบแต้มจริงโดยไม่ตั้ง Timer เริ่มแต้มถัดไป
+    if (pendingIncomingInvitation) {
+      pauseBotMatchAfterPointFinished('next_rally');
+      const inv = pendingIncomingInvitation;
+      pendingIncomingInvitation = null;
+      presentInvitationModalNow(inv);
+      return;
+    }
     activeTimer = setTimeout(startRally, TIMING.POINT_TRANSITION_MS);
   }
 }
@@ -1190,7 +1319,9 @@ function handlePointWon(winner, reasonText) {
 async function handleSetWon(winner, reasonText) {
   gameActive = false;
   canPlayerHit = false;
+  botPointInProgress = false;
   clearTimeout(activeTimer);
+  activeTimer = null;
 
   const round = getCurrentRound();
   const pName = getPlayerName();
@@ -1279,6 +1410,13 @@ async function handleSetWon(winner, reasonText) {
     rulesBtn.classList.add('hidden');
     btnHomeMain.classList.remove('hidden');
     betweenSets = false;
+
+    if (pendingIncomingInvitation) {
+      pauseBotMatchAfterPointFinished('match_ended');
+      const inv = pendingIncomingInvitation;
+      pendingIncomingInvitation = null;
+      presentInvitationModalNow(inv);
+    }
   } else {
     if (winner === 'player') {
       sound.play('winset', 0, 1.0, false);
@@ -1297,6 +1435,13 @@ async function handleSetWon(winner, reasonText) {
     selectRoundBtn.classList.add('hidden');
     rulesBtn.classList.add('hidden');
     btnHomeMain.classList.add('hidden');
+
+    if (pendingIncomingInvitation) {
+      pauseBotMatchAfterPointFinished('between_sets');
+      const inv = pendingIncomingInvitation;
+      pendingIncomingInvitation = null;
+      presentInvitationModalNow(inv);
+    }
   }
 }
 
@@ -1308,6 +1453,11 @@ function startNewSet() {
   initialServer = (currentSetNumber % 2 === 1) ? 'player' : 'bot';
   gameActive = true;
   betweenSets = false;
+  botPausedForInvitation = false;
+  botPausePhase = null;
+  botPointInProgress = true;
+
+  syncScreenPresence(PRESENCE_STATES.PLAYING_BOT);
 
   btnHomeMain.classList.add('hidden');
   inGameLeaderboardBtn.classList.add('hidden');
@@ -1327,6 +1477,7 @@ function startNewSet() {
     : `เริ่มเซตที่ ${currentSetNumber} ${round.botName}ได้เสิร์ฟก่อน เตรียมตีโต้`;
   announceStatus(startMsg);
 
+  clearTimeout(activeTimer);
   activeTimer = setTimeout(startRally, 2000);
 }
 
@@ -1337,6 +1488,8 @@ function startNewMatch(roundIdx) {
   currentSetNumber = 1;
   currentDifficultyIndex = 0;
   tournamentState = 'active';
+  botPausedForInvitation = false;
+  botPausePhase = null;
 
   btnHomeMain.classList.add('hidden');
   inGameLeaderboardBtn.classList.add('hidden');
@@ -1347,7 +1500,650 @@ function startNewMatch(roundIdx) {
   startNewSet();
 }
 
+/**
+ * =========================================================================
+ * ระบบพักเกมกับบอทหลังจบแต้มจริง และกู้คืนสถานะเมื่อปฏิเสธคำเชิญหรือเข้าห้องไม่สำเร็จ
+ * =========================================================================
+ */
+function isBotMatchCurrentlyInScreen() {
+  const isInOnlineMatch = Boolean(onlineController && onlineController.inMatch);
+  return !isInOnlineMatch && !gameScreen.classList.contains('hidden');
+}
+
+function captureBotMatchSnapshot() {
+  return {
+    wasInBotScreen: isBotMatchCurrentlyInScreen(),
+    currentRoundIndex,
+    playerSetsWon,
+    botSetsWon,
+    currentSetNumber,
+    currentDifficultyIndex,
+    playerScore,
+    botScore,
+    initialServer,
+    currentServer,
+    betweenSets,
+    tournamentState,
+    gameActive,
+    botPausePhase,
+    startBtnText: startBtn.textContent,
+    startBtnAria: startBtn.getAttribute('aria-label'),
+    statusText: gameStatus.textContent
+  };
+}
+
+function pauseBotMatchAfterPointFinished(phase = 'next_rally') {
+  clearTimeout(activeTimer);
+  activeTimer = null;
+  canPlayerHit = false;
+  botPointInProgress = false;
+  botPausedForInvitation = true;
+  botPausePhase = phase;
+  gameActive = false;
+  motion.stop();
+  gameScreen.removeAttribute('role');
+  gameScreen.removeAttribute('tabindex');
+}
+
+function resumeBotMatchAfterDecline() {
+  if (!botPausedForInvitation && !botBackupSnapshot) return false;
+
+  const phase = botPausePhase || (botBackupSnapshot ? botBackupSnapshot.botPausePhase : 'next_rally');
+  botPausedForInvitation = false;
+  botPausePhase = null;
+
+  // คืนหน้าจอกระดานแข่งขันกับบอท
+  authScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  inviteFriendsScreen.classList.add('hidden');
+  rulesScreen.classList.add('hidden');
+  roundSelectScreen.classList.add('hidden');
+  leaderboardScreen.classList.add('hidden');
+  gameScreen.classList.remove('hidden');
+
+  backFromInviteFriendsBtn.classList.add('hidden');
+  backFromLobbyBtnEl.classList.add('hidden');
+  leaveRoomBtnEl.classList.add('hidden');
+  document.getElementById('start-online-match-btn').classList.add('hidden');
+
+  syncScreenPresence(PRESENCE_STATES.PLAYING_BOT, {}, true);
+  updateScoreUI();
+
+  if (phase === 'next_rally') {
+    btnHomeMain.classList.add('hidden');
+    inGameLeaderboardBtn.classList.add('hidden');
+    selectRoundBtn.classList.add('hidden');
+    onlineModeBtn.classList.add('hidden');
+    rulesBtn.classList.add('hidden');
+    startBtn.classList.remove('hidden');
+
+    gameActive = true;
+    betweenSets = false;
+    motion.start();
+    activateFocusMode();
+
+    const round = getCurrentRound();
+    const pName = getPlayerName();
+    announceStatus(`กลับมาแข่งขันต่อกับ ${round.botName} แต้ม ${pName} ${playerScore} ต่อ ${botScore} ${round.botName}`);
+
+    clearTimeout(activeTimer);
+    activeTimer = setTimeout(() => {
+      startRally();
+    }, 1200);
+    return true;
+  }
+
+  if (phase === 'between_sets') {
+    betweenSets = true;
+    gameActive = false;
+    inGameLeaderboardBtn.classList.remove('hidden');
+    selectRoundBtn.classList.add('hidden');
+    rulesBtn.classList.add('hidden');
+    btnHomeMain.classList.add('hidden');
+    startBtn.classList.remove('hidden');
+    try {
+      startBtn.focus();
+    } catch (e) {}
+    return true;
+  }
+
+  // กรณีจบแมตช์แล้ว
+  betweenSets = false;
+  gameActive = false;
+  inGameLeaderboardBtn.classList.remove('hidden');
+  selectRoundBtn.classList.remove('hidden');
+  rulesBtn.classList.add('hidden');
+  btnHomeMain.classList.remove('hidden');
+  startBtn.classList.remove('hidden');
+  try {
+    startBtn.focus();
+  } catch (e) {}
+  return true;
+}
+
+function prepareExitBotModeForPrivateRoom() {
+  botBackupSnapshot = captureBotMatchSnapshot();
+  clearTimeout(activeTimer);
+  activeTimer = null;
+  canPlayerHit = false;
+  botPointInProgress = false;
+  gameActive = false;
+  motion.stop();
+  gameScreen.removeAttribute('role');
+  gameScreen.removeAttribute('tabindex');
+  return botBackupSnapshot;
+}
+
+function restorePreviousModeOnPrivateRoomJoinFailed(errorMessage = '') {
+  if (botBackupSnapshot && botBackupSnapshot.wasInBotScreen) {
+    currentRoundIndex = botBackupSnapshot.currentRoundIndex;
+    playerSetsWon = botBackupSnapshot.playerSetsWon;
+    botSetsWon = botBackupSnapshot.botSetsWon;
+    currentSetNumber = botBackupSnapshot.currentSetNumber;
+    currentDifficultyIndex = botBackupSnapshot.currentDifficultyIndex;
+    playerScore = botBackupSnapshot.playerScore;
+    botScore = botBackupSnapshot.botScore;
+    initialServer = botBackupSnapshot.initialServer;
+    currentServer = botBackupSnapshot.currentServer;
+    betweenSets = botBackupSnapshot.betweenSets;
+    tournamentState = botBackupSnapshot.tournamentState;
+    botPausePhase = botBackupSnapshot.botPausePhase || (betweenSets ? 'between_sets' : 'next_rally');
+    botPausedForInvitation = true;
+
+    resumeBotMatchAfterDecline();
+    if (errorMessage) {
+      announceStatus(errorMessage);
+    }
+    botBackupSnapshot = null;
+    return;
+  }
+
+  botBackupSnapshot = null;
+  restorePresenceForCurrentVisibleScreen();
+  if (errorMessage && !onlineLobbyScreen.classList.contains('hidden')) {
+    const lobbyBox = document.getElementById('lobby-status-box');
+    if (lobbyBox) lobbyBox.textContent = errorMessage;
+  }
+}
+
+/**
+ * =========================================================================
+ * ระบบหน้ารายชื่อเพื่อนออนไลน์ (Invite Friends Screen) และหน้าต่างรับคำเชิญ (Invitation Modal)
+ * =========================================================================
+ */
+let inviteFriendsUnsubscribe = null;
+let latestInvitableFriendsList = [];
+let pendingIncomingInvitation = null;
+let activeDisplayedInvitation = null;
+let invitationActionLocked = false;
+let focusElementBeforeInvitation = null;
+let lastAnnouncedInvitationKey = '';
+let invitationFocusTimer = null;
+
+function renderInvitableFriendsList(playersList = []) {
+  latestInvitableFriendsList = Array.isArray(playersList) ? playersList : [];
+  if (!inviteFriendsListContainer) return;
+  inviteFriendsListContainer.innerHTML = '';
+
+  const myNameLower = currentUser && currentUser.username ? currentUser.username.trim().toLowerCase() : '';
+  const filtered = latestInvitableFriendsList.filter((p) => {
+    if (!p || !p.username) return false;
+    if (myNameLower && String(p.username).trim().toLowerCase() === myNameLower) return false;
+    if (p.online === false || p.isExpired === true || p.isInvitable === false) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    const emptyP = document.createElement('p');
+    emptyP.id = 'invite-friends-empty-msg';
+    emptyP.className = 'desc';
+    emptyP.setAttribute('tabindex', '0');
+    emptyP.textContent = 'ขณะนี้ไม่มีเพื่อนออนไลน์ที่ว่างให้เชิญ';
+    inviteFriendsListContainer.appendChild(emptyP);
+    return;
+  }
+
+  filtered.forEach((friend) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-secondary';
+    btn.textContent = friend.username;
+    btn.setAttribute('aria-label', `ชวน ${friend.username} มาตีปิงปองด้วยกัน`);
+
+    addAccessibleClickListener(btn, async () => {
+      await handleSelectFriendToInvite(friend);
+    });
+
+    inviteFriendsListContainer.appendChild(btn);
+  });
+}
+
+async function handleSelectFriendToInvite(friendRecord) {
+  if (!friendRecord || !friendRecord.username) return;
+  const targetUsername = friendRecord.username;
+
+  if (inviteFriendsStatusBox) {
+    inviteFriendsStatusBox.textContent = `กำลังตรวจสอบสถานะของ ${targetUsername}...`;
+    inviteFriendsStatusBox.classList.remove('hidden');
+  }
+
+  try {
+    const verifyRes = await authManager.verifyPlayerCanBeInvited(targetUsername);
+    if (!verifyRes.canInvite) {
+      const msg = verifyRes.reason || `ไม่สามารถเชิญ ${targetUsername} ได้ในขณะนี้`;
+      if (inviteFriendsStatusBox) {
+        inviteFriendsStatusBox.textContent = msg;
+        inviteFriendsStatusBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    // ส่งต่อให้ ping-online.js หากมีเมธอดรองรับการเชิญเพื่อน
+    if (onlineController && typeof onlineController.onSelectFriendToInvite === 'function') {
+      await onlineController.onSelectFriendToInvite(verifyRes.presence || friendRecord);
+    } else if (onlineController && typeof onlineController.sendFriendInvitation === 'function') {
+      await onlineController.sendFriendInvitation(targetUsername, verifyRes.presence || friendRecord);
+    } else if (inviteFriendsStatusBox) {
+      inviteFriendsStatusBox.textContent = `เลือก ${targetUsername} แล้ว เตรียมส่งคำเชิญผ่านระบบห้องส่วนตัว`;
+      inviteFriendsStatusBox.classList.remove('hidden');
+    }
+  } catch (err) {
+    console.warn("เลือกผู้เล่นเพื่อส่งคำเชิญไม่สำเร็จ:", err);
+    if (inviteFriendsStatusBox) {
+      inviteFriendsStatusBox.textContent = "ไม่สามารถดำเนินการส่งคำเชิญได้ในขณะนี้";
+      inviteFriendsStatusBox.classList.remove('hidden');
+    }
+  }
+}
+
+function openInviteFriendsScreen() {
+  btnHomeMain.classList.add('hidden');
+  authScreen.classList.add('hidden');
+  homeScreen.classList.add('hidden');
+  onlineLobbyScreen.classList.add('hidden');
+  rulesScreen.classList.add('hidden');
+  roundSelectScreen.classList.add('hidden');
+  gameScreen.classList.add('hidden');
+  leaderboardScreen.classList.add('hidden');
+
+  startBtn.classList.add('hidden');
+  onlineModeBtn.classList.add('hidden');
+  selectRoundBtn.classList.add('hidden');
+  rulesBtn.classList.add('hidden');
+  inGameLeaderboardBtn.classList.add('hidden');
+  backFromRulesBtn.classList.add('hidden');
+  backFromRoundSelectBtn.classList.add('hidden');
+  backFromLeaderboardBtn.classList.add('hidden');
+  backFromLobbyBtnEl.classList.add('hidden');
+  leaveRoomBtnEl.classList.add('hidden');
+  document.getElementById('start-online-match-btn').classList.add('hidden');
+
+  if (inviteFriendsStatusBox) {
+    inviteFriendsStatusBox.textContent = '';
+    inviteFriendsStatusBox.classList.add('hidden');
+  }
+
+  inviteFriendsScreen.classList.remove('hidden');
+  backFromInviteFriendsBtn.classList.remove('hidden');
+
+  syncScreenPresence(PRESENCE_STATES.ONLINE_LOBBY);
+
+  if (inviteFriendsUnsubscribe) {
+    try { inviteFriendsUnsubscribe(); } catch (e) {}
+    inviteFriendsUnsubscribe = null;
+  }
+
+  inviteFriendsUnsubscribe = authManager.subscribeOnlinePlayers((invitableList) => {
+    renderInvitableFriendsList(invitableList);
+  }, {
+    onlyInvitable: true,
+    excludeUsername: currentUser ? currentUser.username : null
+  });
+
+  if (onlineController && typeof onlineController.onInviteFriendsScreenOpened === 'function') {
+    try { onlineController.onInviteFriendsScreenOpened(); } catch (e) {}
+  }
+
+  setTimeout(() => {
+    try {
+      document.getElementById('invite-friends-heading').focus();
+    } catch (e) {}
+  }, 100);
+}
+
+function closeInviteFriendsScreen() {
+  if (inviteFriendsUnsubscribe) {
+    try { inviteFriendsUnsubscribe(); } catch (e) {}
+    inviteFriendsUnsubscribe = null;
+  }
+
+  inviteFriendsScreen.classList.add('hidden');
+  backFromInviteFriendsBtn.classList.add('hidden');
+
+  if (inviteFriendsStatusBox) {
+    inviteFriendsStatusBox.textContent = '';
+    inviteFriendsStatusBox.classList.add('hidden');
+  }
+
+  btnHomeMain.classList.remove('hidden');
+  onlineLobbyScreen.classList.remove('hidden');
+  syncOnlineButtonsVisibility();
+  syncScreenPresence(PRESENCE_STATES.ONLINE_LOBBY);
+
+  if (onlineController && typeof onlineController.onInviteFriendsScreenClosed === 'function') {
+    try { onlineController.onInviteFriendsScreenClosed(); } catch (e) {}
+  }
+
+  setTimeout(() => {
+    try {
+      inviteFriendsBtn.focus();
+    } catch (e) {}
+  }, 100);
+}
+
+function setBackgroundInertForInvitation(isInert) {
+  const regions = [
+    btnHomeMain,
+    authScreen,
+    homeScreen,
+    onlineLobbyScreen,
+    inviteFriendsScreen,
+    rulesScreen,
+    roundSelectScreen,
+    gameScreen,
+    leaderboardScreen,
+    bottomBar
+  ];
+  regions.forEach((el) => {
+    if (!el) return;
+    if (isInert) {
+      el.setAttribute('aria-hidden', 'true');
+      try { el.inert = true; } catch (e) {}
+    } else {
+      el.removeAttribute('aria-hidden');
+      try { el.inert = false; } catch (e) {}
+    }
+  });
+}
+
+function restorePresenceForCurrentVisibleScreen() {
+  if (!currentUser) return;
+  if (onlineController && onlineController.inMatch) {
+    syncScreenPresence(PRESENCE_STATES.PLAYING_ONLINE, { roomId: onlineController.currentRoomId || null }, true);
+  } else if (!gameScreen.classList.contains('hidden')) {
+    syncScreenPresence(PRESENCE_STATES.PLAYING_BOT, {}, true);
+  } else if (!rulesScreen.classList.contains('hidden')) {
+    syncScreenPresence(PRESENCE_STATES.RULES, {}, true);
+  } else if (!roundSelectScreen.classList.contains('hidden')) {
+    syncScreenPresence(PRESENCE_STATES.ROUND_SELECT, {}, true);
+  } else if (!onlineLobbyScreen.classList.contains('hidden') || !inviteFriendsScreen.classList.contains('hidden')) {
+    if (onlineController && onlineController.currentRoomId) {
+      syncScreenPresence(PRESENCE_STATES.WAITING_ROOM, {
+        roomId: onlineController.currentRoomId,
+        roomRole: onlineController.role || 'host',
+        roomPlayerCount: 1,
+        hasClientInRoom: false,
+        roomStatus: 'waiting'
+      }, true);
+    } else {
+      syncScreenPresence(PRESENCE_STATES.ONLINE_LOBBY, {}, true);
+    }
+  } else {
+    syncScreenPresence(PRESENCE_STATES.HOME, {}, true);
+  }
+}
+
+/**
+ * แสดงหน้าต่างรับคำเชิญทันที หรือเข้าคิวรอจนจบแต้มหากกำลังตีลูกกับบอทอยู่
+ */
+function showIncomingInvitation(invitationData = {}) {
+  const inviterName = typeof invitationData === 'string'
+    ? invitationData.trim()
+    : String(invitationData.fromUsername || invitationData.hostUsername || invitationData.inviterUsername || '').trim();
+
+  if (!inviterName) return false;
+
+  const normalizedInvitation = typeof invitationData === 'object' && invitationData !== null
+    ? { ...invitationData, fromUsername: inviterName }
+    : { fromUsername: inviterName };
+
+  // หากรอการตัดสินใจคำเชิญเดิมอยู่แล้ว ไม่เปิดซ้อน
+  if (!invitationModalOverlay.classList.contains('hidden')) {
+    return false;
+  }
+
+  // หากผู้เล่นกำลังตีลูกกับบอทอยู่ในแต้มปัจจุบัน ต้องรอให้แต้มจบจริงก่อน
+  const isPlayingBotRallyNow = isBotMatchCurrentlyInScreen() && (gameActive || botPointInProgress) && !botPausedForInvitation;
+  if (isPlayingBotRallyNow) {
+    pendingIncomingInvitation = normalizedInvitation;
+    return true;
+  }
+
+  // หากอยู่ในหน้าแข่งกับบอทช่วงพักเซตหรือจบแมตช์ ให้บันทึกสถานะพักไว้ก่อนเปิดคำเชิญ
+  if (isBotMatchCurrentlyInScreen() && !botPausedForInvitation) {
+    pauseBotMatchAfterPointFinished(betweenSets ? 'between_sets' : 'match_ended');
+  }
+
+  presentInvitationModalNow(normalizedInvitation);
+  return true;
+}
+
+function presentInvitationModalNow(invitationData) {
+  if (!invitationData || !invitationData.fromUsername) return;
+
+  activeDisplayedInvitation = invitationData;
+  invitationActionLocked = false;
+  invitationAcceptBtn.disabled = false;
+  invitationDeclineBtn.disabled = false;
+
+  focusElementBeforeInvitation = document.activeElement;
+
+  const inviterName = invitationData.fromUsername;
+  const questionText = `${inviterName} ชวนคุณมาตีปิงปองกับฉันไหม`;
+  const announceKey = `${invitationData.invitationId || inviterName}:${questionText}`;
+
+  invitationModalMessage.textContent = questionText;
+  setBackgroundInertForInvitation(true);
+  invitationModalOverlay.classList.remove('hidden');
+
+  syncScreenPresence(PRESENCE_STATES.INVITATION_PENDING, {
+    roomId: invitationData.roomId || null
+  }, true);
+
+  // ประกาศผ่าน aria-live เพียงครั้งเดียวและหน่วงเวลาการย้าย Focus เล็กน้อยเพื่อให้ VoiceOver iOS อ่านข้อความครบถ้วน
+  if (lastAnnouncedInvitationKey !== announceKey && onlineSrAnnouncer) {
+    lastAnnouncedInvitationKey = announceKey;
+    onlineSrAnnouncer.textContent = '';
+    setTimeout(() => {
+      if (onlineSrAnnouncer && !invitationModalOverlay.classList.contains('hidden')) {
+        onlineSrAnnouncer.textContent = questionText;
+      }
+    }, 30);
+  }
+
+  clearTimeout(invitationFocusTimer);
+  invitationFocusTimer = setTimeout(() => {
+    if (!invitationModalOverlay.classList.contains('hidden')) {
+      try {
+        invitationModalMessage.focus();
+      } catch (e) {}
+    }
+  }, 350);
+}
+
+function closeInvitationModal(restoreFocus = true) {
+  clearTimeout(invitationFocusTimer);
+  invitationFocusTimer = null;
+
+  invitationModalOverlay.classList.add('hidden');
+  setBackgroundInertForInvitation(false);
+  invitationModalMessage.textContent = '';
+  lastAnnouncedInvitationKey = '';
+
+  if (onlineSrAnnouncer) {
+    onlineSrAnnouncer.textContent = '';
+  }
+
+  if (restoreFocus && focusElementBeforeInvitation && typeof focusElementBeforeInvitation.focus === 'function') {
+    const targetEl = focusElementBeforeInvitation;
+    focusElementBeforeInvitation = null;
+    setTimeout(() => {
+      try {
+        if (!targetEl.classList.contains('hidden')) {
+          targetEl.focus();
+        }
+      } catch (e) {}
+    }, 80);
+  } else {
+    focusElementBeforeInvitation = null;
+  }
+}
+
+async function handleAcceptInvitationClick() {
+  if (invitationActionLocked || !activeDisplayedInvitation) return;
+  invitationActionLocked = true;
+  invitationAcceptBtn.disabled = true;
+  invitationDeclineBtn.disabled = true;
+
+  const invitation = activeDisplayedInvitation;
+  activeDisplayedInvitation = null;
+
+  try {
+    // ขออนุญาต Sensor และปลุก AudioContext ภายใต้ User Gesture ทันที
+    const permPromise = motion.requestPermission();
+    const soundPromise = sound.init();
+    await Promise.all([permPromise, soundPromise]);
+    sound.playBGM(0.20);
+
+    // ตรวจสอบสถานะล่าสุดก่อนตอบรับคำเชิญผ่าน auth.js
+    const verifyRes = await authManager.verifyCanAcceptInvitation({
+      inviteeUsername: currentUser ? currentUser.username : null,
+      hostUsername: invitation.fromUsername || invitation.hostUsername || null,
+      roomId: invitation.roomId || null
+    });
+
+    if (!verifyRes.allowed) {
+      closeInvitationModal(false);
+      restorePreviousModeOnPrivateRoomJoinFailed(verifyRes.reason || "ไม่สามารถตอบรับคำเชิญได้ เนื่องจากสถานะห้องเปลี่ยนไปแล้ว");
+      return;
+    }
+
+    // เตรียมออกจากโหมดบอทอย่างปลอดภัย (เก็บ Snapshot เผื่อกรณีเข้าห้องไม่สำเร็จ)
+    if (isBotMatchCurrentlyInScreen() || botPausedForInvitation) {
+      prepareExitBotModeForPrivateRoom();
+    }
+
+    closeInvitationModal(false);
+
+    let joinedSuccessfully = false;
+    if (onlineController && typeof onlineController.onAcceptFriendInvitation === 'function') {
+      const res = await onlineController.onAcceptFriendInvitation(invitation, verifyRes);
+      joinedSuccessfully = res !== false;
+    } else if (onlineController && typeof onlineController.acceptFriendInvitation === 'function') {
+      const res = await onlineController.acceptFriendInvitation(invitation, verifyRes);
+      joinedSuccessfully = res !== false;
+    } else if (invitation.roomId && onlineController && typeof onlineController.joinRoom === 'function') {
+      await onlineController.openLobby();
+      syncOnlineButtonsVisibility();
+      await onlineController.joinRoom(invitation.roomId);
+      joinedSuccessfully = Boolean(onlineController.currentRoomId === invitation.roomId);
+    } else {
+      restorePreviousModeOnPrivateRoomJoinFailed("ระบบห้องส่วนตัวกำลังรอการเชื่อมต่อจากโมดูลออนไลน์");
+      return;
+    }
+
+    if (!joinedSuccessfully) {
+      restorePreviousModeOnPrivateRoomJoinFailed("ไม่สามารถเข้าร่วมห้องของเพื่อนได้ ระบบนำคุณกลับสู่เกมเดิม");
+    } else {
+      botPausedForInvitation = false;
+      botPausePhase = null;
+      botBackupSnapshot = null;
+    }
+  } catch (err) {
+    console.warn("เกิดข้อผิดพลาดในการตอบรับคำเชิญ:", err);
+    closeInvitationModal(false);
+    restorePreviousModeOnPrivateRoomJoinFailed("เกิดข้อผิดพลาดในการเข้าร่วมห้อง ระบบนำคุณกลับสู่เกมเดิม");
+  } finally {
+    invitationActionLocked = false;
+  }
+}
+
+async function handleDeclineInvitationClick() {
+  if (invitationActionLocked) return;
+  invitationActionLocked = true;
+  invitationAcceptBtn.disabled = true;
+  invitationDeclineBtn.disabled = true;
+
+  const invitation = activeDisplayedInvitation;
+  activeDisplayedInvitation = null;
+
+  closeInvitationModal(!botPausedForInvitation);
+
+  try {
+    if (invitation && onlineController) {
+      if (typeof onlineController.onDeclineFriendInvitation === 'function') {
+        await onlineController.onDeclineFriendInvitation(invitation);
+      } else if (typeof onlineController.declineFriendInvitation === 'function') {
+        await onlineController.declineFriendInvitation(invitation);
+      }
+    }
+  } catch (e) {
+    console.warn("แจ้งปฏิเสธคำเชิญไม่สำเร็จ:", e);
+  }
+
+  if (botPausedForInvitation) {
+    resumeBotMatchAfterDecline();
+  } else {
+    restorePresenceForCurrentVisibleScreen();
+  }
+
+  invitationActionLocked = false;
+}
+
+addAccessibleClickListener(inviteFriendsBtn, () => {
+  openInviteFriendsScreen();
+});
+
+addAccessibleClickListener(backFromInviteFriendsBtn, () => {
+  closeInviteFriendsScreen();
+});
+
+addAccessibleClickListener(invitationAcceptBtn, async () => {
+  await handleAcceptInvitationClick();
+});
+
+addAccessibleClickListener(invitationDeclineBtn, async () => {
+  await handleDeclineInvitationClick();
+});
+
 const motion = new MotionDetector(onPlayerSwing);
+
+/**
+ * Interface สำหรับเชื่อมต่อกับ ping-online.js ทั้งในปัจจุบันและขั้นตอนถัดไป
+ */
+export const pingInvitationInterface = {
+  openInviteFriendsScreen: () => openInviteFriendsScreen(),
+  closeInviteFriendsScreen: () => closeInviteFriendsScreen(),
+  updateInvitableFriendsList: (list) => renderInvitableFriendsList(list),
+  selectFriendToInvite: (friend) => handleSelectFriendToInvite(friend),
+  showIncomingInvitation: (invitationData) => showIncomingInvitation(invitationData),
+  closeInvitationModal: () => closeInvitationModal(true),
+  pauseBotMatchAfterPoint: () => {
+    if (isBotMatchCurrentlyInScreen() && (gameActive || botPointInProgress)) {
+      return false; // จะพักอัตโนมัติทันทีที่แต้มปัจจุบันจบใน handlePointWon
+    }
+    pauseBotMatchAfterPointFinished(betweenSets ? 'between_sets' : 'next_rally');
+    return true;
+  },
+  resumeBotMatch: () => resumeBotMatchAfterDecline(),
+  prepareTransitionFromBotToPrivateRoom: () => prepareExitBotModeForPrivateRoom(),
+  rollbackBotMatchOnPrivateRoomFailure: (msg) => restorePreviousModeOnPrivateRoomJoinFailed(msg),
+  updatePresenceStatus: (status, meta) => syncScreenPresence(status, meta, true),
+  isBotPointInProgress: () => Boolean(isBotMatchCurrentlyInScreen() && (gameActive || botPointInProgress) && !botPausedForInvitation)
+};
+
+window.PingPongInvitationBridge = pingInvitationInterface;
 
 onlineController = new OnlineMatchController({
   sound: sound,
@@ -1364,10 +2160,30 @@ onlineController = new OnlineMatchController({
   onExitToHome: () => {
     enterGameHomeScreen();
   },
+  authManager: authManager,
+  presenceStates: PRESENCE_STATES,
+  updatePresenceStatus: (status, meta) => syncScreenPresence(status, meta, true),
+  subscribeOnlinePlayers: subscribeOnlinePlayers,
+  getInvitablePlayers: getInvitablePlayers,
+  verifyPlayerCanBeInvited: verifyPlayerCanBeInvited,
+  verifyCanAcceptInvitation: verifyCanAcceptInvitation,
+  invitationBridge: pingInvitationInterface,
   ui: {
     btnHomeMain: btnHomeMain,
     homeScreen: homeScreen,
     onlineLobbyScreen: onlineLobbyScreen,
+    inviteFriendsScreen: inviteFriendsScreen,
+    inviteFriendsSection: inviteFriendsSection,
+    inviteFriendsBtn: inviteFriendsBtn,
+    inviteFriendsStatusBox: inviteFriendsStatusBox,
+    inviteFriendsListContainer: inviteFriendsListContainer,
+    inviteFriendsEmptyMsg: inviteFriendsEmptyMsg,
+    backFromInviteFriendsBtn: backFromInviteFriendsBtn,
+    invitationModalOverlay: invitationModalOverlay,
+    invitationModalTitle: invitationModalTitle,
+    invitationModalMessage: invitationModalMessage,
+    invitationAcceptBtn: invitationAcceptBtn,
+    invitationDeclineBtn: invitationDeclineBtn,
     rulesScreen: rulesScreen,
     roundSelectScreen: roundSelectScreen,
     leaderboardScreen: leaderboardScreen,
@@ -1375,6 +2191,7 @@ onlineController = new OnlineMatchController({
     permissionMsg: permissionMsg,
     tournamentDisplay: tournamentDisplay,
     setDisplay: setDisplay,
+    scoreDisplay: setDisplay,
     scoreDisplay: scoreDisplay,
     gameStatus: gameStatus,
     startBtn: startBtn,
@@ -1396,7 +2213,7 @@ onlineController = new OnlineMatchController({
     startOnlineMatchBtn: document.getElementById('start-online-match-btn'),
     leaveRoomBtn: document.getElementById('leave-room-btn'),
     backFromLobbyBtn: document.getElementById('back-from-lobby-btn'),
-    onlineSrAnnouncer: document.getElementById('online-sr-announcer')
+    onlineSrAnnouncer: onlineSrAnnouncer
   }
 });
 
@@ -1404,6 +2221,7 @@ onlineController = new OnlineMatchController({
  * ควบคุมการแสดงปุ่มในหน้าสร้างห้อง รายการห้อง และห้องแข่งขันออนไลน์ 1 ต่อ 1:
  * - ในหน้าสร้างห้องและหน้ารายการห้อง: ซ่อนปุ่ม "ย้อนกลับสู่หน้าแรก" (#back-from-lobby-btn)
  * - เมื่อสร้างห้องสำเร็จหรือเข้าร่วมห้องสำเร็จแล้ว: ซ่อนทั้งปุ่ม "ออกจากห้องแข่งขันออนไลน์" (#leave-room-btn) และ "ย้อนกลับสู่หน้าแรก" (#back-from-lobby-btn)
+ * - ซิงก์สถานะ Presence ของห้องออนไลน์ (waiting_room / online_ready / playing_online) กับ auth.js อัตโนมัติ
  */
 const activeRoomCardEl = document.getElementById('active-room-card');
 const leaveRoomBtnEl = document.getElementById('leave-room-btn');
@@ -1411,6 +2229,7 @@ const backFromLobbyBtnEl = document.getElementById('back-from-lobby-btn');
 
 function syncOnlineButtonsVisibility() {
   const isLobbyVisible = !onlineLobbyScreen.classList.contains('hidden');
+  const isInviteScreenVisible = !inviteFriendsScreen.classList.contains('hidden');
   const isRoomCardVisible = activeRoomCardEl && !activeRoomCardEl.classList.contains('hidden');
   const isOnlineActive = Boolean(onlineController && onlineController.activeMode);
   const isInOnlineRoom = Boolean(
@@ -1418,10 +2237,10 @@ function syncOnlineButtonsVisibility() {
     (onlineController && (onlineController.currentRoomId || onlineController.inMatch))
   );
 
-  document.body.classList.toggle('online-context-active', isLobbyVisible || isOnlineActive);
+  document.body.classList.toggle('online-context-active', isLobbyVisible || isInviteScreenVisible || isOnlineActive);
   document.body.classList.toggle('online-room-joined', isInOnlineRoom);
 
-  if (isLobbyVisible || isOnlineActive) {
+  if (isLobbyVisible || isInviteScreenVisible || isOnlineActive) {
     if (backFromLobbyBtnEl && !backFromLobbyBtnEl.classList.contains('hidden')) {
       backFromLobbyBtnEl.classList.add('hidden');
     }
@@ -1434,6 +2253,48 @@ function syncOnlineButtonsVisibility() {
     if (backFromLobbyBtnEl && !backFromLobbyBtnEl.classList.contains('hidden')) {
       backFromLobbyBtnEl.classList.add('hidden');
     }
+    if (inviteFriendsSection && !inviteFriendsSection.classList.contains('hidden')) {
+      inviteFriendsSection.classList.add('hidden');
+    }
+  } else if (isLobbyVisible && inviteFriendsSection) {
+    inviteFriendsSection.classList.remove('hidden');
+  }
+
+  // ซิงก์สถานะ Presence สำหรับโหมดออนไลน์ร่วมกับ auth.js
+  if (currentUser && invitationModalOverlay.classList.contains('hidden')) {
+    if (onlineController && onlineController.inMatch) {
+      syncScreenPresence(PRESENCE_STATES.PLAYING_ONLINE, {
+        roomId: onlineController.currentRoomId || null,
+        roomRole: onlineController.role || null,
+        roomPlayerCount: 2,
+        hasClientInRoom: true,
+        roomStatus: 'playing'
+      });
+    } else if (isInOnlineRoom && onlineController && onlineController.currentRoomId) {
+      const hasSecondPlayer = Boolean(
+        onlineController.role === 'client' ||
+        onlineController.channelReady ||
+        (onlineController.clientUsername && onlineController.clientUsername !== 'รอผู้เล่นเข้าร่วม...')
+      );
+      syncScreenPresence(
+        hasSecondPlayer ? PRESENCE_STATES.ONLINE_READY : PRESENCE_STATES.WAITING_ROOM,
+        {
+          roomId: onlineController.currentRoomId,
+          roomRole: onlineController.role || 'host',
+          roomPlayerCount: hasSecondPlayer ? 2 : 1,
+          hasClientInRoom: hasSecondPlayer,
+          roomStatus: hasSecondPlayer ? 'ready' : 'waiting'
+        }
+      );
+    } else if (isLobbyVisible || isInviteScreenVisible) {
+      syncScreenPresence(PRESENCE_STATES.ONLINE_LOBBY, {
+        roomId: null,
+        roomRole: null,
+        roomPlayerCount: 0,
+        hasClientInRoom: false,
+        roomStatus: null
+      });
+    }
   }
 }
 
@@ -1441,13 +2302,20 @@ const onlineVisibilityObserver = new MutationObserver(() => {
   syncOnlineButtonsVisibility();
 });
 
-[onlineLobbyScreen, activeRoomCardEl, gameScreen, leaveRoomBtnEl, backFromLobbyBtnEl].forEach((el) => {
+[onlineLobbyScreen, inviteFriendsScreen, activeRoomCardEl, gameScreen, leaveRoomBtnEl, backFromLobbyBtnEl].forEach((el) => {
   if (el) {
     onlineVisibilityObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
   }
 });
 
+const roomClientDisplayEl = document.getElementById('room-client-display');
+if (roomClientDisplayEl) {
+  onlineVisibilityObserver.observe(roomClientDisplayEl, { childList: true, characterData: true, subtree: true });
+}
+
 document.addEventListener('keydown', (e) => {
+  if (!invitationModalOverlay.classList.contains('hidden')) return;
+
   const key = e.key || e.code;
   let dir = null;
 
@@ -1470,7 +2338,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (!gameActive || !canPlayerHit) return;
+  if (!gameActive || !canPlayerHit || botPausedForInvitation) return;
 
   e.preventDefault();
   const power = e.shiftKey ? 'hard' : 'normal';
@@ -1538,6 +2406,7 @@ function openLeaderboard(fromScreen) {
   authScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
+  inviteFriendsScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
@@ -1552,7 +2421,14 @@ function openLeaderboard(fromScreen) {
   inGameLeaderboardBtn.classList.add('hidden');
   backFromRulesBtn.classList.add('hidden');
   backFromRoundSelectBtn.classList.add('hidden');
+  backFromInviteFriendsBtn.classList.add('hidden');
   backFromLeaderboardBtn.classList.remove('hidden');
+
+  if (fromScreen === 'game') {
+    syncScreenPresence(PRESENCE_STATES.PLAYING_BOT);
+  } else if (fromScreen === 'home') {
+    syncScreenPresence(PRESENCE_STATES.HOME);
+  }
 
   setTimeout(() => {
     try {
@@ -1581,6 +2457,7 @@ function closeLeaderboard() {
     selectRoundBtn.classList.remove('hidden');
     onlineModeBtn.classList.remove('hidden');
     startBtn.classList.remove('hidden');
+    syncScreenPresence(PRESENCE_STATES.HOME);
     startBtn.focus();
   } else if (previousScreen === 'game') {
     gameScreen.classList.remove('hidden');
@@ -1594,6 +2471,7 @@ function closeLeaderboard() {
       btnHomeMain.classList.add('hidden');
     }
     startBtn.classList.remove('hidden');
+    syncScreenPresence(PRESENCE_STATES.PLAYING_BOT);
     startBtn.focus();
   }
 }
@@ -1604,6 +2482,7 @@ function openRules(fromScreen) {
   authScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
+  inviteFriendsScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
@@ -1617,7 +2496,10 @@ function openRules(fromScreen) {
   inGameLeaderboardBtn.classList.add('hidden');
   backFromLeaderboardBtn.classList.add('hidden');
   backFromRoundSelectBtn.classList.add('hidden');
+  backFromInviteFriendsBtn.classList.add('hidden');
   backFromRulesBtn.classList.remove('hidden');
+
+  syncScreenPresence(PRESENCE_STATES.RULES);
 
   setTimeout(() => {
     try {
@@ -1637,6 +2519,7 @@ function closeRules() {
   selectRoundBtn.classList.remove('hidden');
   onlineModeBtn.classList.remove('hidden');
   startBtn.classList.remove('hidden');
+  syncScreenPresence(PRESENCE_STATES.HOME);
   startBtn.focus();
 }
 
@@ -1672,6 +2555,7 @@ function openRoundSelect(fromScreen) {
   authScreen.classList.add('hidden');
   homeScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
+  inviteFriendsScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
@@ -1686,7 +2570,10 @@ function openRoundSelect(fromScreen) {
   inGameLeaderboardBtn.classList.add('hidden');
   backFromRulesBtn.classList.add('hidden');
   backFromLeaderboardBtn.classList.add('hidden');
+  backFromInviteFriendsBtn.classList.add('hidden');
   backFromRoundSelectBtn.classList.remove('hidden');
+
+  syncScreenPresence(PRESENCE_STATES.ROUND_SELECT);
 
   setTimeout(() => {
     try {
@@ -1707,6 +2594,7 @@ function closeRoundSelect() {
     onlineModeBtn.classList.add('hidden');
     selectRoundBtn.classList.remove('hidden');
     startBtn.classList.remove('hidden');
+    syncScreenPresence(PRESENCE_STATES.PLAYING_BOT);
     selectRoundBtn.focus();
   } else {
     homeScreen.classList.remove('hidden');
@@ -1716,6 +2604,7 @@ function closeRoundSelect() {
     selectRoundBtn.classList.remove('hidden');
     onlineModeBtn.classList.remove('hidden');
     startBtn.classList.remove('hidden');
+    syncScreenPresence(PRESENCE_STATES.HOME);
     selectRoundBtn.focus();
   }
 }
@@ -1752,6 +2641,7 @@ async function selectAndStartRound(selectedRoundIdx) {
   backFromRoundSelectBtn.classList.add('hidden');
   homeScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
+  inviteFriendsScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   leaderboardScreen.classList.add('hidden');
 
@@ -1762,6 +2652,7 @@ async function selectAndStartRound(selectedRoundIdx) {
   startBtn.classList.remove('hidden');
   gameScreen.classList.remove('hidden');
 
+  syncScreenPresence(PRESENCE_STATES.PLAYING_BOT);
   startNewMatch(selectedRoundIdx);
 }
 
@@ -1828,6 +2719,14 @@ addAccessibleClickListener(backFromLeaderboardBtn, () => {
 addAccessibleClickListener(onlineModeBtn, async () => {
   clearTimeout(activeTimer);
   gameActive = false;
+  botPointInProgress = false;
+  syncScreenPresence(PRESENCE_STATES.ONLINE_LOBBY, {
+    roomId: null,
+    roomRole: null,
+    roomPlayerCount: 0,
+    hasClientInRoom: false,
+    roomStatus: null
+  });
   await onlineController.openLobby();
   syncOnlineButtonsVisibility();
 });
@@ -1902,9 +2801,15 @@ addAccessibleClickListener(document.getElementById('submit-reg-btn'), async () =
 });
 
 function enterGameHomeScreen() {
+  if (inviteFriendsUnsubscribe) {
+    try { inviteFriendsUnsubscribe(); } catch (e) {}
+    inviteFriendsUnsubscribe = null;
+  }
+
   document.body.classList.remove('online-context-active', 'online-room-joined');
   authScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
+  inviteFriendsScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
   gameScreen.classList.add('hidden');
@@ -1921,9 +2826,17 @@ function enterGameHomeScreen() {
   document.getElementById('start-online-match-btn').classList.add('hidden');
   document.getElementById('leave-room-btn').classList.add('hidden');
   document.getElementById('back-from-lobby-btn').classList.add('hidden');
+  backFromInviteFriendsBtn.classList.add('hidden');
 
   currentRoundIndex = currentUser.roundIndex || 0;
   refreshUserBadgeUI();
+  syncScreenPresence(PRESENCE_STATES.HOME, {
+    roomId: null,
+    roomRole: null,
+    roomPlayerCount: 0,
+    hasClientInRoom: false,
+    roomStatus: null
+  });
 
   const round = getCurrentRound();
   startBtn.textContent = `เริ่มการแข่งขัน (${round.roundTitle} พบกับ ${round.botName})`;
@@ -1949,6 +2862,7 @@ authManager.initAuthStateListener(
     authScreen.classList.remove('hidden');
     homeScreen.classList.add('hidden');
     onlineLobbyScreen.classList.add('hidden');
+    inviteFriendsScreen.classList.add('hidden');
     rulesScreen.classList.add('hidden');
     roundSelectScreen.classList.add('hidden');
     gameScreen.classList.add('hidden');
@@ -1961,6 +2875,7 @@ authManager.initAuthStateListener(
     backFromRulesBtn.classList.add('hidden');
     backFromRoundSelectBtn.classList.add('hidden');
     backFromLeaderboardBtn.classList.add('hidden');
+    backFromInviteFriendsBtn.classList.add('hidden');
   }
 );
 
@@ -2007,6 +2922,7 @@ addAccessibleClickListener(startBtn, async () => {
   btnHomeMain.classList.add('hidden');
   homeScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
+  inviteFriendsScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
   roundSelectScreen.classList.add('hidden');
   rulesBtn.classList.add('hidden');
@@ -2014,6 +2930,7 @@ addAccessibleClickListener(startBtn, async () => {
   onlineModeBtn.classList.add('hidden');
   gameScreen.classList.remove('hidden');
 
+  syncScreenPresence(PRESENCE_STATES.PLAYING_BOT);
   const resumeRound = currentUser ? (currentUser.roundIndex || 0) : 0;
   startNewMatch(resumeRound);
 });

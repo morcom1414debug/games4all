@@ -1,7 +1,8 @@
 /**
  * ping-online.js
  * ระบบจัดการห้องแข่งขันออนไลน์ 1 ต่อ 1 ด้วย Firebase Realtime Database + PeerJS WebRTC DataChannel
- * รองรับ Host-Authoritative Gameplay, 3D Spatial Audio Mirroring, Latency Compensation และ Screen Reader Accessibility
+ * รองรับ Host-Authoritative Gameplay, 3D Spatial Audio Mirroring, Latency Compensation,
+ * ระบบชวนเพื่อนแข่งขันแบบ Private Room และ Screen Reader Accessibility
  */
 import {
   ref,
@@ -14,7 +15,18 @@ import {
   runTransaction,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-import { database, GAME_ID, encodeUserKey, SessionStorage } from "./auth.js";
+import {
+  database,
+  GAME_ID,
+  encodeUserKey,
+  SessionStorage,
+  PRESENCE_STATES,
+  updatePlayerPresence,
+  getPlayerPresence,
+  subscribeOnlinePlayers,
+  verifyPlayerCanBeInvited,
+  verifyCanAcceptInvitation
+} from "./auth.js";
 
 /**
  * ตั้งค่า ICE / STUN / TURN Server สำหรับ PeerJS WebRTC
@@ -67,6 +79,15 @@ const ROOM_PRESENCE_CONFIG = {
 };
 
 /**
+ * ค่ากำหนดระบบคำเชิญเพื่อน (Private Room Invitation)
+ */
+const INVITATION_CONFIG = {
+  INVITATIONS_PATH: `${GAME_ID}/invitations`,
+  EXPIRY_MS: 35000,
+  PRIVATE_ROOM_JOIN_WAIT_MS: 20000
+};
+
+/**
  * แปลงทิศทางมุมมองของผู้เล่นฝั่งตรงข้าม (Mirror Perspective)
  * เมื่อผู้เล่น A ตีไปทางซ้ายของตัวเอง ('left') ลูกจะวิ่งเข้าหาฝั่งขวาของผู้เล่น B ('right')
  */
@@ -88,11 +109,21 @@ export class OnlineMatchController {
     this.onExitToHome = options.onExitToHome;
     this.ui = options.ui;
 
+    // เชื่อมต่อ API จาก auth.js และ Interface จาก ping.html
+    this.authManager = options.authManager || null;
+    this.presenceStates = options.presenceStates || PRESENCE_STATES;
+    this.updatePresenceStatusFn = options.updatePresenceStatus || updatePlayerPresence;
+    this.subscribeOnlinePlayersFn = options.subscribeOnlinePlayers || subscribeOnlinePlayers;
+    this.verifyPlayerCanBeInvitedFn = options.verifyPlayerCanBeInvited || verifyPlayerCanBeInvited;
+    this.verifyCanAcceptInvitationFn = options.verifyCanAcceptInvitation || verifyCanAcceptInvitation;
+    this.invitationBridge = options.invitationBridge || (typeof window !== 'undefined' ? window.PingPongInvitationBridge : null);
+
     this.db = database;
     this.activeMode = false;
     this.inMatch = false;
 
     this.currentRoomId = null;
+    this.currentRoomVisibility = 'public'; // 'public' | 'private'
     this.role = null; // 'host' | 'client'
     this.matchId = null;
 
@@ -128,6 +159,21 @@ export class OnlineMatchController {
     this.lastRoomsObj = null;
     this.renderedRoomsSig = '';
     this.cleanupAttemptAt = {};
+
+    // ระบบส่งและรับคำเชิญเพื่อน (Private Room Invitations)
+    this.boundInboxUserKey = null;
+    this.inboxUnsubscribe = null;
+    this.userWatcherTimer = null;
+    this.lastPresentedInvitationId = null;
+    this.activeIncomingInvitation = null;
+    this.outgoingInvitation = null;
+    this.outgoingInviteUnsub = null;
+    this.outgoingInviteDisconnectRef = null;
+    this.outgoingInviteTimeoutTimer = null;
+    this.outgoingTargetPresenceUnsub = null;
+    this.sendingInvitationBusy = false;
+    this.acceptingInvitationBusy = false;
+    this.inviteListFriendCountAnnounced = -1;
 
     this.rttMs = 80;
     this.pingTimer = null;
@@ -169,6 +215,7 @@ export class OnlineMatchController {
     this.announceClearTimer = null;
 
     this.bindLobbyEvents();
+    this.initGlobalInvitationListener();
   }
 
   bindLobbyEvents() {
@@ -205,6 +252,119 @@ export class OnlineMatchController {
   }
 
   /**
+   * ตรวจสอบผู้ใช้ที่เข้าสู่ระบบและผูก Listener รับคำเชิญแบบ Real-time ตลอดเวลาที่อยู่ในเกม
+   */
+  initGlobalInvitationListener() {
+    this.ensureServerClockSync();
+    const checkAndBind = () => {
+      const user = typeof this.getCurrentUser === 'function' ? this.getCurrentUser() : null;
+      const nextKey = user && user.username ? encodeUserKey(user.username) : null;
+      if (nextKey !== this.boundInboxUserKey) {
+        this.bindIncomingInvitationInbox(nextKey);
+      }
+    };
+    checkAndBind();
+    clearInterval(this.userWatcherTimer);
+    this.userWatcherTimer = setInterval(checkAndBind, 1500);
+  }
+
+  bindIncomingInvitationInbox(userKey) {
+    if (this.inboxUnsubscribe) {
+      try { this.inboxUnsubscribe(); } catch (e) {}
+      this.inboxUnsubscribe = null;
+    }
+    this.boundInboxUserKey = userKey;
+    this.activeIncomingInvitation = null;
+
+    if (!userKey) return;
+
+    const inboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${userKey}`);
+    this.inboxUnsubscribe = onValue(inboxRef, (snap) => {
+      if (!snap.exists()) {
+        this.handleIncomingInvitationRemoved();
+        return;
+      }
+      this.handleIncomingInvitationSnapshot(snap.val(), userKey);
+    }, (err) => {
+      console.warn("Incoming invitation listener error:", err);
+    });
+  }
+
+  handleIncomingInvitationRemoved() {
+    if (this.activeIncomingInvitation) {
+      this.activeIncomingInvitation = null;
+      if (this.invitationBridge && typeof this.invitationBridge.closeInvitationModal === 'function') {
+        this.invitationBridge.closeInvitationModal();
+      }
+      if (this.invitationBridge && typeof this.invitationBridge.resumeBotMatch === 'function') {
+        this.invitationBridge.resumeBotMatch();
+      }
+    }
+  }
+
+  async handleIncomingInvitationSnapshot(inv, myKey) {
+    if (!inv || typeof inv !== 'object') return;
+    if (inv.toUserKey && inv.toUserKey !== myKey) return;
+
+    const now = this.getServerNow();
+
+    // यदिคำเชิญถูกยกเลิกหรือหมดอายุขณะที่หน้าต่างรับคำเชิญเปิดอยู่ ให้ปิดหน้าต่างและคืนสถานะเดิมทันที
+    if (inv.status === 'cancelled' || inv.status === 'expired') {
+      if (this.activeIncomingInvitation && this.activeIncomingInvitation.invitationId === inv.invitationId) {
+        this.activeIncomingInvitation = null;
+        if (this.invitationBridge && typeof this.invitationBridge.closeInvitationModal === 'function') {
+          this.invitationBridge.closeInvitationModal();
+        }
+        if (this.invitationBridge && typeof this.invitationBridge.resumeBotMatch === 'function') {
+          this.invitationBridge.resumeBotMatch();
+        }
+        this.announcePolite(`คำเชิญจาก ${inv.fromUsername || 'เพื่อน'} หมดอายุหรือถูกยกเลิกแล้ว`);
+      }
+      return;
+    }
+
+    if (inv.status !== 'pending') return;
+
+    // ตรวจสอบว่าคำเชิญหมดอายุหรือยัง
+    if (typeof inv.expiresAt === 'number' && now > inv.expiresAt) {
+      update(ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${myKey}`), {
+        status: 'expired',
+        updatedAt: now
+      }).catch(() => {});
+      return;
+    }
+
+    // ป้องกันการรับคำเชิญหากผู้เล่นกำลังแข่งขันออนไลน์กับคนอื่น หรือมีผู้เล่นครบ 2 คนในห้องแล้ว
+    if (this.inMatch || (this.currentRoomId && this.role === 'client')) {
+      update(ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${myKey}`), {
+        status: 'busy',
+        updatedAt: now
+      }).catch(() => {});
+      return;
+    }
+
+    if (this.lastPresentedInvitationId === inv.invitationId) {
+      return;
+    }
+
+    this.lastPresentedInvitationId = inv.invitationId;
+    this.activeIncomingInvitation = inv;
+
+    if (this.invitationBridge && typeof this.invitationBridge.showIncomingInvitation === 'function') {
+      this.invitationBridge.showIncomingInvitation({
+        invitationId: inv.invitationId,
+        fromUsername: inv.fromUsername,
+        fromUserKey: inv.fromUserKey,
+        toUsername: inv.toUsername,
+        toUserKey: inv.toUserKey,
+        roomId: inv.roomId || null,
+        createdAt: inv.createdAt,
+        expiresAt: inv.expiresAt
+      });
+    }
+  }
+
+  /**
    * ขออนุญาต Motion Sensor และปลุก AudioContext ทันทีภายใต้ User Gesture
    */
   async requestSensorAndAudioOnGesture() {
@@ -230,6 +390,11 @@ export class OnlineMatchController {
     if (this.inMatch && this.matchStatus === 'playing' && this.rallyCount > 0 && !forceDuringRally) {
       return;
     }
+    if (this.invitationBridge && typeof this.invitationBridge.isBotPointInProgress === 'function') {
+      if (this.invitationBridge.isBotPointInProgress() && !forceDuringRally) {
+        return;
+      }
+    }
     this.announceQueue.push(message);
     this.processAnnounceQueue();
   }
@@ -243,6 +408,10 @@ export class OnlineMatchController {
       this.ui.onlineSrAnnouncer.textContent = '';
     }
 
+    const isInviteScreenVisible = Boolean(
+      this.ui.inviteFriendsScreen && !this.ui.inviteFriendsScreen.classList.contains('hidden')
+    );
+
     if (this.inMatch && this.ui.gameStatus) {
       if (this.ui.gameStatus.textContent === nextMsg) {
         this.ui.gameStatus.textContent = '';
@@ -252,7 +421,17 @@ export class OnlineMatchController {
       } else {
         this.ui.gameStatus.textContent = nextMsg;
       }
-    } else if (this.ui.lobbyStatusBox) {
+    } else if (isInviteScreenVisible && this.ui.inviteFriendsStatusBox) {
+      this.ui.inviteFriendsStatusBox.classList.remove('hidden');
+      if (this.ui.inviteFriendsStatusBox.textContent === nextMsg) {
+        this.ui.inviteFriendsStatusBox.textContent = '';
+        setTimeout(() => {
+          if (this.ui.inviteFriendsStatusBox) this.ui.inviteFriendsStatusBox.textContent = nextMsg;
+        }, 20);
+      } else {
+        this.ui.inviteFriendsStatusBox.textContent = nextMsg;
+      }
+    } else if (this.ui.onlineLobbyScreen && !this.ui.onlineLobbyScreen.classList.contains('hidden') && this.ui.lobbyStatusBox) {
       if (this.ui.lobbyStatusBox.textContent === nextMsg) {
         this.ui.lobbyStatusBox.textContent = '';
         setTimeout(() => {
@@ -263,6 +442,11 @@ export class OnlineMatchController {
       }
     } else if (this.ui.onlineSrAnnouncer) {
       this.ui.onlineSrAnnouncer.textContent = nextMsg;
+      setTimeout(() => {
+        if (this.ui.onlineSrAnnouncer && this.ui.onlineSrAnnouncer.textContent === nextMsg) {
+          this.ui.onlineSrAnnouncer.textContent = '';
+        }
+      }, 1200);
     }
 
     clearTimeout(this.announceClearTimer);
@@ -274,6 +458,846 @@ export class OnlineMatchController {
     }, 450);
   }
 
+  /**
+   * =====================================================================
+   * งานที่ 1-6: ระบบรายชื่อเพื่อน, ส่งคำเชิญ, สร้าง/เข้า Private Room, ย้ายจากห้อง Public
+   * =====================================================================
+   */
+  onInviteFriendsScreenOpened() {
+    this.inviteListFriendCountAnnounced = -1;
+    const user = this.getCurrentUser();
+    const myName = user ? user.username : null;
+
+    if (typeof this.subscribeOnlinePlayersFn === 'function') {
+      const unsub = this.subscribeOnlinePlayersFn((invitableList) => {
+        const count = Array.isArray(invitableList) ? invitableList.length : 0;
+        if (this.inviteListFriendCountAnnounced === -1) {
+          this.inviteListFriendCountAnnounced = count;
+          if (count > 0) {
+            this.announcePolite(`พบเพื่อนออนไลน์ที่สามารถเชิญได้ ${count} คน`);
+          } else {
+            this.announcePolite("ขณะนี้ไม่มีเพื่อนออนไลน์ที่ว่างให้เชิญ");
+          }
+        }
+        try { unsub(); } catch (e) {}
+      }, { onlyInvitable: true, excludeUsername: myName });
+    }
+  }
+
+  onInviteFriendsScreenClosed() {
+    if (this.outgoingInvitation && this.outgoingInvitation.status === 'pending') {
+      this.cancelOutgoingInvitation('cancelled', true).catch(() => {});
+    }
+  }
+
+  async onSelectFriendToInvite(friendPresence) {
+    if (!friendPresence || !friendPresence.username) return false;
+    return this.sendFriendInvitation(friendPresence.username, friendPresence);
+  }
+
+  async sendFriendInvitation(targetUsername, friendPresence = null) {
+    const user = this.getCurrentUser();
+    if (!user || !user.username) {
+      this.announcePolite("กรุณาเข้าสู่ระบบก่อนส่งคำเชิญ");
+      return false;
+    }
+
+    if (this.sendingInvitationBusy) {
+      this.announcePolite("กำลังดำเนินการส่งคำเชิญ กรุณารอสักครู่");
+      return false;
+    }
+
+    if (this.inMatch) {
+      this.announcePolite("ไม่สามารถส่งคำเชิญระหว่างกำลังแข่งขันได้");
+      return false;
+    }
+
+    if (this.outgoingInvitation && this.outgoingInvitation.status === 'pending') {
+      this.announcePolite(`คุณกำลังรอคำตอบจาก ${this.outgoingInvitation.toUsername} อยู่`);
+      return false;
+    }
+
+    const cleanTargetName = String(targetUsername).trim();
+    const targetKey = (friendPresence && friendPresence.userKey)
+      ? friendPresence.userKey
+      : encodeUserKey(cleanTargetName);
+    const myKey = encodeUserKey(user.username);
+
+    if (!targetKey || targetKey === myKey) {
+      this.announcePolite("ไม่สามารถเชิญตัวเองได้");
+      return false;
+    }
+
+    this.sendingInvitationBusy = true;
+    try {
+      await this.requestSensorAndAudioOnGesture();
+      this.ensureServerClockSync();
+      await this.waitForServerClock(1500);
+
+      // ตรวจสอบสถานะล่าสุดของเป้าหมายอีกครั้งก่อนส่งคำเชิญ
+      const checkRes = await this.verifyPlayerCanBeInvitedFn(cleanTargetName, user.username);
+      if (!checkRes || !checkRes.canInvite) {
+        const reason = (checkRes && checkRes.reason) ? checkRes.reason : `ผู้เล่น ${cleanTargetName} ไม่ว่างรับคำเชิญในขณะนี้`;
+        this.announcePolite(reason);
+        return false;
+      }
+
+      const now = this.getServerNow();
+      const invitationId = `inv_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      const targetInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${targetKey}`);
+
+      let rejectReason = "";
+      const txResult = await runTransaction(targetInboxRef, (currentInv) => {
+        const currentNow = this.getServerNow();
+        if (currentInv && typeof currentInv === 'object') {
+          const isStillPending = (currentInv.status === 'pending' || currentInv.status === 'accepted') &&
+            typeof currentInv.expiresAt === 'number' &&
+            currentNow < currentInv.expiresAt;
+          if (isStillPending) {
+            if (currentInv.fromUserKey === myKey) {
+              rejectReason = `ส่งคำเชิญถึง ${cleanTargetName} ไปแล้ว กำลังรอการตอบรับ`;
+            } else {
+              rejectReason = `${cleanTargetName} กำลังพิจารณาคำเชิญจากผู้เล่นอื่นอยู่ กรุณาลองใหม่ภายหลัง`;
+            }
+            return;
+          }
+        }
+
+        return {
+          invitationId: invitationId,
+          fromUsername: user.username,
+          fromUserKey: myKey,
+          fromSessionId: this.sessionId,
+          toUsername: (checkRes.presence && checkRes.presence.username) ? checkRes.presence.username : cleanTargetName,
+          toUserKey: targetKey,
+          status: 'pending',
+          roomId: null,
+          visibility: 'private',
+          createdAt: currentNow,
+          updatedAt: currentNow,
+          expiresAt: currentNow + INVITATION_CONFIG.EXPIRY_MS
+        };
+      }, { applyLocally: false });
+
+      if (!txResult.committed || !txResult.snapshot.exists()) {
+        this.announcePolite(rejectReason || `ไม่สามารถส่งคำเชิญให้ ${cleanTargetName} ได้ในขณะนี้`);
+        return false;
+      }
+
+      const createdInv = txResult.snapshot.val();
+      this.outgoingInvitation = createdInv;
+
+      // ผูก onDisconnect เพื่อยกเลิกคำเชิญอัตโนมัติหากผู้ชวนปิดแท็บหรือหลุดการเชื่อมต่อ
+      try {
+        const od = onDisconnect(targetInboxRef);
+        await od.update({
+          status: 'cancelled',
+          updatedAt: serverTimestamp()
+        });
+        this.outgoingInviteDisconnectRef = od;
+      } catch (e) {}
+
+      // ตั้งสถานะผู้ชวนเป็นกำลังรอคำเชิญ เพื่อป้องกันคนอื่นชวนซ้อน
+      await this.updatePresenceStatusFn(this.presenceStates.INVITATION_PENDING, {
+        roomId: this.currentRoomId || null
+      });
+
+      this.announcePolite(`ส่งคำเชิญถึง ${createdInv.toUsername} แล้ว กำลังรอการตอบรับ`);
+      this.watchOutgoingInvitation(createdInv);
+      return true;
+    } catch (err) {
+      console.error("Send invitation error:", err);
+      this.announcePolite("เกิดข้อผิดพลาดในการส่งคำเชิญ กรุณาลองใหม่อีกครั้ง");
+      return false;
+    } finally {
+      this.sendingInvitationBusy = false;
+    }
+  }
+
+  watchOutgoingInvitation(inv) {
+    this.clearOutgoingInvitationWatchers();
+    const targetInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${inv.toUserKey}`);
+
+    // ตั้งเวลาหมดอายุคำเชิญ
+    const remainingMs = Math.max(5000, (inv.expiresAt || (this.getServerNow() + INVITATION_CONFIG.EXPIRY_MS)) - this.getServerNow());
+    this.outgoingInviteTimeoutTimer = setTimeout(() => {
+      if (this.outgoingInvitation && this.outgoingInvitation.invitationId === inv.invitationId && this.outgoingInvitation.status === 'pending') {
+        this.handleOutgoingInvitationExpired(inv);
+      }
+    }, remainingMs);
+
+    // ตรวจสอบว่าผู้รับหลุดออฟไลน์ระหว่างรอคำตอบหรือไม่
+    const targetPresenceRef = ref(this.db, `${GAME_ID}/presence/${inv.toUserKey}`);
+    this.outgoingTargetPresenceUnsub = onValue(targetPresenceRef, (pSnap) => {
+      if (!this.outgoingInvitation || this.outgoingInvitation.invitationId !== inv.invitationId) return;
+      if (this.outgoingInvitation.status !== 'pending') return;
+      if (!pSnap.exists()) return;
+      const pVal = pSnap.val();
+      if (pVal && (pVal.online === false || pVal.connected === false || pVal.status === this.presenceStates.OFFLINE)) {
+        this.cancelOutgoingInvitation('expired', false).then(() => {
+          this.announcePolite(`ผู้เล่น ${inv.toUsername} ออกจากเกมหรือหลุดการเชื่อมต่อแล้ว`);
+        });
+      }
+    }, () => {});
+
+    // ติดตามผลการตอบรับคำเชิญแบบ Real-time
+    this.outgoingInviteUnsub = onValue(targetInboxRef, async (snap) => {
+      if (!this.outgoingInvitation || this.outgoingInvitation.invitationId !== inv.invitationId) return;
+      if (!snap.exists()) {
+        this.clearOutgoingInvitationWatchers();
+        this.outgoingInvitation = null;
+        this.restoreHostLobbyPresenceIfIdle();
+        return;
+      }
+
+      const current = snap.val();
+      if (!current || current.invitationId !== inv.invitationId) {
+        this.clearOutgoingInvitationWatchers();
+        this.outgoingInvitation = null;
+        this.restoreHostLobbyPresenceIfIdle();
+        return;
+      }
+
+      this.outgoingInvitation = current;
+
+      if (current.status === 'declined') {
+        this.clearOutgoingInvitationWatchers();
+        this.outgoingInvitation = null;
+        await this.cleanupInvitationNodeIfMatched(inv.toUserKey, inv.invitationId);
+        this.restoreHostLobbyPresenceIfIdle();
+        this.announcePolite(`${inv.toUsername} ปฏิเสธคำเชิญ`);
+      } else if (current.status === 'busy') {
+        this.clearOutgoingInvitationWatchers();
+        this.outgoingInvitation = null;
+        await this.cleanupInvitationNodeIfMatched(inv.toUserKey, inv.invitationId);
+        this.restoreHostLobbyPresenceIfIdle();
+        this.announcePolite(`${inv.toUsername} กำลังแข่งขันหรืออยู่ในห้องอื่นแล้ว`);
+      } else if (current.status === 'expired') {
+        this.clearOutgoingInvitationWatchers();
+        this.outgoingInvitation = null;
+        await this.cleanupInvitationNodeIfMatched(inv.toUserKey, inv.invitationId);
+        this.restoreHostLobbyPresenceIfIdle();
+        this.announcePolite(`${inv.toUsername} ไม่ได้ตอบรับคำเชิญภายในเวลาที่กำหนด`);
+      } else if (current.status === 'accepted' && !current.roomId) {
+        // เพื่อนกด "ใช่" แล้ว ให้ฝั่งผู้ชวนสร้างห้อง Private Room ทันที
+        clearTimeout(this.outgoingInviteTimeoutTimer);
+        await this.hostCreatePrivateRoomForAcceptedInvite(current);
+      } else if (current.status === 'joined' && current.roomId) {
+        // เพื่อนเข้าห้อง Private สำเร็จแล้ว ล้างโหนดคำเชิญได้
+        this.clearOutgoingInvitationWatchers();
+        this.outgoingInvitation = null;
+        await this.cleanupInvitationNodeIfMatched(inv.toUserKey, inv.invitationId);
+      }
+    });
+  }
+
+  async handleOutgoingInvitationExpired(inv) {
+    if (!this.outgoingInvitation || this.outgoingInvitation.invitationId !== inv.invitationId) return;
+    await this.cancelOutgoingInvitation('expired', false);
+    this.announcePolite(`คำเชิญถึง ${inv.toUsername} หมดอายุเนื่องจากไม่มีการตอบรับ`);
+  }
+
+  async cancelOutgoingInvitation(finalStatus = 'cancelled', silent = false) {
+    const activeInv = this.outgoingInvitation;
+    this.clearOutgoingInvitationWatchers();
+    this.outgoingInvitation = null;
+
+    if (activeInv && activeInv.toUserKey && activeInv.invitationId) {
+      const targetInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${activeInv.toUserKey}`);
+      try {
+        await runTransaction(targetInboxRef, (node) => {
+          if (!node || node.invitationId !== activeInv.invitationId) return;
+          if (node.status === 'pending') {
+            node.status = finalStatus;
+            node.updatedAt = this.getServerNow();
+            return node;
+          }
+          return;
+        }, { applyLocally: false });
+      } catch (e) {}
+    }
+
+    this.restoreHostLobbyPresenceIfIdle();
+    if (!silent) {
+      this.announcePolite("ยกเลิกคำเชิญเรียบร้อยแล้ว");
+    }
+  }
+
+  async cleanupInvitationNodeIfMatched(targetUserKey, invitationId) {
+    if (!targetUserKey || !invitationId) return;
+    const targetInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${targetUserKey}`);
+    try {
+      await runTransaction(targetInboxRef, (node) => {
+        if (!node || node.invitationId !== invitationId) return;
+        return null;
+      }, { applyLocally: false });
+    } catch (e) {}
+  }
+
+  clearOutgoingInvitationWatchers() {
+    clearTimeout(this.outgoingInviteTimeoutTimer);
+    this.outgoingInviteTimeoutTimer = null;
+    if (this.outgoingInviteUnsub) {
+      try { this.outgoingInviteUnsub(); } catch (e) {}
+      this.outgoingInviteUnsub = null;
+    }
+    if (this.outgoingTargetPresenceUnsub) {
+      try { this.outgoingTargetPresenceUnsub(); } catch (e) {}
+      this.outgoingTargetPresenceUnsub = null;
+    }
+    if (this.outgoingInviteDisconnectRef) {
+      try { this.outgoingInviteDisconnectRef.cancel(); } catch (e) {}
+      this.outgoingInviteDisconnectRef = null;
+    }
+  }
+
+  restoreHostLobbyPresenceIfIdle() {
+    if (this.inMatch) return;
+    if (this.currentRoomId) {
+      this.updatePresenceStatusFn(this.presenceStates.WAITING_ROOM, {
+        roomId: this.currentRoomId,
+        roomRole: this.role || 'host',
+        roomPlayerCount: 1,
+        hasClientInRoom: false,
+        roomStatus: 'waiting'
+      }).catch(() => {});
+    } else {
+      this.updatePresenceStatusFn(this.presenceStates.ONLINE_LOBBY, {
+        roomId: null,
+        roomRole: null,
+        roomPlayerCount: 0,
+        hasClientInRoom: false,
+        roomStatus: null
+      }).catch(() => {});
+    }
+  }
+
+  /**
+   * สร้างห้อง Private Room เมื่อผู้รับกด "ใช่" ตอบรับคำเชิญ
+   * - หากผู้ชวนเปิดห้อง Public รออยู่ (และยังไม่มี Client) จะปิดห้อง Public เดิมอย่างปลอดภัยก่อนสร้างห้อง Private
+   */
+  async hostCreatePrivateRoomForAcceptedInvite(acceptedInv) {
+    if (!acceptedInv || this.creatingPrivateRoomForInviteId === acceptedInv.invitationId) return;
+    this.creatingPrivateRoomForInviteId = acceptedInv.invitationId;
+
+    const user = this.getCurrentUser();
+    if (!user) {
+      this.creatingPrivateRoomForInviteId = null;
+      return;
+    }
+
+    try {
+      this.announcePolite(`${acceptedInv.toUsername} ตอบรับคำเชิญแล้ว กำลังสร้างห้องแข่งขันส่วนตัว`);
+
+      // ปิดหน้ารายชื่อเพื่อนเพื่อกลับมายังหน้า Lobby แสดงการ์ดห้อง Private
+      if (this.invitationBridge && typeof this.invitationBridge.closeInviteFriendsScreen === 'function') {
+        if (this.ui.inviteFriendsScreen && !this.ui.inviteFriendsScreen.classList.contains('hidden')) {
+          this.invitationBridge.closeInviteFriendsScreen();
+        }
+      }
+
+      // หากผู้ชวนมีห้อง Public ที่เปิดรออยู่เดิม ให้ตรวจสอบว่ายังว่างและปิดอย่างปลอดภัยก่อน
+      if (this.currentRoomId) {
+        const closedOk = await this.safelyCloseWaitingPublicRoomBeforePrivateTransition();
+        if (!closedOk) {
+          await this.cancelOutgoingInvitation('cancelled', true);
+          this.announcePolite("ไม่สามารถสร้างห้องส่วนตัวได้ เนื่องจากห้องเดิมของคุณมีผู้เล่นเข้าร่วมแล้ว");
+          return;
+        }
+      }
+
+      // ตรวจสอบอีกครั้งว่าเพื่อนยังออนไลน์และพร้อมเข้าห้อง
+      const inviteePresence = await getPlayerPresence(acceptedInv.toUserKey);
+      if (!inviteePresence.online || inviteePresence.isExpired) {
+        await this.cancelOutgoingInvitation('expired', true);
+        this.announcePolite(`ผู้เล่น ${acceptedInv.toUsername} หลุดการเชื่อมต่อก่อนเข้าห้องส่วนตัว`);
+        return;
+      }
+
+      const roomId = await this.generateNextRoomId();
+      const myKey = encodeUserKey(user.username);
+      const matchId = `${roomId}_${Date.now()}`;
+      const now = this.getServerNow();
+
+      const privateRoomData = {
+        roomId: roomId,
+        matchId: matchId,
+        visibility: 'private',
+        isPrivate: true,
+        invitationId: acceptedInv.invitationId,
+        invitedClientKey: acceptedInv.toUserKey,
+        invitedClientUsername: acceptedInv.toUsername,
+        allowedPlayers: {
+          [myKey]: true,
+          [acceptedInv.toUserKey]: true
+        },
+        status: 'waiting',
+        createdAt: now,
+        updatedAt: now,
+        playerCount: 1,
+        host: {
+          username: user.username,
+          userKey: myKey,
+          peerId: '',
+          connected: true,
+          sessionId: this.sessionId,
+          heartbeatAt: serverTimestamp(),
+          joinedAt: now
+        },
+        client: null,
+        matchState: {
+          hostSetsWon: 0,
+          clientSetsWon: 0,
+          currentSetNumber: 1,
+          hostScore: 0,
+          clientScore: 0,
+          initialServer: 'host',
+          currentServer: 'host'
+        }
+      };
+
+      const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}`);
+      await set(roomRef, privateRoomData);
+
+      this.currentRoomId = roomId;
+      this.currentRoomVisibility = 'private';
+      this.role = 'host';
+      this.matchId = matchId;
+      this.lastJoinedClientKey = null;
+      sessionStorage.setItem('pingpong_active_online_room', roomId);
+
+      // เล่นเสียงสร้างห้องตามระบบเดิม
+      this.sound.play('create', 0, 1.0, false);
+
+      // เปิดหน้า Lobby แสดงข้อมูลห้อง
+      this.ensureLobbyVisibleForRoomCard();
+      await this.initPeerAndBindRoom(roomId, 'host');
+
+      // อัปเดตโหนดคำเชิญด้วย Transaction เพื่อส่งรหัสห้อง Private ให้ผู้รับเข้าห้องทันที
+      const targetInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${acceptedInv.toUserKey}`);
+      const txRes = await runTransaction(targetInboxRef, (node) => {
+        if (!node || node.invitationId !== acceptedInv.invitationId) return;
+        if (node.status !== 'accepted') return;
+        node.status = 'room_ready';
+        node.roomId = roomId;
+        node.visibility = 'private';
+        node.updatedAt = this.getServerNow();
+        node.expiresAt = this.getServerNow() + INVITATION_CONFIG.PRIVATE_ROOM_JOIN_WAIT_MS;
+        return node;
+      }, { applyLocally: false });
+
+      if (!txRes.committed) {
+        await this.leaveCurrentRoom(false);
+        this.announcePolite("การยืนยันห้องส่วนตัวถูกยกเลิก เนื่องจากคำเชิญเปลี่ยนแปลงสถานะ");
+        return;
+      }
+
+      // ตั้งเวลารอให้ผู้รับเข้าห้อง Private หากผู้รับหลุดไปก่อนเข้าห้อง ให้ล้างห้อง Private ทันทีไม่ให้ค้าง
+      clearTimeout(this.outgoingInviteTimeoutTimer);
+      this.outgoingInviteTimeoutTimer = setTimeout(async () => {
+        if (this.currentRoomId === roomId && this.role === 'host' && !this.inMatch) {
+          const snap = await get(roomRef);
+          if (snap.exists() && (!snap.val().client || snap.val().playerCount < 2)) {
+            this.announcePolite(`ผู้เล่น ${acceptedInv.toUsername} ไม่สามารถเข้าร่วมห้องส่วนตัวได้ทันเวลา ระบบปิดห้องส่วนตัวอัตโนมัติ`);
+            await this.leaveCurrentRoom(false);
+            await this.cleanupInvitationNodeIfMatched(acceptedInv.toUserKey, acceptedInv.invitationId);
+          }
+        }
+      }, INVITATION_CONFIG.PRIVATE_ROOM_JOIN_WAIT_MS);
+    } catch (err) {
+      console.error("Create private room error:", err);
+      this.announcePolite("ไม่สามารถสร้างห้องส่วนตัวได้ กรุณาลองใหม่อีกครั้ง");
+      await this.cancelOutgoingInvitation('cancelled', true);
+    } finally {
+      this.creatingPrivateRoomForInviteId = null;
+    }
+  }
+
+  /**
+   * เมื่อผู้รับกดปุ่ม "ใช่" ในหน้าต่างรับคำเชิญ (เรียกจาก ping.html)
+   */
+  async onAcceptFriendInvitation(invitation, preVerifyResult = null) {
+    return this.acceptFriendInvitation(invitation, preVerifyResult);
+  }
+
+  async acceptFriendInvitation(invitation, preVerifyResult = null) {
+    if (this.acceptingInvitationBusy) return false;
+    const user = this.getCurrentUser();
+    if (!user || !user.username || !invitation) return false;
+
+    this.acceptingInvitationBusy = true;
+    const myKey = encodeUserKey(user.username);
+    const hostUsername = invitation.fromUsername || invitation.hostUsername || '';
+    const hostKey = invitation.fromUserKey || (hostUsername ? encodeUserKey(hostUsername) : '');
+    const myInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${myKey}`);
+
+    try {
+      this.ensureServerClockSync();
+      await this.waitForServerClock(1500);
+
+      // หากผู้รับมีคำเชิญที่ตัวเองส่งค้างไว้ ให้ยกเลิกก่อน
+      if (this.outgoingInvitation) {
+        await this.cancelOutgoingInvitation('cancelled', true);
+      }
+
+      // 1. ตรวจสอบว่าทั้งสองคนยังออนไลน์และว่างจริง
+      const latestCheck = await this.verifyCanAcceptInvitationFn({
+        inviteeUsername: user.username,
+        hostUsername: hostUsername,
+        roomId: invitation.roomId || null
+      });
+
+      if (!latestCheck || !latestCheck.allowed) {
+        this.announcePolite((latestCheck && latestCheck.reason) || "ไม่สามารถตอบรับคำเชิญได้ เนื่องจากผู้เชิญไม่ว่างแล้ว");
+        await this.cleanupInvitationNodeIfMatched(myKey, invitation.invitationId);
+        return false;
+      }
+
+      // 2. งานที่ 4: หากผู้รับกำลังเปิดห้อง Public รออยู่ (เป็น Host ที่ยังไม่มี Client)
+      // ต้องตรวจสอบสถานะห้องล่าสุดด้วย Transaction และปิดห้องเดิมอย่างปลอดภัยก่อนย้ายไป Private Room
+      if (this.currentRoomId) {
+        const closedOldRoom = await this.safelyCloseWaitingPublicRoomBeforePrivateTransition();
+        if (!closedOldRoom) {
+          this.announcePolite("ไม่สามารถตอบรับคำเชิญได้ เนื่องจากห้องของคุณมีผู้เล่นเข้าร่วมแล้วหรือเริ่มการแข่งขันแล้ว");
+          await runTransaction(myInboxRef, (node) => {
+            if (!node || node.invitationId !== invitation.invitationId) return;
+            node.status = 'busy';
+            node.updatedAt = this.getServerNow();
+            return node;
+          }, { applyLocally: false }).catch(() => {});
+          return false;
+        }
+      }
+
+      // 3. ยืนยันการรับคำเชิญด้วย Firebase Transaction ป้องกันการรับชนกันหรือคำเชิญหมดอายุ
+      let txRejectReason = "";
+      const acceptTx = await runTransaction(myInboxRef, (node) => {
+        const now = this.getServerNow();
+        if (!node || typeof node !== 'object') {
+          txRejectReason = "ไม่พบคำเชิญนี้ หรือคำเชิญถูกยกเลิกไปแล้ว";
+          return;
+        }
+        if (invitation.invitationId && node.invitationId !== invitation.invitationId) {
+          txRejectReason = "คำเชิญนี้ถูกแทนที่หรือหมดอายุไปแล้ว";
+          return;
+        }
+        if (node.status !== 'pending' && node.status !== 'room_ready') {
+          txRejectReason = "คำเชิญนี้หมดอายุหรือถูกยกเลิกไปแล้ว";
+          return;
+        }
+        if (typeof node.expiresAt === 'number' && now > node.expiresAt) {
+          node.status = 'expired';
+          node.updatedAt = now;
+          txRejectReason = "คำเชิญหมดอายุแล้ว";
+          return node;
+        }
+        if (node.status === 'pending') {
+          node.status = 'accepted';
+          node.acceptedAt = now;
+          node.updatedAt = now;
+          node.expiresAt = now + INVITATION_CONFIG.PRIVATE_ROOM_JOIN_WAIT_MS;
+        }
+        return node;
+      }, { applyLocally: false });
+
+      if (!acceptTx.committed || !acceptTx.snapshot.exists()) {
+        this.announcePolite(txRejectReason || "ไม่สามารถตอบรับคำเชิญได้ คำเชิญอาจหมดอายุแล้ว");
+        return false;
+      }
+
+      const currentInvState = acceptTx.snapshot.val();
+      if (currentInvState.status === 'expired') {
+        this.announcePolite("คำเชิญหมดอายุแล้ว");
+        await this.cleanupInvitationNodeIfMatched(myKey, currentInvState.invitationId);
+        return false;
+      }
+
+      this.announcePolite(`ตอบรับคำเชิญของ ${hostUsername} แล้ว กำลังเข้าห้องแข่งขันส่วนตัว`);
+
+      // 4. รอรับรหัสห้อง Private Room จากผู้ชวน (กรณีผู้ชวนกำลังสร้างห้อง)
+      const privateRoomId = currentInvState.roomId
+        ? currentInvState.roomId
+        : await this.waitForPrivateRoomReady(myKey, currentInvState.invitationId, hostKey);
+
+      if (!privateRoomId) {
+        this.announcePolite(`ไม่สามารถเข้าห้องส่วนตัวของ ${hostUsername} ได้ เนื่องจากผู้เชิญหลุดการเชื่อมต่อหรือยกเลิกห้อง`);
+        await this.cleanupInvitationNodeIfMatched(myKey, currentInvState.invitationId);
+        return false;
+      }
+
+      // 5. เข้าร่วม Private Room ในฐานะ Client พร้อมตรวจสอบสิทธิ์ตัวตนผู้เล่น
+      this.ensureLobbyVisibleForRoomCard();
+      const joined = await this.joinPrivateRoomAsInvitedClient(privateRoomId, currentInvState.invitationId, hostKey);
+      if (!joined) {
+        await this.cleanupInvitationNodeIfMatched(myKey, currentInvState.invitationId);
+        return false;
+      }
+
+      // แจ้งโหนดคำเชิญว่าเข้าห้องสำเร็จแล้ว
+      await runTransaction(myInboxRef, (node) => {
+        if (!node || node.invitationId !== currentInvState.invitationId) return;
+        node.status = 'joined';
+        node.updatedAt = this.getServerNow();
+        return node;
+      }, { applyLocally: false }).catch(() => {});
+
+      this.activeIncomingInvitation = null;
+      return true;
+    } catch (err) {
+      console.error("Accept friend invitation error:", err);
+      this.announcePolite("เกิดข้อผิดพลาดในการเข้าห้องส่วนตัว");
+      return false;
+    } finally {
+      this.acceptingInvitationBusy = false;
+    }
+  }
+
+  /**
+   * รอให้ Host สร้างห้อง Private และส่ง roomId กลับมาที่โหนดคำเชิญ
+   */
+  waitForPrivateRoomReady(myKey, invitationId, hostKey) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let unsubInv = null;
+      let timer = null;
+
+      const finish = (roomId) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (unsubInv) {
+          try { unsubInv(); } catch (e) {}
+          unsubInv = null;
+        }
+        resolve(roomId || null);
+      };
+
+      timer = setTimeout(() => {
+        finish(null);
+      }, INVITATION_CONFIG.PRIVATE_ROOM_JOIN_WAIT_MS);
+
+      const myInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${myKey}`);
+      unsubInv = onValue(myInboxRef, (snap) => {
+        if (!snap.exists()) {
+          finish(null);
+          return;
+        }
+        const val = snap.val();
+        if (!val || val.invitationId !== invitationId) {
+          finish(null);
+          return;
+        }
+        if (val.status === 'cancelled' || val.status === 'expired') {
+          finish(null);
+          return;
+        }
+        if ((val.status === 'room_ready' || val.status === 'accepted') && val.roomId) {
+          finish(val.roomId);
+        }
+      }, () => {
+        finish(null);
+      });
+    });
+  }
+
+  /**
+   * งานที่ 4: ปิดห้อง Public ที่เปิดรออยู่เดิมอย่างปลอดภัยด้วย Transaction
+   * ห้ามลบห้องเด็ดขาดหากมีผู้เล่นอื่นเพิ่งเข้าร่วมในจังหวะเดียวกันหรือเริ่มแข่งขันแล้ว
+   */
+  async safelyCloseWaitingPublicRoomBeforePrivateTransition() {
+    if (!this.currentRoomId) return true;
+    if (this.inMatch || this.role !== 'host') return false;
+
+    const oldRoomId = this.currentRoomId;
+    const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${oldRoomId}`);
+
+    try {
+      let canClose = true;
+      const txRes = await runTransaction(roomRef, (room) => {
+        if (room === null) return room;
+        // หากมี Client เข้าร่วมแล้ว หรือสถานะไม่ใช่ waiting ห้ามลบห้องเด็ดขาด!
+        if (room.status !== 'waiting' || (room.client && room.client.userKey) || (room.playerCount && room.playerCount >= 2)) {
+          canClose = false;
+          return;
+        }
+        return null;
+      }, { applyLocally: false });
+
+      if (!canClose || (!txRes.committed && txRes.snapshot.exists())) {
+        return false;
+      }
+
+      // ล้าง Listener, Heartbeat และ PeerJS ของห้อง Public เดิมทั้งหมด
+      if (this.roomUnsubscribe) {
+        try { this.roomUnsubscribe(); } catch (e) {}
+        this.roomUnsubscribe = null;
+      }
+      if (this.presenceDisconnectRef) {
+        try { await this.presenceDisconnectRef.cancel(); } catch (e) {}
+        this.presenceDisconnectRef = null;
+      }
+      this.cleanupPeerOnly();
+      this.currentRoomId = null;
+      this.currentRoomVisibility = 'public';
+      this.role = null;
+      this.matchId = null;
+      this.lastJoinedClientKey = null;
+      sessionStorage.removeItem('pingpong_active_online_room');
+      this.updateRoomPanelVisibility(false);
+      return true;
+    } catch (e) {
+      console.warn("Close waiting public room before private transition failed:", e);
+      return false;
+    }
+  }
+
+  /**
+   * เข้าร่วมห้อง Private Room โดยตรวจสอบสิทธิ์ตัวตนจาก invitedClientKey และ allowedPlayers
+   */
+  async joinPrivateRoomAsInvitedClient(roomId, invitationId, expectedHostKey = null) {
+    const user = this.getCurrentUser();
+    if (!user || !roomId) return false;
+
+    const myKey = encodeUserKey(user.username);
+    const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}`);
+    let rejectReason = "";
+
+    try {
+      const txResult = await runTransaction(roomRef, (room) => {
+        if (room === null) return room;
+
+        const isPrivateRoom = room.visibility === 'private' || room.isPrivate === true;
+        if (!isPrivateRoom) {
+          rejectReason = "ห้องนี้ไม่ใช่ห้องแข่งขันส่วนตัว";
+          return;
+        }
+        if (room.invitedClientKey && room.invitedClientKey !== myKey) {
+          rejectReason = "คุณไม่มีสิทธิ์เข้าร่วมห้องส่วนตัวนี้";
+          return;
+        }
+        if (room.allowedPlayers && !room.allowedPlayers[myKey]) {
+          rejectReason = "คุณไม่ได้รับอนุญาตให้เข้าห้องส่วนตัวนี้";
+          return;
+        }
+        if (expectedHostKey && room.host && room.host.userKey && room.host.userKey !== expectedHostKey) {
+          rejectReason = "ข้อมูลเจ้าของห้องส่วนตัวไม่ตรงกับผู้เชิญ";
+          return;
+        }
+        if (!room.host || room.host.connected === false) {
+          rejectReason = "ผู้เชิญหลุดการเชื่อมต่อจากห้องส่วนตัวแล้ว";
+          return;
+        }
+        if (room.status !== 'waiting' || (room.client && room.client.userKey && room.client.userKey !== myKey)) {
+          rejectReason = "ห้องส่วนตัวนี้ไม่ว่างหรือถูกปิดไปแล้ว";
+          return;
+        }
+
+        const now = this.getServerNow();
+        room.client = {
+          username: user.username,
+          userKey: myKey,
+          peerId: '',
+          connected: true,
+          sessionId: this.sessionId,
+          heartbeatAt: now,
+          joinedAt: now
+        };
+        room.playerCount = 2;
+        room.status = 'ready';
+        room.updatedAt = now;
+        return room;
+      }, { applyLocally: false });
+
+      if (!txResult.committed || !txResult.snapshot.exists()) {
+        this.announcePolite(rejectReason || "ไม่สามารถเข้าร่วมห้องส่วนตัวได้");
+        return false;
+      }
+
+      const updatedRoom = txResult.snapshot.val();
+      if (!updatedRoom.client || updatedRoom.client.userKey !== myKey) {
+        this.announcePolite("ไม่สามารถเข้าร่วมห้องส่วนตัวได้");
+        return false;
+      }
+
+      this.currentRoomId = roomId;
+      this.currentRoomVisibility = 'private';
+      this.role = 'client';
+      this.matchId = updatedRoom.matchId;
+      this.lastJoinedClientKey = myKey;
+      sessionStorage.setItem('pingpong_active_online_room', roomId);
+
+      // เล่นเสียงเข้าร่วมห้องสำเร็จตามระบบเดิม
+      this.sound.play('select', 0, 1.0, false);
+
+      await this.initPeerAndBindRoom(roomId, 'client');
+      this.announcePolite(`เข้าห้องส่วนตัว ${roomId} สำเร็จ พบกับ ${updatedRoom.host.username} กำลังเชื่อมต่อสัญญาณ`);
+      return true;
+    } catch (err) {
+      console.error("Join private room error:", err);
+      this.announcePolite("ไม่สามารถเชื่อมต่อเข้าห้องส่วนตัวได้");
+      return false;
+    }
+  }
+
+  /**
+   * งานที่ 5: เมื่อผู้รับกดปุ่ม "ไม่" ปฏิเสธคำเชิญ (เรียกจาก ping.html)
+   */
+  async onDeclineFriendInvitation(invitation) {
+    return this.declineFriendInvitation(invitation);
+  }
+
+  async declineFriendInvitation(invitation) {
+    const user = this.getCurrentUser();
+    this.activeIncomingInvitation = null;
+    if (!user || !user.username) return false;
+
+    const myKey = encodeUserKey(user.username);
+    const myInboxRef = ref(this.db, `${INVITATION_CONFIG.INVITATIONS_PATH}/${myKey}`);
+
+    try {
+      await runTransaction(myInboxRef, (node) => {
+        if (!node || typeof node !== 'object') return node;
+        if (invitation && invitation.invitationId && node.invitationId !== invitation.invitationId) {
+          return;
+        }
+        node.status = 'declined';
+        node.updatedAt = this.getServerNow();
+        return node;
+      }, { applyLocally: false });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  ensureLobbyVisibleForRoomCard() {
+    this.activeMode = true;
+    this.inMatch = false;
+
+    if (this.ui.homeScreen) this.ui.homeScreen.classList.add('hidden');
+    if (this.ui.rulesScreen) this.ui.rulesScreen.classList.add('hidden');
+    if (this.ui.roundSelectScreen) this.ui.roundSelectScreen.classList.add('hidden');
+    if (this.ui.leaderboardScreen) this.ui.leaderboardScreen.classList.add('hidden');
+    if (this.ui.gameScreen) this.ui.gameScreen.classList.add('hidden');
+    if (this.ui.inviteFriendsScreen) this.ui.inviteFriendsScreen.classList.add('hidden');
+    if (this.ui.backFromInviteFriendsBtn) this.ui.backFromInviteFriendsBtn.classList.add('hidden');
+
+    if (this.ui.startBtn) this.ui.startBtn.classList.add('hidden');
+    if (this.ui.onlineModeBtn) this.ui.onlineModeBtn.classList.add('hidden');
+    if (this.ui.selectRoundBtn) this.ui.selectRoundBtn.classList.add('hidden');
+    if (this.ui.rulesBtn) this.ui.rulesBtn.classList.add('hidden');
+    if (this.ui.inGameLeaderboardBtn) this.ui.inGameLeaderboardBtn.classList.add('hidden');
+
+    if (this.ui.btnHomeMain) {
+      this.ui.btnHomeMain.classList.remove('hidden');
+    }
+    if (this.ui.onlineLobbyScreen) {
+      this.ui.onlineLobbyScreen.classList.remove('hidden');
+    }
+    this.subscribeWaitingRooms();
+    this.loadPlayerOnlineStatsUI().catch(() => {});
+  }
+
   async openLobby() {
     this.activeMode = true;
     this.inMatch = false;
@@ -282,6 +1306,12 @@ export class OnlineMatchController {
     this.ui.roundSelectScreen.classList.add('hidden');
     this.ui.leaderboardScreen.classList.add('hidden');
     this.ui.gameScreen.classList.add('hidden');
+    if (this.ui.inviteFriendsScreen) {
+      this.ui.inviteFriendsScreen.classList.add('hidden');
+    }
+    if (this.ui.backFromInviteFriendsBtn) {
+      this.ui.backFromInviteFriendsBtn.classList.add('hidden');
+    }
 
     this.ui.startBtn.classList.add('hidden');
     this.ui.onlineModeBtn.classList.add('hidden');
@@ -334,12 +1364,21 @@ export class OnlineMatchController {
   }
 
   async closeLobbyAndExit() {
+    if (this.outgoingInvitation) {
+      await this.cancelOutgoingInvitation('cancelled', true);
+    }
     await this.leaveCurrentRoom(true);
     this.unsubscribeWaitingRooms();
     this.activeMode = false;
     this.inMatch = false;
 
     this.ui.onlineLobbyScreen.classList.add('hidden');
+    if (this.ui.inviteFriendsScreen) {
+      this.ui.inviteFriendsScreen.classList.add('hidden');
+    }
+    if (this.ui.backFromInviteFriendsBtn) {
+      this.ui.backFromInviteFriendsBtn.classList.add('hidden');
+    }
     this.ui.backFromLobbyBtn.classList.add('hidden');
     this.ui.leaveRoomBtn.classList.add('hidden');
     this.ui.startOnlineMatchBtn.classList.add('hidden');
@@ -381,7 +1420,7 @@ export class OnlineMatchController {
   }
 
   /**
-   * รับข้อมูลรายการห้องล่าสุด: แสดงเฉพาะห้องที่ยังใช้งานได้ และสั่งลบห้องที่ยืนยันว่าหมดอายุออกจาก Firebase
+   * รับข้อมูลรายการห้องล่าสุด: แสดงเฉพาะห้อง Public ที่ยังใช้งานได้ และสั่งลบห้องที่ยืนยันว่าหมดอายุออกจาก Firebase
    */
   handleRoomsUpdate(roomsObj) {
     this.lastRoomsObj = roomsObj || {};
@@ -449,10 +1488,15 @@ export class OnlineMatchController {
     return !room.roomId && !room.status && !room.matchId;
   }
 
+  isPrivateRoomRecord(room) {
+    if (!room || typeof room !== 'object') return false;
+    return room.visibility === 'private' || room.isPrivate === true;
+  }
+
   /**
    * ประเมินห้อง waiting ด้วยเวลา Firebase Server
-   * joinable = แสดงปุ่มเข้าร่วมได้ | expired = ยืนยันว่าหมดอายุและลบได้
-   * ห้องที่ไม่ใช่ waiting (ready / playing / finished ...) จะไม่ถูกตัดสินว่าหมดอายุที่นี่ เพื่อไม่กระทบการแข่งขันและระบบกลับเข้าห้อง
+   * joinable = แสดงปุ่มเข้าร่วมในรายการห้องสาธารณะได้ (ต้องไม่ใช่ห้อง private)
+   * expired = ยืนยันว่าหมดอายุและลบได้
    */
   evaluateWaitingRoom(room, now) {
     const C = ROOM_PRESENCE_CONFIG;
@@ -464,6 +1508,7 @@ export class OnlineMatchController {
     if (!host || typeof host !== 'object') return { joinable: false, expired: true };
     if (room.client) return { joinable: false, expired: false };
 
+    const isPrivate = this.isPrivateRoomRecord(room);
     const hb = num(host.heartbeatAt);
     const dc = num(host.disconnectedAt);
 
@@ -474,7 +1519,11 @@ export class OnlineMatchController {
       if (host.connected === false) {
         return { joinable: false, expired: age > C.DISCONNECT_GRACE_MS };
       }
-      return { joinable: age <= C.HEARTBEAT_STALE_MS, expired: age > C.HEARTBEAT_STALE_MS };
+      const isExpired = age > C.HEARTBEAT_STALE_MS;
+      return {
+        joinable: !isPrivate && !isExpired,
+        expired: isExpired
+      };
     }
 
     // ห้องรุ่นเก่า (ไม่มี Heartbeat) ใช้เกณฑ์ปลอดภัยจากเวลาที่บันทึกไว้
@@ -490,13 +1539,22 @@ export class OnlineMatchController {
     if (host.connected === false) {
       return { joinable: false, expired: age > C.DISCONNECT_GRACE_MS };
     }
-    return { joinable: age <= C.LEGACY_STALE_MS, expired: age > C.LEGACY_STALE_MS };
+    const isLegacyExpired = age > C.LEGACY_STALE_MS;
+    return {
+      joinable: !isPrivate && !isLegacyExpired,
+      expired: isLegacyExpired
+    };
   }
 
+  /**
+   * คืนรายการเฉพาะห้อง Public ที่เปิดรอผู้เล่น (กรองห้อง Private ออก 100%)
+   */
   getJoinableRooms(roomsObj) {
     const now = this.getServerNow();
     return Object.values(roomsObj || {}).filter((r) => {
-      return r && typeof r === 'object' && r.roomId && r.status === 'waiting' && r.host && !r.client &&
+      if (!r || typeof r !== 'object' || !r.roomId) return false;
+      if (this.isPrivateRoomRecord(r)) return false;
+      return r.status === 'waiting' && r.host && !r.client &&
         this.evaluateWaitingRoom(r, now).joinable;
     });
   }
@@ -633,6 +1691,7 @@ export class OnlineMatchController {
 
       if (room.host && room.host.userKey === myKey) {
         this.currentRoomId = savedRoomId;
+        this.currentRoomVisibility = this.isPrivateRoomRecord(room) ? 'private' : 'public';
         this.role = 'host';
         this.matchId = room.matchId;
         this.lastJoinedClientKey = room.client ? room.client.userKey : null;
@@ -640,6 +1699,7 @@ export class OnlineMatchController {
         this.announcePolite(`กู้คืนห้อง ${savedRoomId} สำเร็จในฐานะหัวหน้าห้อง`, true);
       } else if (room.client && room.client.userKey === myKey) {
         this.currentRoomId = savedRoomId;
+        this.currentRoomVisibility = this.isPrivateRoomRecord(room) ? 'private' : 'public';
         this.role = 'client';
         this.matchId = room.matchId;
         this.lastJoinedClientKey = room.client.userKey;
@@ -685,6 +1745,8 @@ export class OnlineMatchController {
       const roomData = {
         roomId: roomId,
         matchId: matchId,
+        visibility: 'public',
+        isPrivate: false,
         status: 'waiting',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -714,6 +1776,7 @@ export class OnlineMatchController {
       await set(roomRef, roomData);
 
       this.currentRoomId = roomId;
+      this.currentRoomVisibility = 'public';
       this.role = 'host';
       this.matchId = matchId;
       this.lastJoinedClientKey = null;
@@ -731,7 +1794,7 @@ export class OnlineMatchController {
   }
 
   /**
-   * เข้าร่วมห้องโดยใช้ Firebase Transaction ป้องกันผู้เล่นคนที่ 3 หรือการกดพร้อมกัน (Race Condition)
+   * เข้าร่วมห้องสาธารณะโดยใช้ Firebase Transaction ป้องกันผู้เล่นคนที่ 3 หรือการแอบเข้าห้อง Private โดยไม่ได้รับเชิญ
    */
   async joinRoom(roomId) {
     const user = this.getCurrentUser();
@@ -757,10 +1820,20 @@ export class OnlineMatchController {
           rejectReason = "คุณเป็นเจ้าของห้องนี้อยู่แล้ว";
           return;
         }
+        // ป้องกันการเข้าห้อง Private ผ่านฟังก์ชันห้องสาธารณะ यदिไม่ได้รับอนุญาตใน allowedPlayers / invitedClientKey
+        if (this.isPrivateRoomRecord(room)) {
+          const isAuthorizedClient = (room.invitedClientKey && room.invitedClientKey === myKey) ||
+            (room.allowedPlayers && room.allowedPlayers[myKey] === true);
+          if (!isAuthorizedClient) {
+            rejectReason = "ห้องนี้เป็นห้องส่วนตัว เฉพาะผู้เล่นที่ได้รับคำเชิญเท่านั้นที่เข้าร่วมได้";
+            return;
+          }
+        }
         if (
           this.serverClockReady &&
           room.status === 'waiting' &&
           !room.client &&
+          !this.isPrivateRoomRecord(room) &&
           !this.evaluateWaitingRoom(room, this.getServerNow()).joinable
         ) {
           expiredDetected = true;
@@ -802,6 +1875,7 @@ export class OnlineMatchController {
       }
 
       this.currentRoomId = roomId;
+      this.currentRoomVisibility = this.isPrivateRoomRecord(updatedRoom) ? 'private' : 'public';
       this.role = 'client';
       this.matchId = updatedRoom.matchId;
       this.lastJoinedClientKey = myKey;
@@ -1066,6 +2140,7 @@ export class OnlineMatchController {
     if (!room) return;
     this.hostUsername = room.host ? room.host.username : '-';
     this.clientUsername = room.client ? room.client.username : 'รอผู้เล่นเข้าร่วม...';
+    this.currentRoomVisibility = this.isPrivateRoomRecord(room) ? 'private' : 'public';
 
     // 2. เล่นเสียง select.mp3 บนฝั่ง Host ทันทีเมื่อมีผู้เล่นกดเข้าร่วมห้องสำเร็จ
     if (this.role === 'host') {
@@ -1079,8 +2154,9 @@ export class OnlineMatchController {
     }
 
     // อัปเดตข้อมูลในหน้า Lobby
+    const roomTypeSuffix = this.currentRoomVisibility === 'private' ? ' (ห้องส่วนตัว)' : '';
     if (this.ui.roomCodeDisplay) {
-      this.ui.roomCodeDisplay.textContent = `รหัสห้อง: ${room.roomId}`;
+      this.ui.roomCodeDisplay.textContent = `รหัสห้อง: ${room.roomId}${roomTypeSuffix}`;
     }
     if (this.ui.roomHostDisplay) {
       this.ui.roomHostDisplay.textContent = `หัวหน้าห้อง (Host): ${this.hostUsername}`;
@@ -1090,6 +2166,39 @@ export class OnlineMatchController {
     }
 
     const hasBothPlayers = Boolean(room.host && room.client && room.playerCount === 2);
+
+    // ซิงก์สถานะ Presence ของผู้เล่นกับ auth.js ให้ตรงกับสถานะห้องจริงเสมอ
+    if (!this.inMatch) {
+      if (room.status === 'playing') {
+        this.updatePresenceStatusFn(this.presenceStates.PLAYING_ONLINE, {
+          roomId: room.roomId,
+          roomRole: this.role,
+          roomPlayerCount: 2,
+          hasClientInRoom: true,
+          roomStatus: 'playing'
+        }).catch(() => {});
+      } else if (hasBothPlayers || room.status === 'ready') {
+        this.updatePresenceStatusFn(this.presenceStates.ONLINE_READY, {
+          roomId: room.roomId,
+          roomRole: this.role,
+          roomPlayerCount: 2,
+          hasClientInRoom: true,
+          roomStatus: 'ready'
+        }).catch(() => {});
+      } else if (room.status === 'waiting' && this.role === 'host') {
+        // ห้อง Private ที่กำลังรอเพื่อนเข้า จะไม่เปิดรับคำเชิญซ้อนจากคนอื่น
+        const waitingState = this.currentRoomVisibility === 'private'
+          ? this.presenceStates.INVITATION_PENDING
+          : this.presenceStates.WAITING_ROOM;
+        this.updatePresenceStatusFn(waitingState, {
+          roomId: room.roomId,
+          roomRole: 'host',
+          roomPlayerCount: 1,
+          hasClientInRoom: false,
+          roomStatus: 'waiting'
+        }).catch(() => {});
+      }
+    }
 
     // หากผู้เล่นเป็น Client และเห็น Peer ID ของ Host แล้ว แต่ยังไม่ได้เชื่อม DataChannel ให้เริ่มเชื่อมทันที
     if (
@@ -1112,6 +2221,14 @@ export class OnlineMatchController {
         if (this.role === 'client' && room.host && room.host.peerId && (!this.conn || !this.channelReady)) {
           this.connectToHostPeer(room.host.peerId);
         }
+      }
+    } else if (!this.inMatch && hasBothPlayers && oppNode && oppNode.connected === false) {
+      // กรณีอยู่ในห้องรอ (รวมถึงห้อง Private) แล้วอีกฝ่ายปิดหน้าเว็บหรือหลุดการเชื่อมต่อก่อนเริ่มเกม
+      if (this.currentRoomVisibility === 'private') {
+        const oppLabel = this.role === 'host' ? this.clientUsername : this.hostUsername;
+        this.announcePolite(`ผู้เล่น ${oppLabel} ออกจากห้องหรือหลุดการเชื่อมต่อ ระบบกำลังปิดห้องส่วนตัว`, true);
+        this.leaveCurrentRoom(false);
+        return;
       }
     }
 
@@ -1167,6 +2284,9 @@ export class OnlineMatchController {
           "ไม่สามารถเชื่อมต่อ PeerJS โดยตรงได้ภายในเวลาที่กำหนด เครือข่ายอาจมีไฟร์วอลล์หรือต้องตั้งค่า TURN Server กรุณาลองสร้างห้องใหม่หรือสลับเครือข่าย",
           true
         );
+        if (this.currentRoomVisibility === 'private' && !this.inMatch) {
+          this.leaveCurrentRoom(false);
+        }
       }
     }, ONLINE_CONFIG.PEER_CONNECT_TIMEOUT_MS);
   }
@@ -1182,6 +2302,7 @@ export class OnlineMatchController {
 
     connection.on('open', () => {
       clearTimeout(this.peerConnectTimer);
+      clearTimeout(this.outgoingInviteTimeoutTimer);
       this.channelReady = true;
       this.startPingLoop();
 
@@ -1192,6 +2313,13 @@ export class OnlineMatchController {
         if (this.role === 'host') {
           this.announcePolite(`ผู้เล่น ${oppName} เข้าร่วมครบ 2 คนและการเชื่อมต่อพร้อมแล้ว กดปุ่มเริ่มการแข่งขันออนไลน์ได้เลย`);
           this.ui.startOnlineMatchBtn.classList.remove('hidden');
+          setTimeout(() => {
+            try {
+              if (!this.inMatch && this.ui.startOnlineMatchBtn && !this.ui.startOnlineMatchBtn.classList.contains('hidden')) {
+                this.ui.startOnlineMatchBtn.focus();
+              }
+            } catch (e) {}
+          }, 150);
         } else {
           this.announcePolite(`เชื่อมต่อกับ ${oppName} สำเร็จ รอหัวหน้าห้องกดเริ่มการแข่งขัน`);
         }
@@ -1309,6 +2437,12 @@ export class OnlineMatchController {
       this.ui.btnHomeMain.classList.add('hidden');
     }
     this.ui.onlineLobbyScreen.classList.add('hidden');
+    if (this.ui.inviteFriendsScreen) {
+      this.ui.inviteFriendsScreen.classList.add('hidden');
+    }
+    if (this.ui.backFromInviteFriendsBtn) {
+      this.ui.backFromInviteFriendsBtn.classList.add('hidden');
+    }
     if (this.ui.backFromLobbyBtn) {
       this.ui.backFromLobbyBtn.classList.add('hidden');
     }
@@ -1318,6 +2452,14 @@ export class OnlineMatchController {
     if (this.ui.leaveRoomBtn) {
       this.ui.leaveRoomBtn.classList.add('hidden');
     }
+
+    this.updatePresenceStatusFn(this.presenceStates.PLAYING_ONLINE, {
+      roomId: this.currentRoomId || null,
+      roomRole: this.role,
+      roomPlayerCount: 2,
+      hasClientInRoom: true,
+      roomStatus: 'playing'
+    }).catch(() => {});
 
     this.motion.start();
     this.activateFocusMode();
@@ -2071,6 +3213,14 @@ export class OnlineMatchController {
       this.announcePolite(finalMsg, true);
 
       this.recordMatchStatsIdempotent('completed', data.matchWinner);
+
+      // หากเป็นห้อง Private ที่จบการแข่งขันสมบูรณ์แล้ว ให้ลบข้อมูลห้องออกจาก Firebase เพื่อไม่ให้ค้างสะสม
+      if (this.currentRoomId && this.currentRoomVisibility === 'private' && this.role === 'host') {
+        const finishedRoomId = this.currentRoomId;
+        setTimeout(() => {
+          remove(ref(this.db, `${GAME_ID}/onlineRooms/${finishedRoomId}`)).catch(() => {});
+        }, 5000);
+      }
       return;
     }
 
@@ -2353,6 +3503,9 @@ export class OnlineMatchController {
       if (this.ui.waitingRoomsContainer) {
         this.ui.waitingRoomsContainer.classList.add('hidden');
       }
+      if (this.ui.inviteFriendsSection) {
+        this.ui.inviteFriendsSection.classList.add('hidden');
+      }
       if (this.ui.leaveRoomBtn) {
         this.ui.leaveRoomBtn.classList.add('hidden');
       }
@@ -2370,6 +3523,9 @@ export class OnlineMatchController {
       }
       if (this.ui.waitingRoomsContainer) {
         this.ui.waitingRoomsContainer.classList.remove('hidden');
+      }
+      if (this.ui.inviteFriendsSection) {
+        this.ui.inviteFriendsSection.classList.remove('hidden');
       }
       if (this.ui.leaveRoomBtn) {
         this.ui.leaveRoomBtn.classList.add('hidden');
@@ -2414,10 +3570,12 @@ export class OnlineMatchController {
 
     const leavingRoomId = this.currentRoomId;
     const leavingRole = this.role;
+    const leavingVisibility = this.currentRoomVisibility;
     const wasInMatch = this.inMatch;
     const prevStatus = this.matchStatus;
 
     this.currentRoomId = null;
+    this.currentRoomVisibility = 'public';
     this.role = null;
     this.inMatch = false;
     this.opponentDisconnected = false;
@@ -2450,11 +3608,13 @@ export class OnlineMatchController {
         const snap = await get(roomRef);
         if (snap.exists()) {
           const room = snap.val();
+          const isPrivate = leavingVisibility === 'private' || this.isPrivateRoomRecord(room);
           if (room.status === 'waiting' && leavingRole === 'host') {
             await this.removeRoomIfOwned(roomRef);
           } else if (room.status === 'ready' && !wasInMatch) {
-            if (leavingRole === 'host') {
-              await this.removeRoomIfOwned(roomRef);
+            if (leavingRole === 'host' || isPrivate) {
+              // หากเป็นห้อง Private แล้วฝ่ายใดฝ่ายหนึ่งออกจากห้องก่อนเริ่มแข่ง ให้ปิดห้อง Private ทันทีเพื่อไม่ให้ค้าง
+              await remove(roomRef);
             } else if (leavingRole === 'client') {
               await update(roomRef, {
                 client: null,
@@ -2488,6 +3648,16 @@ export class OnlineMatchController {
         this.ui.btnHomeMain.classList.remove('hidden');
       }
       await this.loadPlayerOnlineStatsUI();
+    }
+
+    if (this.activeMode && !this.inMatch) {
+      this.updatePresenceStatusFn(this.presenceStates.ONLINE_LOBBY, {
+        roomId: null,
+        roomRole: null,
+        roomPlayerCount: 0,
+        hasClientInRoom: false,
+        roomStatus: null
+      }).catch(() => {});
     }
 
     if (notifyUser) {
