@@ -76,6 +76,51 @@ export function mirrorDirection(dir) {
   return 'center';
 }
 
+/**
+ * ฟังก์ชันช่วยตรวจสอบและกรองรหัสห้อง 4 หลัก (เฉพาะตัวเลข ASCII 0-9 จำนวน 4 หลักพอดี)
+ */
+function sanitizePinInput(rawValue) {
+  return String(rawValue || '').replace(/[^0-9]/g, '').slice(0, 4);
+}
+
+function isValidPinCode(pin) {
+  return typeof pin === 'string' && /^[0-9]{4}$/.test(pin);
+}
+
+function generateRandomSalt() {
+  if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+    const arr = new Uint8Array(16);
+    window.crypto.getRandomValues(arr);
+    return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return `salt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+async function computeRoomVerifierToken(roomId, salt, pin) {
+  const raw = `${GAME_ID}:room_pin_v1:${roomId}:${salt}:${pin}`;
+  if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(raw);
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return 'v1_' + hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      // Fallback ด้านล่างกรณีที่บริบทเบราว์เซอร์ไม่รองรับ subtle.digest
+    }
+  }
+  let h1 = 0xdeadbeef ^ raw.length;
+  let h2 = 0x41c6ce57 ^ raw.length;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 'v1_' + (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+}
+
 export class OnlineMatchController {
   constructor(options) {
     this.sound = options.sound;
@@ -136,6 +181,14 @@ export class OnlineMatchController {
     this.opponentDisconnected = false;
     this.lastJoinedClientKey = null;
 
+    // สถานะสำหรับหน้าสร้างห้องและเข้าร่วมห้องแบบมีรหัส 4 หลัก
+    this.passwordSubView = null; // null | 'create' | 'join'
+    this.pendingPasswordJoinRoomId = null;
+    this.pendingPasswordJoinHostName = '';
+    this.lastPasswordTriggerFocusEl = null;
+    this.passwordActionInFlight = false;
+    this.passwordFlowSeq = 0;
+
     // สถานะการแข่งขัน (Host-Authoritative)
     this.matchStatus = 'idle'; // 'idle' | 'playing' | 'between_sets' | 'paused_disconnect' | 'finished' | 'aborted'
     this.hostUsername = '';
@@ -174,16 +227,29 @@ export class OnlineMatchController {
   bindLobbyEvents() {
     const {
       createRoomBtn,
+      createPasswordRoomBtn,
       refreshRoomsBtn,
       backFromLobbyBtn,
       startOnlineMatchBtn,
-      leaveRoomBtn
+      leaveRoomBtn,
+      createRoomPasswordInput,
+      confirmCreatePasswordRoomBtn,
+      cancelCreatePasswordRoomBtn,
+      joinRoomPasswordInput,
+      confirmJoinPasswordRoomBtn,
+      cancelJoinPasswordRoomBtn
     } = this.ui;
 
     this.addAccessibleClickListener(createRoomBtn, async () => {
       await this.requestSensorAndAudioOnGesture();
       await this.createRoom();
     });
+
+    if (createPasswordRoomBtn) {
+      createPasswordRoomBtn.addEventListener('click', () => {
+        this.openCreatePasswordPanel();
+      });
+    }
 
     this.addAccessibleClickListener(refreshRoomsBtn, () => {
       this.announcePolite("กำลังอัปเดตรายการห้องออนไลน์");
@@ -202,6 +268,386 @@ export class OnlineMatchController {
     this.addAccessibleClickListener(leaveRoomBtn, async () => {
       await this.leaveCurrentRoom(true);
     });
+
+    // กรองการป้อนและการวางข้อความ (Paste) ในช่องรหัสทั้ง 2 หน้าให้รับเฉพาะตัวเลข ASCII 0-9 จำนวน 4 หลัก
+    this.bindStrictPinInputFiltering(
+      createRoomPasswordInput,
+      confirmCreatePasswordRoomBtn,
+      this.ui.createPasswordRoomError
+    );
+    this.bindStrictPinInputFiltering(
+      joinRoomPasswordInput,
+      confirmJoinPasswordRoomBtn,
+      this.ui.joinPasswordRoomError
+    );
+
+    if (confirmCreatePasswordRoomBtn) {
+      this.addAccessibleClickListener(confirmCreatePasswordRoomBtn, async () => {
+        await this.handleConfirmCreatePasswordRoom();
+      });
+    }
+
+    if (cancelCreatePasswordRoomBtn) {
+      cancelCreatePasswordRoomBtn.addEventListener('click', () => {
+        this.cancelCreatePasswordFlow(false);
+      });
+      cancelCreatePasswordRoomBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          this.cancelCreatePasswordFlow(false);
+        }
+      });
+    }
+
+    if (confirmJoinPasswordRoomBtn) {
+      this.addAccessibleClickListener(confirmJoinPasswordRoomBtn, async () => {
+        await this.handleConfirmJoinPasswordRoom();
+      });
+    }
+
+    if (cancelJoinPasswordRoomBtn) {
+      cancelJoinPasswordRoomBtn.addEventListener('click', () => {
+        this.cancelJoinPasswordFlow(false);
+      });
+      cancelJoinPasswordRoomBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          this.cancelJoinPasswordFlow(false);
+        }
+      });
+    }
+  }
+
+  /**
+   * ควบคุมช่องกรอกรหัสให้รับเฉพาะตัวเลข ASCII 0-9 จำนวน 4 หลักทั้งจากการพิมพ์และวางข้อความ
+   */
+  bindStrictPinInputFiltering(inputEl, confirmBtnEl, errorEl) {
+    if (!inputEl) return;
+
+    const syncPinState = () => {
+      const cleaned = sanitizePinInput(inputEl.value);
+      if (inputEl.value !== cleaned) {
+        inputEl.value = cleaned;
+      }
+      if (confirmBtnEl) {
+        confirmBtnEl.disabled = this.passwordActionInFlight || !isValidPinCode(cleaned);
+      }
+    };
+
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const allowedControlKeys = [
+        'Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight',
+        'ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', 'Escape'
+      ];
+      if (allowedControlKeys.includes(e.key)) return;
+      if (!/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+      }
+    });
+
+    inputEl.addEventListener('paste', (e) => {
+      if (!e.clipboardData) return;
+      e.preventDefault();
+      const pasted = e.clipboardData.getData('text') || '';
+      const digitsOnly = sanitizePinInput(pasted);
+      const start = typeof inputEl.selectionStart === 'number' ? inputEl.selectionStart : inputEl.value.length;
+      const end = typeof inputEl.selectionEnd === 'number' ? inputEl.selectionEnd : inputEl.value.length;
+      const nextVal = sanitizePinInput(
+        inputEl.value.slice(0, start) + digitsOnly + inputEl.value.slice(end)
+      );
+      inputEl.value = nextVal;
+      if (errorEl && !errorEl.classList.contains('hidden')) {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+      }
+      syncPinState();
+    });
+
+    inputEl.addEventListener('input', () => {
+      syncPinState();
+    });
+  }
+
+  showPasswordError(errorEl, message) {
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.remove('hidden');
+      setTimeout(() => {
+        if (errorEl && !errorEl.classList.contains('hidden')) {
+          errorEl.textContent = message;
+        }
+      }, 20);
+    } else {
+      this.announcePolite(message, true);
+    }
+  }
+
+  clearPasswordError(errorEl) {
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+  }
+
+  openCreatePasswordPanel() {
+    if (this.currentRoomId || this.inMatch) return;
+    this.passwordFlowSeq++;
+    this.passwordActionInFlight = false;
+    this.passwordSubView = 'create';
+    this.pendingPasswordJoinRoomId = null;
+    this.pendingPasswordJoinHostName = '';
+    this.lastPasswordTriggerFocusEl = this.ui.createPasswordRoomBtn || null;
+
+    const user = this.getCurrentUser();
+    const uname = user && user.username ? user.username : '-';
+
+    if (this.ui.createPasswordRoomDesc) {
+      this.ui.createPasswordRoomDesc.textContent = `ห้องนี้จะใช้ชื่อบัญชีผู้เล่นที่เข้าสู่ระบบอยู่ (${uname})`;
+    }
+    this.clearPasswordError(this.ui.createPasswordRoomError);
+    if (this.ui.createRoomPasswordInput) {
+      this.ui.createRoomPasswordInput.value = '';
+      this.ui.createRoomPasswordInput.disabled = false;
+    }
+    if (this.ui.confirmCreatePasswordRoomBtn) {
+      this.ui.confirmCreatePasswordRoomBtn.disabled = true;
+    }
+
+    if (this.ui.joinPasswordRoomPanel) {
+      this.ui.joinPasswordRoomPanel.classList.add('hidden');
+    }
+    if (this.ui.createRoomBtn) this.ui.createRoomBtn.classList.add('hidden');
+    if (this.ui.createPasswordRoomBtn) this.ui.createPasswordRoomBtn.classList.add('hidden');
+    if (this.ui.refreshRoomsBtn) this.ui.refreshRoomsBtn.classList.add('hidden');
+    if (this.ui.waitingRoomsHeading) this.ui.waitingRoomsHeading.classList.add('hidden');
+    if (this.ui.waitingRoomsContainer) this.ui.waitingRoomsContainer.classList.add('hidden');
+
+    if (this.ui.createPasswordRoomPanel) {
+      this.ui.createPasswordRoomPanel.classList.remove('hidden');
+    }
+
+    setTimeout(() => {
+      try {
+        if (this.ui.createRoomPasswordInput) {
+          this.ui.createRoomPasswordInput.focus();
+        } else if (this.ui.createPasswordRoomHeading) {
+          this.ui.createPasswordRoomHeading.focus();
+        }
+      } catch (e) {}
+    }, 50);
+  }
+
+  openJoinPasswordPanel(room, triggerBtn) {
+    if (!room || !room.roomId || this.currentRoomId || this.inMatch) return;
+    this.passwordFlowSeq++;
+    this.passwordActionInFlight = false;
+    this.passwordSubView = 'join';
+    this.pendingPasswordJoinRoomId = room.roomId;
+    this.pendingPasswordJoinHostName = (room.host && room.host.username) ? room.host.username : '-';
+    this.lastPasswordTriggerFocusEl = triggerBtn || document.activeElement || this.ui.refreshRoomsBtn || null;
+
+    if (this.ui.joinPasswordRoomHost) {
+      this.ui.joinPasswordRoomHost.textContent = `เจ้าของห้อง: ${this.pendingPasswordJoinHostName}`;
+    }
+    this.clearPasswordError(this.ui.joinPasswordRoomError);
+    if (this.ui.joinRoomPasswordInput) {
+      this.ui.joinRoomPasswordInput.value = '';
+      this.ui.joinRoomPasswordInput.disabled = false;
+    }
+    if (this.ui.confirmJoinPasswordRoomBtn) {
+      this.ui.confirmJoinPasswordRoomBtn.disabled = true;
+    }
+
+    if (this.ui.createPasswordRoomPanel) {
+      this.ui.createPasswordRoomPanel.classList.add('hidden');
+    }
+    if (this.ui.createRoomBtn) this.ui.createRoomBtn.classList.add('hidden');
+    if (this.ui.createPasswordRoomBtn) this.ui.createPasswordRoomBtn.classList.add('hidden');
+    if (this.ui.refreshRoomsBtn) this.ui.refreshRoomsBtn.classList.add('hidden');
+    if (this.ui.waitingRoomsHeading) this.ui.waitingRoomsHeading.classList.add('hidden');
+    if (this.ui.waitingRoomsContainer) this.ui.waitingRoomsContainer.classList.add('hidden');
+
+    if (this.ui.joinPasswordRoomPanel) {
+      this.ui.joinPasswordRoomPanel.classList.remove('hidden');
+    }
+
+    setTimeout(() => {
+      try {
+        if (this.ui.joinRoomPasswordInput) {
+          this.ui.joinRoomPasswordInput.focus();
+        } else if (this.ui.joinPasswordRoomHeading) {
+          this.ui.joinPasswordRoomHeading.focus();
+        }
+      } catch (e) {}
+    }, 50);
+  }
+
+  cancelCreatePasswordFlow(restoreFocus = true) {
+    this.passwordFlowSeq++;
+    this.passwordActionInFlight = false;
+    this.passwordSubView = null;
+
+    if (this.ui.createRoomPasswordInput) {
+      this.ui.createRoomPasswordInput.value = '';
+      this.ui.createRoomPasswordInput.disabled = false;
+    }
+    if (this.ui.confirmCreatePasswordRoomBtn) {
+      this.ui.confirmCreatePasswordRoomBtn.disabled = true;
+    }
+    this.clearPasswordError(this.ui.createPasswordRoomError);
+    if (this.ui.createPasswordRoomPanel) {
+      this.ui.createPasswordRoomPanel.classList.add('hidden');
+    }
+
+    if (!this.currentRoomId && !this.inMatch) {
+      this.updateRoomPanelVisibility(false);
+    }
+
+    if (restoreFocus && this.ui.createPasswordRoomBtn) {
+      setTimeout(() => {
+        try {
+          this.ui.createPasswordRoomBtn.focus();
+        } catch (e) {}
+      }, 50);
+    }
+  }
+
+  cancelJoinPasswordFlow(restoreFocus = true) {
+    const returnFocusRoomId = this.pendingPasswordJoinRoomId;
+    const savedTriggerEl = this.lastPasswordTriggerFocusEl;
+
+    this.passwordFlowSeq++;
+    this.passwordActionInFlight = false;
+    this.passwordSubView = null;
+    this.pendingPasswordJoinRoomId = null;
+    this.pendingPasswordJoinHostName = '';
+    this.lastPasswordTriggerFocusEl = null;
+
+    if (this.ui.joinRoomPasswordInput) {
+      this.ui.joinRoomPasswordInput.value = '';
+      this.ui.joinRoomPasswordInput.disabled = false;
+    }
+    if (this.ui.confirmJoinPasswordRoomBtn) {
+      this.ui.confirmJoinPasswordRoomBtn.disabled = true;
+    }
+    this.clearPasswordError(this.ui.joinPasswordRoomError);
+    if (this.ui.joinPasswordRoomPanel) {
+      this.ui.joinPasswordRoomPanel.classList.add('hidden');
+    }
+
+    if (!this.currentRoomId && !this.inMatch) {
+      this.updateRoomPanelVisibility(false);
+    }
+
+    if (restoreFocus) {
+      setTimeout(() => {
+        try {
+          if (savedTriggerEl && document.body.contains(savedTriggerEl)) {
+            savedTriggerEl.focus();
+            return;
+          }
+          if (returnFocusRoomId && this.ui.waitingRoomsContainer) {
+            const matchingBtn = this.ui.waitingRoomsContainer.querySelector(`[data-room-id="${returnFocusRoomId}"]`);
+            if (matchingBtn) {
+              matchingBtn.focus();
+              return;
+            }
+          }
+          if (this.ui.refreshRoomsBtn) {
+            this.ui.refreshRoomsBtn.focus();
+          }
+        } catch (e) {}
+      }, 60);
+    }
+  }
+
+  async handleConfirmCreatePasswordRoom() {
+    if (this.passwordActionInFlight || this.currentRoomId || this.inMatch) return;
+    const inputEl = this.ui.createRoomPasswordInput;
+    const rawVal = inputEl ? inputEl.value : '';
+    const pin = sanitizePinInput(rawVal);
+
+    if (!isValidPinCode(pin) || rawVal !== pin) {
+      this.showPasswordError(this.ui.createPasswordRoomError, "กรุณากรอกรหัสห้องเป็นตัวเลข 4 หลัก");
+      if (inputEl) {
+        try { inputEl.focus(); } catch (e) {}
+      }
+      return;
+    }
+
+    this.clearPasswordError(this.ui.createPasswordRoomError);
+    this.passwordActionInFlight = true;
+    const flowId = ++this.passwordFlowSeq;
+
+    if (this.ui.confirmCreatePasswordRoomBtn) {
+      this.ui.confirmCreatePasswordRoomBtn.disabled = true;
+    }
+    if (inputEl) {
+      inputEl.disabled = true;
+    }
+
+    try {
+      await this.requestSensorAndAudioOnGesture();
+      if (flowId !== this.passwordFlowSeq) return;
+      await this.createPasswordRoom(pin, flowId);
+    } finally {
+      if (flowId === this.passwordFlowSeq) {
+        this.passwordActionInFlight = false;
+        if (inputEl) {
+          inputEl.disabled = false;
+        }
+        if (this.ui.confirmCreatePasswordRoomBtn && inputEl) {
+          this.ui.confirmCreatePasswordRoomBtn.disabled = !isValidPinCode(inputEl.value);
+        }
+      }
+    }
+  }
+
+  async handleConfirmJoinPasswordRoom() {
+    if (this.passwordActionInFlight || this.currentRoomId || this.inMatch) return;
+    const roomId = this.pendingPasswordJoinRoomId;
+    if (!roomId) {
+      this.cancelJoinPasswordFlow(true);
+      return;
+    }
+
+    const inputEl = this.ui.joinRoomPasswordInput;
+    const rawVal = inputEl ? inputEl.value : '';
+    const pin = sanitizePinInput(rawVal);
+
+    if (!isValidPinCode(pin) || rawVal !== pin) {
+      this.showPasswordError(this.ui.joinPasswordRoomError, "รหัสห้องไม่ถูกต้อง");
+      if (inputEl) {
+        try { inputEl.focus(); } catch (e) {}
+      }
+      return;
+    }
+
+    this.clearPasswordError(this.ui.joinPasswordRoomError);
+    this.passwordActionInFlight = true;
+    const flowId = ++this.passwordFlowSeq;
+
+    if (this.ui.confirmJoinPasswordRoomBtn) {
+      this.ui.confirmJoinPasswordRoomBtn.disabled = true;
+    }
+    if (inputEl) {
+      inputEl.disabled = true;
+    }
+
+    try {
+      await this.requestSensorAndAudioOnGesture();
+      if (flowId !== this.passwordFlowSeq) return;
+      await this.joinPasswordRoom(roomId, pin, flowId);
+    } finally {
+      if (flowId === this.passwordFlowSeq) {
+        this.passwordActionInFlight = false;
+        if (inputEl) {
+          inputEl.disabled = false;
+        }
+        if (this.ui.confirmJoinPasswordRoomBtn && inputEl) {
+          this.ui.confirmJoinPasswordRoomBtn.disabled = !isValidPinCode(inputEl.value);
+        }
+      }
+    }
   }
 
   /**
@@ -277,6 +723,12 @@ export class OnlineMatchController {
   async openLobby() {
     this.activeMode = true;
     this.inMatch = false;
+    this.passwordFlowSeq++;
+    this.passwordActionInFlight = false;
+    this.passwordSubView = null;
+    this.pendingPasswordJoinRoomId = null;
+    this.pendingPasswordJoinHostName = '';
+
     this.ui.homeScreen.classList.add('hidden');
     this.ui.rulesScreen.classList.add('hidden');
     this.ui.roundSelectScreen.classList.add('hidden');
@@ -288,6 +740,13 @@ export class OnlineMatchController {
     this.ui.selectRoundBtn.classList.add('hidden');
     this.ui.rulesBtn.classList.add('hidden');
     this.ui.inGameLeaderboardBtn.classList.add('hidden');
+
+    if (this.ui.createPasswordRoomPanel) {
+      this.ui.createPasswordRoomPanel.classList.add('hidden');
+    }
+    if (this.ui.joinPasswordRoomPanel) {
+      this.ui.joinPasswordRoomPanel.classList.add('hidden');
+    }
 
     if (this.ui.btnHomeMain) {
       this.ui.btnHomeMain.classList.remove('hidden');
@@ -334,6 +793,12 @@ export class OnlineMatchController {
   }
 
   async closeLobbyAndExit() {
+    this.passwordFlowSeq++;
+    this.passwordActionInFlight = false;
+    this.passwordSubView = null;
+    this.pendingPasswordJoinRoomId = null;
+    this.pendingPasswordJoinHostName = '';
+
     await this.leaveCurrentRoom(true);
     this.unsubscribeWaitingRooms();
     this.activeMode = false;
@@ -392,7 +857,10 @@ export class OnlineMatchController {
   sweepLobbyRooms() {
     const rooms = this.lastRoomsObj;
     if (!rooms) return;
-    const sig = this.getJoinableRooms(rooms).map((r) => r.roomId).sort().join('|');
+    const sig = this.getJoinableRooms(rooms)
+      .map((r) => `${r.roomId}:${r.hasPassword === true ? 1 : 0}`)
+      .sort()
+      .join('|');
     if (sig !== this.renderedRoomsSig) {
       this.renderWaitingRoomsList(rooms);
     }
@@ -536,7 +1004,11 @@ export class OnlineMatchController {
         if (this.evaluateWaitingRoom(room, this.getServerNow()).expired) return null;
         return; // ห้องกลับมาใช้งานแล้วหรือไม่ใช่ waiting: ยกเลิกการลบ
       });
-      return Boolean(res.committed && !res.snapshot.exists());
+      const removed = Boolean(res.committed && !res.snapshot.exists());
+      if (removed) {
+        remove(ref(this.db, `${GAME_ID}/onlineRoomSecrets/${roomKey}`)).catch(() => {});
+      }
+      return removed;
     } catch (e) {
       console.warn("ลบห้องหมดอายุไม่สำเร็จ (อาจถูกจำกัดโดย Firebase Rules):", roomKey, e);
       return false;
@@ -546,13 +1018,16 @@ export class OnlineMatchController {
   /**
    * ลบห้องของตัวเองเมื่อออกจากห้อง โดยไม่ลบหากห้องถูกกู้คืนโดยเซสชันอื่นแล้ว
    */
-  async removeRoomIfOwned(roomRef) {
-    await runTransaction(roomRef, (room) => {
+  async removeRoomIfOwned(roomRef, roomId = null) {
+    const res = await runTransaction(roomRef, (room) => {
       if (room === null) return room;
       const hostSession = room.host && room.host.sessionId;
       if (hostSession && hostSession !== this.sessionId) return;
       return null;
     });
+    if (res.committed && !res.snapshot.exists() && roomId) {
+      remove(ref(this.db, `${GAME_ID}/onlineRoomSecrets/${roomId}`)).catch(() => {});
+    }
   }
 
   renderWaitingRoomsList(roomsObj) {
@@ -561,7 +1036,10 @@ export class OnlineMatchController {
     container.innerHTML = '';
 
     const entries = this.getJoinableRooms(roomsObj);
-    this.renderedRoomsSig = entries.map((r) => r.roomId).sort().join('|');
+    this.renderedRoomsSig = entries
+      .map((r) => `${r.roomId}:${r.hasPassword === true ? 1 : 0}`)
+      .sort()
+      .join('|');
 
     if (entries.length === 0) {
       const emptyEl = document.createElement('p');
@@ -578,16 +1056,30 @@ export class OnlineMatchController {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn-secondary';
-      btn.textContent = `ห้อง ${room.roomId} - ผู้สร้าง: ${room.host.username} (รอผู้เล่น 1/2)`;
-      btn.setAttribute('aria-label', `เข้าร่วมห้อง ${room.roomId} สร้างโดย ${room.host.username}`);
+      btn.setAttribute('data-room-id', room.roomId);
+
+      const isPasswordRoom = room.hasPassword === true;
+      const hostName = (room.host && room.host.username) ? room.host.username : '-';
+
+      if (isPasswordRoom) {
+        btn.textContent = `ห้อง ${hostName} (ต้องมีรหัส) - รอผู้เล่น 1/2`;
+        btn.setAttribute('aria-label', `เข้าร่วมห้อง ${hostName} ต้องมีรหัส`);
+      } else {
+        btn.textContent = `ห้อง ${room.roomId} - ผู้สร้าง: ${hostName} (รอผู้เล่น 1/2)`;
+        btn.setAttribute('aria-label', `เข้าร่วมห้อง ${room.roomId} สร้างโดย ${hostName}`);
+      }
 
       if (this.currentRoomId) {
         btn.disabled = true;
       }
 
       this.addAccessibleClickListener(btn, async () => {
-        await this.requestSensorAndAudioOnGesture();
-        await this.joinRoom(room.roomId);
+        if (isPasswordRoom) {
+          this.openJoinPasswordPanel(room, btn);
+        } else {
+          await this.requestSensorAndAudioOnGesture();
+          await this.joinRoom(room.roomId);
+        }
       });
 
       container.appendChild(btn);
@@ -686,6 +1178,7 @@ export class OnlineMatchController {
         roomId: roomId,
         matchId: matchId,
         status: 'waiting',
+        hasPassword: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         playerCount: 1,
@@ -731,7 +1224,123 @@ export class OnlineMatchController {
   }
 
   /**
-   * เข้าร่วมห้องโดยใช้ Firebase Transaction ป้องกันผู้เล่นคนที่ 3 หรือการกดพร้อมกัน (Race Condition)
+   * สร้างห้องออนไลน์แบบมีรหัส 4 หลัก โดยใช้ชื่อบัญชีผู้เล่นเป็นชื่อห้องและใช้ Room ID ภายในตามระบบเดิม
+   */
+  async createPasswordRoom(pin, flowId) {
+    const user = this.getCurrentUser();
+    if (!user) return;
+    if (this.currentRoomId) {
+      this.announcePolite("คุณอยู่ในห้องเรียบร้อยแล้ว");
+      return;
+    }
+    if (!isValidPinCode(pin)) {
+      this.showPasswordError(this.ui.createPasswordRoomError, "กรุณากรอกรหัสห้องเป็นตัวเลข 4 หลัก");
+      return;
+    }
+
+    try {
+      this.announcePolite("กำลังสร้างห้องแบบมีรหัส...");
+      const roomId = await this.generateNextRoomId();
+
+      // หากผู้เล่นกดยกเลิกระหว่างกำลังขอหมายเลขห้อง ให้หยุดทันทีโดยไม่สร้างห้อง
+      if (flowId !== this.passwordFlowSeq) return;
+
+      const myKey = encodeUserKey(user.username);
+      const matchId = `${roomId}_${Date.now()}`;
+      const passwordSalt = generateRandomSalt();
+      const verifierToken = await computeRoomVerifierToken(roomId, passwordSalt, pin);
+
+      if (flowId !== this.passwordFlowSeq) return;
+
+      // บันทึก Capability Token แยกไว้ที่ onlineRoomSecrets โดยไม่เก็บรหัสจริงหรือค่า Hash ในโหนดห้องหลัก
+      const secretRef = ref(this.db, `${GAME_ID}/onlineRoomSecrets/${roomId}/${verifierToken}`);
+      await set(secretRef, {
+        roomId: roomId,
+        hostUserKey: myKey,
+        createdAt: serverTimestamp()
+      });
+
+      if (flowId !== this.passwordFlowSeq) {
+        remove(ref(this.db, `${GAME_ID}/onlineRoomSecrets/${roomId}`)).catch(() => {});
+        return;
+      }
+
+      const roomData = {
+        roomId: roomId,
+        matchId: matchId,
+        status: 'waiting',
+        hasPassword: true,
+        passwordSalt: passwordSalt,
+        roomDisplayName: user.username,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        playerCount: 1,
+        host: {
+          username: user.username,
+          userKey: myKey,
+          peerId: '',
+          connected: true,
+          sessionId: this.sessionId,
+          heartbeatAt: serverTimestamp(),
+          joinedAt: Date.now()
+        },
+        client: null,
+        matchState: {
+          hostSetsWon: 0,
+          clientSetsWon: 0,
+          currentSetNumber: 1,
+          hostScore: 0,
+          clientScore: 0,
+          initialServer: 'host',
+          currentServer: 'host'
+        }
+      };
+
+      const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}`);
+      await set(roomRef, roomData);
+
+      // หากผู้เล่นกดยกเลิกพอดีขณะบันทึกห้อง ให้ลบห้องที่เพิ่งสร้างออกทันทีอย่างปลอดภัย
+      if (flowId !== this.passwordFlowSeq) {
+        await this.removeRoomIfOwned(roomRef, roomId);
+        return;
+      }
+
+      if (this.ui.createRoomPasswordInput) {
+        this.ui.createRoomPasswordInput.value = '';
+      }
+      if (this.ui.confirmCreatePasswordRoomBtn) {
+        this.ui.confirmCreatePasswordRoomBtn.disabled = true;
+      }
+      this.clearPasswordError(this.ui.createPasswordRoomError);
+      if (this.ui.createPasswordRoomPanel) {
+        this.ui.createPasswordRoomPanel.classList.add('hidden');
+      }
+      this.passwordSubView = null;
+
+      this.currentRoomId = roomId;
+      this.role = 'host';
+      this.matchId = matchId;
+      this.lastJoinedClientKey = null;
+      sessionStorage.setItem('pingpong_active_online_room', roomId);
+
+      // เล่นเสียง create.mp3 เมื่อกดสร้างห้องสำเร็จ (เฉพาะฝั่ง Host)
+      this.sound.play('create', 0, 1.0, false);
+
+      await this.initPeerAndBindRoom(roomId, 'host');
+      this.announcePolite(`สร้างห้องแบบมีรหัสของ ${user.username} สำเร็จ กำลังรอผู้เล่นคนที่สองเข้าร่วม`);
+    } catch (err) {
+      console.error(err);
+      if (flowId === this.passwordFlowSeq) {
+        this.showPasswordError(
+          this.ui.createPasswordRoomError,
+          err.message || "เกิดข้อผิดพลาดในการสร้างห้องแบบมีรหัส"
+        );
+      }
+    }
+  }
+
+  /**
+   * เข้าร่วมห้องปกติโดยใช้ Firebase Transaction ป้องกันผู้เล่นคนที่ 3 หรือการกดพร้อมกัน (Race Condition)
    */
   async joinRoom(roomId) {
     const user = this.getCurrentUser();
@@ -748,6 +1357,8 @@ export class OnlineMatchController {
       this.announcePolite(`กำลังเข้าร่วมห้อง ${roomId}...`);
       let rejectReason = "";
       let expiredDetected = false;
+      let passwordRequiredDetected = false;
+      let detectedHostName = "-";
 
       const txResult = await runTransaction(roomRef, (room) => {
         if (room === null) {
@@ -771,6 +1382,12 @@ export class OnlineMatchController {
           rejectReason = "ห้องนี้มีผู้เล่นครบ 2 คนแล้ว หรือปิดรับผู้เล่นแล้ว";
           return;
         }
+        if (room.hasPassword === true) {
+          passwordRequiredDetected = true;
+          detectedHostName = (room.host && room.host.username) ? room.host.username : '-';
+          rejectReason = "ห้องนี้ต้องใช้รหัสผ่านในการเข้าร่วม";
+          return;
+        }
 
         room.client = {
           username: user.username,
@@ -787,6 +1404,15 @@ export class OnlineMatchController {
       });
 
       if (!txResult.committed || !txResult.snapshot.exists()) {
+        if (passwordRequiredDetected) {
+          this.openJoinPasswordPanel({
+            roomId: roomId,
+            hasPassword: true,
+            host: { username: detectedHostName }
+          }, null);
+          this.announcePolite(`ห้องของ ${detectedHostName} ต้องใช้รหัส กรุณากรอกรหัสห้อง 4 หลัก`);
+          return;
+        }
         this.announcePolite(rejectReason || "ไม่สามารถเข้าร่วมห้องนี้ได้ ห้องอาจเต็มหรือถูกปิดไปแล้ว");
         if (expiredDetected) {
           await this.removeRoomIfExpired(roomId);
@@ -815,6 +1441,198 @@ export class OnlineMatchController {
     } catch (err) {
       console.error(err);
       this.announcePolite("ไม่สามารถเข้าร่วมห้องได้ กรุณาลองเลือกห้องอื่น");
+    }
+  }
+
+  /**
+   * ตรวจสอบรหัส 4 หลักและเข้าร่วมห้องแบบมีรหัสด้วย Atomic Transaction
+   * ไม่สร้าง Client หรือจองที่นั่งในห้องก่อนผ่านการตรวจสอบรหัส
+   */
+  async joinPasswordRoom(roomId, pin, flowId) {
+    const user = this.getCurrentUser();
+    if (!user) return;
+    if (this.currentRoomId) {
+      this.announcePolite("คุณอยู่ในห้องอื่นแล้ว กรุณาออกจากห้องเดิมก่อน");
+      return;
+    }
+
+    const myKey = encodeUserKey(user.username);
+    const roomRef = ref(this.db, `${GAME_ID}/onlineRooms/${roomId}`);
+
+    try {
+      // 1. ดึงข้อมูลห้องล่าสุดเพื่อตรวจสอบสถานะเบื้องต้นและอ่านค่า passwordSalt
+      const roomSnap = await get(roomRef);
+      if (flowId !== this.passwordFlowSeq) return;
+
+      if (!roomSnap.exists()) {
+        this.showPasswordError(this.ui.joinPasswordRoomError, "ไม่พบห้องนี้แล้ว ห้องอาจถูกปิดไปก่อนหน้า");
+        this.RefreshRoomsManual();
+        return;
+      }
+
+      const currentRoom = roomSnap.val();
+      if (currentRoom.host && currentRoom.host.userKey === myKey) {
+        this.showPasswordError(this.ui.joinPasswordRoomError, "คุณเป็นเจ้าของห้องนี้อยู่แล้ว");
+        return;
+      }
+
+      if (
+        this.serverClockReady &&
+        currentRoom.status === 'waiting' &&
+        !currentRoom.client &&
+        !this.evaluateWaitingRoom(currentRoom, this.getServerNow()).joinable
+      ) {
+        this.showPasswordError(this.ui.joinPasswordRoomError, "ห้องนี้หมดอายุแล้ว เพราะเจ้าของห้องไม่ได้ออนไลน์");
+        await this.removeRoomIfExpired(roomId);
+        this.RefreshRoomsManual();
+        return;
+      }
+
+      if (currentRoom.status !== 'waiting' || (currentRoom.client && currentRoom.client.userKey && currentRoom.client.userKey !== myKey)) {
+        this.showPasswordError(this.ui.joinPasswordRoomError, "ห้องนี้มีผู้เล่นครบ 2 คนแล้ว หรือปิดรับผู้เล่นแล้ว");
+        this.RefreshRoomsManual();
+        return;
+      }
+
+      // 2. ตรวจสอบรหัสผ่านกับ Capability Token ในโหนด onlineRoomSecrets ก่อนจองที่นั่ง
+      if (currentRoom.hasPassword === true) {
+        const salt = currentRoom.passwordSalt || '';
+        if (!salt) {
+          this.showPasswordError(this.ui.joinPasswordRoomError, "รหัสห้องไม่ถูกต้อง");
+          return;
+        }
+        const verifierToken = await computeRoomVerifierToken(roomId, salt, pin);
+        if (flowId !== this.passwordFlowSeq) return;
+
+        const secretSnap = await get(ref(this.db, `${GAME_ID}/onlineRoomSecrets/${roomId}/${verifierToken}`));
+        if (flowId !== this.passwordFlowSeq) return;
+
+        if (!secretSnap.exists()) {
+          this.showPasswordError(this.ui.joinPasswordRoomError, "รหัสห้องไม่ถูกต้อง");
+          if (this.ui.joinRoomPasswordInput) {
+            this.ui.joinRoomPasswordInput.disabled = false;
+            try { this.ui.joinRoomPasswordInput.focus(); } catch (e) {}
+          }
+          return;
+        }
+
+        // 3. เมื่อรหัสถูกต้อง จึงทำ Atomic Transaction จองที่นั่งในห้องพร้อมตรวจสอบสถานะห้องล่าสุดอีกครั้ง
+        let rejectReason = "";
+        let expiredDetected = false;
+
+        const txResult = await runTransaction(roomRef, (room) => {
+          if (room === null) {
+            rejectReason = "ไม่พบห้องนี้แล้ว ห้องอาจถูกปิดไปก่อนหน้า";
+            return room;
+          }
+          if (room.host && room.host.userKey === myKey) {
+            rejectReason = "คุณเป็นเจ้าของห้องนี้อยู่แล้ว";
+            return;
+          }
+          if (
+            this.serverClockReady &&
+            room.status === 'waiting' &&
+            !room.client &&
+            !this.evaluateWaitingRoom(room, this.getServerNow()).joinable
+          ) {
+            expiredDetected = true;
+            rejectReason = "ห้องนี้หมดอายุแล้ว เพราะเจ้าของห้องไม่ได้ออนไลน์";
+            return;
+          }
+          if (room.status !== 'waiting' || (room.client && room.client.userKey && room.client.userKey !== myKey)) {
+            rejectReason = "ห้องนี้มีผู้เล่นครบ 2 คนแล้ว หรือปิดรับผู้เล่นแล้ว";
+            return;
+          }
+          if (room.hasPassword === true && room.passwordSalt !== salt) {
+            rejectReason = "รหัสห้องไม่ถูกต้อง";
+            return;
+          }
+
+          room.client = {
+            username: user.username,
+            userKey: myKey,
+            peerId: '',
+            connected: true,
+            sessionId: this.sessionId,
+            authToken: verifierToken,
+            joinedAt: Date.now()
+          };
+          room.playerCount = 2;
+          room.status = 'ready';
+          room.updatedAt = Date.now();
+          return room;
+        });
+
+        if (flowId !== this.passwordFlowSeq) {
+          // หากผู้เล่นกดยกเลิกพอดีขณะ Transaction เพิ่งสำเร็จ ให้คืนสถานะห้องกลับเป็น waiting
+          if (txResult.committed && txResult.snapshot.exists()) {
+            const snapVal = txResult.snapshot.val();
+            if (snapVal.client && snapVal.client.userKey === myKey && snapVal.client.sessionId === this.sessionId) {
+              await update(roomRef, {
+                client: null,
+                playerCount: 1,
+                status: 'waiting',
+                updatedAt: Date.now()
+              }).catch(() => {});
+            }
+          }
+          return;
+        }
+
+        if (!txResult.committed || !txResult.snapshot.exists()) {
+          this.showPasswordError(
+            this.ui.joinPasswordRoomError,
+            rejectReason || "ไม่สามารถเข้าร่วมห้องนี้ได้ ห้องอาจเต็มหรือถูกปิดไปแล้ว"
+          );
+          if (expiredDetected) {
+            await this.removeRoomIfExpired(roomId);
+          }
+          this.RefreshRoomsManual();
+          return;
+        }
+
+        const updatedRoom = txResult.snapshot.val();
+        if (!updatedRoom.client || updatedRoom.client.userKey !== myKey) {
+          this.showPasswordError(this.ui.joinPasswordRoomError, "ห้องเต็มแล้ว ไม่สามารถเข้าร่วมเป็นคนที่สามได้");
+          return;
+        }
+
+        if (this.ui.joinRoomPasswordInput) {
+          this.ui.joinRoomPasswordInput.value = '';
+        }
+        if (this.ui.confirmJoinPasswordRoomBtn) {
+          this.ui.confirmJoinPasswordRoomBtn.disabled = true;
+        }
+        this.clearPasswordError(this.ui.joinPasswordRoomError);
+        if (this.ui.joinPasswordRoomPanel) {
+          this.ui.joinPasswordRoomPanel.classList.add('hidden');
+        }
+        this.passwordSubView = null;
+        this.pendingPasswordJoinRoomId = null;
+        this.pendingPasswordJoinHostName = '';
+        this.lastPasswordTriggerFocusEl = null;
+
+        this.currentRoomId = roomId;
+        this.role = 'client';
+        this.matchId = updatedRoom.matchId;
+        this.lastJoinedClientKey = myKey;
+        sessionStorage.setItem('pingpong_active_online_room', roomId);
+
+        // เล่นเสียง select.mp3 เมื่อกดเข้าร่วมห้องสำเร็จ (ฝั่ง Client)
+        this.sound.play('select', 0, 1.0, false);
+
+        await this.initPeerAndBindRoom(roomId, 'client');
+        this.announcePolite(`เข้าร่วมห้องของ ${updatedRoom.host.username} สำเร็จ กำลังเชื่อมต่อสัญญาณตรง`);
+      } else {
+        // กรณีห้องไม่มีรหัส
+        this.cancelJoinPasswordFlow(false);
+        await this.joinRoom(roomId);
+      }
+    } catch (err) {
+      console.error(err);
+      if (flowId === this.passwordFlowSeq) {
+        this.showPasswordError(this.ui.joinPasswordRoomError, "ไม่สามารถเข้าร่วมห้องได้ กรุณาลองอีกครั้ง");
+      }
     }
   }
 
@@ -1080,7 +1898,11 @@ export class OnlineMatchController {
 
     // อัปเดตข้อมูลในหน้า Lobby
     if (this.ui.roomCodeDisplay) {
-      this.ui.roomCodeDisplay.textContent = `รหัสห้อง: ${room.roomId}`;
+      if (room.hasPassword === true) {
+        this.ui.roomCodeDisplay.textContent = `ห้องของ: ${this.hostUsername} (ต้องมีรหัส)`;
+      } else {
+        this.ui.roomCodeDisplay.textContent = `รหัสห้อง: ${room.roomId}`;
+      }
     }
     if (this.ui.roomHostDisplay) {
       this.ui.roomHostDisplay.textContent = `หัวหน้าห้อง (Host): ${this.hostUsername}`;
@@ -2349,8 +3171,20 @@ export class OnlineMatchController {
 
   updateRoomPanelVisibility(inRoom) {
     if (inRoom) {
+      this.passwordSubView = null;
+      this.pendingPasswordJoinRoomId = null;
+      this.pendingPasswordJoinHostName = '';
+      if (this.ui.createPasswordRoomPanel) {
+        this.ui.createPasswordRoomPanel.classList.add('hidden');
+      }
+      if (this.ui.joinPasswordRoomPanel) {
+        this.ui.joinPasswordRoomPanel.classList.add('hidden');
+      }
       this.ui.activeRoomCard.classList.remove('hidden');
       this.ui.createRoomBtn.classList.add('hidden');
+      if (this.ui.createPasswordRoomBtn) {
+        this.ui.createPasswordRoomBtn.classList.add('hidden');
+      }
       if (this.ui.refreshRoomsBtn) {
         this.ui.refreshRoomsBtn.classList.add('hidden');
       }
@@ -2368,15 +3202,24 @@ export class OnlineMatchController {
       }
     } else {
       this.ui.activeRoomCard.classList.add('hidden');
-      this.ui.createRoomBtn.classList.remove('hidden');
-      if (this.ui.refreshRoomsBtn) {
-        this.ui.refreshRoomsBtn.classList.remove('hidden');
-      }
-      if (this.ui.waitingRoomsHeading) {
-        this.ui.waitingRoomsHeading.classList.remove('hidden');
-      }
-      if (this.ui.waitingRoomsContainer) {
-        this.ui.waitingRoomsContainer.classList.remove('hidden');
+      const isPasswordPanelOpen = Boolean(
+        (this.ui.createPasswordRoomPanel && !this.ui.createPasswordRoomPanel.classList.contains('hidden')) ||
+        (this.ui.joinPasswordRoomPanel && !this.ui.joinPasswordRoomPanel.classList.contains('hidden'))
+      );
+      if (!isPasswordPanelOpen) {
+        this.ui.createRoomBtn.classList.remove('hidden');
+        if (this.ui.createPasswordRoomBtn) {
+          this.ui.createPasswordRoomBtn.classList.remove('hidden');
+        }
+        if (this.ui.refreshRoomsBtn) {
+          this.ui.refreshRoomsBtn.classList.remove('hidden');
+        }
+        if (this.ui.waitingRoomsHeading) {
+          this.ui.waitingRoomsHeading.classList.remove('hidden');
+        }
+        if (this.ui.waitingRoomsContainer) {
+          this.ui.waitingRoomsContainer.classList.remove('hidden');
+        }
       }
       if (this.ui.leaveRoomBtn) {
         this.ui.leaveRoomBtn.classList.add('hidden');
@@ -2458,10 +3301,10 @@ export class OnlineMatchController {
         if (snap.exists()) {
           const room = snap.val();
           if (room.status === 'waiting' && leavingRole === 'host') {
-            await this.removeRoomIfOwned(roomRef);
+            await this.removeRoomIfOwned(roomRef, leavingRoomId);
           } else if (room.status === 'ready' && !wasInMatch) {
             if (leavingRole === 'host') {
-              await this.removeRoomIfOwned(roomRef);
+              await this.removeRoomIfOwned(roomRef, leavingRoomId);
             } else if (leavingRole === 'client') {
               await update(roomRef, {
                 client: null,

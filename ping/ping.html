@@ -271,6 +271,12 @@
       background: linear-gradient(180deg, #FFB700 0%, #FF8C00 100%);
       transform: scale(0.99);
     }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
     .btn-home-main {
       width: auto;
       align-self: flex-start;
@@ -395,7 +401,10 @@
     }
     body.online-context-active #back-from-lobby-btn,
     body.online-room-joined #leave-room-btn,
-    body.online-room-joined #back-from-lobby-btn {
+    body.online-room-joined #back-from-lobby-btn,
+    body.online-room-joined #create-password-room-btn,
+    body.online-room-joined #create-password-room-panel,
+    body.online-room-joined #join-password-room-panel {
       display: none !important;
     }
 
@@ -626,9 +635,40 @@
       <p id="room-connection-display" tabindex="0">สถานะห้อง: รอผู้เล่นคนที่ 2</p>
     </div>
 
-    <div style="display:flex; flex-direction:column; gap:10px;">
+    <div id="lobby-main-actions" style="display:flex; flex-direction:column; gap:10px;">
       <button id="create-room-btn" type="button" aria-label="สร้างห้องแข่งขันออนไลน์ใหม่">สร้างห้อง</button>
+      <button id="create-password-room-btn" type="button" class="btn-secondary">สร้างห้องแบบมีรหัส</button>
       <button id="refresh-rooms-btn" type="button" class="btn-secondary" aria-label="รีเฟรชรายการห้องที่กำลังรอผู้เล่น">รีเฟรชรายการห้อง</button>
+    </div>
+
+    <!-- หน้าตั้งรหัสห้อง (สร้างห้องแบบมีรหัส) -->
+    <div id="create-password-room-panel" class="room-card hidden" role="region" aria-labelledby="create-password-room-heading">
+      <h2 id="create-password-room-heading" tabindex="-1">สร้างห้องแบบมีรหัส</h2>
+      <p id="create-password-room-desc" class="desc">ห้องนี้จะใช้ชื่อบัญชีผู้เล่นที่เข้าสู่ระบบอยู่</p>
+      <div class="form-group" style="margin-top:6px;">
+        <label for="create-room-password-input">ตั้งรหัสห้อง (ตัวเลข 4 หลัก):</label>
+        <input type="password" id="create-room-password-input" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off">
+      </div>
+      <div id="create-password-room-error" class="status-box hidden" role="alert" aria-live="assertive"></div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px;">
+        <button id="confirm-create-password-room-btn" type="button" disabled>ยืนยัน</button>
+        <button id="cancel-create-password-room-btn" type="button" class="btn-secondary">ยกเลิก</button>
+      </div>
+    </div>
+
+    <!-- หน้าเข้าร่วมห้องแบบมีรหัส -->
+    <div id="join-password-room-panel" class="room-card hidden" role="region" aria-labelledby="join-password-room-heading">
+      <h2 id="join-password-room-heading" tabindex="-1">เข้าร่วมห้องแบบมีรหัส</h2>
+      <p id="join-password-room-host" class="desc">เจ้าของห้อง: -</p>
+      <div class="form-group" style="margin-top:6px;">
+        <label for="join-room-password-input">กรอกรหัสห้อง (ตัวเลข 4 หลัก):</label>
+        <input type="password" id="join-room-password-input" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off">
+      </div>
+      <div id="join-password-room-error" class="status-box hidden" role="alert" aria-live="assertive"></div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px;">
+        <button id="confirm-join-password-room-btn" type="button" disabled>ยืนยัน</button>
+        <button id="cancel-join-password-room-btn" type="button" class="btn-secondary">ยกเลิก</button>
+      </div>
     </div>
 
     <h2 id="waiting-rooms-heading" tabindex="0" style="margin-top:6px;">รายการห้องที่กำลังรอผู้เล่น</h2>
@@ -1962,6 +2002,29 @@ const checkpointBadge = document.getElementById('checkpoint-badge');
 const winsBadge = document.getElementById('wins-badge');
 const pointsBadge = document.getElementById('points-badge');
 
+// องค์ประกอบสำหรับหน้าสร้างและเข้าร่วมห้องแบบมีรหัส
+const createRoomBtnEl = document.getElementById('create-room-btn');
+const createPasswordRoomBtnEl = document.getElementById('create-password-room-btn');
+const refreshRoomsBtnEl = document.getElementById('refresh-rooms-btn');
+const waitingRoomsHeadingEl = document.getElementById('waiting-rooms-heading');
+const waitingRoomsContainerEl = document.getElementById('waiting-rooms-container');
+
+const createPasswordRoomPanelEl = document.getElementById('create-password-room-panel');
+const createPasswordRoomHeadingEl = document.getElementById('create-password-room-heading');
+const createPasswordRoomDescEl = document.getElementById('create-password-room-desc');
+const createRoomPasswordInputEl = document.getElementById('create-room-password-input');
+const createPasswordRoomErrorEl = document.getElementById('create-password-room-error');
+const confirmCreatePasswordRoomBtnEl = document.getElementById('confirm-create-password-room-btn');
+const cancelCreatePasswordRoomBtnEl = document.getElementById('cancel-create-password-room-btn');
+
+const joinPasswordRoomPanelEl = document.getElementById('join-password-room-panel');
+const joinPasswordRoomHeadingEl = document.getElementById('join-password-room-heading');
+const joinPasswordRoomHostEl = document.getElementById('join-password-room-host');
+const joinRoomPasswordInputEl = document.getElementById('join-room-password-input');
+const joinPasswordRoomErrorEl = document.getElementById('join-password-room-error');
+const confirmJoinPasswordRoomBtnEl = document.getElementById('confirm-join-password-room-btn');
+const cancelJoinPasswordRoomBtnEl = document.getElementById('cancel-join-password-room-btn');
+
 let previousScreen = 'home';
 
 function getCurrentRound() {
@@ -2433,15 +2496,191 @@ onlineController = new OnlineMatchController({
     roomHostDisplay: document.getElementById('room-host-display'),
     roomClientDisplay: document.getElementById('room-client-display'),
     roomConnectionDisplay: document.getElementById('room-connection-display'),
-    createRoomBtn: document.getElementById('create-room-btn'),
-    refreshRoomsBtn: document.getElementById('refresh-rooms-btn'),
-    waitingRoomsHeading: document.getElementById('waiting-rooms-heading'),
-    waitingRoomsContainer: document.getElementById('waiting-rooms-container'),
+    createRoomBtn: createRoomBtnEl,
+    createPasswordRoomBtn: createPasswordRoomBtnEl,
+    refreshRoomsBtn: refreshRoomsBtnEl,
+    waitingRoomsHeading: waitingRoomsHeadingEl,
+    waitingRoomsContainer: waitingRoomsContainerEl,
+    createPasswordRoomPanel: createPasswordRoomPanelEl,
+    createPasswordRoomHeading: createPasswordRoomHeadingEl,
+    createPasswordRoomDesc: createPasswordRoomDescEl,
+    createRoomPasswordInput: createRoomPasswordInputEl,
+    createPasswordRoomError: createPasswordRoomErrorEl,
+    confirmCreatePasswordRoomBtn: confirmCreatePasswordRoomBtnEl,
+    cancelCreatePasswordRoomBtn: cancelCreatePasswordRoomBtnEl,
+    joinPasswordRoomPanel: joinPasswordRoomPanelEl,
+    joinPasswordRoomHeading: joinPasswordRoomHeadingEl,
+    joinPasswordRoomHost: joinPasswordRoomHostEl,
+    joinRoomPasswordInput: joinRoomPasswordInputEl,
+    joinPasswordRoomError: joinPasswordRoomErrorEl,
+    confirmJoinPasswordRoomBtn: confirmJoinPasswordRoomBtnEl,
+    cancelJoinPasswordRoomBtn: cancelJoinPasswordRoomBtnEl,
     startOnlineMatchBtn: document.getElementById('start-online-match-btn'),
     leaveRoomBtn: document.getElementById('leave-room-btn'),
     backFromLobbyBtn: document.getElementById('back-from-lobby-btn'),
     onlineSrAnnouncer: document.getElementById('online-sr-announcer')
   }
+});
+
+/**
+ * ฟังก์ชันช่วยจัดการส่วนติดต่อผู้ใช้ของหน้าตั้งรหัสห้องและหน้าเข้าร่วมห้องแบบมีรหัส
+ * เตรียมไว้ให้พร้อมใช้งานและให้ ping-online.js เรียกต่อได้ใน Prompt 2
+ */
+let lastJoinPasswordTriggerBtn = null;
+
+function sanitizePinValue(rawVal) {
+  return String(rawVal || '').replace(/[^0-9]/g, '').slice(0, 4);
+}
+
+function bindPinInputValidation(inputEl, confirmBtnEl, errorBoxEl) {
+  if (!inputEl || !confirmBtnEl) return;
+  inputEl.addEventListener('input', () => {
+    const cleaned = sanitizePinValue(inputEl.value);
+    if (inputEl.value !== cleaned) {
+      inputEl.value = cleaned;
+    }
+    confirmBtnEl.disabled = (cleaned.length !== 4);
+    if (errorBoxEl && !errorBoxEl.classList.contains('hidden')) {
+      errorBoxEl.textContent = '';
+      errorBoxEl.classList.add('hidden');
+    }
+  });
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!confirmBtnEl.disabled) {
+        confirmBtnEl.click();
+      }
+    }
+  });
+}
+
+bindPinInputValidation(createRoomPasswordInputEl, confirmCreatePasswordRoomBtnEl, createPasswordRoomErrorEl);
+bindPinInputValidation(joinRoomPasswordInputEl, confirmJoinPasswordRoomBtnEl, joinPasswordRoomErrorEl);
+
+function resetPasswordPanelsState() {
+  if (createRoomPasswordInputEl) createRoomPasswordInputEl.value = '';
+  if (confirmCreatePasswordRoomBtnEl) confirmCreatePasswordRoomBtnEl.disabled = true;
+  if (createPasswordRoomErrorEl) {
+    createPasswordRoomErrorEl.textContent = '';
+    createPasswordRoomErrorEl.classList.add('hidden');
+  }
+  if (createPasswordRoomPanelEl) createPasswordRoomPanelEl.classList.add('hidden');
+
+  if (joinRoomPasswordInputEl) joinRoomPasswordInputEl.value = '';
+  if (confirmJoinPasswordRoomBtnEl) confirmJoinPasswordRoomBtnEl.disabled = true;
+  if (joinPasswordRoomErrorEl) {
+    joinPasswordRoomErrorEl.textContent = '';
+    joinPasswordRoomErrorEl.classList.add('hidden');
+  }
+  if (joinPasswordRoomPanelEl) joinPasswordRoomPanelEl.classList.add('hidden');
+}
+
+function showLobbyMainElements() {
+  const isInRoom = Boolean(
+    (activeRoomCardEl && !activeRoomCardEl.classList.contains('hidden')) ||
+    (onlineController && (onlineController.currentRoomId || onlineController.inMatch))
+  );
+  if (isInRoom) return;
+  if (createRoomBtnEl) createRoomBtnEl.classList.remove('hidden');
+  if (createPasswordRoomBtnEl) createPasswordRoomBtnEl.classList.remove('hidden');
+  if (refreshRoomsBtnEl) refreshRoomsBtnEl.classList.remove('hidden');
+  if (waitingRoomsHeadingEl) waitingRoomsHeadingEl.classList.remove('hidden');
+  if (waitingRoomsContainerEl) waitingRoomsContainerEl.classList.remove('hidden');
+}
+
+function hideLobbyMainElementsForSubPanel() {
+  if (createRoomBtnEl) createRoomBtnEl.classList.add('hidden');
+  if (createPasswordRoomBtnEl) createPasswordRoomBtnEl.classList.add('hidden');
+  if (refreshRoomsBtnEl) refreshRoomsBtnEl.classList.add('hidden');
+  if (waitingRoomsHeadingEl) waitingRoomsHeadingEl.classList.add('hidden');
+  if (waitingRoomsContainerEl) waitingRoomsContainerEl.classList.add('hidden');
+}
+
+function openCreatePasswordRoomPanel() {
+  if (onlineController && onlineController.currentRoomId) return;
+  resetPasswordPanelsState();
+  hideLobbyMainElementsForSubPanel();
+  if (createPasswordRoomDescEl) {
+    const uname = currentUser && currentUser.username ? currentUser.username : '-';
+    createPasswordRoomDescEl.textContent = `ห้องนี้จะใช้ชื่อบัญชีผู้เล่นที่เข้าสู่ระบบอยู่ (${uname})`;
+  }
+  if (createPasswordRoomPanelEl) {
+    createPasswordRoomPanelEl.classList.remove('hidden');
+  }
+  setTimeout(() => {
+    try {
+      if (createRoomPasswordInputEl) {
+        createRoomPasswordInputEl.focus();
+      } else if (createPasswordRoomHeadingEl) {
+        createPasswordRoomHeadingEl.focus();
+      }
+    } catch (e) {}
+  }, 50);
+}
+
+function closeCreatePasswordRoomPanel(restoreFocus = true) {
+  resetPasswordPanelsState();
+  showLobbyMainElements();
+  if (restoreFocus && createPasswordRoomBtnEl) {
+    setTimeout(() => {
+      try {
+        createPasswordRoomBtnEl.focus();
+      } catch (e) {}
+    }, 50);
+  }
+}
+
+function openJoinPasswordRoomPanel(hostUsername = '-', triggerBtn = null) {
+  if (onlineController && onlineController.currentRoomId) return;
+  lastJoinPasswordTriggerBtn = triggerBtn || document.activeElement || null;
+  resetPasswordPanelsState();
+  hideLobbyMainElementsForSubPanel();
+  if (joinPasswordRoomHostEl) {
+    joinPasswordRoomHostEl.textContent = `เจ้าของห้อง: ${hostUsername}`;
+  }
+  if (joinPasswordRoomPanelEl) {
+    joinPasswordRoomPanelEl.classList.remove('hidden');
+  }
+  setTimeout(() => {
+    try {
+      if (joinRoomPasswordInputEl) {
+        joinRoomPasswordInputEl.focus();
+      } else if (joinPasswordRoomHeadingEl) {
+        joinPasswordRoomHeadingEl.focus();
+      }
+    } catch (e) {}
+  }, 50);
+}
+
+function closeJoinPasswordRoomPanel(restoreFocus = true) {
+  resetPasswordPanelsState();
+  showLobbyMainElements();
+  if (restoreFocus) {
+    const targetFocusEl = (lastJoinPasswordTriggerBtn && document.body.contains(lastJoinPasswordTriggerBtn))
+      ? lastJoinPasswordTriggerBtn
+      : (refreshRoomsBtnEl || createPasswordRoomBtnEl);
+    if (targetFocusEl) {
+      setTimeout(() => {
+        try {
+          targetFocusEl.focus();
+        } catch (e) {}
+      }, 50);
+    }
+  }
+  lastJoinPasswordTriggerBtn = null;
+}
+
+addAccessibleClickListener(createPasswordRoomBtnEl, () => {
+  openCreatePasswordRoomPanel();
+});
+
+addAccessibleClickListener(cancelCreatePasswordRoomBtnEl, () => {
+  closeCreatePasswordRoomPanel(true);
+});
+
+addAccessibleClickListener(cancelJoinPasswordRoomBtnEl, () => {
+  closeJoinPasswordRoomPanel(true);
 });
 
 /**
@@ -2460,6 +2699,10 @@ function syncOnlineButtonsVisibility() {
     isRoomCardVisible ||
     (onlineController && (onlineController.currentRoomId || onlineController.inMatch))
   );
+  const isPasswordSubPanelOpen = Boolean(
+    (createPasswordRoomPanelEl && !createPasswordRoomPanelEl.classList.contains('hidden')) ||
+    (joinPasswordRoomPanelEl && !joinPasswordRoomPanelEl.classList.contains('hidden'))
+  );
 
   document.body.classList.toggle('online-context-active', isLobbyVisible || isOnlineActive);
   document.body.classList.toggle('online-room-joined', isInOnlineRoom);
@@ -2476,6 +2719,16 @@ function syncOnlineButtonsVisibility() {
     }
     if (backFromLobbyBtnEl && !backFromLobbyBtnEl.classList.contains('hidden')) {
       backFromLobbyBtnEl.classList.add('hidden');
+    }
+    if (createPasswordRoomBtnEl && !createPasswordRoomBtnEl.classList.contains('hidden')) {
+      createPasswordRoomBtnEl.classList.add('hidden');
+    }
+    if (isPasswordSubPanelOpen) {
+      resetPasswordPanelsState();
+    }
+  } else if (isLobbyVisible && !isPasswordSubPanelOpen) {
+    if (createPasswordRoomBtnEl && createPasswordRoomBtnEl.classList.contains('hidden')) {
+      createPasswordRoomBtnEl.classList.remove('hidden');
     }
   }
 
@@ -2503,7 +2756,15 @@ const onlineVisibilityObserver = new MutationObserver(() => {
   syncOnlineButtonsVisibility();
 });
 
-[onlineLobbyScreen, activeRoomCardEl, gameScreen, leaveRoomBtnEl, backFromLobbyBtnEl].forEach((el) => {
+[
+  onlineLobbyScreen,
+  activeRoomCardEl,
+  createPasswordRoomPanelEl,
+  joinPasswordRoomPanelEl,
+  gameScreen,
+  leaveRoomBtnEl,
+  backFromLobbyBtnEl
+].forEach((el) => {
   if (el) {
     onlineVisibilityObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
   }
@@ -2905,7 +3166,9 @@ addAccessibleClickListener(backFromLeaderboardBtn, () => {
 addAccessibleClickListener(onlineModeBtn, async () => {
   clearTimeout(activeTimer);
   gameActive = false;
+  resetPasswordPanelsState();
   await onlineController.openLobby();
+  showLobbyMainElements();
   syncOnlineButtonsVisibility();
 });
 
@@ -2980,6 +3243,7 @@ addAccessibleClickListener(document.getElementById('submit-reg-btn'), async () =
 
 function enterGameHomeScreen() {
   document.body.classList.remove('online-context-active', 'online-room-joined');
+  resetPasswordPanelsState();
   authScreen.classList.add('hidden');
   onlineLobbyScreen.classList.add('hidden');
   rulesScreen.classList.add('hidden');
