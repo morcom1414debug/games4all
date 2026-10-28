@@ -669,16 +669,37 @@ function broadcastTurnStart() {
 	if (!isHost) return;
 	const currentPlayer = players[game.turnIndex];
 	let dirStr = game.direction === 1 ? 'ตามเข็มนาฬิกา' : 'ทวนเข็มนาฬิกา';
-	let msg = `ถึงรอบของ ${currentPlayer.name} ขณะนี้เล่น${dirStr} `;
+	let baseMsg = `ถึงรอบของ ${currentPlayer.name} ขณะนี้เล่น${dirStr} `;
 	if (game.leftEnd === null) {
-		msg += `กระดานยังว่าง คุณสามารถเริ่มวางได้`;
+		baseMsg += `กระดานยังว่าง คุณสามารถเริ่มวางได้`;
 	} else {
-		msg += `ปลายซ้ายคือ ${translateTile(game.leftEnd)} ปลายขวาคือ ${translateTile(game.rightEnd)}`;
+		baseMsg += `ปลายซ้ายคือ ${translateTile(game.leftEnd)} ปลายขวาคือ ${translateTile(game.rightEnd)}`;
 	}
 	if (game.doubleChainSide) {
-		msg += ` (มีการล็อกฝั่งเล่นต่อที่ปลาย${game.doubleChainSide === 'left' ? 'ซ้าย' : 'ขวา'})`;
+		baseMsg += ` (มีการล็อกฝั่งเล่นต่อที่ปลาย${game.doubleChainSide === 'left' ? 'ซ้าย' : 'ขวา'})`;
 	}
-	broadcastAnnounce(msg);
+
+	let activePlayerMsg = baseMsg;
+	if (!currentPlayer.isBot) {
+		const hand = game.playerStates[currentPlayer.id].hand;
+		const playableCount = hand.filter(t => isTilePlayable(t, game.doubleChainSide)).length;
+		if (playableCount > 0) {
+			activePlayerMsg += ` ลงได้ ${playableCount} ตัว เลือกเลย`;
+		} else {
+			activePlayerMsg += ` ลงไม่ได้จั่วเลย`;
+		}
+	}
+
+	logEvent(baseMsg);
+	players.forEach(p => {
+		if (p.isBot) return;
+		const msgToSend = (p.id === currentPlayer.id) ? activePlayerMsg : baseMsg;
+		if (p.id === myPeerId) {
+			announce(msgToSend);
+		} else if (p.connection && p.connection.open) {
+			p.connection.send({ type: 'announce', message: msgToSend, assertive: false });
+		}
+	});
 }
 
 function initGame() {
@@ -936,9 +957,12 @@ function handlePlayerAction(peerId, action, payload) {
 		fxDrawTile(peerId);
 		connections.forEach(c => { if(c.open) c.send({ type: 'fxDraw', peerId: peerId }); });
 
+		const canPlayDrawn = isTilePlayable(tile, game.doubleChainSide);
+		const playStatusText = canPlayDrawn ? ' : ลงได้' : ' : ลงไม่ได้';
+
 		players.forEach(p => {
 			if (p.id === peerId) {
-				const msg = `คุณจั่วได้ ${translateTile(tile.left)} กับ ${translateTile(tile.right)}`;
+				const msg = `คุณจั่วได้ ${translateTile(tile.left)} กับ ${translateTile(tile.right)}${playStatusText}`;
 				if (p.connection && p.connection.open) p.connection.send({ type: 'announce', message: msg });
 				else if (p.id === myPeerId) announce(msg);
 			} else {
@@ -1064,7 +1088,22 @@ function handlePlayerAction(peerId, action, payload) {
 		
 		const st = game.playerStates[peerId];
 		if (isDouble && st && st.hand.length > 0 && canPlayAny(st.hand, game.doubleChainSide)) {
-			broadcastAnnounce(`${currentPlayer.name} วาง Double สามารถเล่นต่อเนื่องได้ที่ฝั่งเดิม`);
+			const baseDoubleMsg = `${currentPlayer.name} วาง Double สามารถเล่นต่อเนื่องได้ที่ฝั่งเดิม`;
+			let activeDoubleMsg = baseDoubleMsg;
+			if (!currentPlayer.isBot) {
+				const playableCount = st.hand.filter(t => isTilePlayable(t, game.doubleChainSide)).length;
+				activeDoubleMsg += ` ลงได้ ${playableCount} ตัว เลือกเลย`;
+			}
+			logEvent(baseDoubleMsg);
+			players.forEach(p => {
+				if (p.isBot) return;
+				const msgToSend = (p.id === currentPlayer.id) ? activeDoubleMsg : baseDoubleMsg;
+				if (p.id === myPeerId) {
+					announce(msgToSend);
+				} else if (p.connection && p.connection.open) {
+					p.connection.send({ type: 'announce', message: msgToSend, assertive: false });
+				}
+			});
 			broadcastGameState();
 			processTurnLogic(); 
 		} else {
@@ -1121,15 +1160,20 @@ function drawTiles(playerId, count) {
 	st.declaredDomino = false;
 }
 
-function canPlayAny(hand, lockedSide = null) {
-	if (game.leftEnd === null) return hand.length > 0;
+function isTilePlayable(tile, lockedSide = null) {
+	if (game.leftEnd === null) return true;
 	if (lockedSide === 'left') {
-		return hand.some(t => t.left === game.leftEnd || t.right === game.leftEnd);
+		return tile.left === game.leftEnd || tile.right === game.leftEnd;
 	}
 	if (lockedSide === 'right') {
-		return hand.some(t => t.left === game.rightEnd || t.right === game.rightEnd);
+		return tile.left === game.rightEnd || tile.right === game.rightEnd;
 	}
-	return hand.some(t => t.left === game.leftEnd || t.right === game.leftEnd || t.left === game.rightEnd || t.right === game.rightEnd);
+	return tile.left === game.leftEnd || tile.right === game.leftEnd || tile.left === game.rightEnd || tile.right === game.rightEnd;
+}
+
+function canPlayAny(hand, lockedSide = null) {
+	if (game.leftEnd === null) return hand.length > 0;
+	return hand.some(t => isTilePlayable(t, lockedSide));
 }
 
 function advanceTurn() {
