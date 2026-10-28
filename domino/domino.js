@@ -563,20 +563,33 @@ function syncLobby() {
 function generateDeck() {
 	const deck = [];
 	let idCount = 0;
+	// ตัวปกติ 0-9 (55 ตัว)
 	for (let i = 0; i <= 9; i++) {
 		for (let j = i; j <= 9; j++) {
 			deck.push({ id: idCount++, left: i, right: j, type: 'regular', name: `${i} กับ ${j}` });
 		}
 	}
-	const specials = [
-		{ val: 0, effect: 'sleep', name: 'หลับ' }, { val: 2, effect: 'sleep', name: 'หลับ' }, { val: 4, effect: 'sleep', name: 'หลับ' }, { val: 6, effect: 'sleep', name: 'หลับ' }, { val: 8, effect: 'sleep', name: 'หลับ' },
-		{ val: 1, effect: 'draw2', name: '2+' }, { val: 3, effect: 'draw2', name: '2+' }, { val: 5, effect: 'draw2', name: '2+' }, { val: 7, effect: 'draw2', name: '2+' }, { val: 9, effect: 'draw2', name: '2+' },
-		{ val: 0, effect: 'draw3', name: '3+' }, { val: 2, effect: 'draw3', name: '3+' }, { val: 4, effect: 'draw3', name: '3+' }, { val: 6, effect: 'draw3', name: '3+' }, { val: 8, effect: 'draw3', name: '3+' },
-		{ val: 1, effect: 'reverse', name: 'ย้อนศร' }, { val: 3, effect: 'reverse', name: 'ย้อนศร' }, { val: 5, effect: 'reverse', name: 'ย้อนศร' }, { val: 7, effect: 'reverse', name: 'ย้อนศร' }, { val: 9, effect: 'reverse', name: 'ย้อนศร' }
+	
+	// ตัวพิเศษครบทั้ง 4 แบบ สำหรับเลข 0 ถึง 9 (รวม 40 ตัว)
+	const effects = [
+		{ effect: 'sleep', name: 'หลับ' },
+		{ effect: 'draw2', name: '2+' },
+		{ effect: 'draw3', name: '3+' },
+		{ effect: 'reverse', name: 'ย้อนศร' }
 	];
-	specials.forEach(sp => {
-		deck.push({ id: idCount++, left: sp.val, right: sp.effect, type: sp.effect, name: `${sp.val} กับ ${sp.name}` });
-	});
+
+	for (let num = 0; num <= 9; num++) {
+		effects.forEach(ef => {
+			deck.push({ 
+				id: idCount++, 
+				left: num, 
+				right: ef.effect, 
+				type: ef.effect, 
+				name: `${num} กับ ${ef.name}` 
+			});
+		});
+	}
+
 	return deck.sort(() => Math.random() - 0.5);
 }
 
@@ -850,10 +863,10 @@ function renderGame(gState) {
 		if (isMyTurn) {
 			if (gState.leftEnd === null) { playableL = true; playableR = true; }
 			else {
-				if (!gState.doubleChainSide || gState.doubleChainSide === 'left') {
+				if (!gState.doubleChainSide || game.doubleChainSide === 'left') {
 					if (tile.left === gState.leftEnd || tile.right === gState.leftEnd) playableL = true;
 				}
-				if (!gState.doubleChainSide || gState.doubleChainSide === 'right') {
+				if (!gState.doubleChainSide || game.doubleChainSide === 'right') {
 					if (tile.left === gState.rightEnd || tile.right === gState.rightEnd) playableR = true;
 				}
 			}
