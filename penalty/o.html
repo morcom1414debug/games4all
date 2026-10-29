@@ -321,7 +321,7 @@ const db = firebase.database();
 let playerName = "", roomId = "", playerId = "", isHost = false;
 let currentRoomListener = null, soundListener = null, lobbyRoomsListener = null;
 let preloadedAudios = {};
-let isButtonLocked = false;
+let isButtonLocked = true; // ล็อกปุ่มไว้ตั้งแต่เริ่มต้นจนกว่าจะเข้าสู่เทิร์นของตัวเอง
 let gameStarted = false;
 let isMyTurn = false;
 
@@ -505,11 +505,11 @@ function getShooterName(order, shotIndex) {
   return order[shotIndex % length];
 }
 
+// 1. แก้ไข debounceClick: ล็อกปุ่มทันทีที่กด และห้ามปลดล็อกด้วยเวลา 100ms (รอปลดล็อกเมื่อเข้าเทิร์นใหม่และยังไม่ได้เลือกมุม)
 function debounceClick(dir){
   if(isButtonLocked || !isMyTurn) return;
   isButtonLocked = true;
   chooseDirection(dir);
-  setTimeout(()=>{ isButtonLocked = false; }, 100);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -810,17 +810,28 @@ function startGameplay(room, players) {
       return;
     }
 
-    const scoreP1 = data.scoreP1 || 0;
-    const scoreP2 = data.scoreP2 || 0;
-    document.getElementById("scoreBoard").innerText = 
-      `Score: ${scoreP1} - ${scoreP2}`;
-
     const p1Id = data.p1Id;
     const p2Id = data.p2Id;
-    
+    const p1Team = players[p1Id]?.team || "ทีม 1";
+    const p2Team = players[p2Id]?.team || "ทีม 2";
+    const scoreP1 = data.scoreP1 || 0;
+    const scoreP2 = data.scoreP2 || 0;
+    const shotIndexP1 = data.shotIndexP1 || 0;
+    const shotIndexP2 = data.shotIndexP2 || 0;
+
+    // 2. ปรับ Scoreboard ให้แสดงชื่อทีมและจำนวนลูกที่ยิงชัดเจนเหมือน penalty.html
+    document.getElementById("scoreBoard").innerText = 
+      `${p1Team} ${scoreP1} (ยิง ${shotIndexP1}) - ${scoreP2} (ยิง ${shotIndexP2}) ${p2Team}`;
+
     const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === p1Id ? p2Id : p1Id);
     const currentKeeperId = currentShooterId === p1Id ? p2Id : p1Id;
-    isMyTurn = (playerId === currentShooterId || playerId === currentKeeperId);
+
+    // ตรวจสอบว่าผู้เล่นคนนี้กดเลือกมุมในเทิร์นนี้ไปแล้วหรือยัง
+    const alreadyChosen = (playerId === currentShooterId && Boolean(data.shooterDir)) ||
+                          (playerId === currentKeeperId && Boolean(data.keeperDir));
+
+    isMyTurn = (playerId === currentShooterId || playerId === currentKeeperId) && !alreadyChosen && !data.processed;
+    isButtonLocked = !isMyTurn;
 
     document.querySelectorAll('.shot-btn').forEach(btn => {
       if (isMyTurn) {
@@ -830,20 +841,40 @@ function startGameplay(room, players) {
       } else {
         btn.classList.add('locked');
         btn.disabled = true;
+        btn.style.display = 'block';
       }
     });
 
     const currentTurnEl = document.getElementById("currentTurn");
     const action = playerId === currentShooterId ? "ยิง!" : "เซฟ!";
-    currentTurnEl.textContent = `ถึงตาคุณ${action}`;
+    currentTurnEl.textContent = alreadyChosen ? `เลือกมุมแล้ว รออีกฝ่าย...` : `ถึงตาคุณ${action}`;
     currentTurnEl.style.background = playerId === currentShooterId ? "rgba(76,175,80,0.9)" : "rgba(255,152,0,0.9)";
     currentTurnEl.style.color = "white";
 
+    // แจ้งเตือนเมื่อเข้าสู่ซัดเดนเดธเป็นครั้งแรก
+    if (data.isSudden && !lastIsSudden) {
+      if (!spokenTurns.has("sudden")) {
+        spokenTurns.add("sudden");
+        speak("เสมอกันใน 5 ลูกแรก เข้าสู่ช่วงซัดเดนเดธ ยิงตัดสินกันคนละลูก!");
+      }
+    }
+    lastIsSudden = data.isSudden;
+
+    // แจ้งเตือนเมื่อเปลี่ยนเทิร์น
     if (data.turn !== lastTurn) {
+      // ถ้าอยู่ในช่วงซัดเดนเดธ และเพิ่งขึ้นคู่ใหม่หลังจากยิงครบคู่แล้วเสมอกัน (ตั้งแต่ลูกที่ 6 เป็นต้นไป คือ shotIndexP1 > 5)
+      if (data.isSudden && shotIndexP1 === shotIndexP2 && shotIndexP1 > 5) {
+        const tieKey = `sudden_tie_${shotIndexP1}`;
+        if (!spokenTurns.has(tieKey)) {
+          spokenTurns.add(tieKey);
+          speak(`เสมอกันในลูกที่ ${shotIndexP1} ต้องยิงตัดสินกันต่อในลูกถัดไป!`);
+        }
+      }
+
       lastTurn = data.turn;
 
       const shooterOrder = currentShooterId === p1Id ? shotOrderP1 : shotOrderP2;
-      const shooterIndex = currentShooterId === p1Id ? data.shotIndexP1 : data.shotIndexP2;
+      const shooterIndex = currentShooterId === p1Id ? shotIndexP1 : shotIndexP2;
       const shooterName = getShooterName(shooterOrder, shooterIndex);
       const keeperTeam = players[currentKeeperId].team;
       const keeperName = squads[keeperTeam].keeper;
@@ -851,22 +882,14 @@ function startGameplay(room, players) {
 
       if (playerId === currentShooterId && !spokenTurns.has(`turn_${data.turn}_shooter`)) {
         spokenTurns.add(`turn_${data.turn}_shooter`);
-        speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง`);
+        speak(`ลูกที่ ${shooterIndex + 1} ฝั่งคุณ (${shooterTeam}): ${shooterName} เตรียมยิง`);
       }
 
       if (playerId === currentKeeperId && !spokenTurns.has(`turn_${data.turn}_keeper`)) {
         spokenTurns.add(`turn_${data.turn}_keeper`);
-        speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง ${keeperName} ของคุณพร้อมเซฟ`);
+        speak(`ลูกที่ ${shooterIndex + 1} ฝั่งคู่แข่ง (${shooterTeam}): ${shooterName} เตรียมยิง ${keeperName} ของคุณพร้อมเซฟ`);
       }
     }
-
-    if (data.isSudden && !lastIsSudden) {
-      if (!spokenTurns.has("sudden")) {
-        spokenTurns.add("sudden");
-        speak("เข้าสู่ซัดเดนเดธ!");
-      }
-    }
-    lastIsSudden = data.isSudden;
 
     if (data.shooterDir && data.keeperDir && !data.processed && data.turn > lastProcessedTurn) {
       lastProcessedTurn = data.turn;
@@ -875,6 +898,7 @@ function startGameplay(room, players) {
   });
 }
 
+// 3. แก้ไข processShot: คำนวณกติกา FIFA และเช็กจบเกม/Sudden Death ให้เสร็จสิ้นก่อนอัปเดต Firebase รวดเดียว
 async function processShot(data, players, gameRef) {
   const processedRef = gameRef.child('processed');
   const transactionResult = await processedRef.transaction(current => {
@@ -886,14 +910,14 @@ async function processShot(data, players, gameRef) {
 
   const p1Id = data.p1Id;
   const p2Id = data.p2Id;
+  const p1Team = players[p1Id].team;
+  const p2Team = players[p2Id].team;
   const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === p1Id ? p2Id : p1Id);
   const currentKeeperId = currentShooterId === p1Id ? p2Id : p1Id;
   
   const shooterOrder = currentShooterId === p1Id ? shotOrderP1 : shotOrderP2;
   const shooterIndex = currentShooterId === p1Id ? data.shotIndexP1 : data.shotIndexP2;
   const shooterName = getShooterName(shooterOrder, shooterIndex);
-  const keeperTeam = players[currentKeeperId].team;
-  const keeperName = squads[keeperTeam].keeper;
   const shooterTeam = players[currentShooterId].team;
 
   const isGoal = data.shooterDir !== data.keeperDir;
@@ -910,119 +934,105 @@ async function processShot(data, players, gameRef) {
     currentShooterId === p1Id ? scoreP1++ : scoreP2++;
   }
 
-  const resultMsg = `${shooterName} จากทีม ${shooterTeam} ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! คะแนน ${scoreP1} - ${scoreP2}`;
+  const nextShotIndexP1 = currentShooterId === p1Id ? data.shotIndexP1 + 1 : data.shotIndexP1;
+  const nextShotIndexP2 = currentShooterId === p2Id ? data.shotIndexP2 + 1 : data.shotIndexP2;
+
+  const resultMsg = `${shooterName} (${shooterTeam}) ยิง${isGoal ? "เข้า" : "ไม่เข้า"}! สกอร์ ${p1Team} ${scoreP1} ต่อ ${scoreP2} ${p2Team}`;
   speak(resultMsg);
   const live = document.getElementById("tts");
   live.textContent = resultMsg;
   setTimeout(() => live.textContent = "", 5000);
 
-  const updates = {
-    turn: data.turn + 1,
-    shooterDir: null, 
-    keeperDir: null, 
-    processed: false,
-    scoreP1, scoreP2
-  };
+  // === คำนวณกติกา FIFA ทันที ===
+  let end = false;
+  let winnerId = null;
+  let nextIsSudden = Boolean(data.isSudden);
 
-  if (currentShooterId === p1Id) {
-    updates.shotIndexP1 = data.shotIndexP1 + 1;
+  if (!nextIsSudden) {
+    const remainingP1 = 5 - nextShotIndexP1;
+    const remainingP2 = 5 - nextShotIndexP2;
+
+    // เช็กว่ามีทีมไหนแต้มขาดลอยใน 5 ลูกแรกหรือยัง
+    if (scoreP1 > scoreP2 + remainingP2) {
+      end = true;
+      winnerId = p1Id;
+    } else if (scoreP2 > scoreP1 + remainingP1) {
+      end = true;
+      winnerId = p2Id;
+    } else if (nextShotIndexP1 === 5 && nextShotIndexP2 === 5) {
+      // ยิงครบ 5 ลูกทั้งสองฝั่งและแต้มเท่ากัน -> เข้าสู่ซัดเดนเดธทันทีในเทิร์นถัดไป
+      if (scoreP1 === scoreP2) {
+        nextIsSudden = true;
+      }
+    }
   } else {
-    updates.shotIndexP2 = data.shotIndexP2 + 1;
+    // ช่วงซัดเดนเดธ: เช็กเมื่อทั้งสองทีมยิงครบคู่แล้วเท่านั้น (จำนวนลูกที่ยิงเท่ากัน)
+    if (nextShotIndexP1 === nextShotIndexP2) {
+      if (scoreP1 !== scoreP2) {
+        end = true;
+        winnerId = scoreP1 > scoreP2 ? p1Id : p2Id;
+      }
+    }
   }
 
   setTimeout(() => {
-    gameRef.update(updates);
-    setTimeout(() => checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, 
-      updates.shotIndexP1 || data.shotIndexP1, updates.shotIndexP2 || data.shotIndexP2), 1000);
-  }, 1000);
-}
-
-// <<<<<<<<<<<<<<<<<<<<<<<< แก้ไขเฉพาะฟังก์ชันนี้เท่านั้น >>>>>>>>>>>>>>>>>>>>>>>>
-function checkGameEndOrNext(data, players, gameRef, scoreP1, scoreP2, shotIndexP1, shotIndexP2) {
-  const p1Id = data.p1Id;
-  const p2Id = data.p2Id;
-
-  let end = false;
-  let winnerId = null;
-
-  // ยังอยู่ในช่วง 5 ลูกปกติ
-  if (!data.isSudden) {
-    const shotsDoneP1 = Math.min(shotIndexP1, 5);
-    const shotsDoneP2 = Math.min(shotIndexP2, 5);
-    const remainingP1 = 5 - shotsDoneP1;
-    const remainingP2 = 5 - shotsDoneP2;
-
-    // ตรวจสอบว่ามีทีมไหนชนะแน่นอนก่อนครบ 5 ลูกหรือยัง
-    if (shotIndexP1 < 5 || shotIndexP2 < 5) {
-      const maxP1 = scoreP1 + remainingP1;
-      const maxP2 = scoreP2 + remainingP2;
-      if (maxP1 < scoreP2) {
-        end = true;
-        winnerId = p2Id;
-      } else if (maxP2 < scoreP1) {
-        end = true;
-        winnerId = p1Id;
-      }
-    }
-
-    // ครบ 5 ลูกแล้ว
-    if (shotIndexP1 >= 5 && shotIndexP2 >= 5) {
-      if (scoreP1 !== scoreP2) {
-        end = true;
-        winnerId = scoreP1 > scoreP2 ? p1Id : p2Id;
-      } else {
-        // เสมอ → เข้าสู่ซัดเด้นเดธ
-        gameRef.update({ isSudden: true });
-        return;
-      }
-    }
-  }
-  // อยู่ในช่วงซัดเด้นเดธ
-  else {
-    const suddenShotsP1 = shotIndexP1 - 5;
-    const suddenShotsP2 = shotIndexP2 - 5;
-
-    // ต้องรอให้ยิงครบคู่ (ทั้งสองทีมยิงเท่ากัน) ก่อนถึงจะตัดสินได้
-    if (suddenShotsP1 === suddenShotsP2 && suddenShotsP1 > 0) {
-      if (scoreP1 !== scoreP2) {
-        end = true;
-        winnerId = scoreP1 > scoreP2 ? p1Id : p2Id;
-      }
-      // ถ้ายังเสมอ → ดำเนินต่อไปคู่ถัดไป (ไม่ต้องทำอะไร)
-    }
-  }
-
-  if (end) {
-    triggerSound("end.mp3");
-    stopBGM();
-
-    setTimeout(() => {
+    if (end) {
+      // ถ้ารู้ผลแพ้ชนะแล้ว ให้จบเกมทันทีโดยไม่เปิดเทิร์นถัดไป
+      triggerSound("end.mp3");
+      stopBGM();
+      setTimeout(() => {
+        gameRef.update({
+          scoreP1: scoreP1,
+          scoreP2: scoreP2,
+          shotIndexP1: nextShotIndexP1,
+          shotIndexP2: nextShotIndexP2,
+          status: "finished",
+          winner: winnerId,
+          finalScoreP1: scoreP1,
+          finalScoreP2: scoreP2
+        });
+      }, 800);
+    } else {
+      // ถ้ายังไม่จบ อัปเดตเข้าเทิร์นถัดไปพร้อมสถานะ isSudden ในครั้งเดียว
       gameRef.update({
-        status: "finished",
-        winner: winnerId,
-        finalScoreP1: scoreP1,
-        finalScoreP2: scoreP2
+        turn: data.turn + 1,
+        shooterDir: null, 
+        keeperDir: null, 
+        processed: false,
+        scoreP1: scoreP1,
+        scoreP2: scoreP2,
+        shotIndexP1: nextShotIndexP1,
+        shotIndexP2: nextShotIndexP2,
+        isSudden: nextIsSudden
       });
-    }, 800);
-  }
+    }
+  }, 1200);
 }
 
-// <<<<<<<<<<<<<<<<<<<<<<<< ส่วนที่แก้ไขสำคัญที่สุด >>>>>>>>>>>>>>>>>>>>>>>>
+// 4. แก้ไข chooseDirection: ป้องกันการกดซ้ำระหว่างรอโหลดข้อมูลจาก Firebase
 async function chooseDirection(dir) {
-  const snap = await db.ref(`penaltyRooms/${roomId}`).once("value");
-  const data = snap.val();
-  if (data.status !== "playing") return;
-  
-  const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
-  const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
+  try {
+    const snap = await db.ref(`penaltyRooms/${roomId}`).once("value");
+    const data = snap.val();
+    if (!data || data.status !== "playing" || data.processed) return;
+    
+    const currentShooterId = data.turn % 2 === 0 ? data.firstShooter : (data.firstShooter === data.p1Id ? data.p2Id : data.p1Id);
+    const currentKeeperId = currentShooterId === data.p1Id ? data.p2Id : data.p1Id;
 
-  if (playerId === currentShooterId && !data.shooterDir) {
-    await db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
-    triggerSound(popSound);
-  }
-  else if (playerId === currentKeeperId && !data.keeperDir) {
-    await db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
-    triggerSound(popSound);
+    if (playerId === currentShooterId && !data.shooterDir) {
+      await db.ref(`penaltyRooms/${roomId}/shooterDir`).set(dir);
+      triggerSound(popSound);
+    }
+    else if (playerId === currentKeeperId && !data.keeperDir) {
+      await db.ref(`penaltyRooms/${roomId}/keeperDir`).set(dir);
+      triggerSound(popSound);
+    } else {
+      // กรณีไม่ได้ถูกบันทึก (เช่น สถานะยังไม่พร้อม) ให้ปลดล็อกตามสถานะเทิร์น
+      isButtonLocked = false;
+    }
+  } catch (err) {
+    console.error(err);
+    isButtonLocked = false;
   }
 }
 
