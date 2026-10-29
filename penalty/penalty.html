@@ -194,21 +194,6 @@ body {
 <div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
 <div id="gameResult" aria-live="assertive"></div>
 
-<audio id="bgm" loop src="audio/b.mp3"></audio>
-<audio id="end" src="audio/end.mp3"></audio>
-
-<audio id="goal0" src="audio/t.mp3"></audio>
-<audio id="goal1" src="audio/t1.mp3"></audio>
-<audio id="goal2" src="audio/t2.mp3"></audio>
-<audio id="goal3" src="audio/t3.mp3"></audio>
-<audio id="goal4" src="audio/t4.mp3"></audio>
-
-<audio id="miss0" src="audio/f.mp3"></audio>
-<audio id="miss1" src="audio/f1.mp3"></audio>
-<audio id="miss2" src="audio/f2.mp3"></audio>
-<audio id="miss3" src="audio/f3.mp3"></audio>
-<audio id="miss4" src="audio/f4.mp3"></audio>
-
 <script>
 // === TTS System ===
 let ttsQueue = [], isSpeaking = false;
@@ -235,28 +220,95 @@ function processTTS(){
   }, 50);
 }
 
-// === เสียง ===
-const bgm = document.getElementById("bgm");
-const endSnd = document.getElementById("end");
-const goalSounds = [0,1,2,3,4].map(i=>document.getElementById("goal"+i));
-const missSounds = [0,1,2,3,4].map(i=>document.getElementById("miss"+i));
+// === เสียง (Web Audio API) ===
+let audioCtx;
+const audioBuffers = {};
+let bgmSource = null;
+let preloadPromise = null;
 let lastGoal = -1, lastMiss = -1;
 
-function playSound(el){ el.currentTime = 0; el.play().catch(()=>{}); }
-function waitForSound(el){ return new Promise(r=>{ el.onended=()=>r(); el.play().catch(()=>r()); }); }
-function stopBGM(){ bgm.pause(); bgm.currentTime = 0; }
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+async function loadAudio(name, url) {
+  try {
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    audioBuffers[name] = audioBuffer;
+  } catch (e) {
+    console.error("Error loading audio:", url, e);
+  }
+}
+
+function preloadAllAudio() {
+  if (preloadPromise) return preloadPromise;
+  initAudio();
+  preloadPromise = Promise.all([
+    loadAudio('bgm', 'audio/b.mp3'),
+    loadAudio('end', 'audio/end.mp3'),
+    loadAudio('goal0', 'audio/t.mp3'),
+    loadAudio('goal1', 'audio/t1.mp3'),
+    loadAudio('goal2', 'audio/t2.mp3'),
+    loadAudio('goal3', 'audio/t3.mp3'),
+    loadAudio('goal4', 'audio/t4.mp3'),
+    loadAudio('miss0', 'audio/f.mp3'),
+    loadAudio('miss1', 'audio/f1.mp3'),
+    loadAudio('miss2', 'audio/f2.mp3'),
+    loadAudio('miss3', 'audio/f3.mp3'),
+    loadAudio('miss4', 'audio/f4.mp3')
+  ]);
+  return preloadPromise;
+}
+
+function playBuffer(name, loop = false) {
+  if (!audioCtx || !audioBuffers[name]) return null;
+  const source = audioCtx.createBufferSource();
+  source.buffer = audioBuffers[name];
+  source.loop = loop;
+  source.connect(audioCtx.destination);
+  source.start(0);
+  return source;
+}
+
+function playBufferAsync(name) {
+  return new Promise(resolve => {
+    if (!audioCtx || !audioBuffers[name]) {
+      resolve();
+      return;
+    }
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffers[name];
+    source.connect(audioCtx.destination);
+    source.onended = () => resolve();
+    source.start(0);
+  });
+}
+
+function stopBGM(){
+  if (bgmSource) {
+    try { bgmSource.stop(); } catch(e){}
+    bgmSource = null;
+  }
+}
 
 async function playRandomGoal(){
   let idx;
   do { idx = Math.floor(Math.random()*5); } while(5>1 && idx===lastGoal);
   lastGoal = idx;
-  await waitForSound(goalSounds[idx]);
+  await playBufferAsync('goal'+idx);
 }
 async function playRandomMiss(){
   let idx;
   do { idx = Math.floor(Math.random()*5); } while(5>1 && idx===lastMiss);
   lastMiss = idx;
-  await waitForSound(missSounds[idx]);
+  await playBufferAsync('miss'+idx);
 }
 
 // === ข้อมูลทีม ===
@@ -349,6 +401,8 @@ function getShooterName(t,i){
 
 // === เลือกทีม & เริ่มเกม ===
 function selectMode(m){ 
+  preloadAllAudio(); // เริ่มโหลดเสียงทันทีที่ผู้ใช้คลิกเลือกโหมด (ปลดล็อก AudioContext Autoplay Policy)
+
   if(m==='bot'){ 
     document.getElementById("homeScreen").style.display="none"; 
     document.getElementById("teamSelect").style.display="flex";
@@ -375,7 +429,9 @@ function selectTeam(t){
   firstShooterIsUser = Math.random() < 0.5;
   
   updateScoreboard();
-  playSound(bgm);
+  
+  // เล่นเพลงหลังจากที่โหลดเสร็จสมบูรณ์
+  preloadAllAudio().then(() => { bgmSource = playBuffer('bgm', true); });
 
   setTimeout(() => document.getElementById("tl").focus(), 300);
 
@@ -472,7 +528,7 @@ function checkGameEndOrNext(){
 
 function endGame(userWins){
   stopBGM();
-  playSound(endSnd);
+  playBuffer('end'); // เล่นเสียงจบเกมผ่าน Web Audio API
   const winner = userWins ? userTeam : cpuTeam;
   const msg = `${winner} ชนะ!`;
   speak(msg);
