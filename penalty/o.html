@@ -320,7 +320,10 @@ const db = firebase.database();
 // === ตัวแปรหลัก ===
 let playerName = "", roomId = "", playerId = "", isHost = false;
 let currentRoomListener = null, soundListener = null, lobbyRoomsListener = null;
-let preloadedAudios = {};
+let preloadedAudios = {};   // เก็บ AudioBuffer ที่ถอดรหัสแล้ว (Web Audio API)
+let audioCtx = null;
+let bgmSource = null, bgmGain = null;
+let bgmWanted = false;      // มีคำสั่งเปิด BGM ค้างไว้ระหว่างรอโหลดเสร็จ
 let isButtonLocked = true; // ล็อกปุ่มไว้ตั้งแต่เริ่มต้นจนกว่าจะเข้าสู่เทิร์นของตัวเอง
 let gameStarted = false;
 let isMyTurn = false;
@@ -335,42 +338,105 @@ const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
 const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
 const popSound = "pop.mp3";   // <--- เสียงใหม่ที่เพิ่มมา
 
-function preloadAllSounds() {
-  const files = ["friend.mp3", "b.mp3", "end.mp3"];
-  files.forEach(name => {
-    const audio = new Audio(`audio/${name}`);
-    audio.preload = "auto";
-    preloadedAudios[name] = audio;
-  });
-  goalSounds.forEach(name => {
-    const audio = new Audio(`audio/${name}`);
-    audio.preload = "auto";
-    preloadedAudios[name] = audio;
-  });
-  missSounds.forEach(name => {
-    const audio = new Audio(`audio/${name}`);
-    audio.preload = "auto";
-    preloadedAudios[name] = audio;
-  });
+function getAudioCtx() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  return audioCtx;
+}
 
-  // <<< เพิ่มเสียง pop.mp3 >>>
-  const popAudio = new Audio(`audio/${popSound}`);
-  popAudio.preload = "auto";
-  preloadedAudios[popSound] = popAudio;
+function resumeAudio() {
+  const ctx = getAudioCtx();
+  if (ctx && ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+}
+
+function decodeBuffer(ctx, arrayBuffer) {
+  // รองรับทั้งแบบ Promise และแบบ callback (Safari รุ่นเก่า)
+  return new Promise((resolve, reject) => {
+    const p = ctx.decodeAudioData(arrayBuffer, resolve, reject);
+    if (p && typeof p.then === "function") p.then(resolve, reject);
+  });
+}
+
+function loadSoundBuffer(name) {
+  const ctx = getAudioCtx();
+  if (!ctx || preloadedAudios[name]) return Promise.resolve();
+  return fetch(`audio/${name}`)
+    .then(res => {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.arrayBuffer();
+    })
+    .then(data => decodeBuffer(ctx, data))
+    .then(buffer => {
+      preloadedAudios[name] = buffer;
+      // ถ้ามีคำสั่งเปิด BGM ค้างไว้ และ b.mp3 เพิ่งโหลดเสร็จ ให้เริ่มเล่นทันที
+      if (name === "b.mp3" && bgmWanted && !bgmSource) startBGM();
+    })
+    .catch(err => {
+      console.warn("โหลดเสียงไม่สำเร็จ:", name, err);
+    });
+}
+
+function preloadAllSounds() {
+  // ถูกเรียกหลังผู้ใช้กดปุ่มยืนยันชื่อ (มี user gesture) จึงสร้าง/resume AudioContext ได้
+  resumeAudio();
+  const files = ["friend.mp3", "b.mp3", "end.mp3"];
+  const all = [...files, ...goalSounds, ...missSounds, popSound];
+  all.forEach(name => loadSoundBuffer(name));
+}
+
+function playSound(name, volume = 1) {
+  const ctx = getAudioCtx();
+  const buffer = preloadedAudios[name];
+  if (!ctx || !buffer) return;
+  resumeAudio();
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+  source.buffer = buffer;
+  gain.gain.value = volume;
+  source.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(0);
+  source.onended = () => {
+    try { source.disconnect(); gain.disconnect(); } catch (e) {}
+  };
 }
 
 function startBGM() {
-  const bgm = preloadedAudios["b.mp3"];
-  if (bgm) {
-    bgm.currentTime = 0;
-    bgm.volume = 0.3;
-    bgm.loop = true;
-    bgm.play().catch(() => {});
+  bgmWanted = true;
+  const ctx = getAudioCtx();
+  const buffer = preloadedAudios["b.mp3"];
+  if (!ctx || !buffer) return;   // ยังโหลดไม่เสร็จ จะเริ่มเองเมื่อโหลดเสร็จ
+  resumeAudio();
+  if (bgmSource) {
+    try { bgmSource.stop(); } catch (e) {}
+    try { bgmSource.disconnect(); } catch (e) {}
+    bgmSource = null;
   }
+  bgmSource = ctx.createBufferSource();
+  bgmGain = ctx.createGain();
+  bgmSource.buffer = buffer;
+  bgmSource.loop = true;
+  bgmGain.gain.value = 0.3;
+  bgmSource.connect(bgmGain);
+  bgmGain.connect(ctx.destination);
+  bgmSource.start(0);
 }
 function stopBGM() {
-  const bgm = preloadedAudios["b.mp3"];
-  if (bgm) { bgm.pause(); bgm.currentTime = 0; }
+  bgmWanted = false;
+  if (bgmSource) {
+    try { bgmSource.stop(); } catch (e) {}
+    try { bgmSource.disconnect(); } catch (e) {}
+    bgmSource = null;
+  }
+  if (bgmGain) {
+    try { bgmGain.disconnect(); } catch (e) {}
+    bgmGain = null;
+  }
 }
 
 function triggerSound(name) {
@@ -391,12 +457,7 @@ function startSoundListener() {
     if (!data || Date.now() - data.time > 1000) return;
 
     const name = data.name;
-    const audio = preloadedAudios[name];
-    if (audio) {
-      audio.currentTime = 0;
-      audio.volume = 1;
-      audio.play().catch(() => {});
-    }
+    playSound(name, 1);
 
     let msg = "";
     if (goalSounds.includes(name)) msg = "ยิงเข้า!";
