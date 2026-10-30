@@ -173,13 +173,9 @@ body {
   filter: drop-shadow(0 10px 10px rgba(0,0,0,0.6));
 }
 
-#kickerRightLeg {
-  transition: transform 0.12s ease-out;
-  transform-origin: 58px 122px;
-}
-
-.player-kicker.kicking #kickerRightLeg {
-  transform: rotate(-38deg);
+/* ลบ transition เดิมของขาออก เพราะใช้ Web Animations API แทนเพื่อความสมจริง 6 จังหวะ */
+#kickerRightLeg, #kickerLeftLeg {
+  transform-origin: center top;
 }
 
 /* ลูกฟุตบอลพร้อมเงาและแสงตัดพื้นหลังตาข่ายสีเข้ม */
@@ -547,11 +543,15 @@ body {
     <path d="M 47 28 Q 65 8 83 28 Q 83 42 65 40 Q 47 42 47 28 Z" fill="#1c1c1c"/>
     <!-- คอ -->
     <rect x="59" y="44" width="12" height="9" fill="#e0ac69"/>
-    <!-- แขนซ้ายและแขนขวาในท่าทรงตัวเตรียมยิง -->
-    <path id="kickerArmL" d="M 40 58 L 18 92" stroke="#f1c27d" stroke-width="11" stroke-linecap="round"/>
-    <path id="kickerArmR" d="M 90 58 L 112 88" stroke="#f1c27d" stroke-width="11" stroke-linecap="round"/>
-    <path id="kickerSleeveL" d="M 42 55 L 26 78" stroke="#da291c" stroke-width="15" stroke-linecap="round"/>
-    <path id="kickerSleeveR" d="M 88 55 L 104 76" stroke="#da291c" stroke-width="15" stroke-linecap="round"/>
+    <!-- แขนซ้ายและแขนขวาในท่าทรงตัวเตรียมยิง (ห่อใน group เพื่อให้ขยับสวิงแขนได้ง่าย) -->
+    <g id="kickerLeftArm">
+      <path id="kickerArmL" d="M 40 58 L 18 92" stroke="#f1c27d" stroke-width="11" stroke-linecap="round"/>
+      <path id="kickerSleeveL" d="M 42 55 L 26 78" stroke="#da291c" stroke-width="15" stroke-linecap="round"/>
+    </g>
+    <g id="kickerRightArm">
+      <path id="kickerArmR" d="M 90 58 L 112 88" stroke="#f1c27d" stroke-width="11" stroke-linecap="round"/>
+      <path id="kickerSleeveR" d="M 88 55 L 104 76" stroke="#da291c" stroke-width="15" stroke-linecap="round"/>
+    </g>
     <!-- ตัวเสื้อชุดแข่ง -->
     <path id="kickerShirt" d="M 38 50 L 92 50 L 88 118 L 42 118 Z" rx="8" fill="#da291c"/>
     <!-- แถบคอปกเสื้อและแถบไหล่ -->
@@ -560,14 +560,14 @@ body {
     <text id="kickerNumber" x="65" y="96" font-family="Tahoma, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">10</text>
     <!-- กางเกงชุดแข่ง -->
     <path id="kickerShorts" d="M 42 115 L 88 115 L 92 152 L 68 152 L 65 135 L 62 152 L 38 152 Z" fill="#ffffff"/>
-    <!-- ขาซ้าย (ขาหลักยืนค้ำ) -->
+    <!-- ขาซ้าย (รองรับแอนิเมชันสำหรับยิง/วางเท้าหลัก) -->
     <g id="kickerLeftLeg">
       <rect x="44" y="152" width="13" height="20" fill="#f1c27d"/>
       <rect id="kickerSocksL" x="43" y="170" width="15" height="36" rx="4" fill="#111111"/>
       <rect id="kickerSockStripeL" x="43" y="174" width="15" height="5" fill="#ffffff"/>
       <path d="M 40 204 L 59 204 L 62 214 L 38 214 Z" fill="#111"/>
     </g>
-    <!-- ขาขวา (ขาที่ใช้เตะลูกบอล มีแอนิเมชันง้างเตะ) -->
+    <!-- ขาขวา (รองรับแอนิเมชันสำหรับยิง/วางเท้าหลัก) -->
     <g id="kickerRightLeg">
       <rect x="72" y="152" width="13" height="20" fill="#f1c27d"/>
       <rect id="kickerSocksR" x="71" y="170" width="15" height="36" rx="4" fill="#111111"/>
@@ -766,9 +766,17 @@ function playReactionAnimations(isGoal, gkX, gkY) {
   const kicker = document.getElementById('vKicker');
   const gk = document.getElementById('vGk');
 
-  // ล้างแอนิเมชันที่ค้างอยู่ก่อนเริ่มท่าใหม่
-  kicker.getAnimations().forEach(a => a.cancel());
-  gk.getAnimations().forEach(a => a.cancel());
+  // ล้างแอนิเมชันที่ค้างอยู่ทั้งหมดก่อนเริ่มท่าดีใจ/ผิดหวัง เพื่อป้องกันขาค้างจากจังหวะยิง
+  const elsToCancel = [
+    kicker, gk, 
+    document.getElementById('kickerLeftLeg'), document.getElementById('kickerRightLeg'),
+    document.getElementById('kickerLeftArm'), document.getElementById('kickerRightArm')
+  ];
+  elsToCancel.forEach(el => {
+    if (el && el.getAnimations) {
+      el.getAnimations().forEach(a => a.cancel());
+    }
+  });
 
   // ท่าชูแขนดีใจของคนยิงประตูเมื่อยิงเข้า หรือก้มคอตกเมื่อยิงไม่เข้า
   if (isGoal) {
@@ -1050,22 +1058,35 @@ function playReactionAnimations(isGoal, gkX, gkY) {
   }
 }
 
-// === ระบบแสดงภาพ Animation (ไม่กระทบ Logic เกม) ===
+// === ระบบแสดงภาพ Animation ===
 function resetVisuals() {
   const ball = document.getElementById('vBall');
   const gk = document.getElementById('vGk');
   const kicker = document.getElementById('vKicker');
   const vText = document.getElementById('vText');
-  
-  kicker.getAnimations().forEach(a => a.cancel());
-  gk.getAnimations().forEach(a => a.cancel());
-  vText.getAnimations().forEach(a => a.cancel());
+  const leftLeg = document.getElementById('kickerLeftLeg');
+  const rightLeg = document.getElementById('kickerRightLeg');
+  const leftArm = document.getElementById('kickerLeftArm');
+  const rightArm = document.getElementById('kickerRightArm');
 
-  // รีเซ็ตท่าแขนของคนยิงและผู้รักษาประตูกลับสู่ท่าเตรียมพร้อม
+  // ล้างแอนิเมชันที่ค้างอยู่ทุกชิ้นส่วนก่อนเริ่มท่าใหม่
+  const elsToCancel = [kicker, gk, vText, leftLeg, rightLeg, leftArm, rightArm];
+  elsToCancel.forEach(el => {
+    if (el && el.getAnimations) {
+      el.getAnimations().forEach(a => a.cancel());
+    }
+  });
+
+  // รีเซ็ตท่าแขนและขากลับสู่ค่าเริ่มต้นของ SVG
   document.getElementById('kickerArmL').setAttribute('d', 'M 40 58 L 18 92');
   document.getElementById('kickerArmR').setAttribute('d', 'M 90 58 L 112 88');
   document.getElementById('kickerSleeveL').setAttribute('d', 'M 42 55 L 26 78');
   document.getElementById('kickerSleeveR').setAttribute('d', 'M 88 55 L 104 76');
+  
+  if(leftLeg) leftLeg.style.transform = 'rotate(0deg)';
+  if(rightLeg) rightLeg.style.transform = 'rotate(0deg)';
+  if(leftArm) leftArm.style.transform = 'rotate(0deg)';
+  if(rightArm) rightArm.style.transform = 'rotate(0deg)';
 
   document.getElementById('gkSleeveL').setAttribute('d', 'M 38 56 Q 18 75 14 108');
   document.getElementById('gkSleeveR').setAttribute('d', 'M 82 56 Q 102 75 106 108');
@@ -1120,15 +1141,96 @@ function playVisualAnimation(shotDir, gkDir, isGoal) {
   const shotPos = getPos(shotDir);
   const gkPos = getPos(gkDir);
 
-  // 1. Kicker วิ่งเข้าหาลูกบอลพร้อมง้างเท้าเตะ
-  kicker.style.transition = "transform 0.15s ease-in";
-  kicker.style.transform = "translateX(-35%) translateY(-18px) scale(1.05)";
-  kicker.classList.add('kicking');
+  // === ระบบแอนิเมชันยิงจุดโทษสมจริง 6 จังหวะ ===
+  
+  // สุ่มเลือกว่าจะใช้เท้าซ้ายหรือเท้าขวายิง (มีผลเฉพาะการแสดงผล ไม่กระทบ Logic)
+  const isLeftFoot = Math.random() < 0.5;
+  
+  const leftLeg = document.getElementById('kickerLeftLeg');
+  const rightLeg = document.getElementById('kickerRightLeg');
+  const leftArm = document.getElementById('kickerLeftArm');
+  const rightArm = document.getElementById('kickerRightArm');
 
-  // 2. บอลพุ่งและ GK พุ่ง
+  // ตั้งค่าจุดหมุนให้อยู่บริเวณข้อต่อสะโพกและหัวไหล่
+  leftLeg.style.transformOrigin = '50px 152px';
+  rightLeg.style.transformOrigin = '78px 152px';
+  if(leftArm) leftArm.style.transformOrigin = '40px 58px';
+  if(rightArm) rightArm.style.transformOrigin = '90px 58px';
+
+  // เวลาแอนิเมชันรวม (จังหวะที่ 5: สัมผัสบอล จะอยู่ที่ 150ms เพื่อให้ตรงกับ setTimeout เดิมพอดี 100%)
+  const animDuration = 300; 
+  const strikeOffset = 150 / animDuration; 
+
+  // Keyframes ลำตัว
+  const bodyKFs = [
+    { transform: 'translateX(-50%) translateY(0) scale(1)' }, // 1. เตรียมยิง
+    { transform: 'translateX(-45%) translateY(-5px) scale(1.02)', offset: 0.25 }, // 2. วิ่งเข้าหา
+    { transform: 'translateX(-40%) translateY(-10px) scale(1.03)', offset: 0.4 }, // 3. เตรียมวางเท้าหลัก
+    { transform: `translateX(-38%) translateY(-14px) scale(1.04) rotate(${isLeftFoot ? '6deg' : '-6deg'})`, offset: 0.45 }, // 4. ง้างขา (ลำตัวเอียงเล็กน้อย)
+    { transform: 'translateX(-35%) translateY(-18px) scale(1.05) rotate(0deg)', offset: strikeOffset }, // 5. เหวี่ยงสัมผัสบอล (150ms ตรงเป๊ะ)
+    { transform: `translateX(-33%) translateY(-18px) scale(1.05) rotate(${isLeftFoot ? '-8deg' : '8deg'})`, offset: 0.75 }, // 6. ทรงตัวหลังยิง
+    { transform: `translateX(-33%) translateY(-18px) scale(1.05) rotate(0deg)` } // ค้างก่อนเข้าแอนิเมชันปฏิกิริยา
+  ];
+
+  // Keyframes ขาที่ใช้ยิง
+  const shootingLegKFs = [
+    { transform: 'rotate(0deg)' },
+    { transform: 'rotate(25deg)', offset: 0.25 }, // ก้าวขึ้นหน้า
+    { transform: 'rotate(-20deg)', offset: 0.4 }, // สลับไปด้านหลัง
+    { transform: 'rotate(-55deg)', offset: 0.45 }, // ง้างเตะสูงสุด
+    { transform: 'rotate(25deg)', offset: strikeOffset }, // เหวี่ยงเตะ
+    { transform: 'rotate(45deg)', offset: 0.75 }, // เหวี่ยงขาตาม (Follow-through)
+    { transform: 'rotate(45deg)' }
+  ];
+
+  // Keyframes ขาหลักที่ใช้วาง
+  const plantLegKFs = [
+    { transform: 'rotate(0deg)' },
+    { transform: 'rotate(-20deg)', offset: 0.25 }, // ก้าวไปหลัง
+    { transform: 'rotate(20deg)', offset: 0.4 }, // ก้าวเตรียมวาง
+    { transform: 'rotate(5deg)', offset: 0.45 }, // วางเท้าค้ำยัน
+    { transform: 'rotate(0deg)', offset: strikeOffset }, // ค้ำยันจังหวะเตะ
+    { transform: 'rotate(0deg)' }
+  ];
+
+  // Keyframes การแกว่งแขนช่วยสมดุล
+  const armForwardKFs = [
+    { transform: 'rotate(0deg)' },
+    { transform: 'rotate(-25deg)', offset: 0.25 },
+    { transform: 'rotate(20deg)', offset: 0.4 },
+    { transform: 'rotate(10deg)', offset: strikeOffset },
+    { transform: 'rotate(15deg)' }
+  ];
+  
+  const armBackwardKFs = [
+    { transform: 'rotate(0deg)' },
+    { transform: 'rotate(25deg)', offset: 0.25 },
+    { transform: 'rotate(-20deg)', offset: 0.4 },
+    { transform: 'rotate(-10deg)', offset: strikeOffset },
+    { transform: 'rotate(-15deg)' }
+  ];
+
+  const waapiOptions = { duration: animDuration, easing: 'linear', fill: 'forwards' };
+
+  // เล่นแอนิเมชันตามข้างที่สุ่มได้
+  kicker.animate(bodyKFs, waapiOptions);
+  
+  if (isLeftFoot) {
+    leftLeg.animate(shootingLegKFs, waapiOptions);
+    rightLeg.animate(plantLegKFs, waapiOptions);
+    if(leftArm) leftArm.animate(armBackwardKFs, waapiOptions);
+    if(rightArm) rightArm.animate(armForwardKFs, waapiOptions);
+  } else {
+    rightLeg.animate(shootingLegKFs, waapiOptions);
+    leftLeg.animate(plantLegKFs, waapiOptions);
+    if(rightArm) rightArm.animate(armBackwardKFs, waapiOptions);
+    if(leftArm) leftArm.animate(armForwardKFs, waapiOptions);
+  }
+
+  // === สิ้นสุดแอนิเมชันยิง ===
+
+  // 2. บอลพุ่งและ GK พุ่ง (คงระยะเวลาการรอไว้ 150ms เพื่อให้ตรงกับ Logic เดิม)
   setTimeout(() => {
-    kicker.classList.remove('kicking');
-
     // Ball พุ่งพร้อมหมุนลูกฟุตบอลและขยายขนาดให้เห็นชัดแม้เข้ามุมบนขวา
     ball.style.transition = "all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
     ball.style.left = shotPos.x + "px";
