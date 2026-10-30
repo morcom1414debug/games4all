@@ -1,0 +1,2409 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>เกมยิงจุดโทษ- ออนไลน์ v1.1</title>
+<style>
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body {
+  font-family: Tahoma, sans-serif;
+  background: #0b1115; /* Fallback */
+  color: white;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  position: relative;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* =========================================
+   Visual Layer (2.5D Stadium) - คัดลอกจาก penalty.html
+   สำหรับผู้มองเห็นเท่านั้น (aria-hidden)
+========================================= */
+#visualLayer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100dvh;
+  z-index: 1;
+  pointer-events: none; /* ป้องกันการขวางการกดปุ่ม */
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+}
+
+.sky-lights {
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 32%;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.12) 0%, transparent 40%),
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,0.12) 0%, transparent 40%);
+}
+
+.stands {
+  position: absolute;
+  top: 16%; left: 0; right: 0; height: 16%;
+  background: linear-gradient(to bottom, #111, #05080a);
+  border-bottom: 3px solid #333;
+}
+
+.stands::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+
+/* ขยายสนามหญ้าให้คลุมพื้นที่ครึ่งจอล่างทั้งหมดอย่างสมดุล */
+.field-wrap {
+  position: absolute;
+  top: 32%;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 68%;
+  perspective: 900px;
+  overflow: hidden;
+}
+
+.field {
+  width: 140%;
+  height: 190%;
+  position: absolute;
+  top: 0;
+  left: -20%;
+  background: repeating-linear-gradient(0deg, #2e7d32, #2e7d32 7%, #256629 7%, #256629 14%);
+  transform: rotateX(55deg);
+  transform-origin: top center;
+  box-shadow: inset 0 0 60px rgba(0,0,0,0.75);
+}
+
+.penalty-box {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48%;
+  height: 45%;
+  border: 4px solid rgba(255,255,255,0.85);
+  border-top: none;
+}
+
+.penalty-arc {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22%;
+  height: 14%;
+  border: 4px solid rgba(255,255,255,0.85);
+  border-radius: 0 0 50% 50%;
+  border-top: none;
+}
+
+.penalty-mark {
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  background: white;
+  border-radius: 50%;
+}
+
+.visual-goal-container {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: clamp(220px, 42%, 380px);
+  height: clamp(90px, 19vh, 150px);
+  display: none;
+}
+
+.goal-posts {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  border: 6px solid #fff;
+  border-bottom: none;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5), 0 0 10px rgba(0,0,0,0.5);
+  z-index: 3;
+}
+
+.goal-net {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background:
+    linear-gradient(45deg, transparent 48%, rgba(255,255,255,0.3) 50%, transparent 52%),
+    linear-gradient(-45deg, transparent 48%, rgba(255,255,255,0.3) 50%, transparent 52%);
+  background-size: 12px 12px;
+  z-index: 1;
+}
+
+.player-gk {
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20%;
+  height: 75%;
+  z-index: 2;
+  filter: drop-shadow(0 5px 5px rgba(0,0,0,0.5));
+}
+
+.player-kicker {
+  position: absolute;
+  bottom: 10%;
+  left: 44%;
+  transform: translateX(-50%);
+  transform-origin: bottom center;
+  width: clamp(65px, 11vw, 105px);
+  height: clamp(110px, 22vh, 175px);
+  display: none;
+  z-index: 5;
+  filter: drop-shadow(0 10px 10px rgba(0,0,0,0.6));
+}
+
+#kickerRightLeg {
+  transition: transform 0.12s ease-out;
+  transform-origin: 58px 122px;
+}
+
+.player-kicker.kicking #kickerRightLeg {
+  transform: rotate(-38deg);
+}
+
+/* ลูกฟุตบอลพร้อมเงาและแสงตัดพื้นหลังตาข่ายสีเข้ม */
+.visual-ball {
+  position: absolute;
+  bottom: 14%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: clamp(24px, 4.2vw, 36px);
+  height: clamp(24px, 4.2vw, 36px);
+  border-radius: 50%;
+  display: none;
+  z-index: 6;
+  filter: drop-shadow(0 0 6px rgba(255,255,255,0.95)) drop-shadow(0 6px 10px rgba(0,0,0,0.9));
+}
+
+/* เอฟเฟกต์เมื่อลูกบอลพุ่งเข้าตุงตาข่ายให้เห็นชัดเจน */
+.visual-ball.ball-in-goal {
+  filter: drop-shadow(0 0 12px #ffffff) drop-shadow(0 0 22px #ffeb3b) drop-shadow(0 6px 12px rgba(0,0,0,0.95));
+}
+
+/* ข้อความ GOAL! / SAVED! แบบสีสว่างชัดเจน ตัดพื้นหญ้า พร้อมแอนิเมชัน */
+.v-text-overlay {
+  position: absolute;
+  top: 68%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(46px, 9.5vw, 88px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 3px;
+  opacity: 0;
+  z-index: 15;
+  padding: 4px 28px;
+  border-radius: 20px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.text-goal {
+  color: #fffde7;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0) 75%);
+   -webkit-text-stroke: 2.5px #ff6f00;
+  text-shadow: 
+    0 0 15px #ffd700,
+    0 0 30px #ff9100,
+    0 6px 12px rgba(0, 0, 0, 0.95);
+  animation: goalPulseGlow 0.45s ease-in-out infinite alternate;
+}
+
+.text-save {
+  color: #ffffff;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0) 75%);
+  -webkit-text-stroke: 2.5px #d50000;
+  text-shadow: 
+    0 0 15px #ff1744,
+    0 0 30px #ff5252,
+    0 6px 12px rgba(0, 0, 0, 0.95);
+  animation: savePulseGlow 0.45s ease-in-out infinite alternate;
+}
+
+.text-sudden {
+  color: #ffffff;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0) 75%);
+  -webkit-text-stroke: 2px #aa00ff;
+  text-shadow: 0 0 15px #e040fb, 0 0 30px #aa00ff, 0 6px 12px #000;
+  font-size: clamp(30px, 6vw, 60px);
+}
+
+@keyframes goalPulseGlow {
+  from { filter: brightness(1) drop-shadow(0 0 6px rgba(255, 215, 0, 0.6)); }
+  to { filter: brightness(1.25) drop-shadow(0 0 18px rgba(255, 235, 59, 1)); }
+}
+
+@keyframes savePulseGlow {
+  from { filter: brightness(1) drop-shadow(0 0 6px rgba(255, 23, 68, 0.6)); }
+  to { filter: brightness(1.25) drop-shadow(0 0 18px rgba(255, 82, 82, 1)); }
+}
+
+/* ซัดเดนเดธบรรยากาศ */
+.sudden-death-glow {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(circle, rgba(255,0,0,0.1) 0%, transparent 70%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1s;
+}
+
+
+
+/* =========================================
+   UI Layer (ปุ่มและอินเทอร์เฟซ) - สไตล์เดียวกับ penalty.html
+========================================= */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ---------- ปุ่มเลือกจุดยิง/จุดเซฟ ---------- */
+.shot-btn {
+  position: fixed;
+  background: rgba(255,255,255,0.9);
+  color: #222;
+  border-radius: 12px;
+  padding: clamp(12px, 2.5vh, 28px) clamp(12px, 3vw, 32px);
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+  border: 3px solid #fff;
+  font-size: clamp(14px, 3.5vw, 23px);
+  z-index: 1000;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+  transition: all 0.2s;
+  pointer-events: auto;
+}
+#tl { top: clamp(96px, 15vh, 160px); left: 5%; }
+#tr { top: clamp(96px, 15vh, 160px); right: 5%; }
+#center { top: 40%; left: 50%; transform: translate(-50%, -50%); opacity: 0.9; }
+#bl { bottom: clamp(12%, 18vh, 22%); left: 5%; }
+#br { bottom: clamp(12%, 18vh, 22%); right: 5%; }
+
+.shot-btn:active { transform: scale(0.95); box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+#center:active { transform: translate(-50%, -50%) scale(0.95); }
+.shot-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.shot-btn.locked { opacity: 0.35; cursor: not-allowed; }
+.shot-btn:focus-visible { outline: 4px solid yellow; }
+/* ปุ่มที่เลือกแล้ว */
+.shot-btn.locked.picked, .shot-btn.picked {
+  opacity: 1;
+  background: #ffd54f;
+  border-color: #ff6f00;
+  box-shadow: 0 0 0 4px rgba(255,111,0,0.35), 0 0 22px rgba(255,193,7,0.9);
+}
+
+#gameScreen {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh;
+  pointer-events: none; display: none;
+  z-index: 1000;   /* fixed สร้าง stacking context: ต้องอยู่เหนือ visualLayer */
+}
+
+/* ---------- HUD บนจอ: สกอร์บอร์ด + ป้ายตา ---------- */
+#hud {
+  position: fixed;
+  top: calc(8px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(94vw, 560px);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  pointer-events: none;
+}
+#scoreBoard {
+  background: rgba(0,0,0,0.75);
+  padding: 6px clamp(8px, 2.5vw, 18px);
+  border-radius: 15px;
+  border: 2px solid #fff;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  font-size: clamp(14px, 3.6vw, 22px);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+#scoreBoard.rich {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: clamp(6px, 2vw, 16px);
+}
+.sb-side { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sb-side.sb-right { flex-direction: row-reverse; text-align: right; }
+.sb-kit {
+  flex: 0 0 auto;
+  width: clamp(18px, 4.5vw, 26px); height: clamp(18px, 4.5vw, 26px);
+  border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 0 8px rgba(0,0,0,0.6);
+}
+.sb-info { display: flex; flex-direction: column; min-width: 0; align-items: flex-start; }
+.sb-right .sb-info { align-items: flex-end; }
+.sb-name {
+  font-size: clamp(11px, 2.9vw, 15px); font-weight: bold;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-shadow: 1px 1px 2px #000;
+}
+.sb-name em {
+  font-style: normal; font-size: 0.8em; margin-left: 5px; padding: 1px 6px;
+  border-radius: 8px; background: #ffd54f; color: #222;
+}
+.sb-right .sb-name em { margin-left: 0; margin-right: 5px; }
+.sb-pips { display: flex; gap: 3px; margin-top: 3px; height: 10px; }
+.sb-right .sb-pips { flex-direction: row; justify-content: flex-end; }
+.pip { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.5); box-sizing: border-box; }
+.pip.goal { background: #4caf50; border-color: #b9f6ca; box-shadow: 0 0 6px #4caf50; }
+.pip.miss { background: #f44336; border-color: #ffcdd2; box-shadow: 0 0 6px #f44336; }
+.sb-mid { display: flex; align-items: center; gap: 8px; font-size: clamp(22px, 6vw, 34px); font-weight: 900; text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+.sb-mid i { font-style: normal; opacity: 0.7; }
+
+#currentTurn {
+  display: none;
+  align-self: center;
+  max-width: 100%;
+  box-sizing: border-box;
+  color: #fff;
+  padding: 5px 14px;
+  border-radius: 10px;
+  font-size: clamp(11px, 3vw, 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.45);
+}
+#currentTurn .tb-main { font-weight: bold; }
+#currentTurn .tb-sub { margin-left: 8px; opacity: 0.92; font-weight: normal; }
+
+/* ---------- แผงทั่วไป (ล็อบบี้ / ห้อง / ใส่ชื่อ) ---------- */
+.screen {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  z-index: 100;
+  padding: calc(64px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+  box-sizing: border-box;
+  background: rgba(0,0,0,0.35);
+}
+#lobby, #room { display: none; }
+.panel {
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  padding: clamp(16px, 3vh, 26px);
+  width: 100%; max-width: 600px;
+  margin: 0 auto 16px;
+  box-sizing: border-box;
+}
+.panel h2 { font-size: clamp(24px, 6vw, 34px); margin: 0 0 14px; text-shadow: 3px 3px 6px rgba(0,0,0,0.9); }
+.panel h3 { font-size: clamp(16px, 4vw, 20px); margin: 18px 0 8px; opacity: 0.9; }
+.panel p { margin: 8px 0; }
+
+.mode-btn {
+  background: rgba(255,255,255,0.95);
+  color: #333;
+  border-radius: 16px;
+  padding: clamp(14px, 2.5vh, 22px) clamp(22px, 5vw, 40px);
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+  border: 4px solid #fff;
+  font-size: clamp(18px, 4.6vw, 24px);
+  transition: all 0.3s;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+.mode-btn:hover { background: #fff; transform: translateY(-3px); }
+.mode-btn:active { transform: scale(0.96); }
+.mode-btn:focus-visible { outline: 4px solid yellow; }
+
+ul { list-style: none; padding: 0; margin: 0; }
+li {
+  margin: 8px 0; background: rgba(255,255,255,0.1);
+  padding: 12px; border-radius: 12px;
+  display: flex; align-items: center; gap: 10px; text-align: left;
+}
+.room-name { flex: 1; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-count { opacity: 0.8; }
+.join-btn {
+  padding: 8px 18px; background: #4CAF50; color: #fff; border: none;
+  border-radius: 10px; cursor: pointer; font-family: inherit; font-weight: bold; font-size: 16px;
+}
+.join-btn:focus-visible { outline: 4px solid yellow; }
+#roomList:empty::after { content: "ยังไม่มีห้องที่เปิดอยู่ — สร้างห้องใหม่ได้เลย"; display: block; opacity: 0.6; padding: 10px; }
+
+.pl-chip {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid #fff; background: #555;
+}
+.pl-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
+.pl-team { opacity: 0.85; font-size: 0.9em; }
+.pl-you { font-size: 0.75em; padding: 1px 7px; border-radius: 8px; background: #ffd54f; color: #222; }
+
+/* ---------- หน้ากรอกชื่อ ---------- */
+#nameInput {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 100;
+  width: min(92vw, 420px);
+  display: flex; flex-direction: column; gap: 14px;
+}
+#nameInput h1 { font-size: clamp(30px, 8vw, 46px); margin: 0; line-height: 1.1; text-shadow: 3px 3px 6px rgba(0,0,0,0.9); }
+#nameInput .subtitle { font-size: clamp(14px, 3.5vw, 18px); opacity: 0.85; margin-top: -6px; }
+#nameInput p { font-size: clamp(18px, 4.5vw, 24px); margin: 0; }
+#nameInput input {
+  padding: 12px; font-size: 20px; border-radius: 10px; border: 3px solid #fff;
+  text-align: center; font-family: inherit; width: 100%; box-sizing: border-box;
+}
+#nameInput input:focus { outline: 4px solid yellow; }
+
+/* ---------- ห้อง ---------- */
+#teamSelectInRoom { display: none; flex-direction: column; gap: 12px; margin-top: 16px; }
+#teamSelectInRoom p { font-size: clamp(20px, 5vw, 26px); margin: 0 0 4px; text-shadow: 2px 2px 4px #000; }
+.team-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 480px) { .team-grid { grid-template-columns: 1fr 1fr; } }
+.team-btn {
+  background: rgba(255,255,255,0.9);
+  color: #222;
+  border-radius: 12px;
+  padding: clamp(14px, 2.5vh, 22px) 10px;
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+  border: 3px solid #fff;
+  transition: all 0.2s;
+  font-size: clamp(16px, 3.5vw, 21px);
+  word-wrap: break-word;
+  line-height: 1.2;
+}
+.team-btn:active { transform: scale(0.95); }
+.team-btn:focus { outline: 4px solid yellow; }
+.team-btn:disabled, .team-btn.unavailable {
+  background: #555; color: #bbb; cursor: not-allowed; opacity: 0.6; border-color: #777;
+}
+.kit-chip {
+  display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--a) 50%, var(--b) 50%);
+  border: 2px solid #333; vertical-align: -3px; margin-right: 8px;
+}
+#waitingMessage {
+  display: none; margin-top: 16px; padding: 16px;
+  background: rgba(255,255,255,0.1); border-radius: 15px;
+  font-size: clamp(16px, 4vw, 19px);
+  animation: waitPulse 1.6s ease-in-out infinite;
+}
+@keyframes waitPulse { 0%,100% { opacity: 0.75; } 50% { opacity: 1; } }
+
+#startBtn {
+  display: none; margin-top: 18px;
+  background: #4CAF50; color: #fff; border: 3px solid #b9f6ca;
+  border-radius: 16px; padding: 14px 40px;
+  font-weight: bold; font-family: inherit; font-size: clamp(18px, 4.8vw, 24px);
+  cursor: pointer; box-shadow: 0 8px 20px rgba(76,175,80,0.45);
+}
+#startBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+#startBtn:focus-visible { outline: 4px solid yellow; }
+
+/* ---------- ปุ่มกลับเมนู / TTS ---------- */
+#mainMenuBtn {
+  position: fixed;
+  top: calc(15px + var(--safe-top));
+  left: 15px;
+  background: rgba(255,255,255,0.95);
+  color: #333;
+  border: 3px solid #fff;
+  border-radius: 12px;
+  padding: clamp(8px, 1.5vh, 12px) clamp(12px, 2vw, 20px);
+  font-size: clamp(14px, 3vw, 18px);
+  font-family: inherit;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 10001;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+  display: none;
+}
+#ttsDisplay {
+  position: fixed;
+  bottom: calc(20px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.85);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: clamp(16px, 3.5vw, 20px);
+  width: 85%;
+  max-width: 600px;
+  box-sizing: border-box;
+  z-index: 10002;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.3);
+  word-wrap: break-word;
+}
+#ttsDisplay.show { opacity: 1; }
+
+/* ---------- หน้าผลลัพธ์ ---------- */
+#resultScreen {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(ellipse at center, rgba(22,32,48,0.96) 0%, rgba(0,0,0,0.97) 100%);
+  display: none;
+  flex-direction: column; justify-content: center; align-items: center;
+  z-index: 10000; padding: 20px; box-sizing: border-box; overflow: hidden;
+}
+#resultScreen .trophy { font-size: clamp(64px, 16vw, 110px); animation: trophyBounce 1.2s ease-in-out infinite; }
+#resultScreen.lose .trophy { filter: grayscale(0.8); animation: none; }
+#resultScreen h1 { font-size: clamp(30px, 8vw, 52px); margin: 14px 0 6px; text-shadow: 0 0 18px rgba(255,215,0,0.7), 3px 3px 6px #000; }
+#resultScreen p { font-size: clamp(18px, 4.5vw, 28px); margin: 6px 0; }
+#resultScore { font-size: clamp(18px, 4.5vw, 28px); margin: 10px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+#resultScore b { font-size: 1.5em; }
+#resultSub { font-size: clamp(16px, 4vw, 22px); opacity: 0.9; margin-bottom: 6px; }
+#resultScreen button {
+  margin-top: 26px; background: #4CAF50; color: white; border: none; border-radius: 15px;
+  padding: 14px 40px; font-size: clamp(18px, 4.5vw, 22px); font-family: inherit; font-weight: bold; cursor: pointer;
+  box-shadow: 0 8px 20px rgba(76,175,80,0.45);
+}
+#resultScreen button:focus-visible { outline: 4px solid yellow; }
+@keyframes trophyBounce { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-14px) scale(1.08); } }
+#confettiBox { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.confetti { position: absolute; top: -24px; width: 10px; height: 16px; opacity: 0.95; animation: confettiFall linear forwards; }
+@keyframes confettiFall {
+  0%   { transform: translateY(0) rotate(0deg); }
+  100% { transform: translateY(110vh) rotate(720deg); }
+}
+
+/* ---------- จอเล็ก / แนวนอน ---------- */
+@media (max-width: 480px) {
+  .visual-goal-container { width: 50%; }
+  .shot-btn { padding: 10px 8px; font-size: 13px; border-width: 2px; border-radius: 10px; white-space: nowrap; }
+  #tl { left: 6px; }
+  #tr { right: 6px; }
+  #bl { left: 6px; }
+  #br { right: 6px; }
+}
+@media (max-height: 480px) {
+  #currentTurn .tb-sub { display: none; }
+  .sb-pips { display: none; }
+  .screen { padding-top: calc(56px + var(--safe-top)); }
+}
+
+</style>
+</head>
+<body>
+
+<!-- พื้นหลังกราฟิก 2.5D (ซ่อนจาก Screen Reader) -->
+<div id="visualLayer" aria-hidden="true">
+  <div class="sky-lights"></div>
+  <div class="stands"></div>
+  <div class="field-wrap">
+    <div class="field">
+      <div class="penalty-box"></div>
+      <div class="penalty-arc"></div>
+      <div class="penalty-mark"></div>
+    </div>
+  </div>
+  <!-- ส่วนของเป้าหมายและตัวละคร -->
+  <div id="vGoal" class="visual-goal-container">
+    <div class="goal-net"></div>
+    <div class="goal-posts"></div>
+    <!-- ผู้รักษาประตู SVG พร้อมชุดแข่งเฉพาะตัวที่สีตัดและโดดเด่น -->
+    <svg id="vGk" class="player-gk" viewBox="0 0 120 220" preserveAspectRatio="xMidYMax meet">
+      <!-- ทรงผมและศีรษะ -->
+      <circle cx="60" cy="30" r="18" fill="#f1c27d"/>
+      <path d="M 42 26 Q 60 8 78 26 Q 75 14 60 14 Q 45 14 42 26 Z" fill="#222"/>
+      <!-- คอเสื้อ -->
+      <rect x="54" y="45" width="12" height="8" fill="#e0ac69"/>
+      <!-- แขนเสื้อผู้รักษาประตู -->
+      <path id="gkSleeveL" d="M 38 56 Q 18 75 14 108" stroke="#39ff14" stroke-width="14" stroke-linecap="round" fill="none"/>
+      <path id="gkSleeveR" d="M 82 56 Q 102 75 106 108" stroke="#39ff14" stroke-width="14" stroke-linecap="round" fill="none"/>
+      <!-- เสื้อผู้รักษาประตู -->
+      <rect id="gkShirt" x="36" y="50" width="48" height="66" rx="10" fill="#39ff14"/>
+      <path id="gkTrim" d="M 48 50 L 60 62 L 72 50" stroke="#111111" stroke-width="3" fill="none"/>
+      <!-- ถุงมือผู้รักษาประตู -->
+      <circle id="gkGloveL" cx="14" cy="114" r="11" fill="#ffeb3b" stroke="#333" stroke-width="2"/>
+      <circle id="gkGloveR" cx="106" cy="114" r="11" fill="#ffeb3b" stroke="#333" stroke-width="2"/>
+      <!-- กางเกงผู้รักษาประตู -->
+      <path id="gkShorts" d="M 38 112 L 82 112 L 86 148 L 63 148 L 60 132 L 57 148 L 34 148 Z" fill="#111111"/>
+      <!-- ขา -->
+      <rect x="40" y="148" width="12" height="22" fill="#f1c27d"/>
+      <rect x="68" y="148" width="12" height="22" fill="#f1c27d"/>
+      <!-- ถุงเท้า -->
+      <rect id="gkSocksL" x="39" y="168" width="14" height="32" rx="4" fill="#39ff14"/>
+      <rect id="gkSocksR" x="67" y="168" width="14" height="32" rx="4" fill="#39ff14"/>
+      <!-- รองเท้าสตั๊ด -->
+      <ellipse cx="45" cy="202" rx="10" ry="6" fill="#111"/>
+      <ellipse cx="75" cy="202" rx="10" ry="6" fill="#111"/>
+    </svg>
+  </div>
+
+  <!-- ลูกฟุตบอล SVG ลวดลายหกเหลี่ยมขาว-ดำ พร้อมไฮไลท์เพิ่มความชัดเจน -->
+  <div id="vBall" class="visual-ball">
+    <svg viewBox="0 0 100 100" width="100%" height="100%">
+      <defs>
+        <radialGradient id="ballGrad" cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="75%" stop-color="#f5f5f5"/>
+          <stop offset="100%" stop-color="#cccccc"/>
+        </radialGradient>
+      </defs>
+      <!-- ขอบนอกสีขาวสว่างช่วยให้ลูกบอลไม่กลืนกับตาข่ายมืด -->
+      <circle cx="50" cy="50" r="48" fill="url(#ballGrad)" stroke="#ffffff" stroke-width="2.5"/>
+      <circle cx="50" cy="50" r="45.5" fill="none" stroke="#222" stroke-width="2"/>
+      <!-- ลายห้าเหลี่ยมตรงกลาง -->
+      <polygon points="50,28 70,42 63,65 37,65 30,42" fill="#1a1a1a"/>
+      <!-- ลายขอบรอบนอก -->
+      <polygon points="50,3 63,13 50,28 37,13" fill="#1a1a1a"/>
+      <polygon points="95,35 84,52 70,42 80,22" fill="#1a1a1a"/>
+      <polygon points="82,86 63,88 63,65 83,66" fill="#1a1a1a"/>
+      <polygon points="18,86 17,66 37,65 37,88" fill="#1a1a1a"/>
+      <polygon points="5,35 20,22 30,42 16,52" fill="#1a1a1a"/>
+      <!-- เส้นตะเข็บหกเหลี่ยม -->
+      <line x1="50" y1="28" x2="50" y2="10" stroke="#222" stroke-width="3"/>
+      <line x1="70" y1="42" x2="86" y2="35" stroke="#222" stroke-width="3"/>
+      <line x1="63" y1="65" x2="75" y2="82" stroke="#222" stroke-width="3"/>
+      <line x1="37" y1="65" x2="25" y2="82" stroke="#222" stroke-width="3"/>
+      <line x1="30" y1="42" x2="14" y2="35" stroke="#222" stroke-width="3"/>
+    </svg>
+  </div>
+
+  <!-- นักฟุตบอลผู้ยิงประตู SVG พร้อมรายละเอียดชุดแข่งและท่าทางเตะ -->
+  <svg id="vKicker" class="player-kicker" viewBox="0 0 130 230" preserveAspectRatio="xMidYMax meet">
+    <!-- เงาพื้นใต้เท้านักเตะ -->
+    <ellipse cx="65" cy="218" rx="34" ry="8" fill="rgba(0,0,0,0.4)"/>
+    <!-- ศีรษะและทรงผม (มุมมองด้านหลังเยื้องข้าง) -->
+    <circle cx="65" cy="30" r="18" fill="#f1c27d"/>
+    <path d="M 47 28 Q 65 8 83 28 Q 83 42 65 40 Q 47 42 47 28 Z" fill="#1c1c1c"/>
+    <!-- คอ -->
+    <rect x="59" y="44" width="12" height="9" fill="#e0ac69"/>
+    <!-- แขนซ้ายและแขนขวาในท่าทรงตัวเตรียมยิง -->
+    <path id="kickerArmL" d="M 40 58 L 18 92" stroke="#f1c27d" stroke-width="11" stroke-linecap="round"/>
+    <path id="kickerArmR" d="M 90 58 L 112 88" stroke="#f1c27d" stroke-width="11" stroke-linecap="round"/>
+    <path id="kickerSleeveL" d="M 42 55 L 26 78" stroke="#da291c" stroke-width="15" stroke-linecap="round"/>
+    <path id="kickerSleeveR" d="M 88 55 L 104 76" stroke="#da291c" stroke-width="15" stroke-linecap="round"/>
+    <!-- ตัวเสื้อชุดแข่ง -->
+    <path id="kickerShirt" d="M 38 50 L 92 50 L 88 118 L 42 118 Z" rx="8" fill="#da291c"/>
+    <!-- แถบคอปกเสื้อและแถบไหล่ -->
+    <path id="kickerCollar" d="M 52 50 Q 65 58 78 50" stroke="#ffffff" stroke-width="4" fill="none"/>
+    <!-- เบอร์เสื้อด้านหลัง -->
+    <text id="kickerNumber" x="65" y="96" font-family="Tahoma, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">10</text>
+    <!-- กางเกงชุดแข่ง -->
+    <path id="kickerShorts" d="M 42 115 L 88 115 L 92 152 L 68 152 L 65 135 L 62 152 L 38 152 Z" fill="#ffffff"/>
+    <!-- ขาซ้าย (ขาหลักยืนค้ำ) -->
+    <g id="kickerLeftLeg">
+      <rect x="44" y="152" width="13" height="20" fill="#f1c27d"/>
+      <rect id="kickerSocksL" x="43" y="170" width="15" height="36" rx="4" fill="#111111"/>
+      <rect id="kickerSockStripeL" x="43" y="174" width="15" height="5" fill="#ffffff"/>
+      <path d="M 40 204 L 59 204 L 62 214 L 38 214 Z" fill="#111"/>
+    </g>
+    <!-- ขาขวา (ขาที่ใช้เตะลูกบอล มีแอนิเมชันง้างเตะ) -->
+    <g id="kickerRightLeg">
+      <rect x="72" y="152" width="13" height="20" fill="#f1c27d"/>
+      <rect id="kickerSocksR" x="71" y="170" width="15" height="36" rx="4" fill="#111111"/>
+      <rect id="kickerSockStripeR" x="71" y="174" width="15" height="5" fill="#ffffff"/>
+      <path d="M 69 204 L 90 204 L 94 214 L 68 214 Z" fill="#222"/>
+    </g>
+  </svg>
+  
+  <div id="vSuddenDeath" class="sudden-death-glow"></div>
+  <div id="vText" class="v-text-overlay"></div>
+</div>
+
+<button id="mainMenuBtn" onclick="location.href='../index.html'">กลับเมนูหลัก</button>
+
+<div id="nameInput" class="panel">
+  <h1>⚽ เกมยิงจุดโทษ</h1>
+  <div class="subtitle">ออนไลน์ เล่นกับเพื่อนจริงๆ</div>
+  <p>กรอกชื่อของคุณ</p>
+  <input id="playerName" placeholder="ชื่อของคุณ" maxlength="24" autocomplete="off" autofocus>
+  <button id="confirmNameBtn" class="mode-btn">ยืนยัน</button>
+</div>
+
+<div id="lobby" class="screen">
+  <div class="panel">
+    <h2>ล็อบบี้</h2>
+    <button id="createRoomBtn" class="mode-btn">สร้างห้องใหม่</button>
+    <h3>ห้องที่เปิดอยู่</h3>
+    <ul id="roomList"></ul>
+  </div>
+</div>
+
+<div id="room" class="screen">
+  <div class="panel">
+    <h2 id="roomName"></h2>
+    <p>ผู้เล่นในห้อง:</p>
+    <ul id="playerList"></ul>
+
+    <div id="teamSelectInRoom">
+      <p>เลือกทีมของคุณ:</p>
+      <div class="team-grid">
+        <button class="team-btn" data-team="Manchester United"><span class="kit-chip" style="--a:#da291c;--b:#ffffff"></span>แมนเชสเตอร์ ยูไนเต็ด</button>
+        <button class="team-btn" data-team="Liverpool"><span class="kit-chip" style="--a:#9e0b16;--b:#f6eb61"></span>ลิเวอร์พูล</button>
+        <button class="team-btn" data-team="Arsenal"><span class="kit-chip" style="--a:#ef0107;--b:#ffffff"></span>อาร์เซนอล</button>
+        <button class="team-btn" data-team="Chelsea"><span class="kit-chip" style="--a:#034694;--b:#ffffff"></span>เชลซี</button>
+        <button class="team-btn" data-team="Thai all-stars"><span class="kit-chip" style="--a:#1a237e;--b:#ffd700"></span>ไทย all-stars</button>
+        <button class="team-btn" data-team="1414 Witthaya"><span class="kit-chip" style="--a:#ffb300;--b:#1b1b1b"></span>1414 และเพื่อนวิทยา</button>
+      </div>
+    </div>
+    <div id="waitingMessage"></div>
+
+    <button id="startBtn" onclick="startGame()">เริ่มเกม</button>
+  </div>
+</div>
+
+<div id="gameScreen" style="display:none;">
+  <div id="hud">
+    <div id="scoreBoard">Score ตอนนี้คือ 0 - 0</div>
+    <div id="currentTurn"></div>
+  </div>
+  <button id="tl" class="shot-btn" onclick="debounceClick('TL')">มุมซ้ายบน</button>
+  <button id="tr" class="shot-btn" onclick="debounceClick('TR')">มุมขวาบน</button>
+  <button id="center" class="shot-btn" onclick="debounceClick('C')">ตรงกลาง</button>
+  <button id="bl" class="shot-btn" onclick="debounceClick('BL')">มุมซ้ายล่าง</button>
+  <button id="br" class="shot-btn" onclick="debounceClick('BR')">มุมขวาล่าง</button>
+</div>
+
+<div id="resultScreen">
+  <div id="confettiBox" aria-hidden="true"></div>
+  <div class="trophy" aria-hidden="true">🏆</div>
+  <h1 id="resultTitle">ทีมชนะ</h1>
+  <p id="resultMessage">ยินดีด้วย!</p>
+  <div id="resultScore"></div>
+  <div id="resultSub"></div>
+  <button id="playAgainBtn" onclick="location.reload()">เล่นอีกครั้ง</button>
+</div>
+
+<div id="ttsDisplay"></div>
+<div id="tts" aria-live="assertive" style="position:absolute;left:-9999px;"></div>
+
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+// === Firebase ===
+const firebaseConfig = {
+  apiKey: "AIzaSyBIPeN4YUIrwM4MmFtDvT2DJ-v4toxc7tY",
+  authDomain: "xo-game-134ec.firebaseapp.com",
+  databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "xo-game-134ec",
+  storageBucket: "xo-game-134ec.appspot.com",
+  messagingSenderId: "318375224157",
+  appId: "1:318375224157:web:348a410dfd625359b77eb4"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// =====================================================================
+// [UI] ส่วนแสดงผลภาพ (คัดลอกจาก penalty.html) + ตัวช่วยแสดงผลออนไลน์
+// =====================================================================
+// === ข้อมูลสีชุดแข่งผู้เล่น และชุดผู้รักษาประตูเฉพาะของทั้ง 6 ทีม (สีสะท้อนแสง/สีสด ตัดกับชุดผู้เล่นทุกทีม 100%) ===
+const teamKits = {
+  "Manchester United": {
+    shirt: "#da291c",
+    sleeves: "#da291c",
+    shorts: "#ffffff",
+    socks: "#111111",
+    trim: "#ffffff",
+    number: "#ffffff",
+    gk: {
+      shirt: "#39ff14",   // เขียวสะท้อนแสง (Neon Lime Green)
+      sleeves: "#39ff14",
+      shorts: "#111111",
+      socks: "#39ff14",
+      trim: "#111111",
+      gloves: "#ffeb3b"
+    }
+  },
+  "Liverpool": {
+    shirt: "#9e0b16",
+    sleeves: "#9e0b16",
+    shorts: "#9e0b16",
+    socks: "#9e0b16",
+    trim: "#f6eb61",
+    number: "#f6eb61",
+    gk: {
+      shirt: "#e6ff00",   // เหลืองมะนาวสะท้อนแสง (High-Vis Volt Yellow)
+      sleeves: "#e6ff00",
+      shorts: "#111111",
+      socks: "#e6ff00",
+      trim: "#111111",
+      gloves: "#ffffff"
+    }
+  },
+  "Arsenal": {
+    shirt: "#ef0107",
+    sleeves: "#ffffff",
+    shorts: "#ffffff",
+    socks: "#ef0107",
+    trim: "#063672",
+    number: "#ffffff",
+    gk: {
+      shirt: "#ff6d00",   // ส้มสะท้อนแสง (Blaze Neon Orange)
+      sleeves: "#ff6d00",
+      shorts: "#1b1b1b",
+      socks: "#ff6d00",
+      trim: "#ffffff",
+      gloves: "#ffeb3b"
+    }
+  },
+  "Chelsea": {
+    shirt: "#034694",
+    sleeves: "#034694",
+    shorts: "#034694",
+    socks: "#ffffff",
+    trim: "#ffffff",
+    number: "#ffffff",
+    gk: {
+      shirt: "#00ffc8",   // เขียวมิ้นท์เทอร์ควอยซ์เรืองแสง (Electric Mint Aqua)
+      sleeves: "#00ffc8",
+      shorts: "#0a192f",
+      socks: "#00ffc8",
+      trim: "#0a192f",
+      gloves: "#ffffff"
+    }
+  },
+  "Thai all-stars": {
+    shirt: "#1a237e",
+    sleeves: "#1a237e",
+    shorts: "#0d133d",
+    socks: "#ffd700",
+    trim: "#ffd700",
+    number: "#ffd700",
+    gk: {
+      shirt: "#ff1493",   // ชมพูบานเย็นสะท้อนแสง (Fluorescent Magenta Pink)
+      sleeves: "#ff1493",
+      shorts: "#111111",
+      socks: "#ff1493",
+      trim: "#ffffff",
+      gloves: "#00e5ff"
+    }
+  },
+  "1414 Witthaya": {
+    shirt: "#ffb300",
+    sleeves: "#ffb300",
+    shorts: "#1b1b1b",
+    socks: "#ffb300",
+    trim: "#1b1b1b",
+    number: "#1b1b1b",
+    gk: {
+      shirt: "#b388ff",   // ม่วงสว่างลาเวนเดอร์นีออน (Vibrant Electric Lavender)
+      sleeves: "#7c4dff",
+      shorts: "#12005e",
+      socks: "#b388ff",
+      trim: "#ffffff",
+      gloves: "#76ff03"
+    }
+  }
+};
+
+// อัปเดตสีชุดแข่งของคนยิงและชุดเฉพาะของผู้รักษาประตูตามทีมในแต่ละเทิร์น
+function updatePlayerKits(shooterTeam, keeperTeam) {
+  const sKit = teamKits[shooterTeam] || teamKits["Manchester United"];
+  const kTeamObj = teamKits[keeperTeam] || teamKits["Chelsea"];
+  const gKit = kTeamObj.gk;
+
+  // อัปเดตชุดคนยิง (Kicker)
+  document.getElementById('kickerShirt').setAttribute('fill', sKit.shirt);
+  document.getElementById('kickerSleeveL').setAttribute('stroke', sKit.sleeves);
+  document.getElementById('kickerSleeveR').setAttribute('stroke', sKit.sleeves);
+  document.getElementById('kickerCollar').setAttribute('stroke', sKit.trim);
+  document.getElementById('kickerNumber').setAttribute('fill', sKit.number);
+  document.getElementById('kickerShorts').setAttribute('fill', sKit.shorts);
+  document.getElementById('kickerSocksL').setAttribute('fill', sKit.socks);
+  document.getElementById('kickerSocksR').setAttribute('fill', sKit.socks);
+  document.getElementById('kickerSockStripeL').setAttribute('fill', sKit.trim);
+  document.getElementById('kickerSockStripeR').setAttribute('fill', sKit.trim);
+
+  // อัปเดตชุดผู้รักษาประตู (Goalkeeper) ให้เป็นสีเฉพาะของทีมนั้นๆ ที่โดดเด่นไม่ซ้ำกับผู้เล่นยิงประตู
+  document.getElementById('gkShirt').setAttribute('fill', gKit.shirt);
+  document.getElementById('gkSleeveL').setAttribute('stroke', gKit.sleeves);
+  document.getElementById('gkSleeveR').setAttribute('stroke', gKit.sleeves);
+  document.getElementById('gkTrim').setAttribute('stroke', gKit.trim);
+  document.getElementById('gkShorts').setAttribute('fill', gKit.shorts);
+  document.getElementById('gkSocksL').setAttribute('fill', gKit.socks);
+  document.getElementById('gkSocksR').setAttribute('fill', gKit.socks);
+  document.getElementById('gkGloveL').setAttribute('fill', gKit.gloves);
+  document.getElementById('gkGloveR').setAttribute('fill', gKit.gloves);
+}
+
+// === ระบบสุ่มท่าทาง Action (7 แบบสำหรับทุกกรณี ไม่ซ้ำกับครั้งก่อนหน้า) ===
+let lastKickerGoalAct = -1;
+let lastGkConcedeAct = -1;
+let lastKickerMissAct = -1;
+let lastGkSaveAct = -1;
+
+function pickRandomActionIndex(lastIdx, count = 7) {
+  let idx;
+  do {
+    idx = Math.floor(Math.random() * count);
+  } while (count > 1 && idx === lastIdx);
+  return idx;
+}
+
+// แอนิเมชัน 7 ท่าทางของคนยิงประตู และ 7 ท่าทางของผู้รักษาประตู แสดงผลพร้อมกันขณะเล่นไฟล์เสียง
+function playReactionAnimations(isGoal, gkX, gkY) {
+  const kicker = document.getElementById('vKicker');
+  const gk = document.getElementById('vGk');
+
+  // ล้างแอนิเมชันที่ค้างอยู่ก่อนเริ่มท่าใหม่
+  kicker.getAnimations().forEach(a => a.cancel());
+  gk.getAnimations().forEach(a => a.cancel());
+
+  // ท่าชูแขนดีใจของคนยิงประตูเมื่อยิงเข้า หรือก้มคอตกเมื่อยิงไม่เข้า
+  if (isGoal) {
+    document.getElementById('kickerArmL').setAttribute('d', 'M 40 58 L 14 24');
+    document.getElementById('kickerArmR').setAttribute('d', 'M 90 58 L 116 24');
+    document.getElementById('kickerSleeveL').setAttribute('d', 'M 42 55 L 25 38');
+    document.getElementById('kickerSleeveR').setAttribute('d', 'M 88 55 L 105 38');
+    document.getElementById('gkSleeveL').setAttribute('d', 'M 38 56 Q 26 84 30 112');
+    document.getElementById('gkSleeveR').setAttribute('d', 'M 82 56 Q 94 84 90 112');
+    document.getElementById('gkGloveL').setAttribute('cx', '30');
+    document.getElementById('gkGloveL').setAttribute('cy', '116');
+    document.getElementById('gkGloveR').setAttribute('cx', '90');
+    document.getElementById('gkGloveR').setAttribute('cy', '116');
+  } else {
+    document.getElementById('kickerArmL').setAttribute('d', 'M 40 58 L 32 98');
+    document.getElementById('kickerArmR').setAttribute('d', 'M 90 58 L 98 98');
+    document.getElementById('kickerSleeveL').setAttribute('d', 'M 42 55 L 36 80');
+    document.getElementById('kickerSleeveR').setAttribute('d', 'M 88 55 L 94 80');
+    document.getElementById('gkSleeveL').setAttribute('d', 'M 38 56 Q 18 35 12 18');
+    document.getElementById('gkSleeveR').setAttribute('d', 'M 82 56 Q 102 35 108 18');
+    document.getElementById('gkGloveL').setAttribute('cx', '12');
+    document.getElementById('gkGloveL').setAttribute('cy', '14');
+    document.getElementById('gkGloveR').setAttribute('cx', '108');
+    document.getElementById('gkGloveR').setAttribute('cy', '14');
+  }
+
+  // 7 ท่าทางดีใจของคนยิงประตู (เมื่อยิงเข้า)
+  const kickerGoalActions = [
+    // 1. กระโดดชูมือดีใจ 3 จังหวะ
+    [
+      { transform: 'translateX(-50%) translateY(0) scale(1)' },
+      { transform: 'translateX(-50%) translateY(-45px) scale(1.12)' },
+      { transform: 'translateX(-50%) translateY(0) scale(1)' },
+      { transform: 'translateX(-50%) translateY(-38px) scale(1.1)' },
+      { transform: 'translateX(-50%) translateY(0) scale(1)' },
+      { transform: 'translateX(-50%) translateY(-30px) scale(1.08)' },
+      { transform: 'translateX(-50%) translateY(0) scale(1)' }
+    ],
+    // 2. ท่ากระโดดหมุนตัวกลางอากาศแล้วยืนกางแขน (Siuuu!)
+    [
+      { transform: 'translateX(-50%) translateY(0) scale(1)' },
+      { transform: 'translateX(-50%) translateY(-60px) scale(1.18) rotate(180deg)', offset: 0.35 },
+      { transform: 'translateX(-50%) translateY(-60px) scale(1.18) rotate(360deg)', offset: 0.65 },
+      { transform: 'translateX(-50%) translateY(8px) scale(1.22, 0.88) rotate(360deg)', offset: 0.82 },
+      { transform: 'translateX(-50%) translateY(0) scale(1.12) rotate(360deg)' }
+    ],
+    // 3. สไลด์เข่าไปด้านข้างพร้อมแอ่นอกสะใจ
+    [
+      { transform: 'translateX(-50%) translateY(0) rotate(0deg)' },
+      { transform: 'translateX(-115%) translateY(18px) rotate(-14deg) scale(1.08)', offset: 0.45 },
+      { transform: 'translateX(-125%) translateY(18px) rotate(-10deg) scale(1.08)', offset: 0.8 },
+      { transform: 'translateX(-50%) translateY(0) rotate(0deg) scale(1)' }
+    ],
+    // 4. ตีลังกากลับหลัง (Backflip)
+    [
+      { transform: 'translateX(-50%) translateY(0) rotate(0deg)' },
+      { transform: 'translateX(-50%) translateY(-65px) rotate(-180deg) scale(1.1)', offset: 0.4 },
+      { transform: 'translateX(-50%) translateY(-20px) rotate(-360deg) scale(1.05)', offset: 0.75 },
+      { transform: 'translateX(-50%) translateY(0) rotate(-360deg) scale(1)' }
+    ],
+    // 5. วิ่งฉลองซิกแซกซ้าย-ขวาไปมาอย่างคึกคัก
+    [
+      { transform: 'translateX(-50%) translateY(0) rotate(0deg)' },
+      { transform: 'translateX(-110%) translateY(-20px) rotate(-15deg)' },
+      { transform: 'translateX(15%) translateY(-25px) rotate(15deg)' },
+      { transform: 'translateX(-95%) translateY(-20px) rotate(-12deg)' },
+      { transform: 'translateX(5%) translateY(-15px) rotate(12deg)' },
+      { transform: 'translateX(-50%) translateY(0) rotate(0deg)' }
+    ],
+    // 6. เต้นโยกตัวฉลองจังหวะแซมบ้า
+    [
+      { transform: 'translateX(-50%) rotate(0deg) scale(1)' },
+      { transform: 'translateX(-68%) translateY(-15px) rotate(-18deg) scale(1.08)' },
+      { transform: 'translateX(-32%) translateY(-15px) rotate(18deg) scale(1.08)' },
+      { transform: 'translateX(-68%) translateY(-15px) rotate(-18deg) scale(1.08)' },
+      { transform: 'translateX(-32%) translateY(-15px) rotate(18deg) scale(1.08)' },
+      { transform: 'translateX(-50%) rotate(0deg) scale(1)' }
+    ],
+    // 7. ชูกำปั้นปั๊มสะใจรัวๆ พร้อมเบ่งพลัง
+    [
+      { transform: 'translateX(-50%) scale(1)' },
+      { transform: 'translateX(-50%) translateY(-12px) scale(1.22, 1.15)' },
+      { transform: 'translateX(-50%) translateY(4px) scale(1.05, 0.95)' },
+      { transform: 'translateX(-50%) translateY(-14px) scale(1.25, 1.18)' },
+      { transform: 'translateX(-50%) translateY(4px) scale(1.05, 0.95)' },
+      { transform: 'translateX(-50%) scale(1)' }
+    ]
+  ];
+
+  // 7 ท่าทางเซ็งของผู้รักษาประตู (เมื่อเซฟไม่ได้)
+  const gkConcedeActions = [
+    // 1. ทรุดเข่าก้มหน้าคอตกอย่างผิดหวัง
+    [
+      { transform: `translate(calc(-50% + ${gkX}px), ${gkY}px) scale(1)` },
+      { transform: `translate(calc(-50% + ${gkX * 0.5}px), 26px) scale(1.08, 0.65) rotate(8deg)`, offset: 0.45 },
+      { transform: `translate(calc(-50% + ${gkX * 0.5}px), 26px) scale(1.08, 0.65) rotate(-6deg)`, offset: 0.8 },
+      { transform: `translate(calc(-50% + ${gkX * 0.5}px), 22px) scale(1.05, 0.7)` }
+    ],
+    // 2. นอนแผ่หงายราบไปกับพื้นสนามอย่างหมดแรง
+    [
+      { transform: `translate(calc(-50% + ${gkX}px), ${gkY}px)` },
+      { transform: `translate(calc(-50% + ${gkX}px), 28px) rotate(88deg) scale(0.95)`, offset: 0.4 },
+      { transform: `translate(calc(-50% + ${gkX}px), 30px) rotate(84deg) scale(0.95)`, offset: 0.75 },
+      { transform: `translate(calc(-50% + ${gkX}px), 28px) rotate(88deg) scale(0.95)` }
+    ],
+    // 3. ส่ายหัวไปมาอย่างเซ็งสุดขีด
+    [
+      { transform: `translate(-50%, 0) rotate(0deg)` },
+      { transform: `translate(-62%, 5px) rotate(-14deg)` },
+      { transform: `translate(-38%, 5px) rotate(14deg)` },
+      { transform: `translate(-60%, 5px) rotate(-12deg)` },
+      { transform: `translate(-40%, 5px) rotate(12deg)` },
+      { transform: `translate(-50%, 5px) rotate(0deg)` }
+    ],
+    // 4. กระทืบเท้าโมโหตัวเองรัวๆ
+    [
+      { transform: `translate(-50%, 0)` },
+      { transform: `translate(-55%, -16px) rotate(-10deg)` },
+      { transform: `translate(-55%, 6px) scale(1.12, 0.86) rotate(6deg)` },
+      { transform: `translate(-45%, -16px) rotate(10deg)` },
+      { transform: `translate(-45%, 6px) scale(1.12, 0.86) rotate(-6deg)` },
+      { transform: `translate(-50%, 0)` }
+    ],
+    // 5. ทุบพื้นสนามระบายความเจ็บใจ
+    [
+      { transform: `translate(calc(-50% + ${gkX * 0.6}px), 18px) rotate(42deg) scale(1, 0.8)` },
+      { transform: `translate(calc(-50% + ${gkX * 0.6}px), 8px) rotate(28deg) scale(1, 0.85)` },
+      { transform: `translate(calc(-50% + ${gkX * 0.6}px), 24px) rotate(50deg) scale(1.08, 0.75)` },
+      { transform: `translate(calc(-50% + ${gkX * 0.6}px), 8px) rotate(28deg) scale(1, 0.85)` },
+      { transform: `translate(calc(-50% + ${gkX * 0.6}px), 24px) rotate(50deg) scale(1.08, 0.75)` }
+    ],
+    // 6. ยืนตัวห่อไหล่ตก ถอนหายใจแรง
+    [
+      { transform: `translate(-50%, 0) scale(1)` },
+      { transform: `translate(-50%, -6px) scale(1.06, 1.04)`, offset: 0.3 },
+      { transform: `translate(-50%, 16px) scale(0.92, 0.78) rotate(5deg)`, offset: 0.7 },
+      { transform: `translate(-50%, 16px) scale(0.92, 0.78) rotate(5deg)` }
+    ],
+    // 7. เอนตัวพิงเสาประตูอย่างหมดอาลัยตายอยาก
+    [
+      { transform: `translate(-50%, 0)` },
+      { transform: `translate(-165%, 8px) rotate(-18deg) scale(0.95, 0.92)`, offset: 0.5 },
+      { transform: `translate(-165%, 12px) rotate(-22deg) scale(0.95, 0.88)`, offset: 0.85 },
+      { transform: `translate(-165%, 12px) rotate(-20deg) scale(0.95, 0.9)` }
+    ]
+  ];
+
+  // 7 ท่าทางเซ็งของคนยิงประตู (เมื่อยิงไม่เข้า / ถูกเซฟ)
+  const kickerMissActions = [
+    // 1. ทรุดเข่าลงกับพื้น กุมขมับเซ็ง
+    [
+      { transform: 'translateX(-50%) translateY(0) scale(1)' },
+      { transform: 'translateX(-50%) translateY(32px) scale(1.08, 0.66) rotate(-6deg)', offset: 0.45 },
+      { transform: 'translateX(-50%) translateY(32px) scale(1.08, 0.66) rotate(6deg)', offset: 0.75 },
+      { transform: 'translateX(-50%) translateY(30px) scale(1.05, 0.68)' }
+    ],
+    // 2. นอนหงายแผ่หลาบนพื้นหญ้าด้วยความเสียดาย
+    [
+      { transform: 'translateX(-50%) translateY(0) rotate(0deg)' },
+      { transform: 'translateX(-20%) translateY(36px) rotate(86deg) scale(0.95)', offset: 0.45 },
+      { transform: 'translateX(-20%) translateY(36px) rotate(82deg) scale(0.95)', offset: 0.8 },
+      { transform: 'translateX(-20%) translateY(36px) rotate(86deg) scale(0.95)' }
+    ],
+    // 3. ก้มหน้าส่ายหัวไปมาอย่างผิดหวัง
+    [
+      { transform: 'translateX(-50%) translateY(6px) rotate(0deg) scale(0.98, 0.92)' },
+      { transform: 'translateX(-62%) translateY(8px) rotate(-14deg) scale(0.98, 0.92)' },
+      { transform: 'translateX(-38%) translateY(8px) rotate(14deg) scale(0.98, 0.92)' },
+      { transform: 'translateX(-60%) translateY(8px) rotate(-12deg) scale(0.98, 0.92)' },
+      { transform: 'translateX(-40%) translateY(8px) rotate(12deg) scale(0.98, 0.92)' },
+      { transform: 'translateX(-50%) translateY(8px) rotate(0deg) scale(0.98, 0.92)' }
+    ],
+    // 4. กระทืบเท้าเตะลมระบายความหงุดหงิด
+    [
+      { transform: 'translateX(-50%) translateY(0)' },
+      { transform: 'translateX(-60%) translateY(-18px) rotate(-16deg)' },
+      { transform: 'translateX(-42%) translateY(8px) rotate(18deg) scale(1.1, 0.88)' },
+      { transform: 'translateX(-58%) translateY(-14px) rotate(-14deg)' },
+      { transform: 'translateX(-45%) translateY(8px) rotate(14deg) scale(1.08, 0.9)' },
+      { transform: 'translateX(-50%) translateY(0)' }
+    ],
+    // 5. ยืนตัวแข็งทื่อแล้วค่อยๆ ย่อตัวฟุบลง
+    [
+      { transform: 'translateX(-50%) scale(1)' },
+      { transform: 'translateX(-50%) translateY(15px) scale(0.95, 0.82)', offset: 0.4 },
+      { transform: 'translateX(-50%) translateY(28px) scale(0.92, 0.7) rotate(-8deg)', offset: 0.8 },
+      { transform: 'translateX(-50%) translateY(28px) scale(0.92, 0.7) rotate(-8deg)' }
+    ],
+    // 6. เดินคอตกหันหลังโซเซอย่างหมดหวัง
+    [
+      { transform: 'translateX(-50%) translateY(0) scale(1)' },
+      { transform: 'translateX(-72%) translateY(12px) scale(0.94, 0.88) rotate(-10deg)' },
+      { transform: 'translateX(-88%) translateY(18px) scale(0.9, 0.84) rotate(8deg)' },
+      { transform: 'translateX(-98%) translateY(22px) scale(0.88, 0.82) rotate(-6deg)' }
+    ],
+    // 7. กระโดดเร่าๆ เสียดายโอกาสทอง
+    [
+      { transform: 'translateX(-50%) translateY(0)' },
+      { transform: 'translateX(-50%) translateY(-22px) scale(0.95, 1.08) rotate(-8deg)' },
+      { transform: 'translateX(-50%) translateY(8px) scale(1.12, 0.82) rotate(8deg)' },
+      { transform: 'translateX(-50%) translateY(-18px) scale(0.95, 1.05) rotate(8deg)' },
+      { transform: 'translateX(-50%) translateY(10px) scale(1.1, 0.8) rotate(-5deg)' }
+    ]
+  ];
+
+  // 7 ท่าทางดีใจของผู้รักษาประตู (เมื่อเซฟจุดโทษได้)
+  const gkSaveActions = [
+    // 1. กระโดดชูสองแขนดีใจสุดเหวี่ยงหน้าปากประตู
+    [
+      { transform: 'translate(-50%, 0) scale(1)' },
+      { transform: 'translate(-50%, -36px) scale(1.18)' },
+      { transform: 'translate(-50%, 0) scale(1)' },
+      { transform: 'translate(-50%, -32px) scale(1.16)' },
+      { transform: 'translate(-50%, 0) scale(1)' },
+      { transform: 'translate(-50%, -28px) scale(1.14)' },
+      { transform: 'translate(-50%, 0) scale(1)' }
+    ],
+    // 2. วิ่งสไลด์เข่าฉลองเซฟสุดสวย
+    [
+      { transform: `translate(calc(-50% + ${gkX}px), ${gkY}px)` },
+      { transform: 'translate(-120%, 14px) rotate(-12deg) scale(1.15)', offset: 0.45 },
+      { transform: 'translate(-135%, 14px) rotate(-8deg) scale(1.15)', offset: 0.8 },
+      { transform: 'translate(-50%, 0) rotate(0deg) scale(1)' }
+    ],
+    // 3. ตีลังกาล้อเกวียน (Cartwheel) หน้าเส้นประตู
+    [
+      { transform: 'translate(-50%, 0) rotate(0deg)' },
+      { transform: 'translate(-110%, -25px) rotate(-180deg) scale(1.12)', offset: 0.35 },
+      { transform: 'translate(-50%, 0) rotate(-360deg) scale(1.15)', offset: 0.7 },
+      { transform: 'translate(-50%, -18px) rotate(-360deg) scale(1.18)', offset: 0.85 },
+      { transform: 'translate(-50%, 0) rotate(-360deg) scale(1)' }
+    ],
+    // 4. เบ่งกล้ามโชว์ความแข็งแกร่งคำรามสะใจ
+    [
+      { transform: 'translate(-50%, 0) scale(1)' },
+      { transform: 'translate(-50%, -10px) scale(1.32, 1.2)', offset: 0.3 },
+      { transform: 'translate(-50%, -8px) scale(1.28, 1.18) rotate(-6deg)', offset: 0.5 },
+      { transform: 'translate(-50%, -8px) scale(1.32, 1.2) rotate(6deg)', offset: 0.7 },
+      { transform: 'translate(-50%, 0) scale(1.15)' }
+    ],
+    // 5. วิ่งชูมือไปรอบกรอบประตูซ้าย-ขวา
+    [
+      { transform: 'translate(-50%, 0)' },
+      { transform: 'translate(-150%, -14px) rotate(-14deg) scale(1.1)' },
+      { transform: 'translate(50%, -14px) rotate(14deg) scale(1.1)' },
+      { transform: 'translate(-120%, -12px) rotate(-10deg) scale(1.1)' },
+      { transform: 'translate(-50%, 0) scale(1)' }
+    ],
+    // 6. กระโดดหมุนตัว 360 องศาปัดป้องอย่างเท่
+    [
+      { transform: 'translate(-50%, 0) rotate(0deg) scale(1)' },
+      { transform: 'translate(-50%, -42px) rotate(180deg) scale(1.18)', offset: 0.4 },
+      { transform: 'translate(-50%, -42px) rotate(360deg) scale(1.18)', offset: 0.75 },
+      { transform: 'translate(-50%, 0) rotate(360deg) scale(1.1)' }
+    ],
+    // 7. เต้นฉลองโยกซ้ายขวาพร้อมชูมือเหนือหัว
+    [
+      { transform: 'translate(-50%, 0) rotate(0deg)' },
+      { transform: 'translate(-75%, -14px) rotate(-18deg) scale(1.12)' },
+      { transform: 'translate(-25%, -14px) rotate(18deg) scale(1.12)' },
+      { transform: 'translate(-75%, -14px) rotate(-18deg) scale(1.12)' },
+      { transform: 'translate(-25%, -14px) rotate(18deg) scale(1.12)' },
+      { transform: 'translate(-50%, 0) rotate(0deg)' }
+    ]
+  ];
+
+  const animTiming = { duration: 1550, easing: 'ease-in-out', fill: 'forwards' };
+
+  if (isGoal) {
+    lastKickerGoalAct = pickRandomActionIndex(lastKickerGoalAct, 7);
+    lastGkConcedeAct = pickRandomActionIndex(lastGkConcedeAct, 7);
+    kicker.animate(kickerGoalActions[lastKickerGoalAct], animTiming);
+    gk.animate(gkConcedeActions[lastGkConcedeAct], animTiming);
+  } else {
+    lastKickerMissAct = pickRandomActionIndex(lastKickerMissAct, 7);
+    lastGkSaveAct = pickRandomActionIndex(lastGkSaveAct, 7);
+    kicker.animate(kickerMissActions[lastKickerMissAct], animTiming);
+    gk.animate(gkSaveActions[lastGkSaveAct], animTiming);
+  }
+}
+
+// === ระบบแสดงภาพ Animation (ไม่กระทบ Logic เกม) ===
+function resetVisuals() {
+  const ball = document.getElementById('vBall');
+  const gk = document.getElementById('vGk');
+  const kicker = document.getElementById('vKicker');
+  const vText = document.getElementById('vText');
+  
+  kicker.getAnimations().forEach(a => a.cancel());
+  gk.getAnimations().forEach(a => a.cancel());
+  vText.getAnimations().forEach(a => a.cancel());
+
+  // รีเซ็ตท่าแขนของคนยิงและผู้รักษาประตูกลับสู่ท่าเตรียมพร้อม
+  document.getElementById('kickerArmL').setAttribute('d', 'M 40 58 L 18 92');
+  document.getElementById('kickerArmR').setAttribute('d', 'M 90 58 L 112 88');
+  document.getElementById('kickerSleeveL').setAttribute('d', 'M 42 55 L 26 78');
+  document.getElementById('kickerSleeveR').setAttribute('d', 'M 88 55 L 104 76');
+
+  document.getElementById('gkSleeveL').setAttribute('d', 'M 38 56 Q 18 75 14 108');
+  document.getElementById('gkSleeveR').setAttribute('d', 'M 82 56 Q 102 75 106 108');
+  document.getElementById('gkGloveL').setAttribute('cx', '14');
+  document.getElementById('gkGloveL').setAttribute('cy', '114');
+  document.getElementById('gkGloveR').setAttribute('cx', '106');
+  document.getElementById('gkGloveR').setAttribute('cy', '114');
+
+  ball.classList.remove('ball-in-goal');
+  ball.style.transition = 'none';
+  ball.style.transform = 'translate(-50%, -50%) rotate(0deg) scale(1)';
+  ball.style.left = '50%';
+  ball.style.bottom = '14%';
+  ball.style.top = 'auto';
+
+  gk.style.transition = 'none';
+  gk.style.transform = 'translateX(-50%)';
+
+  kicker.classList.remove('kicking');
+  kicker.style.transition = 'none';
+  kicker.style.transform = 'translateX(-50%)';
+}
+
+function playVisualAnimation(shotDir, gkDir, isGoal) {
+  const ball = document.getElementById('vBall');
+  const gk = document.getElementById('vGk');
+  const kicker = document.getElementById('vKicker');
+  const vText = document.getElementById('vText');
+  const goalRect = document.getElementById('vGoal').getBoundingClientRect();
+  const layerRect = document.getElementById('visualLayer').getBoundingClientRect();
+
+  vText.style.opacity = '0';
+  vText.style.transition = 'none';
+  vText.className = 'v-text-overlay';
+
+  resetVisuals();
+
+  // คำนวณพิกัดเป้าหมายแบบสัมพัทธ์เพื่อรองรับ Responsive
+  const tMap = {
+    'TL': {x: 0.12, y: 0.22}, 'TR': {x: 0.88, y: 0.22},
+    'C':  {x: 0.5,  y: 0.5},
+    'BL': {x: 0.12, y: 0.82}, 'BR': {x: 0.88, y: 0.82}
+  };
+
+  const getPos = (dir) => {
+    return {
+      x: goalRect.left - layerRect.left + (goalRect.width * tMap[dir].x),
+      y: goalRect.top - layerRect.top + (goalRect.height * tMap[dir].y)
+    };
+  };
+
+  const shotPos = getPos(shotDir);
+  const gkPos = getPos(gkDir);
+
+  // 1. Kicker วิ่งเข้าหาลูกบอลพร้อมง้างเท้าเตะ
+  kicker.style.transition = "transform 0.15s ease-in";
+  kicker.style.transform = "translateX(-35%) translateY(-18px) scale(1.05)";
+  kicker.classList.add('kicking');
+
+  // 2. บอลพุ่งและ GK พุ่ง
+  setTimeout(() => {
+    kicker.classList.remove('kicking');
+
+    // Ball พุ่งพร้อมหมุนลูกฟุตบอลและขยายขนาดให้เห็นชัดแม้เข้ามุมบนขวา
+    ball.style.transition = "all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+    ball.style.left = shotPos.x + "px";
+    ball.style.top = shotPos.y + "px";
+    ball.style.bottom = "auto";
+    ball.style.transform = "translate(-50%, -50%) rotate(360deg) scale(0.68)";
+
+    // GK พุ่งเซฟ
+    gk.style.transition = "all 0.35s ease-out";
+    const gkX = gkPos.x - (goalRect.left - layerRect.left + goalRect.width/2);
+    const gkY = gkPos.y - (goalRect.top - layerRect.top + goalRect.height/2);
+    let rotate = gkX < 0 ? -45 : (gkX > 0 ? 45 : 0);
+    if (gkDir === 'C') rotate = 0;
+    gk.style.transform = `translate(calc(-50% + ${gkX}px), ${gkY}px) rotate(${rotate}deg)`;
+
+    // 3. แสดงข้อความผลลัพธ์ GOAL! / SAVED! พร้อมเอฟเฟกต์ลูกบอลและท่าทางดีใจ/เซ็งทั้งสองฝ่ายในจังหวะเดียวกัน
+    setTimeout(() => {
+      if (isGoal) {
+        ball.classList.add('ball-in-goal');
+      } else {
+        // กรณีเซฟได้ ลูกบอลกระดอนออกจากมือผู้รักษาประตูเล็กน้อยให้สมจริง
+        const reboundX = shotPos.x + (shotDir === 'TL' || shotDir === 'BL' ? -28 : (shotDir === 'TR' || shotDir === 'BR' ? 28 : 0));
+        const reboundY = shotPos.y + 32;
+        ball.style.transition = "all 0.3s ease-out";
+        ball.style.left = reboundX + "px";
+        ball.style.top = reboundY + "px";
+        ball.style.transform = "translate(-50%, -50%) rotate(520deg) scale(0.72)";
+      }
+
+      vText.textContent = isGoal ? "GOAL!" : "SAVED!";
+      vText.className = isGoal ? 'v-text-overlay text-goal' : 'v-text-overlay text-save';
+      vText.style.transition = "opacity 0.15s";
+      vText.style.opacity = '1';
+      vText.animate([
+        { transform: 'translate(-50%, -50%) scale(0.3) rotate(-8deg)' },
+        { transform: 'translate(-50%, -50%) scale(1.25) rotate(4deg)', offset: 0.55 },
+        { transform: 'translate(-50%, -50%) scale(0.95) rotate(-2deg)', offset: 0.8 },
+        { transform: 'translate(-50%, -50%) scale(1) rotate(0deg)' }
+      ], { duration: 480, easing: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)' });
+
+      // แสดงท่าทางดีใจและท่าทางเซ็งพร้อมกันทั้งผู้ยิงและผู้รักษาประตู (สุ่มจาก 7 แบบสลับกัน)
+      playReactionAnimations(isGoal, gkX, gkY);
+    }, 350);
+
+  }, 150);
+}
+
+function showSuddenDeathVisual() {
+  const sd = document.getElementById('vSuddenDeath');
+  const vText = document.getElementById('vText');
+  sd.style.opacity = '1';
+  
+  vText.textContent = "SUDDEN DEATH!";
+  vText.className = 'v-text-overlay text-sudden';
+  vText.style.transition = "opacity 0.3s";
+  vText.style.opacity = '1';
+  
+  setTimeout(() => {
+    if (vText.textContent === "SUDDEN DEATH!") vText.style.opacity = '0';
+  }, 2000);
+}
+
+// ---------- ตัวช่วยแสดงผลออนไลน์ (ไม่แตะ logic เกม/เสียง) ----------
+const teamLabels = {
+  "Manchester United": "แมนยู",
+  "Liverpool": "ลิเวอร์พูล",
+  "Arsenal": "อาร์เซนอล",
+  "Chelsea": "เชลซี",
+  "Thai all-stars": "ไทย all-stars",
+  "1414 Witthaya": "1414 วิทยา"
+};
+const dirToBtnId = { TL: "tl", TR: "tr", C: "center", BL: "bl", BR: "br" };
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+function teamLabel(t) { return teamLabels[t] || t || "-"; }
+function kitChipStyle(team) {
+  const k = teamKits[team];
+  if (!k) return "background:#555";
+  const second = (k.sleeves && k.sleeves !== k.shirt) ? k.sleeves : k.trim;
+  return `background:linear-gradient(135deg,${k.shirt} 50%,${second} 50%)`;
+}
+
+let visualBusyUntil = 0;      // เวลาที่แอนิเมชันผลยิงตาล่าสุดจะจบ
+let sbHoldUntil = 0, sbTimer = null;
+let turnVisualTimer = null, bannerTimer = null;
+let shotPips = { 1: [], 2: [] };
+
+// บทบาทของ "ตาที่ระบุ" (ใช้ย้อนดูตาที่เพิ่งจบ) สูตรเดียวกับ getRoles
+function getRolesForTurn(d, t) {
+  const p1 = d.p1Id, p2 = d.p2Id;
+  const shooterId = t % 2 === 0 ? d.firstShooter : (d.firstShooter === p1 ? p2 : p1);
+  const keeperId = shooterId === p1 ? p2 : p1;
+  return { shooterId, keeperId };
+}
+
+function getTurnInfo(d) {
+  if (!d || typeof d.turn !== "number" || !d.players) return null;
+  const { shooterId, keeperId } = getRolesForTurn(d, d.turn);
+  const sp = d.players[shooterId], kp = d.players[keeperId];
+  if (!sp || !kp) return null;
+  const isP1 = shooterId === d.p1Id;
+  const order = (isP1 ? d.shotOrderP1 : d.shotOrderP2) || [];
+  const idx = (isP1 ? d.shotIndexP1 : d.shotIndexP2) || 0;
+  return {
+    shooterId, keeperId,
+    shooterTeam: sp.team, keeperTeam: kp.team,
+    shooterName: order.length ? order[idx % order.length] : "นักเตะ",
+    keeperName: squads[kp.team] ? squads[kp.team].keeper : "",
+    shotNo: idx + 1
+  };
+}
+
+// ---------- เข้าสู่หน้าเล่น ----------
+function uiEnterGame(room) {
+  ["vGoal", "vBall", "vKicker"].forEach(id => { document.getElementById(id).style.display = "block"; });
+  shotPips = { 1: [], 2: [] };
+  resetVisuals();
+  document.getElementById("vSuddenDeath").style.opacity = "0";
+  document.getElementById("vText").style.opacity = "0";
+}
+
+// ---------- เริ่มตาใหม่: เปลี่ยนชุดผู้ยิง/GK (รอให้แอนิเมชันตาก่อนหน้าจบก่อน) ----------
+function setupTurnVisual(shooterTeam, keeperTeam) {
+  resetVisuals();
+  const vText = document.getElementById("vText");
+  vText.style.opacity = "0";
+  vText.className = "v-text-overlay";
+  updatePlayerKits(shooterTeam, keeperTeam);
+}
+
+function uiOnNewTurn(d) {
+  const info = getTurnInfo(d);
+  if (!info) return;
+  clearTimeout(turnVisualTimer);
+  const run = () => { setupTurnVisual(info.shooterTeam, info.keeperTeam); refreshBanner(); };
+  const wait = visualBusyUntil - Date.now();
+  if (wait <= 0) run(); else turnVisualTimer = setTimeout(run, wait + 30);
+}
+
+// ---------- ผลยิง: เล่นแอนิเมชันเหมือนกันทั้งสองฝั่ง ----------
+function uiOnResult(data, r) {
+  try {
+    const roles = getRolesForTurn(data, r.turn);
+    const players = data.players || {};
+    const picks = (data.picks && data.picks["t" + r.turn]) || {};
+    const keeperTeam = players[roles.keeperId] ? players[roles.keeperId].team : null;
+
+    let sDir = picks[roles.shooterId], kDir = picks[roles.keeperId];
+    const valid = ["TL", "TR", "C", "BL", "BR"];
+    if (!valid.includes(sDir)) sDir = "C";
+    if (!valid.includes(kDir)) kDir = r.isGoal ? (sDir === "C" ? "TL" : "C") : sDir;
+
+    const side = roles.shooterId === data.p1Id ? 1 : 2;
+    shotPips[side].push(!!r.isGoal);
+    sbHoldUntil = Date.now() + 520;           // ซ่อนสกอร์ใหม่จนกว่าบอลจะถึงตาข่าย
+
+    clearTimeout(turnVisualTimer);
+    updatePlayerKits(r.shooterTeam, keeperTeam);
+    visualBusyUntil = Date.now() + 1900;
+    playVisualAnimation(sDir, kDir, !!r.isGoal);
+    scheduleBannerRefresh();
+  } catch (e) {
+    console.warn("แสดงผลแอนิเมชันไม่สำเร็จ:", e);
+  }
+}
+
+function uiSudden() {
+  const wait = Math.max(0, visualBusyUntil - Date.now()) + 150;
+  setTimeout(showSuddenDeathVisual, wait);
+}
+
+// ---------- สกอร์บอร์ด ----------
+function pipsHtml(arr) {
+  let items = arr.slice(-9).map(g => `<i class="pip ${g ? "goal" : "miss"}"></i>`);
+  for (let i = arr.length; i < 5; i++) items.push('<i class="pip"></i>');
+  return items.join("");
+}
+
+function drawScoreboard(d) {
+  const el = document.getElementById("scoreBoard");
+  const pl = d.players || {};
+  const t1 = pl[d.p1Id] ? pl[d.p1Id].team : null;
+  const t2 = pl[d.p2Id] ? pl[d.p2Id].team : null;
+  const s1 = d.scoreP1 || 0, s2 = d.scoreP2 || 0;
+  const you1 = playerId === d.p1Id, you2 = playerId === d.p2Id;
+  el.classList.add("rich");
+  el.innerHTML =
+    `<div class="sb-side sb-left" aria-hidden="true">
+       <span class="sb-kit" style="${kitChipStyle(t1)}"></span>
+       <div class="sb-info"><span class="sb-name">${escapeHtml(teamLabel(t1))}${you1 ? "<em>คุณ</em>" : ""}</span>
+       <span class="sb-pips">${pipsHtml(shotPips[1])}</span></div>
+     </div>
+     <div class="sb-mid" aria-hidden="true"><b>${s1}</b><i>-</i><b>${s2}</b></div>
+     <div class="sb-side sb-right" aria-hidden="true">
+       <span class="sb-kit" style="${kitChipStyle(t2)}"></span>
+       <div class="sb-info"><span class="sb-name">${escapeHtml(teamLabel(t2))}${you2 ? "<em>คุณ</em>" : ""}</span>
+       <span class="sb-pips">${pipsHtml(shotPips[2])}</span></div>
+     </div>
+     <span class="sr-only">Score: ${s1} - ${s2}</span>`;
+}
+
+function renderScoreboard(d) {
+  clearTimeout(sbTimer);
+  const wait = sbHoldUntil - Date.now();
+  if (wait > 0) {
+    sbTimer = setTimeout(() => { if (liveData) drawScoreboard(liveData); }, wait + 20);
+    return;
+  }
+  drawScoreboard(d);
+}
+
+// ---------- ป้ายบอกตา ----------
+function refreshBanner() {
+  const d = liveData;
+  if (!d || d.status !== "playing" || typeof d.turn !== "number" || !d.players) return;
+  const r = getRolesForTurn(d, d.turn);
+  renderTurnBanner(d, r.shooterId === playerId);
+}
+function scheduleBannerRefresh() {
+  clearTimeout(bannerTimer);
+  const w = visualBusyUntil - Date.now();
+  if (w > 0) bannerTimer = setTimeout(refreshBanner, w + 40);
+}
+function renderTurnBanner(d, iAmShooter) {
+  const el = document.getElementById("currentTurn");
+  if (Date.now() < visualBusyUntil) {
+    el.innerHTML = '<span class="tb-main">ลุ้นผล...</span>';
+    scheduleBannerRefresh();
+    return;
+  }
+  const info = getTurnInfo(d);
+  const main = pickedTurn === d.turn
+    ? "เลือกแล้ว รอคู่แข่ง..."
+    : (iAmShooter ? "ถึงตาคุณยิง!" : "ถึงตาคุณเซฟ!");
+  const sub = info
+    ? `ลูกที่ ${info.shotNo} · ผู้ยิง ${escapeHtml(info.shooterName)} · GK ${escapeHtml(info.keeperName)}`
+    : "";
+  el.innerHTML = `<span class="tb-main">${main}</span>${sub ? `<span class="tb-sub">${sub}</span>` : ""}`;
+}
+
+// ---------- ไฮไลต์ปุ่มที่เลือกแล้ว ----------
+function updatePickHighlight(d) {
+  const mine = d.picks && d.picks["t" + d.turn] ? d.picks["t" + d.turn][playerId] : null;
+  Object.keys(dirToBtnId).forEach(k => {
+    const b = document.getElementById(dirToBtnId[k]);
+    const on = !!mine && mine === k;
+    b.classList.toggle("picked", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+// ---------- ล็อบบี้ / ห้อง ----------
+function playerListItem(id, p) {
+  const you = id === playerId;
+  return `<li><span class="pl-chip" style="${p.team ? kitChipStyle(p.team) : ""}"></span>` +
+         `<span class="pl-name">${escapeHtml(p.name)}${you ? ' <span class="pl-you">คุณ</span>' : ""}</span>` +
+         `${p.team ? `<span class="pl-team">${escapeHtml(teamLabel(p.team))}</span>` : ""}</li>`;
+}
+
+// ---------- หน้าผลลัพธ์ ----------
+function launchConfetti() {
+  const box = document.getElementById("confettiBox");
+  box.innerHTML = "";
+  const colors = ["#ffd700", "#ff5252", "#4caf50", "#40c4ff", "#e040fb", "#ffffff"];
+  for (let i = 0; i < 48; i++) {
+    const c = document.createElement("span");
+    c.className = "confetti";
+    c.style.left = Math.random() * 100 + "%";
+    c.style.background = colors[i % colors.length];
+    c.style.animationDuration = (2.4 + Math.random() * 2.6) + "s";
+    c.style.animationDelay = (Math.random() * 1.8) + "s";
+    box.appendChild(c);
+  }
+}
+
+function uiShowResult(room) {
+  try {
+    const pl = room.players || {};
+    const t1 = pl[room.p1Id] ? pl[room.p1Id].team : null;
+    const t2 = pl[room.p2Id] ? pl[room.p2Id].team : null;
+    const s1 = room.finalScoreP1 != null ? room.finalScoreP1 : (room.scoreP1 || 0);
+    const s2 = room.finalScoreP2 != null ? room.finalScoreP2 : (room.scoreP2 || 0);
+    const iWon = room.winner === playerId;
+    const winTeam = room.winner === room.p1Id ? t1 : t2;
+    const scr = document.getElementById("resultScreen");
+    scr.classList.toggle("lose", !iWon);
+    document.getElementById("resultScore").innerHTML =
+      `<span>${escapeHtml(teamLabel(t1))}</span><b>${s1}</b><span>-</span><b>${s2}</b><span>${escapeHtml(teamLabel(t2))}</span>`;
+    document.getElementById("resultSub").textContent = iWon ? "คุณชนะ! 🎉" : "เสียใจด้วย คราวหน้าเอาใหม่นะ";
+    const k = teamKits[winTeam];
+    if (k) document.getElementById("resultTitle").style.textShadow = `0 0 22px ${k.shirt}, 3px 3px 6px #000`;
+    if (iWon) launchConfetti();
+  } catch (e) {
+    console.warn("แสดงหน้าผลลัพธ์ไม่สำเร็จ:", e);
+  }
+}
+
+
+// === ตัวแปรหลัก ===
+let playerName = "", roomId = "", playerId = "", isHost = false;
+let currentRoomListener = null, soundListener = null, lobbyRoomsListener = null;
+let isButtonLocked = false;
+let gameStarted = false;
+let isMyTurn = false;
+
+let spokenTurns = new Set();
+let shotOrderP1 = [], shotOrderP2 = [];
+let lastProcessedTurn = -1;   
+let finalResultSpoken = false;
+
+// ===== เพิ่มตรงนี้: รายชื่อไฟล์เสียงทั้งหมด =====
+const goalSounds = ["t.mp3", "t1.mp3", "t2.mp3", "t3.mp3", "t4.mp3"];
+const missSounds = ["f.mp3", "f1.mp3", "f2.mp3", "f3.mp3", "f4.mp3"];
+const popSound = "pop.mp3";   // <--- เสียงใหม่ที่เพิ่มมา
+
+// ===== Web Audio API =====
+let audioCtx = null;
+let bgmSource = null, bgmGain = null, bgmWanted = false;
+const audioBuffers = {};
+
+function initAudio() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audioCtx = new AC();
+  }
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+}
+["pointerdown", "keydown", "touchstart"].forEach(ev =>
+  document.addEventListener(ev, () => { if (audioCtx) initAudio(); }, { passive: true })
+);
+
+async function loadBuffer(name) {
+  if (!audioCtx || audioBuffers[name]) return;
+  try {
+    const res = await fetch(`audio/${name}`);
+    const arr = await res.arrayBuffer();
+    audioBuffers[name] = await new Promise((ok, no) => audioCtx.decodeAudioData(arr, ok, no));
+    if (name === "b.mp3" && bgmWanted && !bgmSource) startBGM();
+  } catch (e) {
+    console.warn("โหลดเสียงไม่สำเร็จ:", name, e);
+  }
+}
+
+function preloadAllSounds() {
+  initAudio();
+  const files = ["friend.mp3", "b.mp3", "end.mp3", popSound, ...goalSounds, ...missSounds];
+  files.forEach(name => loadBuffer(name));
+}
+
+function playSound(name, volume = 1) {
+  initAudio();
+  const buf = audioBuffers[name];
+  if (!audioCtx || !buf) return;
+  const src = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  src.buffer = buf;
+  gain.gain.value = volume;
+  src.connect(gain).connect(audioCtx.destination);
+  src.start(0);
+}
+
+function startBGM() {
+  bgmWanted = true;
+  initAudio();
+  const buf = audioBuffers["b.mp3"];
+  if (!audioCtx || !buf) return;
+  if (bgmSource) return;
+  bgmSource = audioCtx.createBufferSource();
+  bgmGain = audioCtx.createGain();
+  bgmSource.buffer = buf;
+  bgmSource.loop = true;
+  bgmGain.gain.value = 0.3;
+  bgmSource.connect(bgmGain).connect(audioCtx.destination);
+  bgmSource.start(0);
+}
+function stopBGM() {
+  bgmWanted = false;
+  if (bgmSource) {
+    try { bgmSource.stop(0); } catch (e) {}
+    bgmSource.disconnect();
+    bgmSource = null;
+  }
+}
+
+function triggerSound(name) {
+  if (!roomId) return;
+  db.ref(`penaltyRooms/${roomId}/soundTrigger`).set({
+    name: name,
+    time: Date.now(),
+    playerId: playerId
+  });
+}
+
+function startSoundListener() {
+  if (soundListener) soundListener.off();
+  if (!roomId) return;
+  soundListener = db.ref(`penaltyRooms/${roomId}/soundTrigger`);
+  soundListener.on("value", s => {
+    const data = s.val();
+    if (!data || Date.now() - data.time > 1000) return;
+
+    const name = data.name;
+    playSound(name, 1);
+
+    let msg = "";
+    if (name === "end.mp3") msg = "จบเกม!";
+    else if (name === "friend.mp3") msg = `${playerName} เลือกทีมแล้ว`;
+
+    if (msg) {
+      speak(msg);
+      const live = document.getElementById("tts");
+      live.textContent = msg;
+      setTimeout(() => live.textContent = "", 3000);
+    }
+  });
+}
+
+let ttsQueue = [];
+let isSpeaking = false;
+const ttsDisplay = document.getElementById("ttsDisplay");
+
+function speak(text){
+  ttsQueue.push(text);
+  processTTS();
+}
+function processTTS(){
+  if(isSpeaking || ttsQueue.length === 0) return;
+  isSpeaking = true;
+  const msg = ttsQueue.shift();
+  ttsDisplay.textContent = msg;
+  ttsDisplay.classList.add('show');
+  setTimeout(()=>{
+    document.getElementById("tts").innerText = msg;
+    setTimeout(()=>{
+      isSpeaking = false;
+      document.getElementById("tts").innerText = "";
+      ttsDisplay.classList.remove('show');
+      processTTS();
+    }, Math.max(800, msg.length * 50));
+  }, 50);
+}
+
+const squads = {
+  "Manchester United": { 
+    players: [
+      "ดีโอโก้ ดาโลต์", "แฮร์รี่ แม็กไกวร์", "ลิซานโดร มาร์ติเนซ", "ลุค ชอว์", 
+      "อันเดรย์ ซานโตส", "ยูริ ตีเลอม็องส์", "ค็อบบี้ เมนู", "บรูโน่ แฟร์นันเดส", 
+      "ไบรอัน เอ็มเบวโม่", "เบนจามิน เชชโก้"
+    ], 
+    keeper: "เซนเน่ ลัมเมนส์" 
+  },
+
+  "Liverpool": { 
+    players: [
+      "เฌเรมี่ ฟริมปง", "เฟอร์จิล ฟาน ไดจ์", "โรนัลด์ อาเราโฮ", "มิลอส เคอร์เคซ", 
+      "ไรอัน กราเฟนแบร์ก", "โดมินิก โซโบสไล", "อเล็กซิส แม็ค อัลลิสเตอร์", 
+      "ฟลอเรียน เวิร์ตซ์", "โคดี้ กัคโป", "อเล็กซานเดอร์ อิซัค"
+    ], 
+    keeper: "อลีสซง เบ็คเกอร์" 
+  },
+
+  "Arsenal": { 
+    players: [
+      "ยูร์เรียน ทิมเบอร์", "วิลเลียม ซาลิบา", "กาเบรียล มากัลเญส", "ริคคาร์โด้ คาลาฟิออรี่", 
+      "เดแคลน ไรซ์", "มาร์ติน โอเดการ์ด", "บรูโน่ กิมาไรส์", 
+      "บูกาโย่ ซาก้า", "คริสตอส โซลิส", "วิคเตอร์ เยอเคเรส"
+    ], 
+    keeper: "ดาบิด ราย่า" 
+  },
+
+  "Chelsea": { 
+    players: [
+      "รีซ เจมส์", "เวสลีย์ โฟฟาน่า", "แม็กซ็องซ์ ลาครัวซ์", "ลีวาย โคลวิลล์", 
+      "เอ็นโซ เฟร์นันเดซ", "มอร์แกน โรเจอร์ส", "โคล พาลเมอร์", 
+      "เอสเตเวา วิลเลียน", "เจา เปโดร", "มอยเซส ไกเซโด้"
+    ], 
+    keeper: "โรเบิร์ต ซานเชซ" 
+  },
+"Thai all-stars": {
+    "players": ["ธีรศิลป์ แดงดา","ชนาธิป สรงกระสินธ์","ธีราทร บุญมาทัน","ปิยะพงษ์ ผิวอ่อน","เกียรติศักดิ์ เสนาเมือง","วรวุฒิ ศรีมะฆะ","ธวัชชัย ดำรงค์อ่องตระกูล","ดัสกร ทองเหลา","สุรชัย จตุรภัทรพงศ์","ธีรเทพ วิโนทัย"],
+    "keeper": "สินทวีชัย หทัยรัตนกุล"
+},
+"1414 Witthaya": {
+    "players": ["โจ้ เมืองนนท์","นนท์ ออกญา","พี่เอก ไอที","Oabi","Super Peet","หมาน้อย กิ๊ก๊อก","ดีเจต่าย","บิ๊ก หงส์แดง","แกรนด์ มาริโอ้","Jimmy Akkaradech"],
+    "keeper": "นายหมอคอม"
+}
+};
+
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function createShotsOrder(team){
+  let players = squads[team].players.slice();
+  players.push(squads[team].keeper);   // ผู้รักษาประตูเป็น 1 ใน 11 คน สุ่มลำดับรวมกัน
+  shuffle(players);
+  return players;
+}
+
+function getShooterName(order, shotIndex) {
+  const length = order.length;
+  if (length === 0) return "นักเตะ";
+  return order[shotIndex % length];
+}
+
+function debounceClick(dir){
+  if(isButtonLocked || !isMyTurn) return;
+  if(Date.now() < inputUnlockAt) return;
+  isButtonLocked = true;
+  chooseDirection(dir);
+  setTimeout(()=>{ isButtonLocked = false; }, 300);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const playerNameInput = document.getElementById("playerName");
+  const confirmBtn = document.getElementById("confirmNameBtn");
+
+  playerNameInput.focus();
+
+  confirmBtn.addEventListener("click", confirmName);
+  playerNameInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") confirmName();
+  });
+
+  document.getElementById("createRoomBtn").onclick = showCreateRoom;
+  document.querySelectorAll(".team-btn").forEach(btn => {
+    btn.onclick = () => chooseTeam(btn.getAttribute("data-team"));
+  });
+
+  document.getElementById("mainMenuBtn").style.display = "block";
+});
+
+function confirmName() {
+  const input = document.getElementById("playerName");
+  playerName = input.value.trim();
+  if (!playerName) {
+    alert("กรุณาใส่ชื่อ");
+    return;
+  }
+  playerId = Math.random().toString(36).substr(2,9);
+  document.getElementById("nameInput").style.display = "none";
+  document.getElementById("lobby").style.display = "block";
+  document.getElementById("mainMenuBtn").style.display = "none";
+  preloadAllSounds();
+  loadRooms();
+
+  setTimeout(() => {
+    document.getElementById("createRoomBtn").focus();
+  }, 100);
+}
+
+async function showCreateRoom() {
+  const name = prompt("ตั้งชื่อห้อง:");
+  if (!name || name.trim() === "") return;
+
+  const roomRef = db.ref("penaltyRooms").push();
+  const newRoomId = roomRef.key;
+
+  try {
+    await roomRef.set({
+      name: name.trim(),
+      status: "waiting",
+      host: playerId,
+      created: Date.now(),
+      players: {
+        [playerId]: { name: playerName, team: null }
+      }
+    });
+
+    const playerRef = db.ref(`penaltyRooms/${newRoomId}/players/${playerId}`);
+    playerRef.onDisconnect().remove();
+
+    roomId = newRoomId;
+    isHost = true;
+    showRoom();
+
+    setTimeout(() => {
+      const firstTeamBtn = document.querySelector("#teamSelectInRoom button");
+      if (firstTeamBtn) firstTeamBtn.focus();
+    }, 300);
+  } catch (err) {
+    console.error("สร้างห้องล้มเหลว:", err);
+    alert("สร้างห้องล้มเหลว กรุณาลองใหม่");
+  }
+}
+
+async function joinRoom(id) {
+  if (lobbyRoomsListener) lobbyRoomsListener.off();
+  
+  try {
+    const snap = await db.ref(`penaltyRooms/${id}`).once("value");
+    const room = snap.val();
+    if (!room || room.status !== "waiting") {
+      alert("ห้องนี้ไม่สามารถเข้าร่วมได้แล้ว");
+      loadRooms(); 
+      return;
+    }
+
+    const players = room.players || {};
+    const activePlayers = Object.values(players).filter(p => p && p.name);
+    if (activePlayers.length >= 2) {
+      alert("ห้องเต็มแล้ว");
+      loadRooms(); 
+      return;
+    }
+
+    roomId = id;
+    const playerRef = db.ref(`penaltyRooms/${roomId}/players/${playerId}`);
+    await playerRef.set({ name: playerName, team: null });
+    playerRef.onDisconnect().remove();
+
+    showRoom();
+
+    setTimeout(() => {
+      const manUButton = document.querySelector('#teamSelectInRoom button[data-team="Manchester United"]');
+      if (manUButton && !manUButton.disabled) {
+        manUButton.focus();
+      } else {
+        const firstAvailable = document.querySelector('#teamSelectInRoom button:not(.unavailable):not(:disabled)');
+        if (firstAvailable) firstAvailable.focus();
+      }
+    }, 400);
+
+  } catch (err) {
+    console.error(err);
+    alert("เข้าร่วมห้องล้มเหลว");
+    loadRooms();
+  }
+}
+
+function loadRooms() {
+  const list = document.getElementById("roomList");
+  if (lobbyRoomsListener) lobbyRoomsListener.off();
+  
+  lobbyRoomsListener = db.ref("penaltyRooms").orderByChild("status").equalTo("waiting");
+  lobbyRoomsListener.on("value", snap => {
+    list.innerHTML = "";
+    const now = Date.now();
+
+    snap.forEach(r => {
+      const room = r.val();
+      const key = r.key;
+      if (!room) return;
+
+      const players = room.players || {};
+      const activePlayers = Object.values(players).filter(p => p && p.name);
+      const count = activePlayers.length;
+
+      if (count === 0 || (room.created && now - room.created > 300000)) {
+        db.ref(`penaltyRooms/${key}`).remove();
+        return;
+      }
+
+      if (count < 2) {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="room-name">${escapeHtml(room.name)}</span><span class="room-count">${count}/2</span>`;
+        const btn = document.createElement("button");
+        btn.textContent = "เข้าร่วม";
+        btn.className = "join-btn";
+        btn.onclick = () => joinRoom(key);
+        li.appendChild(btn);
+        list.appendChild(li);
+      }
+    });
+  });
+}
+
+function showRoom() {
+  document.getElementById("lobby").style.display = "none";
+  document.getElementById("room").style.display = "block";
+  startSoundListener();
+
+  if (currentRoomListener) currentRoomListener.off();
+  currentRoomListener = db.ref(`penaltyRooms/${roomId}`);
+  currentRoomListener.on("value", snap => {
+    const room = snap.val();
+    if (!room) { alert("ห้องถูกลบ"); location.reload(); return; }
+    document.getElementById("roomName").textContent = `ห้อง: ${room.name}`;
+    
+    const players = room.players || {};
+    const list = document.getElementById("playerList");
+    list.innerHTML = "";
+    for (let id in players) {
+      const p = players[id];
+      if (p && p.name) {
+        list.innerHTML += playerListItem(id, p);
+      }
+    }
+    updateTeamButtons(room);
+
+    const takenTeams = Object.values(players).filter(p => p && p.team).map(p => p.team);
+    const teamDiv = document.getElementById("teamSelectInRoom");
+    const waitMsg = document.getElementById("waitingMessage");
+    const startBtn = document.getElementById("startBtn");
+
+    if (players[playerId]?.team) {
+      teamDiv.style.display = "none";
+      waitMsg.style.display = "block";
+      waitMsg.innerHTML = takenTeams.length === 1 ? "เลือกทีมแล้ว รอผู้เล่นที่เหลือ..." : "เลือกทีมแล้ว รอเจ้าของห้องกดเริ่มเกม…";
+    } else {
+      teamDiv.style.display = "flex";
+      waitMsg.style.display = "none";
+    }
+
+    if (room.host === playerId && takenTeams.length === 2) {
+      startBtn.style.display = "inline-block";
+      startBtn.disabled = false;
+    } else {
+      startBtn.style.display = "none";
+    }
+
+    if (room.status === "playing") startGameplay(room, players);
+    if (room.status === "finished" && !resultScheduled) {
+      resultScheduled = true;
+      setTimeout(() => showResult(room), 2500);
+    }
+  });
+}
+
+function updateTeamButtons(room) {
+  const taken = Object.values(room.players || {}).filter(p => p && p.team).map(p => p.team);
+  document.querySelectorAll(".team-btn").forEach(btn => {
+    const team = btn.getAttribute("data-team");
+    if (taken.includes(team)) {
+      btn.classList.add("unavailable");
+      btn.disabled = true;
+    } else {
+      btn.classList.remove("unavailable");
+      btn.disabled = false;
+    }
+  });
+}
+
+function chooseTeam(team) {
+  db.ref(`penaltyRooms/${roomId}/players/${playerId}/team`).set(team);
+  triggerSound("friend.mp3");
+  speak(`${playerName} เลือกทีม ${team}`);
+}
+
+function startGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+  document.getElementById("startBtn").disabled = true;
+  speak("เริ่มเกม!");
+
+  db.ref(`penaltyRooms/${roomId}/players`).once("value").then(snap => {
+    const players = snap.val();
+    const keys = Object.keys(players);
+    const p1Id = keys[0], p2Id = keys[1];
+    const p1Team = players[p1Id].team;
+    const p2Team = players[p2Id].team;
+    
+    const orderP1 = createShotsOrder(p1Team);
+    const orderP2 = createShotsOrder(p2Team);   
+    
+    const firstShooter = Math.random() < 0.5 ? p1Id : p2Id;
+    
+    speak(`ทีม ${p1Team} ปะทะ ${p2Team}`);
+    speak(`${players[firstShooter].name} จากทีม ${players[firstShooter].team} จะยิงลูกแรก`);
+    
+    db.ref(`penaltyRooms/${roomId}`).update({
+      status: "playing", 
+      firstShooter: firstShooter,
+      turn: 0,
+      scoreP1: 0, 
+      scoreP2: 0, 
+      shotIndexP1: 0, 
+      shotIndexP2: 0,
+      isSudden: false, 
+      picks: null,
+      lastResult: null,
+      shotOrderP1: orderP1,
+      shotOrderP2: orderP2,
+      p1Id: p1Id,
+      p2Id: p2Id
+    });
+  });
+}
+
+// ===== ตัวแปรควบคุมความปลอดภัยของ logic =====
+let gameplayStarted = false;
+let resultScheduled = false;
+let liveData = null;
+let pickedTurn = -1;
+let resolvingTurn = -1;
+let inputUnlockAt = 0;
+let announcedResultTurn = -1;
+let watchdogTimer = null;
+
+function getRoles(d) {
+  const p1 = d.p1Id, p2 = d.p2Id;
+  const shooterId = d.turn % 2 === 0 ? d.firstShooter : (d.firstShooter === p1 ? p2 : p1);
+  const keeperId = shooterId === p1 ? p2 : p1;
+  return { shooterId, keeperId };
+}
+
+// กติกา FIFA: 5 ลูกแรก จบก่อนได้ถ้าอีกฝ่ายตามไม่ทัน / ซัดเดนเดธ ตัดสินเมื่อยิงเท่ากันแล้วคะแนนต่าง
+function evaluateShootout(s1, s2, n1, n2) {
+  if (n1 <= 5 && n2 <= 5) {
+    const rem1 = 5 - n1, rem2 = 5 - n2;
+    if (s1 > s2 + rem2) return { end: true, winner: 1, sudden: false };
+    if (s2 > s1 + rem1) return { end: true, winner: 2, sudden: false };
+    if (n1 === 5 && n2 === 5 && s1 === s2) return { end: false, winner: 0, sudden: true };
+    return { end: false, winner: 0, sudden: false };
+  }
+  if (n1 === n2 && s1 !== s2) return { end: true, winner: s1 > s2 ? 1 : 2, sudden: false };
+  return { end: false, winner: 0, sudden: false };
+}
+
+function announceResult(data) {
+  const r = data.lastResult;
+  if (!r || r.turn <= announcedResultTurn) return;
+  announcedResultTurn = r.turn;
+  uiOnResult(data, r);   // [UI] เล่นแอนิเมชันผลยิง (ทั้งสองฝั่งเห็นเหมือนกัน)
+  const resultMsg = `${r.shooterName} จากทีม ${r.shooterTeam} ยิง${r.isGoal ? "เข้า" : "ไม่เข้า"}! คะแนน ${r.scoreP1} - ${r.scoreP2}`;
+  speak(resultMsg);
+  const live = document.getElementById("tts");
+  live.textContent = resultMsg;
+  setTimeout(() => live.textContent = "", 5000);
+}
+
+function startGameplay(room, players) {
+  if (gameplayStarted) return;      // กัน listener ซ้อนกัน
+  gameplayStarted = true;
+
+  document.getElementById("room").style.display = "none";
+  document.getElementById("gameScreen").style.display = "block";
+  document.getElementById("currentTurn").style.display = "block";
+  startBGM();
+  uiEnterGame(room);   // [UI] แสดงประตู/ผู้เล่น/ลูกบอล
+
+  shotOrderP1 = room.shotOrderP1 || [];
+  shotOrderP2 = room.shotOrderP2 || [];
+
+  const gameRef = db.ref(`penaltyRooms/${roomId}`);
+  
+  document.querySelectorAll('.shot-btn').forEach(btn => {
+    btn.classList.remove('locked');
+    btn.disabled = false;
+  });
+
+  setTimeout(() => {
+    const tlBtn = document.getElementById("tl");
+    if (tlBtn) tlBtn.focus();
+  }, 500);
+
+  let lastTurn = -1;
+  let lastIsSudden = false;
+
+  gameRef.on("value", snap => {
+    const data = snap.val();
+    liveData = data;
+
+    if (data) announceResult(data);
+
+    if (!data || data.status !== "playing") {
+      if (data) renderScoreboard(data);   // [UI] อัปเดตสกอร์สุดท้าย
+      document.querySelectorAll('.shot-btn').forEach(btn => {
+        btn.style.display = 'none';
+      });
+      document.getElementById("currentTurn").style.display = "none";
+      if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+      return;
+    }
+
+    const players = data.players || {};
+    shotOrderP1 = data.shotOrderP1 || [];
+    shotOrderP2 = data.shotOrderP2 || [];
+
+    const scoreP1 = data.scoreP1 || 0;
+    const scoreP2 = data.scoreP2 || 0;
+    renderScoreboard(data);   // [UI] สกอร์บอร์ดแบบใหม่ (เดิม: Score: x - y)
+
+    const p1Id = data.p1Id;
+    const p2Id = data.p2Id;
+    
+    const { shooterId: currentShooterId, keeperId: currentKeeperId } = getRoles(data);
+    isMyTurn = (playerId === currentShooterId || playerId === currentKeeperId);
+
+    const alreadyPicked = pickedTurn === data.turn;
+    document.querySelectorAll('.shot-btn').forEach(btn => {
+      if (isMyTurn) {
+        btn.classList.toggle('locked', alreadyPicked);
+        btn.setAttribute('aria-disabled', alreadyPicked ? 'true' : 'false');
+        btn.disabled = false;
+        btn.style.display = 'block';
+      } else {
+        btn.classList.add('locked');
+        btn.disabled = true;
+      }
+    });
+
+    updatePickHighlight(data);   // [UI] ไฮไลต์ปุ่มที่เลือกแล้ว
+    const currentTurnEl = document.getElementById("currentTurn");
+    const action = playerId === currentShooterId ? "ยิง!" : "เซฟ!";
+    renderTurnBanner(data, playerId === currentShooterId);   // [UI] เดิม: ถึงตาคุณ${action}
+    currentTurnEl.style.background = playerId === currentShooterId ? "rgba(76,175,80,0.9)" : "rgba(255,152,0,0.9)";
+    currentTurnEl.style.color = "white";
+
+    if (data.turn !== lastTurn) {
+      lastTurn = data.turn;
+      inputUnlockAt = Date.now() + 800;   // กันกดแซง/กดค้างข้ามตา
+      inputUnlockAt = Math.max(inputUnlockAt, visualBusyUntil);   // [UI] รอแอนิเมชันผลยิงจบก่อนกดตาถัดไป
+      uiOnNewTurn(data);   // [UI] เปลี่ยนชุดผู้ยิง/GK ของตานี้
+
+      const shooterOrder = currentShooterId === p1Id ? shotOrderP1 : shotOrderP2;
+      const shooterIndex = currentShooterId === p1Id ? data.shotIndexP1 : data.shotIndexP2;
+      const shooterName = getShooterName(shooterOrder, shooterIndex);
+      const keeperTeam = players[currentKeeperId].team;
+      const keeperName = squads[keeperTeam].keeper;
+      const shooterTeam = players[currentShooterId].team;
+
+      if (playerId === currentShooterId && !spokenTurns.has(`turn_${data.turn}_shooter`)) {
+        spokenTurns.add(`turn_${data.turn}_shooter`);
+        speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง`);
+      }
+
+      if (playerId === currentKeeperId && !spokenTurns.has(`turn_${data.turn}_keeper`)) {
+        spokenTurns.add(`turn_${data.turn}_keeper`);
+        speak(`ลูกที่ ${shooterIndex + 1} ${shooterTeam}: ${shooterName} เตรียมยิง ${keeperName} ของคุณพร้อมเซฟ`);
+      }
+    }
+
+    if (data.isSudden && !lastIsSudden) {
+      if (!spokenTurns.has("sudden")) {
+        spokenTurns.add("sudden");
+        speak("เข้าสู่ซัดเดนเดธ!");
+        uiSudden();   // [UI]
+      }
+    }
+    lastIsSudden = data.isSudden;
+
+    tryResolve(gameRef);
+  });
+
+  // watchdog: ถ้าเครื่องที่ตัดสินผลหลุดหรือค้าง เครื่องที่เหลือจะมาทำต่อ
+  if (watchdogTimer) clearInterval(watchdogTimer);
+  watchdogTimer = setInterval(() => {
+    resolvingTurn = -1;
+    tryResolve(gameRef);
+  }, 3000);
+}
+
+// ตัดสินผลทั้งหมด (คะแนน ตา ซัดเดนเดธ จบเกม) ใน transaction เดียว atomic
+// เครื่องไหนทำก็ได้ แต่ผ่านได้ครั้งเดียวต่อ 1 ตา เพราะเช็ก room.turn === t
+function tryResolve(gameRef) {
+  const data = liveData;
+  if (!data || data.status !== "playing" || typeof data.turn !== "number") return;
+  const t = data.turn;
+  const { shooterId, keeperId } = getRoles(data);
+  const pk = (data.picks && data.picks["t" + t]) || {};
+  if (!pk[shooterId] || !pk[keeperId]) return;
+  if (resolvingTurn === t) return;
+  resolvingTurn = t;
+
+  gameRef.transaction(room => {
+    if (!room || room.status !== "playing" || room.turn !== t) return;   // abort
+    const roles = getRoles(room);
+    const picks = (room.picks && room.picks["t" + t]) || {};
+    const sDir = picks[roles.shooterId];
+    const kDir = picks[roles.keeperId];
+    if (!sDir || !kDir) return;
+    if (!room.players || !room.players[roles.shooterId] || !room.players[roles.keeperId]) return;
+
+    const isP1Shooter = roles.shooterId === room.p1Id;
+    const order = (isP1Shooter ? room.shotOrderP1 : room.shotOrderP2) || [];
+    let n1 = room.shotIndexP1 || 0, n2 = room.shotIndexP2 || 0;
+    let s1 = room.scoreP1 || 0, s2 = room.scoreP2 || 0;
+
+    const shooterName = getShooterName(order, isP1Shooter ? n1 : n2);
+    const shooterTeam = room.players[roles.shooterId].team;
+    const isGoal = sDir !== kDir;
+
+    if (isGoal) { isP1Shooter ? s1++ : s2++; }
+    isP1Shooter ? n1++ : n2++;
+
+    const sound = isGoal
+      ? goalSounds[Math.floor(Math.random() * goalSounds.length)]
+      : missSounds[Math.floor(Math.random() * missSounds.length)];
+
+    const ev = evaluateShootout(s1, s2, n1, n2);
+
+    room.turn = t + 1;
+    room.scoreP1 = s1; room.scoreP2 = s2;
+    room.shotIndexP1 = n1; room.shotIndexP2 = n2;
+    room.isSudden = !!room.isSudden || ev.sudden;
+    room.lastResult = {
+      turn: t, shooterName, shooterTeam, isGoal,
+      scoreP1: s1, scoreP2: s2, sound
+    };
+    if (ev.end) {
+      room.status = "finished";
+      room.winner = ev.winner === 1 ? room.p1Id : room.p2Id;
+      room.finalScoreP1 = s1;
+      room.finalScoreP2 = s2;
+    }
+    return room;
+  }, (err, committed, snap) => {
+    if (err || !committed) return;   // อีกเครื่องตัดสินไปแล้ว หรือรอข้อมูลล่าสุด (watchdog จะลองใหม่)
+    const val = snap.val();
+    if (!val || !val.lastResult || val.lastResult.turn !== t) return;
+    triggerSound(val.lastResult.sound);
+    if (val.status === "finished") {
+      stopBGM();
+      setTimeout(() => triggerSound("end.mp3"), 1500);
+    }
+  }, false);
+}
+
+// บันทึกการเลือก: แยกตามตาและตามผู้เล่น เขียนได้ครั้งเดียวต่อตา (กดซ้ำ/กดแซงไม่มีผล)
+function chooseDirection(dir) {
+  const d = liveData;
+  if (!d || d.status !== "playing" || typeof d.turn !== "number") return;
+  if (!["TL", "TR", "C", "BL", "BR"].includes(dir)) return;
+  if (playerId !== d.p1Id && playerId !== d.p2Id) return;
+
+  const t = d.turn;
+  if (pickedTurn === t) return;
+  pickedTurn = t;
+
+  document.querySelectorAll('.shot-btn').forEach(btn => {
+    btn.classList.add('locked');
+    btn.setAttribute('aria-disabled', 'true');
+  });
+
+  db.ref(`penaltyRooms/${roomId}/picks/t${t}/${playerId}`).transaction(
+    cur => cur ? undefined : dir,
+    (err, committed) => {
+      if (err) { if (pickedTurn === t) pickedTurn = -1; return; }
+      if (committed) triggerSound(popSound);
+    },
+    false
+  );
+}
+
+function showResult(room) {
+  stopBGM();
+  document.getElementById("gameScreen").style.display = "none";
+  document.getElementById("currentTurn").style.display = "none";
+  document.querySelectorAll('.shot-btn').forEach(btn => {
+    btn.style.display = 'none';
+  });
+
+  const p1Team = room.players[room.p1Id].team;
+  const p2Team = room.players[room.p2Id].team;
+  const winnerTeam = room.winner === room.p1Id ? p1Team : p2Team;
+
+  document.getElementById("resultTitle").textContent = `${winnerTeam} เป็นฝ่ายชนะ`;
+  document.getElementById("resultMessage").textContent = "ยินดีด้วย!";
+  document.getElementById("resultScreen").style.display = "flex";
+  document.getElementById("mainMenuBtn").style.display = "block";
+  uiShowResult(room);   // [UI]
+
+  if (!finalResultSpoken) {
+    finalResultSpoken = true;
+    const finalMsg = `${winnerTeam} เป็นฝ่ายชนะ ยินดีด้วย!`;
+    speak(finalMsg);
+    const live = document.getElementById("tts");
+    live.textContent = finalMsg;
+    setTimeout(() => live.textContent = "", 8000);
+  }
+}
+</script>
+</body>
+</html>
