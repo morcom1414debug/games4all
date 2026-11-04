@@ -186,12 +186,26 @@ let roomPlayers = [], botColors = [], botNames = [], currentBotCount = 0, select
 let myPlayerName = "", isNameConfirmed = false;
 let deck = [], discardPile = [];
 let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null, flowSourceId: null, skipPreVotes: [] };
-let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 200, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false };
+let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 200, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false, temporaryBot: false, returnRequested: false };
 let globalPlayersMap = {}; 
 let turnTimerInterval = null;
 let announcerTimeout = null;
 let hostHeartbeatTimer = null;
 let heartbeatInterval = null;
+
+// =========================================================
+// Timeout, Temporary Bot & Disconnect States
+// =========================================================
+let currentTurnMaxTime = 40;
+let isProcessingTurnTimeout = false;
+let isEndingTurn = false;
+let activeBotSequencePlayerId = null;
+let botResponseTimers = {}; // Host map: { [playerId]: { interval, timeLeft, responded } }
+let localBotModalTimer = null;
+let hasSubmittedBotModalResponse = false;
+let isLocalTempBotModalOpen = false;
+let processedDisconnects = new Set();
+let isClosingHostRoom = false;
 
 function randomizeAllBotNames(count) {
     let shuffled = [...BOT_NAMES_POOL].sort(() => Math.random() - 0.5);
@@ -199,6 +213,13 @@ function randomizeAllBotNames(count) {
 }
 
 function triggerHostDisconnect() {
+    clearTimeout(hostHeartbeatTimer);
+    if (localBotModalTimer) {
+        clearInterval(localBotModalTimer);
+        localBotModalTimer = null;
+    }
+    closeTemporaryBotModal();
+
     const nameScreen = document.getElementById('name-entry-screen');
     if (nameScreen) nameScreen.style.display = 'none';
     document.getElementById('setup-screen').style.display = 'none';
@@ -223,6 +244,330 @@ function resetHeartbeat() {
     hostHeartbeatTimer = setTimeout(triggerHostDisconnect, 50000);
 }
 
+// =========================================================
+// Temporary Bot Modal & Accessibility Management
+// =========================================================
+function setBackgroundInertForBotModal(isInert) {
+    const bgIds = ['btn-home-top', 'game-screen', 'result-modal', 'waiting-room-screen', 'setup-screen', 'manual-screen', 'name-entry-screen'];
+    bgIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (isInert) {
+            el.setAttribute('aria-hidden', 'true');
+            el.setAttribute('inert', '');
+        } else {
+            el.removeAttribute('aria-hidden');
+            el.removeAttribute('inert');
+        }
+    });
+}
+
+function updateTemporaryBotModalCountdownText(seconds) {
+    const cdEl = document.getElementById('temporary-bot-countdown');
+    if (cdEl) {
+        cdEl.innerText = `กรุณาเลือกภายใน ${seconds} วินาที มิฉะนั้นระบบจะถือว่าคุณเลือก "ไม่ใช่"`;
+    }
+}
+
+function openTemporaryBotModal(initialSeconds = 30) {
+    const modal = document.getElementById('temporary-bot-modal');
+    if (!modal) return;
+
+    hasSubmittedBotModalResponse = false;
+    isLocalTempBotModalOpen = true;
+
+    const btnYes = document.getElementById('btn-bot-return-yes');
+    const btnNo = document.getElementById('btn-bot-return-no');
+    if (btnYes) btnYes.disabled = false;
+    if (btnNo) btnNo.disabled = false;
+
+    updateTemporaryBotModalCountdownText(initialSeconds);
+    setBackgroundInertForBotModal(true);
+    modal.style.display = 'flex';
+
+    if (localBotModalTimer) clearInterval(localBotModalTimer);
+    let localSec = initialSeconds;
+    localBotModalTimer = setInterval(() => {
+        localSec--;
+        if (localSec >= 0) {
+            updateTemporaryBotModalCountdownText(localSec);
+        }
+        if (localSec <= 0) {
+            clearInterval(localBotModalTimer);
+            localBotModalTimer = null;
+        }
+    }, 1000);
+
+    setTimeout(() => {
+        const heading = document.getElementById('temporary-bot-heading');
+        if (heading) heading.focus();
+    }, 100);
+}
+
+function closeTemporaryBotModal() {
+    const modal = document.getElementById('temporary-bot-modal');
+    if (localBotModalTimer) {
+        clearInterval(localBotModalTimer);
+        localBotModalTimer = null;
+    }
+    isLocalTempBotModalOpen = false;
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    setBackgroundInertForBotModal(false);
+}
+
+function setupTemporaryBotModalEvents() {
+    const btnYes = document.getElementById('btn-bot-return-yes');
+    const btnNo = document.getElementById('btn-bot-return-no');
+
+    if (btnYes) {
+        btnYes.onclick = () => handleBotModalChoice(true);
+    }
+    if (btnNo) {
+        btnNo.onclick = () => handleBotModalChoice(false);
+    }
+}
+
+function handleBotModalChoice(wantsToReturn) {
+    if (hasSubmittedBotModalResponse) return;
+    hasSubmittedBotModalResponse = true;
+
+    const btnYes = document.getElementById('btn-bot-return-yes');
+    const btnNo = document.getElementById('btn-bot-return-no');
+    if (btnYes) btnYes.disabled = true;
+    if (btnNo) btnNo.disabled = true;
+
+    closeTemporaryBotModal();
+
+    if (wantsToReturn) {
+        if (isHost) {
+            handlePlayerBotReturnYes(myPeerId);
+        } else if (hostConnection && hostConnection.open) {
+            hostConnection.send({ type: 'BOT_RETURN_YES', playerId: myPeerId });
+        }
+    } else {
+        if (isHost) {
+            handleHostRoomExit();
+        } else {
+            if (hostConnection && hostConnection.open) {
+                try {
+                    hostConnection.send({ type: 'CLIENT_LEAVE_ROOM', playerId: myPeerId });
+                } catch (e) {}
+            }
+            setTimeout(() => {
+                try { if (hostConnection) hostConnection.close(); } catch (e) {}
+                try { if (peer) peer.destroy(); } catch (e) {}
+                window.location.href = '../index.html';
+            }, 150);
+        }
+    }
+}
+
+function clearBotResponseTimer(playerId) {
+    if (botResponseTimers[playerId]) {
+        clearInterval(botResponseTimers[playerId].interval);
+        delete botResponseTimers[playerId];
+    }
+}
+
+function startHostBotResponseTimer(playerId) {
+    clearBotResponseTimer(playerId);
+    let stateObj = {
+        timeLeft: 30,
+        responded: false,
+        interval: null
+    };
+    botResponseTimers[playerId] = stateObj;
+
+    if (playerId === myPeerId) {
+        openTemporaryBotModal(30);
+    } else {
+        let conn = guestConnections.find(c => c.peer === playerId);
+        if (conn) {
+            conn.send({ type: 'SHOW_TEMP_BOT_MODAL', timeLeft: 30 });
+        }
+    }
+
+    stateObj.interval = setInterval(() => {
+        if (stateObj.responded) {
+            clearBotResponseTimer(playerId);
+            return;
+        }
+        stateObj.timeLeft--;
+
+        if (playerId === myPeerId) {
+            if (stateObj.timeLeft >= 0) updateTemporaryBotModalCountdownText(stateObj.timeLeft);
+        } else {
+            let conn = guestConnections.find(c => c.peer === playerId);
+            if (conn && stateObj.timeLeft >= 0) {
+                conn.send({ type: 'TEMP_BOT_MODAL_COUNTDOWN', timeLeft: stateObj.timeLeft });
+            }
+        }
+
+        if (stateObj.timeLeft <= 0) {
+            stateObj.responded = true;
+            clearBotResponseTimer(playerId);
+            handleBotModalTimeoutOnHost(playerId);
+        }
+    }, 1000);
+}
+
+function handleBotModalTimeoutOnHost(playerId) {
+    if (playerId === myPeerId) {
+        closeTemporaryBotModal();
+        handleHostRoomExit();
+    } else {
+        let conn = guestConnections.find(c => c.peer === playerId);
+        if (conn) {
+            try {
+                conn.send({ type: 'FORCE_LEAVE_TO_INDEX' });
+            } catch (e) {}
+        }
+        handleClientDeparture(playerId, 'timeout');
+    }
+}
+
+function handlePlayerBotReturnYes(playerId) {
+    if (!isHost) return;
+    let timerObj = botResponseTimers[playerId];
+    if (timerObj) {
+        if (timerObj.responded) return;
+        timerObj.responded = true;
+        clearBotResponseTimer(playerId);
+    }
+
+    let p = gameState.players.find(x => x.id === playerId);
+    if (!p || p.permanentBot || !p.temporaryBot) return;
+    if (p.returnRequested) return;
+
+    p.returnRequested = true;
+
+    if (playerId === myPeerId) {
+        closeTemporaryBotModal();
+    } else {
+        let conn = guestConnections.find(c => c.peer === playerId);
+        if (conn) {
+            conn.send({ type: 'CLOSE_TEMP_BOT_MODAL' });
+        }
+    }
+
+    syncStateToAll();
+}
+
+// =========================================================
+// Unified Client Departure & Host Room Exit Handlers
+// =========================================================
+function handleClientDeparture(playerId, reason = 'disconnect') {
+    if (!isHost || !playerId || playerId === myPeerId) return;
+    if (processedDisconnects.has(playerId)) return;
+    processedDisconnects.add(playerId);
+
+    clearBotResponseTimer(playerId);
+
+    // 1. ปิดและลบ Connection ออกจาก guestConnections อย่างปลอดภัย
+    let connIdx = guestConnections.findIndex(c => c.peer === playerId);
+    if (connIdx !== -1) {
+        let conn = guestConnections[connIdx];
+        guestConnections.splice(connIdx, 1);
+        try {
+            conn.close();
+        } catch (e) {}
+    }
+
+    // 2. กรณีอยู่ในห้องรอ (WAITING) ก่อนเริ่มเกม
+    if (gameState.status === 'WAITING') {
+        let rpIdx = roomPlayers.findIndex(p => p.id === playerId);
+        let removedName = resolveName(playerId);
+        if (rpIdx !== -1) {
+            roomPlayers.splice(rpIdx, 1);
+        }
+        let joIdx = window.joinOrder.indexOf(playerId);
+        if (joIdx !== -1) {
+            window.joinOrder.splice(joIdx, 1);
+        }
+        broadcastLobby();
+        broadcastAnnounce(`${removedName} ออกจากห้องรอผู้เล่น`);
+        return;
+    }
+
+    // 3. กรณีอยู่ในเกม เปลี่ยนผู้เล่นคนนั้นเป็นบอทถาวร โดยรักษา Player ID, ชื่อ, ไพ่, คะแนน และลำดับเดิม
+    let p = gameState.players.find(x => x.id === playerId);
+    if (!p) return;
+
+    p.isBot = true;
+    p.originalIsBot = false;
+    p.temporaryBot = false;
+    p.returnRequested = false;
+    p.permanentBot = true;
+
+    broadcastAnnounce(`[PID:${p.id}] ออกจากห้อง ระบบเปลี่ยนเป็นบอทเล่นแทนจนจบเกม`);
+
+    // หากอยู่ในช่วง PRE_GAME ให้ตรวจสอบว่าผู้เล่นจริงที่เหลือโหวตข้ามครบหรือยัง
+    if (gameState.status === 'PRE_GAME') {
+        syncStateToAll();
+        let realPlayers = gameState.players.filter(x => !x.isOut && !x.isBot);
+        if (realPlayers.length === 0 || (gameState.skipPreVotes && realPlayers.every(rp => gameState.skipPreVotes.includes(rp.id)))) {
+            clearInterval(turnTimerInterval);
+            triggerSound('60');
+            gameState.status = 'PLAYING';
+            let firstPlayer = gameState.players[gameState.turnIndex] || gameState.players[0];
+            broadcastAnnounce(`📢 ผู้เล่นทุกคนพร้อมแล้ว! ขอเชิญ [PID:${firstPlayer.id}] จั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ`);
+            syncStateToAll();
+            startTurnTimer();
+            checkBotTurn();
+        }
+        return;
+    }
+
+    syncStateToAll();
+
+    // หากเป็นตาของผู้เล่นที่เพิ่งออกในสถานะ PLAYING ให้บอทเข้าควบคุมต่อทันทีโดยเกมไม่ค้าง
+    if (gameState.status === 'PLAYING') {
+        let currentTurnPlayer = gameState.players[gameState.turnIndex];
+        if (currentTurnPlayer && currentTurnPlayer.id === p.id) {
+            clearInterval(turnTimerInterval);
+            checkBotTurn();
+        }
+    }
+}
+
+function handleHostRoomExit() {
+    if (!isHost || isClosingHostRoom) return;
+    isClosingHostRoom = true;
+
+    clearInterval(turnTimerInterval);
+    clearInterval(heartbeatInterval);
+    if (localBotModalTimer) {
+        clearInterval(localBotModalTimer);
+        localBotModalTimer = null;
+    }
+    Object.keys(botResponseTimers).forEach(pid => clearBotResponseTimer(pid));
+
+    if (roomId) {
+        try {
+            remove(ref(db, GAME_DB_ID + '/rooms/' + roomId));
+        } catch (e) {}
+    }
+
+    guestConnections.forEach(c => {
+        try {
+            c.send({ type: 'HOST_CLOSED_ROOM' });
+        } catch (e) {}
+    });
+
+    setTimeout(() => {
+        guestConnections.forEach(c => {
+            try { c.close(); } catch (e) {}
+        });
+        guestConnections = [];
+        try {
+            if (peer) peer.destroy();
+        } catch (e) {}
+        window.location.href = '../index.html';
+    }, 200);
+}
+
 let currentTopCardText = "ยังไม่มีไพ่บนกอง";
 
 // --- CHEAT MODE BUFFERS ---
@@ -231,6 +576,8 @@ let cheatTimeout = null;
 
 // Shortcut Keys & Cheat Code Event Listener
 document.addEventListener('keydown', (e) => {
+    if (isLocalTempBotModalOpen) return;
+
     // 1. Cheat Mode Logic
     if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
         if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
@@ -452,6 +799,7 @@ window.onload = () => {
     myPeerId = "cang-client-" + Math.random().toString(36).substring(2, 8);
     peer = new Peer(myPeerId);
     setupNameEntryEvents();
+    setupTemporaryBotModalEvents();
     updateHomeBtnVisibility();
 
     const roomsRef = ref(db, GAME_DB_ID + '/rooms');
@@ -498,6 +846,7 @@ window.createNewRoom = () => {
                 botColors = [];
                 botNames = [];
                 currentBotCount = 0;
+                processedDisconnects.clear();
                 const myRoomRef = ref(db, GAME_DB_ID + '/rooms/' + roomId);
                 set(myRoomRef, { roomId: roomId, playerCount: 1, state: 'WAITING' });
                 onDisconnect(myRoomRef).remove();
@@ -532,6 +881,33 @@ window.joinRoomDirect = (targetRoomId) => {
     hostConnection.on('data', (data) => {
         resetHeartbeat();
         if (data.type === 'HEARTBEAT') return;
+        if (data.type === 'HOST_CLOSED_ROOM') {
+            triggerHostDisconnect();
+            return;
+        }
+        if (data.type === 'FORCE_LEAVE_TO_INDEX') {
+            closeTemporaryBotModal();
+            try { if (hostConnection) hostConnection.close(); } catch (e) {}
+            try { if (peer) peer.destroy(); } catch (e) {}
+            window.location.href = '../index.html';
+            return;
+        }
+        if (data.type === 'SHOW_TEMP_BOT_MODAL') {
+            openTemporaryBotModal(data.timeLeft || 30);
+            return;
+        }
+        if (data.type === 'TEMP_BOT_MODAL_COUNTDOWN') {
+            if (localBotModalTimer) {
+                clearInterval(localBotModalTimer);
+                localBotModalTimer = null;
+            }
+            updateTemporaryBotModalCountdownText(data.timeLeft);
+            return;
+        }
+        if (data.type === 'CLOSE_TEMP_BOT_MODAL') {
+            closeTemporaryBotModal();
+            return;
+        }
         if (data.type === 'LOBBY_UPDATE') { 
             roomPlayers = data.roomPlayers || [];
             currentBotCount = data.botCount || 0;
@@ -547,11 +923,17 @@ window.joinRoomDirect = (targetRoomId) => {
         if (data.type === 'ANIM_SC_FLOAT') showFloatingScore(data.targetId, data.amt);
         if (data.type === 'SHOW_RESULT') showResultModal(data.title, data.detail, data.isEnd, data.winners, data.losers);
         if (data.type === 'ANNOUNCE') announce(data.msg);
-        if (data.type === 'TIMER_UPDATE') window.updateTimerUI(data.timeLeft);
+        if (data.type === 'TIMER_UPDATE') window.updateTimerUI(data.timeLeft, data.maxTime);
         if (data.type === 'PLAY_SOUND') playSound(data.sound);
         if (data.type === 'SHOW_TRANSITION') window.showTransition(data.msg, data.duration);
         if (data.type === 'HIDE_TRANSITION') window.hideTransition();
         if (data.type === 'KANG_ANIMATION') window.playKangAnimation(data.callerId, data.winType);
+    });
+    hostConnection.on('close', () => {
+        triggerHostDisconnect();
+    });
+    hostConnection.on('error', () => {
+        triggerHostDisconnect();
     });
 };
 
@@ -573,6 +955,14 @@ function listenHostConnections() {
                 triggerSound('select');
             }
             if (data.type === 'PLAYER_ACTION') processPlayerAction(data.playerId, data.action, data.cardIndex);
+            if (data.type === 'BOT_RETURN_YES') handlePlayerBotReturnYes(data.playerId || conn.peer);
+            if (data.type === 'CLIENT_LEAVE_ROOM') handleClientDeparture(data.playerId || conn.peer, 'voluntary');
+        });
+        conn.on('close', () => {
+            handleClientDeparture(conn.peer, 'disconnect');
+        });
+        conn.on('error', () => {
+            handleClientDeparture(conn.peer, 'error');
         });
     });
 }
@@ -678,13 +1068,47 @@ function doCountdownAndStart() {
                             let bColor = botColors[botIdx] || COLORS[botIdx % COLORS.length].id;
                             let bName = botNames[botIdx] || BOT_NAMES_POOL[botIdx % BOT_NAMES_POOL.length];
                             let cInfo = COLORS.find(c => c.id === bColor) || COLORS[0];
-                            gameState.players.push({ id: id, name: bName, colorInfo: cInfo, isBot: true, points: 200, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
+                            gameState.players.push({
+                                id: id,
+                                name: bName,
+                                colorInfo: cInfo,
+                                isBot: true,
+                                originalIsBot: true,
+                                temporaryBot: false,
+                                returnRequested: false,
+                                permanentBot: false,
+                                consecutiveTimeouts: 0,
+                                nextTurnTimeLimit: 40,
+                                points: 200,
+                                hand: [],
+                                isOut: false,
+                                turnCount: 0,
+                                hasFinishedFirstTurn: false,
+                                hasFlowedThisTurn: false
+                            });
                         } else {
                             let p = roomPlayers.find(x => x.id === id);
                             if (p) {
                                 let cInfo = COLORS.find(c => c.id === p.color) || COLORS[0];
                                 let pName = (p.name && String(p.name).trim() !== '') ? String(p.name).trim() : (p.id === myPeerId && myPlayerName ? myPlayerName : 'ผู้เล่น');
-                                gameState.players.push({ id: p.id, name: pName, colorInfo: cInfo, isBot: false, points: 200, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
+                                gameState.players.push({
+                                    id: p.id,
+                                    name: pName,
+                                    colorInfo: cInfo,
+                                    isBot: false,
+                                    originalIsBot: false,
+                                    temporaryBot: false,
+                                    returnRequested: false,
+                                    permanentBot: false,
+                                    consecutiveTimeouts: 0,
+                                    nextTurnTimeLimit: 40,
+                                    points: 200,
+                                    hand: [],
+                                    isOut: false,
+                                    turnCount: 0,
+                                    hasFinishedFirstTurn: false,
+                                    hasFlowedThisTurn: false
+                                });
                             }
                         }
                     });
@@ -698,6 +1122,19 @@ function doCountdownAndStart() {
 // =========================================================
 // Game Logic Core
 // =========================================================
+function restorePlayerIfReturnRequested(p) {
+    if (!p) return false;
+    if (p.temporaryBot && p.returnRequested && !p.permanentBot && !p.originalIsBot) {
+        p.isBot = false;
+        p.temporaryBot = false;
+        p.returnRequested = false;
+        p.consecutiveTimeouts = 0;
+        p.nextTurnTimeLimit = 40;
+        return true;
+    }
+    return false;
+}
+
 function startNewRound() {
     if (window.nextRoundHostId) {
         let idx = gameState.players.findIndex(p => p.id === window.nextRoundHostId);
@@ -709,6 +1146,9 @@ function startNewRound() {
 
     deck = buildDeck(); discardPile = [];
     gameState.status = 'PRE_GAME'; gameState.turnIndex = 0; gameState.topCardOwnerId = null; gameState.flowSourceId = null; gameState.skipPreVotes = []; 
+    isProcessingTurnTimeout = false;
+    isEndingTurn = false;
+    activeBotSequencePlayerId = null;
     
     gameState.players.forEach((p) => {
         if(p.points > 0) { 
@@ -721,14 +1161,16 @@ function startNewRound() {
 
 function startPreGameTimer() {
     clearInterval(turnTimerInterval);
-    let timeLeft = 40; broadcastTimer(timeLeft);
+    currentTurnMaxTime = 40;
+    let timeLeft = 40; broadcastTimer(timeLeft, 40);
     turnTimerInterval = setInterval(() => {
-        timeLeft--; broadcastTimer(timeLeft);
+        timeLeft--; broadcastTimer(timeLeft, 40);
         if(timeLeft <= 0) { 
             clearInterval(turnTimerInterval); 
             if (gameState.status === 'PRE_GAME') {
                 triggerSound('60'); gameState.status = 'PLAYING';
                 let firstPlayer = gameState.players[gameState.turnIndex] || gameState.players[0];
+                restorePlayerIfReturnRequested(firstPlayer);
                 broadcastAnnounce(`📢 หมดเวลาดูไพ่ 40 วินาที ไม่มีใครกดแคง! ขอเชิญ [PID:${firstPlayer.id}] จั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ`);
                 syncStateToAll(); startTurnTimer(); checkBotTurn();
             }
@@ -738,38 +1180,81 @@ function startPreGameTimer() {
 
 function startTurnTimer() {
     clearInterval(turnTimerInterval);
-    let timeLeft = 40; broadcastTimer(timeLeft);
+    let cp = gameState.players[gameState.turnIndex];
+    let maxTime = (cp && !cp.isBot && cp.nextTurnTimeLimit === 20) ? 20 : 40;
+    currentTurnMaxTime = maxTime;
+    let timeLeft = maxTime;
+    broadcastTimer(timeLeft, maxTime);
     turnTimerInterval = setInterval(() => {
-        timeLeft--; broadcastTimer(timeLeft);
+        timeLeft--; broadcastTimer(timeLeft, maxTime);
         if(timeLeft <= 0) { clearInterval(turnTimerInterval); handleTurnTimeout(); }
     }, 1000);
 }
 
-function broadcastTimer(t) {
-    if(myPeerId) window.updateTimerUI(t);
-    guestConnections.forEach(c => c.send({ type: 'TIMER_UPDATE', timeLeft: t }));
+function broadcastTimer(t, maxT = currentTurnMaxTime) {
+    if(myPeerId) window.updateTimerUI(t, maxT);
+    guestConnections.forEach(c => c.send({ type: 'TIMER_UPDATE', timeLeft: t, maxTime: maxT }));
 }
 
-window.updateTimerUI = (timeLeft) => {
+window.updateTimerUI = (timeLeft, maxTime = 40) => {
     const timerBar = document.getElementById('timer-bar-fill');
     if(timerBar) {
-        let maxTime = 40; let pct = Math.max(0, (timeLeft / maxTime) * 100);
+        let validMax = (maxTime && maxTime > 0) ? maxTime : 40;
+        let pct = Math.max(0, (timeLeft / validMax) * 100);
         timerBar.style.width = pct + '%'; timerBar.style.background = timeLeft <= 10 ? 'var(--red)' : 'var(--orange)';
     }
 };
 
 function handleTurnTimeout() {
+    if (isProcessingTurnTimeout) return;
     let cp = gameState.players[gameState.turnIndex];
-    if(cp.isBot || gameState.status !== 'PLAYING') return;
-    
-    if (discardPile.length === 0 && !cp.hasDiscardedTurn) {
-        if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW');
-        if (cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0);
-    } else {
-        if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW');
-        if (!cp.hasDiscardedTurn && cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0);
+    if (!cp || cp.isBot || gameState.status !== 'PLAYING') return;
+
+    isProcessingTurnTimeout = true;
+    try {
+        cp.consecutiveTimeouts = (cp.consecutiveTimeouts || 0) + 1;
+
+        if (cp.consecutiveTimeouts === 1) {
+            // ระดับที่ 1: หมดเวลาครั้งที่ 1
+            cp.nextTurnTimeLimit = 40;
+            broadcastAnnounce(`⏰ [PID:${cp.id}] หมดเวลาเล่น (ครั้งที่ 1/3) ระบบเล่นแทนอัตโนมัติ`);
+            if (discardPile.length === 0 && !cp.hasDiscardedTurn) {
+                if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW', 0, true);
+                if (cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0, true);
+            } else {
+                if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW', 0, true);
+                if (!cp.hasDiscardedTurn && cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0, true);
+            }
+            if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN', 0, true);
+        } else if (cp.consecutiveTimeouts === 2) {
+            // ระดับที่ 2: หมดเวลาครั้งที่ 2 ติดต่อกัน ลดเวลาตาถัดไปเหลือ 20 วินาที
+            cp.nextTurnTimeLimit = 20;
+            broadcastAnnounce(`⏰ [PID:${cp.id}] หมดเวลาเล่น 2 ครั้งติดต่อกัน! ตาถัดไปจะลดเวลาเหลือ 20 วินาที`);
+            if (discardPile.length === 0 && !cp.hasDiscardedTurn) {
+                if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW', 0, true);
+                if (cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0, true);
+            } else {
+                if (!cp.hasDrawnTurn) processPlayerAction(cp.id, 'DRAW', 0, true);
+                if (!cp.hasDiscardedTurn && cp.hand.length > 0) processPlayerAction(cp.id, 'DISCARD', 0, true);
+            }
+            if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN', 0, true);
+        } else if (cp.consecutiveTimeouts >= 3) {
+            // ระดับที่ 3: หมดเวลาครบ 3 ครั้ง เปลี่ยนเป็นบอทชั่วคราวทันทีและเปิด Modal เฉพาะเครื่องนั้น
+            cp.isBot = true;
+            cp.temporaryBot = true;
+            cp.returnRequested = false;
+            cp.nextTurnTimeLimit = 40;
+
+            broadcastAnnounce(`🤖 [PID:${cp.id}] หมดเวลาครบ 3 ครั้ง ระบบเปลี่ยนเป็นบอทชั่วคราวเพื่อให้เกมดำเนินต่อไป`);
+            syncStateToAll();
+            startHostBotResponseTimer(cp.id);
+
+            // ให้บอทควบคุมตัวละครนั้นต่อทันทีในตานี้โดยไม่หยุดเกม
+            checkBotTurn();
+        }
+    } finally {
+        isProcessingTurnTimeout = false;
     }
-    if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
 }
 
 function syncStateToAll() {
@@ -780,13 +1265,36 @@ function syncStateToAll() {
         status: gameState.status, turnId: gameState.players[gameState.turnIndex].id, topDiscard: discardPile[discardPile.length - 1],
         deckCount: deck.length, discardPileCount: discardPile.length, skipVotes: gameState.skipPreVotes || [],
         playersInfo: gameState.players.map(p => ({
-            id: p.id, name: p.name, colorHex: p.colorInfo ? p.colorInfo.hex : 'var(--red)', colorName: p.colorInfo ? p.colorInfo.name : 'แดง', isBot: p.isBot, points: p.points, cardCount: p.hand.length, isOut: p.isOut
+            id: p.id,
+            name: p.name,
+            colorHex: p.colorInfo ? p.colorInfo.hex : 'var(--red)',
+            colorName: p.colorInfo ? p.colorInfo.name : 'แดง',
+            isBot: p.isBot,
+            temporaryBot: !!p.temporaryBot,
+            returnRequested: !!p.returnRequested,
+            permanentBot: !!p.permanentBot,
+            points: p.points,
+            cardCount: p.hand.length,
+            isOut: p.isOut
         }))
     };
 
     gameState.players.forEach(p => {
-        if(!p.isBot) {
-            let privateState = { hand: p.hand, hasDrawn: p.hasDrawnTurn, hasDiscarded: p.hasDiscardedTurn, discardedRank: p.discardedRankThisTurn, points: p.points, turnCount: p.turnCount, hasFinishedFirstTurn: p.hasFinishedFirstTurn, hasFlowedThisTurn: p.hasFlowedThisTurn };
+        // ซิงก์ข้อมูลให้ผู้เล่นจริงทุกคน รวมถึงผู้เล่นที่ถูกเปลี่ยนเป็นบอทชั่วคราว (ตราบใดที่ยังไม่ได้ออกจากห้องถาวร)
+        const isHumanSlot = !p.originalIsBot && !String(p.id).startsWith('bot_');
+        if (isHumanSlot && !p.permanentBot) {
+            let privateState = {
+                hand: p.hand,
+                hasDrawn: p.hasDrawnTurn,
+                hasDiscarded: p.hasDiscardedTurn,
+                discardedRank: p.discardedRankThisTurn,
+                points: p.points,
+                turnCount: p.turnCount,
+                hasFinishedFirstTurn: p.hasFinishedFirstTurn,
+                hasFlowedThisTurn: p.hasFlowedThisTurn,
+                temporaryBot: !!p.temporaryBot,
+                returnRequested: !!p.returnRequested
+            };
             if (p.id === myPeerId) renderClientGame(publicState, privateState);
             else {
                 let conn = guestConnections.find(c => c.peer === p.id);
@@ -887,55 +1395,100 @@ function broadcastKangAnimation(callerId, winType) {
 // =========================================================
 
 function nextTurn() {
+    isEndingTurn = false;
+    activeBotSequencePlayerId = null;
+
     let prevPlayer = gameState.players[gameState.turnIndex];
     prevPlayer.hasDrawnTurn = false; prevPlayer.hasDiscardedTurn = false; prevPlayer.hasFlowedThisTurn = false; prevPlayer.discardedRankThisTurn = null;
 
     do { gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
     } while (gameState.players[gameState.turnIndex].isOut || gameState.players[gameState.turnIndex].hand.length === 0);
     
+    let currentTurnPlayer = gameState.players[gameState.turnIndex];
+    if (restorePlayerIfReturnRequested(currentTurnPlayer)) {
+        broadcastAnnounce(`✅ [PID:${currentTurnPlayer.id}] กลับมาควบคุมการเล่นตามปกติแล้ว`);
+    }
+
     triggerSound('turn'); syncStateToAll(); startTurnTimer(); checkBotTurn();
 }
 
 function checkBotTurn() {
     let cp = gameState.players[gameState.turnIndex];
-    if(cp.isBot && gameState.status === 'PLAYING') setTimeout(() => playBotSequence(cp), 1000);
+    if (!cp || !cp.isBot || gameState.status !== 'PLAYING') return;
+    if (activeBotSequencePlayerId === cp.id) return;
+    activeBotSequencePlayerId = cp.id;
+    setTimeout(() => playBotSequence(cp), 1000);
 }
 
 async function playBotSequence(cp) {
-    await delay(2000);
-    let handVal = cp.hand.reduce((sum, c) => sum + c.val, 0);
-    if (handVal <= 5 && discardPile.length > 0 && !cp.hasDrawnTurn) { processPlayerAction(cp.id, 'KANG'); return; }
+    try {
+        await delay(2000);
+        if (gameState.status !== 'PLAYING' || gameState.players[gameState.turnIndex]?.id !== cp.id || !cp.isBot) return;
 
-    let topCard = discardPile[discardPile.length - 1];
-    if (topCard && !cp.hasDrawnTurn) {
-        let flowIndex = cp.hand.findIndex(c => c.rank === topCard.rank);
-        if (flowIndex !== -1) {
-            processPlayerAction(cp.id, 'FLOW', flowIndex); await delay(2500); 
-            while(true) {
-                let matchIdx = cp.hand.findIndex(c => c.rank === topCard.rank);
-                if (matchIdx !== -1) { processPlayerAction(cp.id, 'FLOW', matchIdx); await delay(1500); }
-                else break;
-            }
-            await delay(2000);
-            if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
+        let handVal = cp.hand.reduce((sum, c) => sum + c.val, 0);
+        if (handVal <= 5 && discardPile.length > 0 && !cp.hasDrawnTurn && !cp.hasDiscardedTurn && !cp.hasFlowedThisTurn) {
+            processPlayerAction(cp.id, 'KANG', 0, true);
             return;
         }
-    }
 
-    if (!cp.hasDrawnTurn) { processPlayerAction(cp.id, 'DRAW'); await delay(2000); }
-    let rankCounts = {}; cp.hand.forEach(c => rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1);
-    let bestRank = null, maxCount = 0, maxVal = -1;
-    for (let r in rankCounts) {
-        let count = rankCounts[r]; let val = getCardValue(r);
-        if (count > maxCount || (count === maxCount && val > maxVal)) { maxCount = count; maxVal = val; bestRank = r; }
+        let topCard = discardPile[discardPile.length - 1];
+        if (topCard && !cp.hasDrawnTurn && !cp.hasDiscardedTurn) {
+            let flowIndex = cp.hand.findIndex(c => c.rank === topCard.rank);
+            if (flowIndex !== -1) {
+                processPlayerAction(cp.id, 'FLOW', flowIndex, true);
+                await delay(2500);
+                while (gameState.status === 'PLAYING' && gameState.players[gameState.turnIndex]?.id === cp.id && cp.isBot) {
+                    let matchIdx = cp.hand.findIndex(c => c.rank === topCard.rank);
+                    if (matchIdx !== -1) {
+                        processPlayerAction(cp.id, 'FLOW', matchIdx, true);
+                        await delay(1500);
+                    } else break;
+                }
+                await delay(2000);
+                if (gameState.status === 'PLAYING' && gameState.players[gameState.turnIndex]?.id === cp.id && cp.isBot) {
+                    processPlayerAction(cp.id, 'END_TURN', 0, true);
+                }
+                return;
+            }
+        }
+
+        if (!cp.hasDrawnTurn && !cp.hasFlowedThisTurn) {
+            processPlayerAction(cp.id, 'DRAW', 0, true);
+            await delay(2000);
+        }
+        if (gameState.status !== 'PLAYING' || gameState.players[gameState.turnIndex]?.id !== cp.id || !cp.isBot) return;
+
+        if (!cp.hasDiscardedTurn && !cp.hasFlowedThisTurn && cp.hand.length > 0) {
+            let rankCounts = {};
+            cp.hand.forEach(c => rankCounts[c.rank] = (rankCounts[c.rank] || 0) + 1);
+            let bestRank = null, maxCount = 0, maxVal = -1;
+            for (let r in rankCounts) {
+                let count = rankCounts[r];
+                let val = getCardValue(r);
+                if (count > maxCount || (count === maxCount && val > maxVal)) {
+                    maxCount = count;
+                    maxVal = val;
+                    bestRank = r;
+                }
+            }
+            while (gameState.status === 'PLAYING' && gameState.players[gameState.turnIndex]?.id === cp.id && cp.isBot) {
+                let matchIdx = cp.hand.findIndex(c => c.rank === bestRank);
+                if (matchIdx !== -1) {
+                    processPlayerAction(cp.id, 'DISCARD', matchIdx, true);
+                    await delay(1500);
+                } else break;
+            }
+        }
+
+        await delay(2000);
+        if (gameState.status === 'PLAYING' && gameState.players[gameState.turnIndex]?.id === cp.id && cp.isBot) {
+            processPlayerAction(cp.id, 'END_TURN', 0, true);
+        }
+    } finally {
+        if (activeBotSequencePlayerId === cp.id) {
+            activeBotSequencePlayerId = null;
+        }
     }
-    while(true) {
-        let matchIdx = cp.hand.findIndex(c => c.rank === bestRank);
-        if (matchIdx !== -1) { processPlayerAction(cp.id, 'DISCARD', matchIdx); await delay(1500); }
-        else break;
-    }
-    await delay(2000);
-    if (gameState.status === 'PLAYING') processPlayerAction(cp.id, 'END_TURN');
 }
 
 function resolveSpecialWin(callerId, winType) {
@@ -986,11 +1539,26 @@ function resolveSpecialWin(callerId, winType) {
     }, 4500);
 }
 
-function processPlayerAction(pId, action, cardIndex) {
+function resetPlayerTimeoutOnValidHumanAction(p) {
+    if (!p || p.isBot || p.temporaryBot || p.permanentBot) return;
+    p.consecutiveTimeouts = 0;
+    p.nextTurnTimeLimit = 40;
+}
+
+function processPlayerAction(pId, action, cardIndex, isInternalBotOrSystem = false) {
     let p = gameState.players.find(x => x.id === pId);
     if (!p || p.isOut) return;
 
-    if (action === 'SPECIAL_WIN') { resolveSpecialWin(p.id, cardIndex); return; }
+    // ป้องกันผู้เล่นจริงส่งคำสั่งแทรกในขณะที่ตัวละครถูกควบคุมโดยบอท (ชั่วคราวหรือถาวร)
+    if (!isInternalBotOrSystem && (p.isBot || p.temporaryBot || p.permanentBot)) {
+        return;
+    }
+
+    if (action === 'SPECIAL_WIN') {
+        if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(p);
+        resolveSpecialWin(p.id, cardIndex);
+        return;
+    }
 
     if (gameState.status === 'PRE_GAME') {
         if (action === 'SKIP_PRE' && !p.isBot) {
@@ -1001,6 +1569,7 @@ function processPlayerAction(pId, action, cardIndex) {
                 if (gameState.skipPreVotes.length >= realPlayers.length) {
                     clearInterval(turnTimerInterval); triggerSound('60'); gameState.status = 'PLAYING';
                     let firstPlayer = gameState.players[gameState.turnIndex] || gameState.players[0];
+                    restorePlayerIfReturnRequested(firstPlayer);
                     broadcastAnnounce(`📢 ผู้เล่นทุกคนพร้อมแล้ว! ขอเชิญ [PID:${firstPlayer.id}] จั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ`);
                     syncStateToAll(); startTurnTimer(); checkBotTurn();
                 }
@@ -1040,7 +1609,8 @@ function processPlayerAction(pId, action, cardIndex) {
         // ----------------------------------------------
 
         let topCard = discardPile[discardPile.length - 1]; let card = flowPlayer.hand[cardIndex];
-        if (topCard && card.rank === topCard.rank) {
+        if (topCard && card && card.rank === topCard.rank) {
+            if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(flowPlayer);
             triggerSound('follow'); let dropped = flowPlayer.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
             flowPlayer.hasFlowedThisTurn = true; 
 
@@ -1068,7 +1638,12 @@ function processPlayerAction(pId, action, cardIndex) {
             else {
                 gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
                 broadcastTransition('ไหลไพ่สำเร็จ! รอสักครู่...', 2500);
-                setTimeout(() => { gameState.status = 'PLAYING'; syncStateToAll(); startTurnTimer(); }, 2500);
+                setTimeout(() => {
+                    gameState.status = 'PLAYING';
+                    syncStateToAll();
+                    startTurnTimer();
+                    if (flowPlayer.isBot) checkBotTurn();
+                }, 2500);
             }
         }
         return;
@@ -1078,11 +1653,12 @@ function processPlayerAction(pId, action, cardIndex) {
     if(cp.id !== pId || gameState.status !== 'PLAYING') return; 
 
     if(action === 'DRAW' && !cp.hasDrawnTurn && !cp.hasFlowedThisTurn) {
+        if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
         if(deck.length > 0) {
             triggerSound('jua'); let drawnCard = deck.pop();
             cp.hand.push(drawnCard); cp.hasDrawnTurn = true;
             let publicMsg = `[PID:${cp.id}] จั่วไพ่ 1 ใบ`;
-            if (cp.isBot) { broadcastAnnounce(publicMsg); } 
+            if (cp.isBot && !cp.temporaryBot) { broadcastAnnounce(publicMsg); } 
             else {
                 let privateMsg = `[PID:${cp.id}] จั่วได้ไพ่ ${THAI_RANKS[drawnCard.rank]} ${THAI_SUITS[drawnCard.suit]}`;
                 if (myPeerId === cp.id) announce(privateMsg); else announce(publicMsg);
@@ -1097,6 +1673,7 @@ function processPlayerAction(pId, action, cardIndex) {
         let card = cp.hand[cardIndex];
         if (!card) return;
         if (!cp.hasDiscardedTurn && cp.hasDrawnTurn) {
+            if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
             triggerSound('select'); let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
             
             let isFirstDiscardInTurn = !cp.hasDiscardedTurn;
@@ -1114,6 +1691,7 @@ function processPlayerAction(pId, action, cardIndex) {
             } else syncStateToAll();
         } 
         else if (cp.hasDiscardedTurn && card.rank === cp.discardedRankThisTurn) {
+            if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
             triggerSound('select'); let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
             broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]} เพิ่มเติม (เลขเดียวกัน)`);
             if(cp.hand.length === 0) {
@@ -1123,6 +1701,9 @@ function processPlayerAction(pId, action, cardIndex) {
         }
     }
     else if(action === 'END_TURN' && (cp.hasDiscardedTurn || cp.hasFlowedThisTurn)) {
+        if (isEndingTurn) return;
+        isEndingTurn = true;
+        if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
         cp.hasFinishedFirstTurn = true;
         cp.turnCount = (cp.turnCount || 0) + 1;
         triggerSound('select'); broadcastAnnounce(`[PID:${cp.id}] กดยืนยันจบตา`);
@@ -1131,6 +1712,7 @@ function processPlayerAction(pId, action, cardIndex) {
         setTimeout(() => { gameState.status = 'PLAYING'; nextTurn(); }, 2000);
     }
     else if(action === 'KANG' && !cp.hasDrawnTurn && !cp.hasFlowedThisTurn && discardPile.length > 0) {
+        if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
         broadcastKangAnimation(cp.id, 'cang'); setTimeout(() => resolveKang(cp.id), 4500);
     }
 }
@@ -1231,11 +1813,13 @@ function renderClientGame(publicState, privateState) {
     localPlayerState = privateState;
     const turnId = publicState.turnId;
     const isFirstPlayer = (myPeerId === publicState.playersInfo[0].id);
-    const isMyTurn = (turnId === myPeerId);
+    const myPublicInfo = publicState.playersInfo.find(p => p.id === myPeerId);
+    const isControlledByBot = !!(localPlayerState.temporaryBot || (myPublicInfo && (myPublicInfo.isBot || myPublicInfo.temporaryBot)));
+    const isMyTurn = (turnId === myPeerId) && !isControlledByBot;
     
     publicState.playersInfo.forEach(p => {
         let pName = (p.name && String(p.name).trim() !== '') ? String(p.name).trim() : (globalPlayersMap[p.id] && globalPlayersMap[p.id].name ? globalPlayersMap[p.id].name : 'ผู้เล่น');
-        globalPlayersMap[p.id] = { isBot: p.isBot, name: pName, colorName: p.colorName, colorHex: p.colorHex };
+        globalPlayersMap[p.id] = { isBot: p.isBot, temporaryBot: p.temporaryBot, permanentBot: p.permanentBot, name: pName, colorName: p.colorName, colorHex: p.colorHex };
     });
     let currPlayerDisp = resolveName(turnId);
     
@@ -1256,12 +1840,12 @@ function renderClientGame(publicState, privateState) {
             turnInd.innerText = "เตรียมตัว! เช็คไพ่ในมือ (40 วินาที)";
         } else {
             let oldTurnTxt = turnInd.innerText;
-            let newTurnTxt = isMyTurn ? `🔥 ถึงรอบของ ${currPlayerDisp} แล้ว!` : `ถึงรอบของ ${currPlayerDisp} แล้ว`;
+            let newTurnTxt = (turnId === myPeerId && !isControlledByBot) ? `🔥 ถึงรอบของ ${currPlayerDisp} แล้ว!` : `ถึงรอบของ ${currPlayerDisp} แล้ว`;
             if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
                 turnInd.innerText = newTurnTxt;
                 let topC = publicState.topDiscard;
                 let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
-                if(isMyTurn) announce(`ถึงรอบของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
+                if(turnId === myPeerId && !isControlledByBot) announce(`ถึงรอบของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
                 else announce(`ถึงรอบของ ${currPlayerDisp} แล้ว (ไพ่บนกองคือ ${topTxt})`, false);
             }
         }
@@ -1304,7 +1888,7 @@ function renderClientGame(publicState, privateState) {
     if (topC) currentTopCardText = `ไพ่บนกองทิ้งปัจจุบันคือ ${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}`;
     else currentTopCardText = `ยังไม่มีไพ่บนกองทิ้ง`;
 
-    let hasVoted = publicState.skipVotes && publicState.skipVotes.includes(myPeerId);
+    let hasVoted = (publicState.skipVotes && publicState.skipVotes.includes(myPeerId)) || isControlledByBot;
 
     if (publicState.status === 'PRE_GAME') {
         let myHandSum = (localPlayerState.hand || []).reduce((s, c) => s + (c.val || getCardValue(c.rank)), 0);
@@ -1329,7 +1913,7 @@ function renderClientGame(publicState, privateState) {
         btnKang25.style.display = 'none'; btnSkip.style.display = 'none';
         btnDraw.style.display = 'inline-block'; btnEnd.style.display = 'inline-block'; btnKang.style.display = 'inline-block';
 
-        if(isMyTurn && publicState.status === 'PLAYING') {
+        if(isMyTurn && publicState.status === 'PLAYING' && !isControlledByBot) {
             btnDraw.disabled = localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn;
             btnKang.disabled = localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn || publicState.discardPileCount === 0;
             btnEnd.disabled = !(localPlayerState.hasDiscarded || localPlayerState.hasFlowedThisTurn);
@@ -1338,9 +1922,13 @@ function renderClientGame(publicState, privateState) {
 
     currentSpecialWinType = getSpecialWinType(localPlayerState.hand, localPlayerState);
 
-    if (currentSpecialWinType && (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING')) {
+    if (currentSpecialWinType && (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING') && !isControlledByBot) {
         btnSpecial.style.display = 'inline-block'; btnSpecial.innerText = currentSpecialWinType;
-    } else { btnSpecial.style.display = 'none'; }
+        btnSpecial.disabled = false;
+    } else {
+        btnSpecial.style.display = 'none';
+        btnSpecial.disabled = true;
+    }
 
 const deckCountTxt = document.getElementById('deck-count-text');
 
@@ -1395,7 +1983,7 @@ if (deckAccessibleObject) {
             
             let canFlowCard = (topC && c.rank === topC.rank && !localPlayerState.hasDrawn && !localPlayerState.hasDiscarded);
 
-            if (publicState.status === 'PLAYING') {
+            if (publicState.status === 'PLAYING' && !isControlledByBot) {
                 if (canFlowCard) {
                     if (isMyTurn) { // เป็น Turn ตัวเองเท่านั้นจึงจะไหลได้
                         cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
@@ -1429,6 +2017,13 @@ if (deckAccessibleObject) {
 }
 
 window.clientAction = (action, index = 0) => {
+    const myPub = window.currentPublicState && window.currentPublicState.playersInfo
+        ? window.currentPublicState.playersInfo.find(p => p.id === myPeerId)
+        : null;
+    if (localPlayerState.temporaryBot || (myPub && (myPub.isBot || myPub.temporaryBot))) {
+        return;
+    }
+
     // --- [เพิ่มมิติการแสดงผล] Visual Trigger: แอนิเมชันเมื่อผู้เล่นกดทำ Action ส่งข้อมูล ---
     try {
         if (action === 'DISCARD' || action === 'FLOW') {
@@ -1583,7 +2178,12 @@ window.showResultModal = (title, detail, isEnd, winners, losers) => {
         else playSound('no'); 
     }
 
-    setTimeout(() => { const resultTitle = document.getElementById('result-title'); if (resultTitle) resultTitle.focus(); }, 200);
+    setTimeout(() => {
+        if (!isLocalTempBotModalOpen) {
+            const resultTitle = document.getElementById('result-title');
+            if (resultTitle) resultTitle.focus();
+        }
+    }, 200);
 };
 
 // =========================================================
