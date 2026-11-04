@@ -157,9 +157,33 @@ const COLORS = [
 const THAI_SUITS = { '♠': 'โพดำ', '♥': 'โพแดง', '♦': 'ข้าวหลามตัด', '♣': 'ดอกจิก' };
 const THAI_RANKS = { 'A': 'เอซ', '2': 'สอง', '3': 'สาม', '4': 'สี่', '5': 'ห้า', '6': 'หก', '7': 'เจ็ด', '8': 'แปด', '9': 'เก้า', '10': 'สิบ', 'J': 'แจ็ค', 'Q': 'แหม่ม', 'K': 'คิง' };
 
+const BOT_NAMES_POOL = [
+    "บอทเมเปิ้ล",
+    "บอทตาหวาน",
+    "บอทข้าวปั้น",
+    "บอทโมจิ",
+    "บอทถุงเงิน",
+    "บอทมะลิ",
+    "บอทไข่มุก",
+    "บอทสายไหม",
+    "บอทโกโก้",
+    "บอทเจ้าถั่ว",
+    "บอทใบชา",
+    "บอทปุยนุ่น",
+    "บอทน้ำผึ้ง",
+    "บอทคุกกี้",
+    "บอทลูกพลับ",
+    "บอทข้าวเหนียว",
+    "บอทฟองนม",
+    "บอทปลาทู",
+    "บอทจุ๊บจิ๊บ",
+    "บอทเจ้าขนม"
+];
+
 let peer = null, myPeerId = null, roomId = null, isHost = false;
 let hostConnection = null, guestConnections = []; 
-let roomPlayers = [], botColors = [], currentBotCount = 0, selectedColorId = 'red';
+let roomPlayers = [], botColors = [], botNames = [], currentBotCount = 0, selectedColorId = 'red';
+let myPlayerName = "", isNameConfirmed = false;
 let deck = [], discardPile = [];
 let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null, flowSourceId: null, skipPreVotes: [] };
 let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 200, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false };
@@ -169,7 +193,14 @@ let announcerTimeout = null;
 let hostHeartbeatTimer = null;
 let heartbeatInterval = null;
 
+function randomizeAllBotNames(count) {
+    let shuffled = [...BOT_NAMES_POOL].sort(() => Math.random() - 0.5);
+    botNames = shuffled.slice(0, count);
+}
+
 function triggerHostDisconnect() {
+    const nameScreen = document.getElementById('name-entry-screen');
+    if (nameScreen) nameScreen.style.display = 'none';
     document.getElementById('setup-screen').style.display = 'none';
     document.getElementById('waiting-room-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'none';
@@ -244,8 +275,10 @@ document.addEventListener('keydown', (e) => {
 
 function updateHomeBtnVisibility() {
     const homeBtn = document.getElementById('btn-home-top');
+    const nameScreen = document.getElementById('name-entry-screen');
+    const nameDisp = nameScreen ? window.getComputedStyle(nameScreen).display : 'none';
     const setupDisp = window.getComputedStyle(document.getElementById('setup-screen')).display;
-    if (setupDisp !== 'none') homeBtn.style.display = 'block';
+    if (setupDisp !== 'none' || nameDisp !== 'none') homeBtn.style.display = 'block';
     else homeBtn.style.display = 'none';
 }
 
@@ -260,10 +293,28 @@ for(let i=0; i<15; i++) {
 
 function resolveName(id) {
     let p = globalPlayersMap[id];
-    if(!p) return "ผู้เล่น";
-    if(id === myPeerId) return `คุณสี${p.colorName}`;
-    if(p.isBot) return `บอทสี${p.colorName}`;
-    return `เพื่อนสี${p.colorName}`;
+    if (p && p.name && String(p.name).trim() !== '') {
+        return String(p.name).trim();
+    }
+    if (gameState && gameState.players) {
+        let gp = gameState.players.find(x => x.id === id);
+        if (gp && gp.name && String(gp.name).trim() !== '') {
+            return String(gp.name).trim();
+        }
+    }
+    if (roomPlayers) {
+        let rp = roomPlayers.find(x => x.id === id);
+        if (rp && rp.name && String(rp.name).trim() !== '') {
+            return String(rp.name).trim();
+        }
+    }
+    if (typeof id === 'string' && id.startsWith('bot_')) {
+        let bIdx = parseInt(id.split('_')[1]);
+        if (!isNaN(bIdx) && botNames[bIdx]) return botNames[bIdx];
+        return BOT_NAMES_POOL[bIdx % BOT_NAMES_POOL.length] || "บอท";
+    }
+    if (id === myPeerId && myPlayerName) return myPlayerName;
+    return "ผู้เล่น";
 }
 
 // =========================================================
@@ -344,11 +395,63 @@ function buildDeck() {
 }
 
 // =========================================================
+// Player Name Entry Logic
+// =========================================================
+function setupNameEntryEvents() {
+    const nameInput = document.getElementById('player-name-input');
+    const confirmBtn = document.getElementById('btn-confirm-name');
+    const nameScreen = document.getElementById('name-entry-screen');
+    const setupScreen = document.getElementById('setup-screen');
+
+    if (!nameInput || !confirmBtn || !nameScreen) return;
+
+    const handleConfirmName = (e) => {
+        if (e) e.preventDefault();
+        if (isNameConfirmed) return;
+
+        const trimmedName = nameInput.value.trim();
+        if (!trimmedName) {
+            announce("กรุณากรอกชื่อผู้เล่นก่อนเข้าสู่เกม", false);
+            nameInput.focus();
+            return;
+        }
+
+        isNameConfirmed = true;
+        myPlayerName = trimmedName;
+        confirmBtn.disabled = true;
+        nameInput.disabled = true;
+
+        playSound('select');
+
+        nameScreen.style.display = 'none';
+        if (setupScreen) {
+            setupScreen.style.display = 'flex';
+        }
+        updateHomeBtnVisibility();
+        announce(`ยินดีต้อนรับ ${myPlayerName} เข้าสู่หน้าเลือกห้องเล่นแคง`, false);
+
+        setTimeout(() => {
+            const createRoomBtn = document.getElementById('btn-create-room');
+            if (createRoomBtn) createRoomBtn.focus();
+        }, 100);
+    };
+
+    confirmBtn.addEventListener('click', handleConfirmName);
+    nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleConfirmName(e);
+        }
+    });
+}
+
+// =========================================================
 // Network & Lobby Logic
 // =========================================================
 window.onload = () => {
     myPeerId = "cang-client-" + Math.random().toString(36).substring(2, 8);
     peer = new Peer(myPeerId);
+    setupNameEntryEvents();
     updateHomeBtnVisibility();
 
     const roomsRef = ref(db, GAME_DB_ID + '/rooms');
@@ -377,6 +480,7 @@ window.onload = () => {
 };
 
 window.createNewRoom = () => {
+    if (!myPlayerName || !myPlayerName.trim()) return;
     isHost = true; announce("กำลังสร้างห้อง โปรดรอสักครู่", false);
     const seqRef = ref(db, GAME_DB_ID + '/room_seq');
     runTransaction(seqRef, (currentData) => {
@@ -390,7 +494,10 @@ window.createNewRoom = () => {
             peer.on('open', (id) => {
                 myPeerId = id; selectedColorId = 'red';
                 window.joinOrder = [myPeerId]; 
-                roomPlayers = [{ id: myPeerId, color: selectedColorId }];
+                roomPlayers = [{ id: myPeerId, name: myPlayerName, color: selectedColorId }];
+                botColors = [];
+                botNames = [];
+                currentBotCount = 0;
                 const myRoomRef = ref(db, GAME_DB_ID + '/rooms/' + roomId);
                 set(myRoomRef, { roomId: roomId, playerCount: 1, state: 'WAITING' });
                 onDisconnect(myRoomRef).remove();
@@ -408,6 +515,7 @@ window.createNewRoom = () => {
 };
 
 window.joinRoomDirect = (targetRoomId) => {
+    if (!myPlayerName || !myPlayerName.trim()) return;
     isHost = false; roomId = targetRoomId;
     announce(`กำลังเข้าร่วมห้อง ${roomId}`, false);
     document.getElementById('setup-screen').style.display = 'none';
@@ -417,7 +525,7 @@ window.joinRoomDirect = (targetRoomId) => {
     
     hostConnection = peer.connect("cang-host-" + roomId);
     hostConnection.on('open', () => { 
-        hostConnection.send({ type: 'JOIN_ROOM' }); 
+        hostConnection.send({ type: 'JOIN_ROOM', name: myPlayerName }); 
         announce(`เข้าร่วมห้องสำเร็จ รอแจกไพ่`, false); 
         resetHeartbeat();
     });
@@ -425,17 +533,12 @@ window.joinRoomDirect = (targetRoomId) => {
         resetHeartbeat();
         if (data.type === 'HEARTBEAT') return;
         if (data.type === 'LOBBY_UPDATE') { 
-            roomPlayers = data.roomPlayers; currentBotCount = data.botCount; botColors = data.botColors; 
+            roomPlayers = data.roomPlayers || [];
+            currentBotCount = data.botCount || 0;
+            botColors = data.botColors || [];
+            botNames = data.botNames || [];
             if (data.joinOrder) window.joinOrder = data.joinOrder; 
             updateLobbyUI(); 
-            if (!isHost && !window.hasAnnouncedMyColor) {
-                let myP = roomPlayers.find(p => p.id === myPeerId);
-                if (myP) {
-                    window.hasAnnouncedMyColor = true;
-                    let c = COLORS.find(x => x.id === myP.color);
-                    if (c) announce(`คุณได้รับสี${c.name}`, false);
-                }
-            }
         }
         if (data.type === 'START_COUNTDOWN') { 
             if (!window.isStartingRound) { window.isStartingRound = true; doCountdownAndStart(); }
@@ -460,18 +563,14 @@ function listenHostConnections() {
                 let usedColors = roomPlayers.map(p => p.color).concat(botColors);
                 let avail = COLORS.filter(c => !usedColors.includes(c.id));
                 let randomColor = avail.length > 0 ? avail[Math.floor(Math.random() * avail.length)].id : 'red';
+                let joinedName = (data.name && String(data.name).trim() !== '') ? String(data.name).trim() : 'ผู้เล่น';
                 
-                roomPlayers.push({ id: conn.peer, color: randomColor });
+                roomPlayers.push({ id: conn.peer, name: joinedName, color: randomColor });
                 window.joinOrder.push(conn.peer); 
                 guestConnections.push(conn); 
                 broadcastLobby();
-                broadcastAnnounce(`มีผู้เล่นเข้าร่วมห้องใหม่ รวม ${roomPlayers.length + currentBotCount} ตัว`);
+                broadcastAnnounce(`${joinedName} เข้าร่วมห้องใหม่ รวม ${roomPlayers.length + currentBotCount} คน`);
                 triggerSound('select');
-            }
-            if (data.type === 'CHANGE_COLOR') {
-                let p = roomPlayers.find(x => x.id === data.playerId);
-                let taken = roomPlayers.map(x=>x.color).concat(botColors);
-                if(p && !taken.includes(data.colorId)) { p.color = data.colorId; broadcastLobby(); triggerSound('select'); }
             }
             if (data.type === 'PLAYER_ACTION') processPlayerAction(data.playerId, data.action, data.cardIndex);
         });
@@ -479,7 +578,7 @@ function listenHostConnections() {
 }
 
 function broadcastLobby() {
-    let data = { type: 'LOBBY_UPDATE', roomPlayers, botCount: currentBotCount, botColors, joinOrder: window.joinOrder };
+    let data = { type: 'LOBBY_UPDATE', roomPlayers, botCount: currentBotCount, botColors, botNames, joinOrder: window.joinOrder };
     guestConnections.forEach(c => c.send(data)); updateLobbyUI();
     if(isHost) set(ref(db, GAME_DB_ID + '/rooms/' + roomId + '/playerCount'), roomPlayers.length + currentBotCount);
 }
@@ -493,11 +592,13 @@ window.adjustBot = (delta) => {
         let randomColorId = avail.length > 0 ? avail[Math.floor(Math.random() * avail.length)].id : 'red';
         
         botColors.push(randomColorId); window.joinOrder.push('bot_' + currentBotCount); currentBotCount++;
+        randomizeAllBotNames(currentBotCount);
     } else if (delta < 0 && currentBotCount > 0) {
         currentBotCount--; botColors.pop(); 
         for (let i = window.joinOrder.length - 1; i >= 0; i--) {
             if (window.joinOrder[i].startsWith('bot_')) { window.joinOrder.splice(i, 1); break; }
         }
+        randomizeAllBotNames(currentBotCount);
     }
     broadcastLobby(); triggerSound('select');
 };
@@ -507,8 +608,16 @@ function updateLobbyUI() {
     document.getElementById('bot-count-text').innerText = `${currentBotCount} ตัว`;
     
     globalPlayersMap = {};
-    roomPlayers.forEach(p => { let c = COLORS.find(x => x.id === p.color); globalPlayersMap[p.id] = { isBot: false, colorName: c ? c.name : '?', colorHex: c ? c.hex : '#ffffff' }; });
-    botColors.forEach((b, i) => { let c = COLORS.find(x => x.id === b); globalPlayersMap['bot_'+i] = { isBot: true, colorName: c ? c.name : '?', colorHex: c ? c.hex : '#ffffff' }; });
+    roomPlayers.forEach(p => {
+        let c = COLORS.find(x => x.id === p.color) || COLORS[0];
+        let pName = (p.name && String(p.name).trim() !== '') ? String(p.name).trim() : (p.id === myPeerId && myPlayerName ? myPlayerName : 'ผู้เล่น');
+        globalPlayersMap[p.id] = { isBot: false, name: pName, colorName: c ? c.name : 'แดง', colorHex: c ? c.hex : 'var(--red)' };
+    });
+    botColors.forEach((b, i) => {
+        let c = COLORS.find(x => x.id === b) || COLORS[i % COLORS.length];
+        let bName = botNames[i] || BOT_NAMES_POOL[i % BOT_NAMES_POOL.length];
+        globalPlayersMap['bot_' + i] = { isBot: true, name: bName, colorName: c ? c.name : 'แดง', colorHex: c ? c.hex : 'var(--red)' };
+    });
 
     const listEl = document.getElementById('waiting-players-list'); listEl.innerHTML = '';
     
@@ -520,40 +629,6 @@ function updateLobbyUI() {
             let p = roomPlayers.find(x => x.id === id);
             if (p) { let li = document.createElement('li'); li.innerText = resolveName(p.id); listEl.appendChild(li); }
         }
-    });
-
-    let taken = roomPlayers.map(p=>p.color).concat(botColors);
-    let myP = roomPlayers.find(p=>p.id===myPeerId);
-    if (myP && taken.filter(c => c === myP.color).length > 1) {
-        let avail = COLORS.find(c => !taken.includes(c.id));
-        if(avail) { selectedColorId = avail.id; myP.color = selectedColorId; if(isHost) { broadcastLobby(); triggerSound('select'); } }
-    }
-
-    const colDiv = document.getElementById('color-selection'); colDiv.innerHTML = '';
-    COLORS.forEach(c => {
-        let isTakenByOther = taken.includes(c.id) && c.id !== selectedColorId;
-        let label = document.createElement('label');
-        label.className = `radio-color-label ${c.id === selectedColorId ? 'selected':''} ${isTakenByOther ? 'disabled-color':''}`;
-        label.style.backgroundColor = c.hex;
-        
-        let input = document.createElement('input'); 
-        input.type = 'radio'; input.name = 'player-color'; input.value = c.id;
-        input.setAttribute('aria-label', `เลือกสี${c.name}`);
-        if(c.id === selectedColorId) input.checked = true; 
-        if(isTakenByOther) input.disabled = true;
-        
-        input.onchange = () => {
-            if(!isTakenByOther) {
-                selectedColorId = c.id; announce(`คุณเลือกเปลี่ยนสีเป็นสี${c.name}`, false);
-                if(isHost) { 
-                    let p = roomPlayers.find(x=>x.id===myPeerId); 
-                    if(p) { p.color = c.id; broadcastLobby(); triggerSound('select'); }
-                } else { hostConnection.send({ type: 'CHANGE_COLOR', playerId: myPeerId, colorId: c.id }); }
-            }
-        };
-        
-        let span = document.createElement('span'); span.innerText = c.name;
-        label.appendChild(input); label.appendChild(span); colDiv.appendChild(label);
     });
 
     if(isHost) {
@@ -599,11 +674,18 @@ function doCountdownAndStart() {
                     gameState.players = [];
                     window.joinOrder.forEach(id => {
                         if (id.startsWith('bot_')) {
-                            let botIdx = parseInt(id.split('_')[1]); let bColor = botColors[botIdx];
-                            if (bColor) gameState.players.push({ id: id, name: 'บอท '+COLORS.find(c=>c.id===bColor).name, colorInfo: COLORS.find(c=>c.id===bColor), isBot: true, points: 200, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
+                            let botIdx = parseInt(id.split('_')[1]);
+                            let bColor = botColors[botIdx] || COLORS[botIdx % COLORS.length].id;
+                            let bName = botNames[botIdx] || BOT_NAMES_POOL[botIdx % BOT_NAMES_POOL.length];
+                            let cInfo = COLORS.find(c => c.id === bColor) || COLORS[0];
+                            gameState.players.push({ id: id, name: bName, colorInfo: cInfo, isBot: true, points: 200, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
                         } else {
                             let p = roomPlayers.find(x => x.id === id);
-                            if (p) gameState.players.push({ id: p.id, name: p.id===myPeerId?'Host':'Player', colorInfo: COLORS.find(c=>c.id===p.color), isBot: false, points: 200, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
+                            if (p) {
+                                let cInfo = COLORS.find(c => c.id === p.color) || COLORS[0];
+                                let pName = (p.name && String(p.name).trim() !== '') ? String(p.name).trim() : (p.id === myPeerId && myPlayerName ? myPlayerName : 'ผู้เล่น');
+                                gameState.players.push({ id: p.id, name: pName, colorInfo: cInfo, isBot: false, points: 200, hand: [], isOut: false, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false });
+                            }
                         }
                     });
                 }
@@ -646,7 +728,8 @@ function startPreGameTimer() {
             clearInterval(turnTimerInterval); 
             if (gameState.status === 'PRE_GAME') {
                 triggerSound('60'); gameState.status = 'PLAYING';
-                broadcastAnnounce("📢 หมดเวลาดูไพ่ 40 วินาที ไม่มีใครกดแคง! ขอเชิญผู้เล่นแรกจั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ");
+                let firstPlayer = gameState.players[gameState.turnIndex] || gameState.players[0];
+                broadcastAnnounce(`📢 หมดเวลาดูไพ่ 40 วินาที ไม่มีใครกดแคง! ขอเชิญ [PID:${firstPlayer.id}] จั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ`);
                 syncStateToAll(); startTurnTimer(); checkBotTurn();
             }
         }
@@ -697,7 +780,7 @@ function syncStateToAll() {
         status: gameState.status, turnId: gameState.players[gameState.turnIndex].id, topDiscard: discardPile[discardPile.length - 1],
         deckCount: deck.length, discardPileCount: discardPile.length, skipVotes: gameState.skipPreVotes || [],
         playersInfo: gameState.players.map(p => ({
-            id: p.id, colorHex: p.colorInfo.hex, colorName: p.colorInfo.name, isBot: p.isBot, points: p.points, cardCount: p.hand.length, isOut: p.isOut
+            id: p.id, name: p.name, colorHex: p.colorInfo ? p.colorInfo.hex : 'var(--red)', colorName: p.colorInfo ? p.colorInfo.name : 'แดง', isBot: p.isBot, points: p.points, cardCount: p.hand.length, isOut: p.isOut
         }))
     };
 
@@ -917,7 +1000,8 @@ function processPlayerAction(pId, action, cardIndex) {
                 let realPlayers = gameState.players.filter(x => !x.isOut && !x.isBot);
                 if (gameState.skipPreVotes.length >= realPlayers.length) {
                     clearInterval(turnTimerInterval); triggerSound('60'); gameState.status = 'PLAYING';
-                    broadcastAnnounce("📢 ผู้เล่นทุกคนพร้อมแล้ว! ขอเชิญผู้เล่นแรกจั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ");
+                    let firstPlayer = gameState.players[gameState.turnIndex] || gameState.players[0];
+                    broadcastAnnounce(`📢 ผู้เล่นทุกคนพร้อมแล้ว! ขอเชิญ [PID:${firstPlayer.id}] จั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ`);
                     syncStateToAll(); startTurnTimer(); checkBotTurn();
                 }
             }
@@ -1000,7 +1084,7 @@ function processPlayerAction(pId, action, cardIndex) {
             let publicMsg = `[PID:${cp.id}] จั่วไพ่ 1 ใบ`;
             if (cp.isBot) { broadcastAnnounce(publicMsg); } 
             else {
-                let privateMsg = `คุณจั่วได้ไพ่ ${THAI_RANKS[drawnCard.rank]} ${THAI_SUITS[drawnCard.suit]}`;
+                let privateMsg = `[PID:${cp.id}] จั่วได้ไพ่ ${THAI_RANKS[drawnCard.rank]} ${THAI_SUITS[drawnCard.suit]}`;
                 if (myPeerId === cp.id) announce(privateMsg); else announce(publicMsg);
                 guestConnections.forEach(c => {
                     if (c.peer === cp.id) c.send({ type: 'ANNOUNCE', msg: privateMsg }); else c.send({ type: 'ANNOUNCE', msg: publicMsg });
@@ -1149,7 +1233,10 @@ function renderClientGame(publicState, privateState) {
     const isFirstPlayer = (myPeerId === publicState.playersInfo[0].id);
     const isMyTurn = (turnId === myPeerId);
     
-    publicState.playersInfo.forEach(p => { globalPlayersMap[p.id] = { isBot: p.isBot, colorName: p.colorName, colorHex: p.colorHex }; });
+    publicState.playersInfo.forEach(p => {
+        let pName = (p.name && String(p.name).trim() !== '') ? String(p.name).trim() : (globalPlayersMap[p.id] && globalPlayersMap[p.id].name ? globalPlayersMap[p.id].name : 'ผู้เล่น');
+        globalPlayersMap[p.id] = { isBot: p.isBot, name: pName, colorName: p.colorName, colorHex: p.colorHex };
+    });
     let currPlayerDisp = resolveName(turnId);
     
     const turnInd = document.getElementById('turn-indicator');
@@ -1169,13 +1256,13 @@ function renderClientGame(publicState, privateState) {
             turnInd.innerText = "เตรียมตัว! เช็คไพ่ในมือ (40 วินาที)";
         } else {
             let oldTurnTxt = turnInd.innerText;
-            let newTurnTxt = isMyTurn ? "🔥 ตาของคุณแล้ว!" : `ตาของ ${currPlayerDisp}`;
+            let newTurnTxt = isMyTurn ? `🔥 ถึงตาของ ${currPlayerDisp} แล้ว!` : `ถึงตาของ ${currPlayerDisp} แล้ว`;
             if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
                 turnInd.innerText = newTurnTxt;
                 let topC = publicState.topDiscard;
                 let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
-                if(isMyTurn) announce(`ตาของคุณแล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
-                else announce(`เปลี่ยนตาไปที่ ${currPlayerDisp} (ไพ่บนกองคือ ${topTxt})`, false);
+                if(isMyTurn) announce(`ถึงตาของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
+                else announce(`ถึงตาของ ${currPlayerDisp} แล้ว (ไพ่บนกองคือ ${topTxt})`, false);
             }
         }
     }
