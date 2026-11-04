@@ -83,11 +83,22 @@ function getSpecialWinType(hand, player) {
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // =========================================================
-// Audio Setup (คงไว้ 100% เพิ่มไฟล์เสียงใหม่)
+// Audio Setup (คงไว้ 100% เพิ่มไฟล์เสียงใหม่ และระบบจัดการคิว/AudioContext ส่วนกลาง)
 // =========================================================
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let audioCtx = null;
+let audioResumePromise = null;
 const audioBuffers = {};
+const soundLoadStatus = {}; // 'idle' | 'loading' | 'loaded' | 'failed'
+const soundLoadPromises = {};
 let bgmSource = null;
+let isBgmWanted = false;
+
+const pendingSoundQueue = [];
+let isProcessingSoundQueue = false;
+let soundEventSeq = 0;
+let lastHandledRemoteSoundId = null;
+const recentPlayedSignatureMap = new Map();
+const pendingPeerSoundPayloads = new Map();
 
 const soundFiles = {
     '1': 'audio/1.mp3', 'select': 'audio/select.mp3', 'start': 'audio/start.mp3',
@@ -97,40 +108,326 @@ const soundFiles = {
     'knock': 'audio/knock.mp3', 'special': 'audio/special.mp3' // เพิ่มเสียง knock และ special
 };
 
-async function loadSounds() {
-    for (let key in soundFiles) {
+function getOrCreateAudioContext() {
+    if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+            try {
+                audioCtx = new AudioContextClass();
+                audioCtx.onstatechange = () => {
+                    if (audioCtx && audioCtx.state === 'running') {
+                        processPendingSoundQueue();
+                        ensureBgmPlayingIfWanted();
+                    }
+                };
+            } catch (e) {
+                console.warn("Could not create AudioContext", e);
+            }
+        }
+    }
+    return audioCtx;
+}
+
+getOrCreateAudioContext();
+
+function ensureAudioContextReady() {
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return Promise.resolve(false);
+    if (ctx.state === 'running') return Promise.resolve(true);
+
+    if (!audioResumePromise) {
+        try {
+            const p = ctx.resume();
+            if (p && typeof p.then === 'function') {
+                audioResumePromise = p.then(() => {
+                    audioResumePromise = null;
+                    return ctx.state === 'running';
+                }).catch(() => {
+                    audioResumePromise = null;
+                    return ctx.state === 'running';
+                });
+            } else {
+                audioResumePromise = Promise.resolve(ctx.state === 'running');
+                audioResumePromise = null;
+            }
+        } catch (e) {
+            audioResumePromise = null;
+            return Promise.resolve(false);
+        }
+    }
+    return audioResumePromise || Promise.resolve(ctx.state === 'running');
+}
+
+function decodeAudioDataAsync(ctx, arrayBuffer) {
+    return new Promise((resolve, reject) => {
+        try {
+            const res = ctx.decodeAudioData(
+                arrayBuffer,
+                (decoded) => resolve(decoded),
+                (err) => reject(err)
+            );
+            if (res && typeof res.then === 'function') {
+                res.then(resolve).catch(reject);
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+function loadSingleSound(key) {
+    if (!soundFiles[key]) {
+        soundLoadStatus[key] = 'failed';
+        return Promise.resolve(null);
+    }
+    if (soundLoadStatus[key] === 'loaded' && audioBuffers[key]) {
+        return Promise.resolve(audioBuffers[key]);
+    }
+    if (soundLoadStatus[key] === 'loading' && soundLoadPromises[key]) {
+        return soundLoadPromises[key];
+    }
+
+    soundLoadStatus[key] = 'loading';
+    soundLoadPromises[key] = (async () => {
         try {
             const response = await fetch(soundFiles[key]);
+            if (!response.ok) throw new Error(`HTTP status ${response.status}`);
             const arrayBuffer = await response.arrayBuffer();
-            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            const ctx = getOrCreateAudioContext();
+            if (!ctx) throw new Error("AudioContext unavailable");
+            const audioBuffer = await decodeAudioDataAsync(ctx, arrayBuffer);
             audioBuffers[key] = audioBuffer;
-        } catch (e) { console.warn("Could not load sound", key, e); }
-    }
+            soundLoadStatus[key] = 'loaded';
+            return audioBuffer;
+        } catch (e) {
+            soundLoadStatus[key] = 'failed';
+            console.warn("Could not load sound", key, e);
+            return null;
+        } finally {
+            delete soundLoadPromises[key];
+            processPendingSoundQueue();
+            if (key === 'bgm') ensureBgmPlayingIfWanted();
+        }
+    })();
+
+    return soundLoadPromises[key];
+}
+
+async function loadSounds() {
+    const keys = Object.keys(soundFiles);
+    await Promise.allSettled(keys.map(key => loadSingleSound(key)));
 }
 loadSounds();
 
+function startBufferSourceNow(key, loop = false) {
+    const ctx = getOrCreateAudioContext();
+    if (!ctx || !audioBuffers[key] || ctx.state !== 'running') return null;
+    try {
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffers[key];
+        source.connect(ctx.destination);
+        source.loop = loop;
+        source.start(0);
+        return source;
+    } catch (e) {
+        console.warn("Error starting sound source", key, e);
+        return null;
+    }
+}
+
+function ensureBgmPlayingIfWanted() {
+    if (!isBgmWanted) return;
+    if (bgmSource) return;
+    const ctx = getOrCreateAudioContext();
+    if (!ctx || ctx.state !== 'running') return;
+    if (soundLoadStatus['bgm'] === 'loaded' && audioBuffers['bgm']) {
+        bgmSource = startBufferSourceNow('bgm', true);
+    } else if (soundLoadStatus['bgm'] !== 'loading' && soundLoadStatus['bgm'] !== 'failed') {
+        loadSingleSound('bgm');
+    }
+}
+
+async function processPendingSoundQueue() {
+    if (isProcessingSoundQueue) return;
+    if (pendingSoundQueue.length === 0) return;
+
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return;
+
+    isProcessingSoundQueue = true;
+    try {
+        if (ctx.state !== 'running') {
+            const resumed = await ensureAudioContextReady();
+            if (!resumed && ctx.state !== 'running') {
+                return;
+            }
+        }
+
+        while (pendingSoundQueue.length > 0) {
+            if (ctx.state !== 'running') break;
+
+            const item = pendingSoundQueue[0];
+            const { key, loop } = item;
+
+            if (!soundFiles[key] || soundLoadStatus[key] === 'failed') {
+                pendingSoundQueue.shift();
+                continue;
+            }
+
+            if (soundLoadStatus[key] !== 'loaded' || !audioBuffers[key]) {
+                const buffer = await loadSingleSound(key);
+                if (!buffer) {
+                    pendingSoundQueue.shift();
+                    continue;
+                }
+                if (ctx.state !== 'running') break;
+            }
+
+            pendingSoundQueue.shift();
+            if (key === 'bgm' && loop) {
+                if (isBgmWanted) {
+                    if (bgmSource) {
+                        try { bgmSource.stop(); } catch (e) {}
+                        bgmSource = null;
+                    }
+                    bgmSource = startBufferSourceNow('bgm', true);
+                }
+            } else {
+                startBufferSourceNow(key, loop);
+            }
+        }
+    } finally {
+        isProcessingSoundQueue = false;
+    }
+}
+
 function playSound(key, loop = false) {
-    if(audioCtx.state === 'suspended') audioCtx.resume();
-    if(!audioBuffers[key]) return null;
-    const source = audioCtx.createBufferSource();
-    source.buffer = audioBuffers[key];
-    source.connect(audioCtx.destination);
-    source.loop = loop;
-    source.start(0);
-    return source;
+    if (!key || !soundFiles[key]) return null;
+
+    if (!loop) {
+        const now = Date.now();
+        const lastTime = recentPlayedSignatureMap.get(key) || 0;
+        if (now - lastTime < 35) {
+            return null;
+        }
+        recentPlayedSignatureMap.set(key, now);
+    }
+
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return null;
+
+    const isBufferReady = (soundLoadStatus[key] === 'loaded' && !!audioBuffers[key]);
+    const isContextRunning = (ctx.state === 'running');
+
+    if (isContextRunning && isBufferReady) {
+        return startBufferSourceNow(key, loop);
+    }
+
+    if (soundLoadStatus[key] !== 'loaded' && soundLoadStatus[key] !== 'loading') {
+        loadSingleSound(key);
+    }
+
+    if (key === 'bgm' && loop) {
+        const hasBgmQueued = pendingSoundQueue.some(item => item.key === 'bgm' && item.loop);
+        if (!hasBgmQueued) {
+            pendingSoundQueue.push({ key, loop: true, timestamp: Date.now() });
+        }
+    } else {
+        pendingSoundQueue.push({ key, loop, timestamp: Date.now() });
+    }
+
+    ensureAudioContextReady().then(() => {
+        processPendingSoundQueue();
+        ensureBgmPlayingIfWanted();
+    });
+
+    return null;
 }
 
 function stopBGM() {
-    if (bgmSource) { try { bgmSource.stop(); } catch(e) {} bgmSource = null; }
+    isBgmWanted = false;
+    for (let i = pendingSoundQueue.length - 1; i >= 0; i--) {
+        if (pendingSoundQueue[i].key === 'bgm' && pendingSoundQueue[i].loop) {
+            pendingSoundQueue.splice(i, 1);
+        }
+    }
+    if (bgmSource) {
+        try { bgmSource.stop(); } catch(e) {}
+        bgmSource = null;
+    }
 }
 
-function playBGM() { stopBGM(); bgmSource = playSound('bgm', true); }
+function playBGM() {
+    stopBGM();
+    isBgmWanted = true;
+    bgmSource = playSound('bgm', true);
+}
 
-document.body.addEventListener('click', () => { if(audioCtx.state === 'suspended') audioCtx.resume(); }, { once: false });
+function unlockAudioOnUserGesture() {
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return;
+    if (ctx.state !== 'running') {
+        ensureAudioContextReady().then((ready) => {
+            if (ready) {
+                processPendingSoundQueue();
+                ensureBgmPlayingIfWanted();
+            }
+        });
+    } else if (pendingSoundQueue.length > 0 || (isBgmWanted && !bgmSource)) {
+        processPendingSoundQueue();
+        ensureBgmPlayingIfWanted();
+    }
+}
+
+['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evtName => {
+    document.addEventListener(evtName, unlockAudioOnUserGesture, { passive: true, once: false });
+});
+
+function sendSoundMessageToConn(conn, payload) {
+    if (!conn) return;
+    if (conn.open) {
+        try {
+            conn.send(payload);
+        } catch (e) {
+            console.warn("Failed to send sound message to peer", conn.peer, e);
+        }
+    } else {
+        if (!pendingPeerSoundPayloads.has(conn.peer)) {
+            pendingPeerSoundPayloads.set(conn.peer, []);
+            conn.on('open', () => {
+                const queued = pendingPeerSoundPayloads.get(conn.peer) || [];
+                pendingPeerSoundPayloads.delete(conn.peer);
+                queued.forEach(msg => {
+                    try {
+                        if (conn.open) conn.send(msg);
+                    } catch (e) {}
+                });
+            });
+        }
+        pendingPeerSoundPayloads.get(conn.peer).push(payload);
+    }
+}
+
+function handleIncomingPlaySoundData(data) {
+    if (!data || !data.sound) return;
+    if (isHost) return; // ป้องกันเสียงซ้ำในเครื่อง Host กรณีได้รับ Broadcast ย้อนกลับ
+    if (data.soundEventId) {
+        if (lastHandledRemoteSoundId === data.soundEventId) return;
+        lastHandledRemoteSoundId = data.soundEventId;
+    }
+    playSound(data.sound);
+}
 
 function triggerSound(soundKey) {
-    if(myPeerId) playSound(soundKey);
-    guestConnections.forEach(c => c.send({ type: 'PLAY_SOUND', sound: soundKey }));
+    if (!soundKey) return;
+    const soundEventId = `${myPeerId || 'host'}_${Date.now()}_${++soundEventSeq}`;
+    if (myPeerId) playSound(soundKey);
+    const payload = { type: 'PLAY_SOUND', sound: soundKey, soundEventId };
+    guestConnections.forEach(c => {
+        if (c && c.peer !== myPeerId) {
+            sendSoundMessageToConn(c, payload);
+        }
+    });
 }
 
 // =========================================================
@@ -464,6 +761,7 @@ function handleClientDeparture(playerId, reason = 'disconnect') {
     processedDisconnects.add(playerId);
 
     clearBotResponseTimer(playerId);
+    pendingPeerSoundPayloads.delete(playerId);
 
     // 1. ปิดและลบ Connection ออกจาก guestConnections อย่างปลอดภัย
     let connIdx = guestConnections.findIndex(c => c.peer === playerId);
@@ -924,7 +1222,7 @@ window.joinRoomDirect = (targetRoomId) => {
         if (data.type === 'SHOW_RESULT') showResultModal(data.title, data.detail, data.isEnd, data.winners, data.losers);
         if (data.type === 'ANNOUNCE') announce(data.msg);
         if (data.type === 'TIMER_UPDATE') window.updateTimerUI(data.timeLeft, data.maxTime);
-        if (data.type === 'PLAY_SOUND') playSound(data.sound);
+        if (data.type === 'PLAY_SOUND') handleIncomingPlaySoundData(data);
         if (data.type === 'SHOW_TRANSITION') window.showTransition(data.msg, data.duration);
         if (data.type === 'HIDE_TRANSITION') window.hideTransition();
         if (data.type === 'KANG_ANIMATION') window.playKangAnimation(data.callerId, data.winType);
@@ -1037,7 +1335,7 @@ window.hostStartGame = () => {
     let startBtn = document.getElementById('btn-host-start');
     if (startBtn) { startBtn.disabled = true; startBtn.style.display = 'none'; }
     remove(ref(db, GAME_DB_ID + '/rooms/' + roomId)); 
-    guestConnections.forEach(c => c.send({ type: 'START_COUNTDOWN' }));
+    guestConnections.forEach(c => sendSoundMessageToConn(c, { type: 'START_COUNTDOWN' }));
     doCountdownAndStart();
 };
 
@@ -1390,7 +1688,11 @@ function broadcastKangAnimation(callerId, winType) {
     gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
     let data = { type: 'KANG_ANIMATION', callerId, winType };
     if (myPeerId) window.playKangAnimation(callerId, winType);
-    guestConnections.forEach(c => c.send(data));
+    guestConnections.forEach(c => {
+        if (c && c.peer !== myPeerId) {
+            sendSoundMessageToConn(c, data);
+        }
+    });
 }
 // =========================================================
 
@@ -1534,7 +1836,11 @@ function resolveSpecialWin(callerId, winType) {
             let isFinalEnd = gameState.players.some(p => p.points === 0);
             let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: isFinalEnd, winners, losers };
             if(myPeerId) window.showResultModal(title, resultDetail, isFinalEnd, winners, losers);
-            guestConnections.forEach(c => c.send(modalData));
+            guestConnections.forEach(c => {
+                if (c && c.peer !== myPeerId) {
+                    sendSoundMessageToConn(c, modalData);
+                }
+            });
         }, 4000);
     }, 4500);
 }
@@ -1787,7 +2093,11 @@ function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 
         let isFinalEnd = gameState.players.some(p => p.points === 0);
         let modalData = { type: 'SHOW_RESULT', title, detail: resultDetail, isEnd: isFinalEnd, winners, losers };
         if(myPeerId) window.showResultModal(title, resultDetail, isFinalEnd, winners, losers);
-        guestConnections.forEach(c => c.send(modalData));
+        guestConnections.forEach(c => {
+            if (c && c.peer !== myPeerId) {
+                sendSoundMessageToConn(c, modalData);
+            }
+        });
     }, 4000);
 }
 
@@ -1798,7 +2108,7 @@ window.closeResultModal = () => {
     if (btn) { btn.disabled = true; btn.style.display = 'none'; }
     document.getElementById('result-modal').style.display = 'none';
     updateHomeBtnVisibility();
-    if(isHost) { guestConnections.forEach(c => c.send({ type: 'START_COUNTDOWN' })); doCountdownAndStart(); }
+    if(isHost) { guestConnections.forEach(c => sendSoundMessageToConn(c, { type: 'START_COUNTDOWN' })); doCountdownAndStart(); }
 };
 
 // =========================================================
