@@ -1256,13 +1256,13 @@ function renderClientGame(publicState, privateState) {
             turnInd.innerText = "เตรียมตัว! เช็คไพ่ในมือ (40 วินาที)";
         } else {
             let oldTurnTxt = turnInd.innerText;
-            let newTurnTxt = isMyTurn ? `🔥 ถึงตาของ ${currPlayerDisp} แล้ว!` : `ถึงตาของ ${currPlayerDisp} แล้ว`;
+            let newTurnTxt = isMyTurn ? `🔥 ถึงรอบของ ${currPlayerDisp} แล้ว!` : `ถึงรอบของ ${currPlayerDisp} แล้ว`;
             if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
                 turnInd.innerText = newTurnTxt;
                 let topC = publicState.topDiscard;
                 let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
-                if(isMyTurn) announce(`ถึงตาของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
-                else announce(`ถึงตาของ ${currPlayerDisp} แล้ว (ไพ่บนกองคือ ${topTxt})`, false);
+                if(isMyTurn) announce(`ถึงรอบของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
+                else announce(`ถึงรอบของ ${currPlayerDisp} แล้ว (ไพ่บนกองคือ ${topTxt})`, false);
             }
         }
     }
