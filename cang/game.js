@@ -87,9 +87,6 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 // =========================================================
 let audioCtx = null;
 let audioResumePromise = null;
-let isAudioUnlocked = false;
-let hasUserGestureOccurred = false;
-const rawAudioData = {};
 const audioBuffers = {};
 const soundLoadStatus = {}; // 'idle' | 'loading' | 'loaded' | 'failed'
 const soundLoadPromises = {};
@@ -103,9 +100,6 @@ let lastHandledRemoteSoundId = null;
 const recentPlayedSignatureMap = new Map();
 const pendingPeerSoundPayloads = new Map();
 
-const MAX_FETCH_RETRIES = 3;
-const MAX_DECODE_RETRIES = 2;
-
 const soundFiles = {
     '1': 'audio/1.mp3', 'select': 'audio/select.mp3', 'start': 'audio/start.mp3',
     'bgm': 'audio/bgm.mp3', 'jua': 'audio/jua.mp3', 'turn': 'audio/turn.mp3',
@@ -114,46 +108,16 @@ const soundFiles = {
     'knock': 'audio/knock.mp3', 'special': 'audio/special.mp3' // เพิ่มเสียง knock และ special
 };
 
-function isAudioContextRunning(ctx) {
-    return Boolean(ctx && ctx.state === 'running');
-}
-
-function getOrCreateAudioContext(forceRecreate = false) {
-    if (audioCtx && (audioCtx.state === 'closed' || forceRecreate)) {
-        try {
-            audioCtx.onstatechange = null;
-            if (audioCtx.state !== 'closed' && typeof audioCtx.close === 'function') {
-                audioCtx.close().catch(() => {});
-            }
-        } catch (e) {}
-        audioCtx = null;
-        audioResumePromise = null;
-        isAudioUnlocked = false;
-        if (bgmSource) {
-            try { bgmSource.onended = null; bgmSource.stop(); } catch (e) {}
-            try { bgmSource.disconnect(); } catch (e) {}
-            bgmSource = null;
-        }
-    }
-
+function getOrCreateAudioContext() {
     if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
             try {
                 audioCtx = new AudioContextClass();
-                const createdCtx = audioCtx;
-                createdCtx.onstatechange = () => {
-                    if (audioCtx !== createdCtx) return;
-                    if (createdCtx.state === 'running') {
-                        isAudioUnlocked = true;
-                        audioResumePromise = null;
-                        retryFailedSounds();
+                audioCtx.onstatechange = () => {
+                    if (audioCtx && audioCtx.state === 'running') {
                         processPendingSoundQueue();
                         ensureBgmPlayingIfWanted();
-                    } else if (createdCtx.state === 'closed') {
-                        audioResumePromise = null;
-                        isAudioUnlocked = false;
-                        bgmSource = null;
                     }
                 };
             } catch (e) {
@@ -166,186 +130,57 @@ function getOrCreateAudioContext(forceRecreate = false) {
 
 getOrCreateAudioContext();
 
-function playSilentUnlockBuffer(ctx) {
-    if (!ctx || ctx.state === 'closed') return;
-    try {
-        const sampleRate = (ctx.sampleRate && ctx.sampleRate > 0) ? ctx.sampleRate : 22050;
-        const silentBuffer = ctx.createBuffer(1, 1, sampleRate);
-        const source = ctx.createBufferSource();
-        source.buffer = silentBuffer;
-        source.connect(ctx.destination);
-        source.onended = () => {
-            try { source.disconnect(); } catch (e) {}
-        };
-        if (typeof source.start === 'function') {
-            source.start(0);
-        } else if (typeof source.noteOn === 'function') {
-            source.noteOn(0);
-        }
-    } catch (e) {}
-}
-
-function ensureAudioContextReady(fromUserGesture = false) {
-    if (fromUserGesture) {
-        hasUserGestureOccurred = true;
-    }
-
-    let ctx = getOrCreateAudioContext();
+function ensureAudioContextReady() {
+    const ctx = getOrCreateAudioContext();
     if (!ctx) return Promise.resolve(false);
+    if (ctx.state === 'running') return Promise.resolve(true);
 
-    if (ctx.state === 'closed') {
-        if (!hasUserGestureOccurred && !fromUserGesture) {
-            return Promise.resolve(false);
-        }
-        ctx = getOrCreateAudioContext(true);
-        if (!ctx) return Promise.resolve(false);
-    }
-
-    if (ctx.state === 'running') {
-        isAudioUnlocked = true;
-        return Promise.resolve(true);
-    }
-
-    // ห้ามเรียก ctx.resume() นอกเหตุการณ์ User Gesture ในขั้นตอนปลดล็อกครั้งแรก
-    if (!isAudioUnlocked && !fromUserGesture) {
-        return audioResumePromise || Promise.resolve(false);
-    }
-
-    if (fromUserGesture) {
-        playSilentUnlockBuffer(ctx);
-    }
-
-    if (fromUserGesture || !audioResumePromise) {
+    if (!audioResumePromise) {
         try {
             const p = ctx.resume();
             if (p && typeof p.then === 'function') {
-                const currentPromise = p.then(() => {
-                    if (audioResumePromise === currentPromise) {
-                        audioResumePromise = null;
-                    }
-                    const running = isAudioContextRunning(ctx);
-                    if (running) {
-                        isAudioUnlocked = true;
-                        retryFailedSounds();
-                        processPendingSoundQueue();
-                        ensureBgmPlayingIfWanted();
-                    }
-                    return running;
+                audioResumePromise = p.then(() => {
+                    audioResumePromise = null;
+                    return ctx.state === 'running';
                 }).catch(() => {
-                    if (audioResumePromise === currentPromise) {
-                        audioResumePromise = null;
-                    }
-                    if (ctx.state === 'closed') {
-                        getOrCreateAudioContext(true);
-                    }
-                    return isAudioContextRunning(audioCtx);
+                    audioResumePromise = null;
+                    return ctx.state === 'running';
                 });
-                audioResumePromise = currentPromise;
             } else {
+                audioResumePromise = Promise.resolve(ctx.state === 'running');
                 audioResumePromise = null;
-                const running = isAudioContextRunning(ctx);
-                if (running) {
-                    isAudioUnlocked = true;
-                    retryFailedSounds();
-                    processPendingSoundQueue();
-                    ensureBgmPlayingIfWanted();
-                }
-                return Promise.resolve(running);
             }
         } catch (e) {
             audioResumePromise = null;
-            if (ctx && ctx.state === 'closed') {
-                getOrCreateAudioContext(true);
-            }
-            return Promise.resolve(isAudioContextRunning(audioCtx));
+            return Promise.resolve(false);
         }
     }
-
-    return audioResumePromise || Promise.resolve(isAudioContextRunning(ctx));
+    return audioResumePromise || Promise.resolve(ctx.state === 'running');
 }
 
 function decodeAudioDataAsync(ctx, arrayBuffer) {
     return new Promise((resolve, reject) => {
-        if (!ctx || ctx.state === 'closed') {
-            reject(new Error("AudioContext closed or unavailable"));
-            return;
-        }
-        let settled = false;
-        const onSuccess = (decoded) => {
-            if (settled) return;
-            settled = true;
-            resolve(decoded);
-        };
-        const onError = (err) => {
-            if (settled) return;
-            settled = true;
-            reject(err || new Error("decodeAudioData failed"));
-        };
         try {
-            const res = ctx.decodeAudioData(arrayBuffer, onSuccess, onError);
+            const res = ctx.decodeAudioData(
+                arrayBuffer,
+                (decoded) => resolve(decoded),
+                (err) => reject(err)
+            );
             if (res && typeof res.then === 'function') {
-                res.then(onSuccess).catch(onError);
+                res.then(resolve).catch(reject);
             }
         } catch (e) {
-            onError(e);
+            reject(e);
         }
     });
 }
 
-async function fetchAudioArrayBufferWithRetry(url, maxRetries = MAX_FETCH_RETRIES) {
-    let lastError = null;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            const fetchOptions = attempt > 1 ? { cache: 'reload' } : undefined;
-            const response = await fetch(url, fetchOptions);
-            if (!response.ok) {
-                throw new Error(`HTTP status ${response.status}`);
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-                throw new Error("Empty audio ArrayBuffer");
-            }
-            return arrayBuffer;
-        } catch (err) {
-            lastError = err;
-        }
-    }
-    throw lastError || new Error(`Failed to fetch ${url}`);
-}
-
-async function decodeAudioBufferWithRetry(rawBuffer, maxRetries = MAX_DECODE_RETRIES) {
-    let lastError = null;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        let ctx = getOrCreateAudioContext();
-        if (!ctx || ctx.state === 'closed') {
-            ctx = getOrCreateAudioContext(true);
-        }
-        if (!ctx) {
-            throw new Error("AudioContext unavailable");
-        }
-        try {
-            const bufferCopy = rawBuffer.slice(0);
-            const decoded = await decodeAudioDataAsync(ctx, bufferCopy);
-            if (!decoded) {
-                throw new Error("Decoded AudioBuffer is null");
-            }
-            return decoded;
-        } catch (err) {
-            lastError = err;
-            if (ctx.state === 'closed') {
-                getOrCreateAudioContext(true);
-            }
-        }
-    }
-    throw lastError || new Error("Failed to decode audio buffer");
-}
-
-function loadSingleSound(key, forceReload = false) {
+function loadSingleSound(key) {
     if (!soundFiles[key]) {
         soundLoadStatus[key] = 'failed';
         return Promise.resolve(null);
     }
-    if (!forceReload && soundLoadStatus[key] === 'loaded' && audioBuffers[key]) {
+    if (soundLoadStatus[key] === 'loaded' && audioBuffers[key]) {
         return Promise.resolve(audioBuffers[key]);
     }
     if (soundLoadStatus[key] === 'loading' && soundLoadPromises[key]) {
@@ -355,10 +190,12 @@ function loadSingleSound(key, forceReload = false) {
     soundLoadStatus[key] = 'loading';
     soundLoadPromises[key] = (async () => {
         try {
-            if (forceReload || !rawAudioData[key] || rawAudioData[key].byteLength === 0) {
-                rawAudioData[key] = await fetchAudioArrayBufferWithRetry(soundFiles[key]);
-            }
-            const audioBuffer = await decodeAudioBufferWithRetry(rawAudioData[key]);
+            const response = await fetch(soundFiles[key]);
+            if (!response.ok) throw new Error(`HTTP status ${response.status}`);
+            const arrayBuffer = await response.arrayBuffer();
+            const ctx = getOrCreateAudioContext();
+            if (!ctx) throw new Error("AudioContext unavailable");
+            const audioBuffer = await decodeAudioDataAsync(ctx, arrayBuffer);
             audioBuffers[key] = audioBuffer;
             soundLoadStatus[key] = 'loaded';
             return audioBuffer;
@@ -368,23 +205,12 @@ function loadSingleSound(key, forceReload = false) {
             return null;
         } finally {
             delete soundLoadPromises[key];
-            if (soundLoadStatus[key] === 'loaded') {
-                processPendingSoundQueue();
-                if (key === 'bgm') ensureBgmPlayingIfWanted();
-            }
+            processPendingSoundQueue();
+            if (key === 'bgm') ensureBgmPlayingIfWanted();
         }
     })();
 
     return soundLoadPromises[key];
-}
-
-function retryFailedSounds() {
-    const keys = Object.keys(soundFiles);
-    keys.forEach(key => {
-        if (soundLoadStatus[key] === 'failed' || (!audioBuffers[key] && soundLoadStatus[key] !== 'loading')) {
-            loadSingleSound(key);
-        }
-    });
 }
 
 async function loadSounds() {
@@ -401,53 +227,22 @@ function startBufferSourceNow(key, loop = false) {
         source.buffer = audioBuffers[key];
         source.connect(ctx.destination);
         source.loop = loop;
-        source._ctx = ctx;
-        source.onended = () => {
-            try { source.disconnect(); } catch (e) {}
-            if (key === 'bgm' && loop && bgmSource === source) {
-                bgmSource = null;
-                if (isBgmWanted && audioCtx && audioCtx.state === 'running') {
-                    ensureBgmPlayingIfWanted();
-                }
-            }
-        };
-        if (typeof source.start === 'function') {
-            source.start(0);
-        } else if (typeof source.noteOn === 'function') {
-            source.noteOn(0);
-        }
+        source.start(0);
         return source;
     } catch (e) {
         console.warn("Error starting sound source", key, e);
-        if (rawAudioData[key]) {
-            delete audioBuffers[key];
-            soundLoadStatus[key] = 'idle';
-            loadSingleSound(key);
-        }
         return null;
     }
 }
 
 function ensureBgmPlayingIfWanted() {
     if (!isBgmWanted) return;
+    if (bgmSource) return;
     const ctx = getOrCreateAudioContext();
     if (!ctx || ctx.state !== 'running') return;
-
-    if (bgmSource) {
-        if (bgmSource._ctx === ctx) {
-            return;
-        }
-        try {
-            bgmSource.onended = null;
-            bgmSource.stop();
-        } catch (e) {}
-        try { bgmSource.disconnect(); } catch (e) {}
-        bgmSource = null;
-    }
-
     if (soundLoadStatus['bgm'] === 'loaded' && audioBuffers['bgm']) {
         bgmSource = startBufferSourceNow('bgm', true);
-    } else if (soundLoadStatus['bgm'] !== 'loading') {
+    } else if (soundLoadStatus['bgm'] !== 'loading' && soundLoadStatus['bgm'] !== 'failed') {
         loadSingleSound('bgm');
     }
 }
@@ -457,59 +252,48 @@ async function processPendingSoundQueue() {
     if (pendingSoundQueue.length === 0) return;
 
     const ctx = getOrCreateAudioContext();
-    if (!ctx || ctx.state !== 'running') return;
+    if (!ctx) return;
 
     isProcessingSoundQueue = true;
     try {
+        if (ctx.state !== 'running') {
+            const resumed = await ensureAudioContextReady();
+            if (!resumed && ctx.state !== 'running') {
+                return;
+            }
+        }
+
         while (pendingSoundQueue.length > 0) {
-            const activeCtx = getOrCreateAudioContext();
-            if (!activeCtx || activeCtx.state !== 'running') break;
+            if (ctx.state !== 'running') break;
 
             const item = pendingSoundQueue[0];
-            if (!item || item.played || !soundFiles[item.key]) {
+            const { key, loop } = item;
+
+            if (!soundFiles[key] || soundLoadStatus[key] === 'failed') {
                 pendingSoundQueue.shift();
                 continue;
             }
 
-            const { key, loop } = item;
-
             if (soundLoadStatus[key] !== 'loaded' || !audioBuffers[key]) {
                 const buffer = await loadSingleSound(key);
-                const ctxAfterLoad = getOrCreateAudioContext();
-                if (!ctxAfterLoad || ctxAfterLoad.state !== 'running') {
-                    break;
-                }
                 if (!buffer) {
-                    if (pendingSoundQueue[0] === item) {
-                        pendingSoundQueue.shift();
-                    }
+                    pendingSoundQueue.shift();
                     continue;
                 }
-            }
-
-            const ctxBeforePlay = getOrCreateAudioContext();
-            if (!ctxBeforePlay || ctxBeforePlay.state !== 'running') {
-                break;
-            }
-
-            if (pendingSoundQueue[0] !== item) {
-                continue;
+                if (ctx.state !== 'running') break;
             }
 
             pendingSoundQueue.shift();
-            item.played = true;
-
             if (key === 'bgm' && loop) {
                 if (isBgmWanted) {
-                    ensureBgmPlayingIfWanted();
+                    if (bgmSource) {
+                        try { bgmSource.stop(); } catch (e) {}
+                        bgmSource = null;
+                    }
+                    bgmSource = startBufferSourceNow('bgm', true);
                 }
             } else {
-                const started = startBufferSourceNow(key, loop);
-                if (!started && (!audioCtx || audioCtx.state !== 'running' || soundLoadStatus[key] === 'loading')) {
-                    item.played = false;
-                    pendingSoundQueue.unshift(item);
-                    break;
-                }
+                startBufferSourceNow(key, loop);
             }
         }
     } finally {
@@ -535,15 +319,8 @@ function playSound(key, loop = false) {
     const isBufferReady = (soundLoadStatus[key] === 'loaded' && !!audioBuffers[key]);
     const isContextRunning = (ctx.state === 'running');
 
-    if (pendingSoundQueue.length === 0 && !isProcessingSoundQueue && isContextRunning && isBufferReady) {
-        if (key === 'bgm' && loop) {
-            ensureBgmPlayingIfWanted();
-            return bgmSource;
-        }
-        const started = startBufferSourceNow(key, loop);
-        if (started) {
-            return started;
-        }
+    if (isContextRunning && isBufferReady) {
+        return startBufferSourceNow(key, loop);
     }
 
     if (soundLoadStatus[key] !== 'loaded' && soundLoadStatus[key] !== 'loading') {
@@ -551,25 +328,18 @@ function playSound(key, loop = false) {
     }
 
     if (key === 'bgm' && loop) {
-        const hasBgmQueued = pendingSoundQueue.some(item => item.key === 'bgm' && item.loop && !item.played);
+        const hasBgmQueued = pendingSoundQueue.some(item => item.key === 'bgm' && item.loop);
         if (!hasBgmQueued) {
-            pendingSoundQueue.push({ key, loop: true, timestamp: Date.now(), played: false });
+            pendingSoundQueue.push({ key, loop: true, timestamp: Date.now() });
         }
     } else {
-        pendingSoundQueue.push({ key, loop, timestamp: Date.now(), played: false });
+        pendingSoundQueue.push({ key, loop, timestamp: Date.now() });
     }
 
-    if (isContextRunning) {
+    ensureAudioContextReady().then(() => {
         processPendingSoundQueue();
         ensureBgmPlayingIfWanted();
-    } else if (isAudioUnlocked || hasUserGestureOccurred) {
-        ensureAudioContextReady(false).then((ready) => {
-            if (ready) {
-                processPendingSoundQueue();
-                ensureBgmPlayingIfWanted();
-            }
-        });
-    }
+    });
 
     return null;
 }
@@ -582,13 +352,8 @@ function stopBGM() {
         }
     }
     if (bgmSource) {
-        const src = bgmSource;
+        try { bgmSource.stop(); } catch(e) {}
         bgmSource = null;
-        try {
-            src.onended = null;
-            src.stop();
-        } catch(e) {}
-        try { src.disconnect(); } catch(e) {}
     }
 }
 
@@ -598,58 +363,24 @@ function playBGM() {
     bgmSource = playSound('bgm', true);
 }
 
-function unlockAudioOnUserGesture(e) {
-    if (e && e.isTrusted === false && !hasUserGestureOccurred) return;
-    hasUserGestureOccurred = true;
-
+function unlockAudioOnUserGesture() {
     const ctx = getOrCreateAudioContext();
     if (!ctx) return;
-
-    if (ctx.state !== 'running' || !isAudioUnlocked) {
-        ensureAudioContextReady(true).then((ready) => {
+    if (ctx.state !== 'running') {
+        ensureAudioContextReady().then((ready) => {
             if (ready) {
-                retryFailedSounds();
                 processPendingSoundQueue();
                 ensureBgmPlayingIfWanted();
             }
         });
-    } else {
-        retryFailedSounds();
-        if (pendingSoundQueue.length > 0 || (isBgmWanted && !bgmSource)) {
-            processPendingSoundQueue();
-            ensureBgmPlayingIfWanted();
-        }
-    }
-}
-
-['touchstart', 'touchend', 'click', 'keydown', 'keyup', 'pointerdown', 'pointerup', 'mousedown'].forEach(evtName => {
-    window.addEventListener(evtName, unlockAudioOnUserGesture, { capture: true, passive: true });
-    document.addEventListener(evtName, unlockAudioOnUserGesture, { passive: true, once: false });
-});
-
-function handleAudioLifecycleRestore() {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    retryFailedSounds();
-    if (!isAudioUnlocked && !hasUserGestureOccurred) return;
-    ensureAudioContextReady(false).then((ready) => {
-        if (ready) {
-            processPendingSoundQueue();
-            ensureBgmPlayingIfWanted();
-        }
-    });
-}
-
-if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', handleAudioLifecycleRestore);
-}
-window.addEventListener('pageshow', handleAudioLifecycleRestore);
-window.addEventListener('focus', handleAudioLifecycleRestore);
-window.addEventListener('online', () => {
-    retryFailedSounds();
-    if (audioCtx && audioCtx.state === 'running') {
+    } else if (pendingSoundQueue.length > 0 || (isBgmWanted && !bgmSource)) {
         processPendingSoundQueue();
         ensureBgmPlayingIfWanted();
     }
+}
+
+['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evtName => {
+    document.addEventListener(evtName, unlockAudioOnUserGesture, { passive: true, once: false });
 });
 
 function sendSoundMessageToConn(conn, payload) {
@@ -750,6 +481,8 @@ let peer = null, myPeerId = null, roomId = null, isHost = false;
 let hostConnection = null, guestConnections = []; 
 let roomPlayers = [], botColors = [], botNames = [], currentBotCount = 0, selectedColorId = 'red';
 let myPlayerName = "", isNameConfirmed = false;
+let isSystemInitialized = false;
+let systemInitPromise = null;
 let deck = [], discardPile = [];
 let gameState = { turnIndex: 0, players: [], status: 'WAITING', topCardOwnerId: null, flowSourceId: null, skipPreVotes: [] };
 let localPlayerState = { hand: [], hasDrawn: false, hasDiscarded: false, discardedRank: null, points: 200, turnCount: 0, hasFinishedFirstTurn: false, hasFlowedThisTurn: false, temporaryBot: false, returnRequested: false };
@@ -758,6 +491,60 @@ let turnTimerInterval = null;
 let announcerTimeout = null;
 let hostHeartbeatTimer = null;
 let heartbeatInterval = null;
+
+// =========================================================
+// Deferred Initialization Management (Firebase & PeerJS)
+// =========================================================
+function initFirebaseAndPeerSystem() {
+    if (isSystemInitialized) return Promise.resolve();
+    if (systemInitPromise) return systemInitPromise;
+
+    systemInitPromise = new Promise((resolve, reject) => {
+        try {
+            if (!myPeerId) {
+                myPeerId = "cang-client-" + Math.random().toString(36).substring(2, 8);
+            }
+            if (!peer) {
+                peer = new Peer(myPeerId);
+            }
+
+            const roomsRef = ref(db, GAME_DB_ID + '/rooms');
+            onValue(roomsRef, (snapshot) => {
+                const listContainer = document.getElementById('room-list-container');
+                if (!listContainer) return;
+                listContainer.innerHTML = '';
+                if (snapshot.exists()) {
+                    let hasRoom = false;
+                    for (let rId in snapshot.val()) {
+                        let info = snapshot.val()[rId];
+                        if (info.state === 'WAITING' && info.playerCount < 6) {
+                            hasRoom = true;
+                            let btn = document.createElement('button');
+                            btn.className = 'room-item-btn';
+                            btn.setAttribute('aria-label', `เข้าร่วมห้อง ${rId} มีผู้เล่น ${info.playerCount} จาก 6 คน`);
+                            btn.innerHTML = `ห้อง ${rId} (${info.playerCount}/6 คน) <span aria-hidden="true">เข้า ➔</span>`;
+                            btn.onclick = () => window.joinRoomDirect(rId);
+                            listContainer.appendChild(btn);
+                        }
+                    }
+                    if(!hasRoom) listContainer.innerHTML = '<div class="no-room-text" role="status">ไม่มีห้องว่าง (กดสร้างห้องได้เลย)</div>';
+                } else {
+                    listContainer.innerHTML = '<div class="no-room-text" role="status">ไม่มีห้องว่าง (กดสร้างห้องได้เลย)</div>';
+                }
+            }, (err) => {
+                console.warn("Firebase onValue error", err);
+            });
+
+            isSystemInitialized = true;
+            resolve();
+        } catch (e) {
+            console.error("Failed to initialize Firebase and PeerJS", e);
+            reject(e);
+        }
+    });
+
+    return systemInitPromise;
+}
 
 // =========================================================
 // Timeout, Temporary Bot & Disconnect States
@@ -1319,9 +1106,8 @@ function setupNameEntryEvents() {
 
     if (!nameInput || !confirmBtn || !nameScreen) return;
 
-    const handleConfirmName = (e) => {
+    const handleConfirmName = async (e) => {
         if (e) e.preventDefault();
-        unlockAudioOnUserGesture(e);
         if (isNameConfirmed) return;
 
         const trimmedName = nameInput.value.trim();
@@ -1337,6 +1123,12 @@ function setupNameEntryEvents() {
         nameInput.disabled = true;
 
         playSound('select');
+
+        try {
+            await initFirebaseAndPeerSystem();
+        } catch (err) {
+            console.error("Error during initial services setup:", err);
+        }
 
         nameScreen.style.display = 'none';
         if (setupScreen) {
@@ -1364,39 +1156,14 @@ function setupNameEntryEvents() {
 // Network & Lobby Logic
 // =========================================================
 window.onload = () => {
-    myPeerId = "cang-client-" + Math.random().toString(36).substring(2, 8);
-    peer = new Peer(myPeerId);
     setupNameEntryEvents();
     setupTemporaryBotModalEvents();
     updateHomeBtnVisibility();
-
-    const roomsRef = ref(db, GAME_DB_ID + '/rooms');
-    onValue(roomsRef, (snapshot) => {
-        const listContainer = document.getElementById('room-list-container');
-        listContainer.innerHTML = '';
-        if (snapshot.exists()) {
-            let hasRoom = false;
-            for (let rId in snapshot.val()) {
-                let info = snapshot.val()[rId];
-                if (info.state === 'WAITING' && info.playerCount < 6) {
-                    hasRoom = true;
-                    let btn = document.createElement('button');
-                    btn.className = 'room-item-btn';
-                    btn.setAttribute('aria-label', `เข้าร่วมห้อง ${rId} มีผู้เล่น ${info.playerCount} จาก 6 คน`);
-                    btn.innerHTML = `ห้อง ${rId} (${info.playerCount}/6 คน) <span aria-hidden="true">เข้า ➔</span>`;
-                    btn.onclick = () => window.joinRoomDirect(rId);
-                    listContainer.appendChild(btn);
-                }
-            }
-            if(!hasRoom) listContainer.innerHTML = '<div class="no-room-text" role="status">ไม่มีห้องว่าง (กดสร้างห้องได้เลย)</div>';
-        } else {
-            listContainer.innerHTML = '<div class="no-room-text" role="status">ไม่มีห้องว่าง (กดสร้างห้องได้เลย)</div>';
-        }
-    });
 };
 
-window.createNewRoom = () => {
+window.createNewRoom = async () => {
     if (!myPlayerName || !myPlayerName.trim()) return;
+    await initFirebaseAndPeerSystem();
     isHost = true; announce("กำลังสร้างห้อง โปรดรอสักครู่", false);
     const seqRef = ref(db, GAME_DB_ID + '/room_seq');
     runTransaction(seqRef, (currentData) => {
@@ -1431,8 +1198,9 @@ window.createNewRoom = () => {
     });
 };
 
-window.joinRoomDirect = (targetRoomId) => {
+window.joinRoomDirect = async (targetRoomId) => {
     if (!myPlayerName || !myPlayerName.trim()) return;
+    await initFirebaseAndPeerSystem();
     isHost = false; roomId = targetRoomId;
     announce(`กำลังเข้าร่วมห้อง ${roomId}`, false);
     document.getElementById('setup-screen').style.display = 'none';
@@ -1440,6 +1208,7 @@ window.joinRoomDirect = (targetRoomId) => {
     document.getElementById('host-bot-section').style.display = 'none';
     updateHomeBtnVisibility();
     
+    if (!peer) return;
     hostConnection = peer.connect("cang-host-" + roomId);
     hostConnection.on('open', () => { 
         hostConnection.send({ type: 'JOIN_ROOM', name: myPlayerName }); 
@@ -1506,6 +1275,7 @@ window.joinRoomDirect = (targetRoomId) => {
 };
 
 function listenHostConnections() {
+    if (!peer) return;
     peer.on('connection', (conn) => {
         conn.on('data', (data) => {
             if (data.type === 'JOIN_ROOM') {
@@ -2711,4 +2481,130 @@ window.showFloatingScore = (targetId, amt) => {
 };
 
 window.showResultModal = (title, detail, isEnd, winners, losers) => {
-    const srOnlyAnnouncer = document.getElementById('sr-only-announcer'); if (srOnlyAnnouncer) srOnlyAnnouncer.
+    const srOnlyAnnouncer = document.getElementById('sr-only-announcer'); if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
+    const visAnnouncer = document.getElementById('visible-game-announcer'); if (visAnnouncer) visAnnouncer.innerText = '';
+    window.isStartingRound = false;
+
+    let resolvedTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+    let resolvedDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+
+    document.getElementById('result-title').innerText = resolvedTitle;
+    document.getElementById('result-details').innerHTML = resolvedDetail;
+    
+    document.getElementById('result-modal').style.display = 'flex';
+    updateHomeBtnVisibility();
+
+    if (winners && losers) {
+        winners.forEach(id => { let el = document.getElementById(`avatar-result-status-bar-${id}`); if (el) el.classList.add('anim-happy'); });
+        losers.forEach(id => { let el = document.getElementById(`avatar-result-status-bar-${id}`); if (el) el.classList.add('anim-sad'); });
+    }
+
+    let btnNext = document.getElementById('btn-next-round'); let waitTxt = document.getElementById('guest-waiting-next-round');
+    
+    let hasZeroCoins = (gameState.players && gameState.players.some(p => p.points === 0)) ||
+                       (window.currentPublicState && window.currentPublicState.playersInfo && window.currentPublicState.playersInfo.some(p => p.points === 0));
+
+    if (btnNext) {
+        if (isHost && hasZeroCoins) {
+            btnNext.style.display = 'none';
+            if (waitTxt) waitTxt.style.display = 'none';
+        } else if (isEnd) {
+            btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = "กลับหน้าหลัก"; btnNext.onclick = () => window.location.reload();
+            if (waitTxt) waitTxt.style.display = 'none';
+        } else {
+            if (isHost) {
+                btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = "เริ่มรอบใหม่"; btnNext.onclick = closeResultModal;
+                if (waitTxt) waitTxt.style.display = 'none';
+            } else {
+                btnNext.style.display = 'none';
+                if (waitTxt) waitTxt.style.display = 'block';
+            }
+        }
+    }
+
+    if(myPeerId) {
+        if (winners && winners.includes(myPeerId)) playSound('win');
+        else if (losers && losers.includes(myPeerId)) playSound('lost');
+        else playSound('no'); 
+    }
+
+    setTimeout(() => {
+        if (!isLocalTempBotModalOpen) {
+            const resultTitle = document.getElementById('result-title');
+            if (resultTitle) resultTitle.focus();
+        }
+    }, 200);
+};
+
+// =========================================================
+// --- CHEAT MODE LOGIC (รวมฟังก์ชันไว้ล่างสุด) ---
+// =========================================================
+function setCheatHand(type) {
+    let newHand = [];
+    if (type === "ตอง") {
+        newHand = [
+            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
+            { suit: '♥', rank: '7', value: 5, val: 5, id: '7♥' },
+            { suit: '♦', rank: '7', value: 5, val: 5, id: '7♦' },
+            { suit: '♣', rank: '7', value: 5, val: 5, id: '7♣' },
+            { suit: '♠', rank: 'K', value: 10, val: 10, id: 'K♠' },
+            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' },
+            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' }
+        ];
+    } else if (type === "ดอก" || type === "สี") {
+        newHand = [
+            { suit: '♠', rank: '2', value: 5, val: 5, id: '2♠' },
+            { suit: '♠', rank: '3', value: 5, val: 5, id: '3♠' },
+            { suit: '♠', rank: '4', value: 5, val: 5, id: '4♠' },
+            { suit: '♠', rank: '5', value: 5, val: 5, id: '5♠' },
+            { suit: '♠', rank: '6', value: 5, val: 5, id: '6♠' },
+            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
+            { suit: '♠', rank: '8', value: 5, val: 5, id: '8♠' }
+        ];
+    } else if (type === "เรียง") {
+        newHand = [
+            { suit: '♥', rank: '4', value: 5, val: 5, id: '4♥' },
+            { suit: '♥', rank: '5', value: 5, val: 5, id: '5♥' },
+            { suit: '♥', rank: '6', value: 5, val: 5, id: '6♥' },
+            { suit: '♣', rank: '8', value: 5, val: 5, id: '8♣' },
+            { suit: '♣', rank: '9', value: 5, val: 5, id: '9♣' },
+            { suit: '♣', rank: '10', value: 10, val: 10, id: '10♣' },
+            { suit: '♣', rank: 'J', value: 10, val: 10, id: 'J♣' }
+        ];
+    } else if (type === "50") {
+        newHand = [
+            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
+            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
+            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
+            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
+            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
+            { suit: '♦', rank: '10', value: 10, val: 10, id: '10♦' },
+            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' }
+        ];
+    } else if (type === "3a") {
+        newHand = [
+            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
+            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
+            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
+            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
+            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
+            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' },
+            { suit: '♣', rank: 'K', value: 10, val: 10, id: 'K♣' }
+        ];
+    }
+
+    if (isHost) {
+        let p = gameState.players.find(x => x.id === myPeerId);
+        if (p) {
+            p.hand = newHand;
+            syncStateToAll();
+            announce("เสกไพ่สำเร็จ (Host)", false);
+        }
+    } else {
+        localPlayerState.hand = newHand;
+        if (window.currentPublicState) {
+            renderClientGame(window.currentPublicState, localPlayerState);
+        }
+        announce("เสกไพ่สำเร็จ (Client)", false);
+    }
+}
