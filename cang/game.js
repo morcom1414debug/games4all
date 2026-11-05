@@ -87,6 +87,9 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 // =========================================================
 let audioCtx = null;
 let audioResumePromise = null;
+let isAudioUnlocked = false;
+let hasUserGestureOccurred = false;
+const rawAudioData = {};
 const audioBuffers = {};
 const soundLoadStatus = {}; // 'idle' | 'loading' | 'loaded' | 'failed'
 const soundLoadPromises = {};
@@ -100,6 +103,9 @@ let lastHandledRemoteSoundId = null;
 const recentPlayedSignatureMap = new Map();
 const pendingPeerSoundPayloads = new Map();
 
+const MAX_FETCH_RETRIES = 3;
+const MAX_DECODE_RETRIES = 2;
+
 const soundFiles = {
     '1': 'audio/1.mp3', 'select': 'audio/select.mp3', 'start': 'audio/start.mp3',
     'bgm': 'audio/bgm.mp3', 'jua': 'audio/jua.mp3', 'turn': 'audio/turn.mp3',
@@ -108,16 +114,46 @@ const soundFiles = {
     'knock': 'audio/knock.mp3', 'special': 'audio/special.mp3' // เพิ่มเสียง knock และ special
 };
 
-function getOrCreateAudioContext() {
+function isAudioContextRunning(ctx) {
+    return Boolean(ctx && ctx.state === 'running');
+}
+
+function getOrCreateAudioContext(forceRecreate = false) {
+    if (audioCtx && (audioCtx.state === 'closed' || forceRecreate)) {
+        try {
+            audioCtx.onstatechange = null;
+            if (audioCtx.state !== 'closed' && typeof audioCtx.close === 'function') {
+                audioCtx.close().catch(() => {});
+            }
+        } catch (e) {}
+        audioCtx = null;
+        audioResumePromise = null;
+        isAudioUnlocked = false;
+        if (bgmSource) {
+            try { bgmSource.onended = null; bgmSource.stop(); } catch (e) {}
+            try { bgmSource.disconnect(); } catch (e) {}
+            bgmSource = null;
+        }
+    }
+
     if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (AudioContextClass) {
             try {
                 audioCtx = new AudioContextClass();
-                audioCtx.onstatechange = () => {
-                    if (audioCtx && audioCtx.state === 'running') {
+                const createdCtx = audioCtx;
+                createdCtx.onstatechange = () => {
+                    if (audioCtx !== createdCtx) return;
+                    if (createdCtx.state === 'running') {
+                        isAudioUnlocked = true;
+                        audioResumePromise = null;
+                        retryFailedSounds();
                         processPendingSoundQueue();
                         ensureBgmPlayingIfWanted();
+                    } else if (createdCtx.state === 'closed') {
+                        audioResumePromise = null;
+                        isAudioUnlocked = false;
+                        bgmSource = null;
                     }
                 };
             } catch (e) {
@@ -130,57 +166,186 @@ function getOrCreateAudioContext() {
 
 getOrCreateAudioContext();
 
-function ensureAudioContextReady() {
-    const ctx = getOrCreateAudioContext();
-    if (!ctx) return Promise.resolve(false);
-    if (ctx.state === 'running') return Promise.resolve(true);
+function playSilentUnlockBuffer(ctx) {
+    if (!ctx || ctx.state === 'closed') return;
+    try {
+        const sampleRate = (ctx.sampleRate && ctx.sampleRate > 0) ? ctx.sampleRate : 22050;
+        const silentBuffer = ctx.createBuffer(1, 1, sampleRate);
+        const source = ctx.createBufferSource();
+        source.buffer = silentBuffer;
+        source.connect(ctx.destination);
+        source.onended = () => {
+            try { source.disconnect(); } catch (e) {}
+        };
+        if (typeof source.start === 'function') {
+            source.start(0);
+        } else if (typeof source.noteOn === 'function') {
+            source.noteOn(0);
+        }
+    } catch (e) {}
+}
 
-    if (!audioResumePromise) {
+function ensureAudioContextReady(fromUserGesture = false) {
+    if (fromUserGesture) {
+        hasUserGestureOccurred = true;
+    }
+
+    let ctx = getOrCreateAudioContext();
+    if (!ctx) return Promise.resolve(false);
+
+    if (ctx.state === 'closed') {
+        if (!hasUserGestureOccurred && !fromUserGesture) {
+            return Promise.resolve(false);
+        }
+        ctx = getOrCreateAudioContext(true);
+        if (!ctx) return Promise.resolve(false);
+    }
+
+    if (ctx.state === 'running') {
+        isAudioUnlocked = true;
+        return Promise.resolve(true);
+    }
+
+    // ห้ามเรียก ctx.resume() นอกเหตุการณ์ User Gesture ในขั้นตอนปลดล็อกครั้งแรก
+    if (!isAudioUnlocked && !fromUserGesture) {
+        return audioResumePromise || Promise.resolve(false);
+    }
+
+    if (fromUserGesture) {
+        playSilentUnlockBuffer(ctx);
+    }
+
+    if (fromUserGesture || !audioResumePromise) {
         try {
             const p = ctx.resume();
             if (p && typeof p.then === 'function') {
-                audioResumePromise = p.then(() => {
-                    audioResumePromise = null;
-                    return ctx.state === 'running';
+                const currentPromise = p.then(() => {
+                    if (audioResumePromise === currentPromise) {
+                        audioResumePromise = null;
+                    }
+                    const running = isAudioContextRunning(ctx);
+                    if (running) {
+                        isAudioUnlocked = true;
+                        retryFailedSounds();
+                        processPendingSoundQueue();
+                        ensureBgmPlayingIfWanted();
+                    }
+                    return running;
                 }).catch(() => {
-                    audioResumePromise = null;
-                    return ctx.state === 'running';
+                    if (audioResumePromise === currentPromise) {
+                        audioResumePromise = null;
+                    }
+                    if (ctx.state === 'closed') {
+                        getOrCreateAudioContext(true);
+                    }
+                    return isAudioContextRunning(audioCtx);
                 });
+                audioResumePromise = currentPromise;
             } else {
-                audioResumePromise = Promise.resolve(ctx.state === 'running');
                 audioResumePromise = null;
+                const running = isAudioContextRunning(ctx);
+                if (running) {
+                    isAudioUnlocked = true;
+                    retryFailedSounds();
+                    processPendingSoundQueue();
+                    ensureBgmPlayingIfWanted();
+                }
+                return Promise.resolve(running);
             }
         } catch (e) {
             audioResumePromise = null;
-            return Promise.resolve(false);
+            if (ctx && ctx.state === 'closed') {
+                getOrCreateAudioContext(true);
+            }
+            return Promise.resolve(isAudioContextRunning(audioCtx));
         }
     }
-    return audioResumePromise || Promise.resolve(ctx.state === 'running');
+
+    return audioResumePromise || Promise.resolve(isAudioContextRunning(ctx));
 }
 
 function decodeAudioDataAsync(ctx, arrayBuffer) {
     return new Promise((resolve, reject) => {
+        if (!ctx || ctx.state === 'closed') {
+            reject(new Error("AudioContext closed or unavailable"));
+            return;
+        }
+        let settled = false;
+        const onSuccess = (decoded) => {
+            if (settled) return;
+            settled = true;
+            resolve(decoded);
+        };
+        const onError = (err) => {
+            if (settled) return;
+            settled = true;
+            reject(err || new Error("decodeAudioData failed"));
+        };
         try {
-            const res = ctx.decodeAudioData(
-                arrayBuffer,
-                (decoded) => resolve(decoded),
-                (err) => reject(err)
-            );
+            const res = ctx.decodeAudioData(arrayBuffer, onSuccess, onError);
             if (res && typeof res.then === 'function') {
-                res.then(resolve).catch(reject);
+                res.then(onSuccess).catch(onError);
             }
         } catch (e) {
-            reject(e);
+            onError(e);
         }
     });
 }
 
-function loadSingleSound(key) {
+async function fetchAudioArrayBufferWithRetry(url, maxRetries = MAX_FETCH_RETRIES) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const fetchOptions = attempt > 1 ? { cache: 'reload' } : undefined;
+            const response = await fetch(url, fetchOptions);
+            if (!response.ok) {
+                throw new Error(`HTTP status ${response.status}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                throw new Error("Empty audio ArrayBuffer");
+            }
+            return arrayBuffer;
+        } catch (err) {
+            lastError = err;
+        }
+    }
+    throw lastError || new Error(`Failed to fetch ${url}`);
+}
+
+async function decodeAudioBufferWithRetry(rawBuffer, maxRetries = MAX_DECODE_RETRIES) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        let ctx = getOrCreateAudioContext();
+        if (!ctx || ctx.state === 'closed') {
+            ctx = getOrCreateAudioContext(true);
+        }
+        if (!ctx) {
+            throw new Error("AudioContext unavailable");
+        }
+        try {
+            const bufferCopy = rawBuffer.slice(0);
+            const decoded = await decodeAudioDataAsync(ctx, bufferCopy);
+            if (!decoded) {
+                throw new Error("Decoded AudioBuffer is null");
+            }
+            return decoded;
+        } catch (err) {
+            lastError = err;
+            if (ctx.state === 'closed') {
+                getOrCreateAudioContext(true);
+            }
+        }
+    }
+    throw lastError || new Error("Failed to decode audio buffer");
+}
+
+function loadSingleSound(key, forceReload = false) {
     if (!soundFiles[key]) {
         soundLoadStatus[key] = 'failed';
         return Promise.resolve(null);
     }
-    if (soundLoadStatus[key] === 'loaded' && audioBuffers[key]) {
+    if (!forceReload && soundLoadStatus[key] === 'loaded' && audioBuffers[key]) {
         return Promise.resolve(audioBuffers[key]);
     }
     if (soundLoadStatus[key] === 'loading' && soundLoadPromises[key]) {
@@ -190,12 +355,10 @@ function loadSingleSound(key) {
     soundLoadStatus[key] = 'loading';
     soundLoadPromises[key] = (async () => {
         try {
-            const response = await fetch(soundFiles[key]);
-            if (!response.ok) throw new Error(`HTTP status ${response.status}`);
-            const arrayBuffer = await response.arrayBuffer();
-            const ctx = getOrCreateAudioContext();
-            if (!ctx) throw new Error("AudioContext unavailable");
-            const audioBuffer = await decodeAudioDataAsync(ctx, arrayBuffer);
+            if (forceReload || !rawAudioData[key] || rawAudioData[key].byteLength === 0) {
+                rawAudioData[key] = await fetchAudioArrayBufferWithRetry(soundFiles[key]);
+            }
+            const audioBuffer = await decodeAudioBufferWithRetry(rawAudioData[key]);
             audioBuffers[key] = audioBuffer;
             soundLoadStatus[key] = 'loaded';
             return audioBuffer;
@@ -205,12 +368,23 @@ function loadSingleSound(key) {
             return null;
         } finally {
             delete soundLoadPromises[key];
-            processPendingSoundQueue();
-            if (key === 'bgm') ensureBgmPlayingIfWanted();
+            if (soundLoadStatus[key] === 'loaded') {
+                processPendingSoundQueue();
+                if (key === 'bgm') ensureBgmPlayingIfWanted();
+            }
         }
     })();
 
     return soundLoadPromises[key];
+}
+
+function retryFailedSounds() {
+    const keys = Object.keys(soundFiles);
+    keys.forEach(key => {
+        if (soundLoadStatus[key] === 'failed' || (!audioBuffers[key] && soundLoadStatus[key] !== 'loading')) {
+            loadSingleSound(key);
+        }
+    });
 }
 
 async function loadSounds() {
@@ -227,22 +401,53 @@ function startBufferSourceNow(key, loop = false) {
         source.buffer = audioBuffers[key];
         source.connect(ctx.destination);
         source.loop = loop;
-        source.start(0);
+        source._ctx = ctx;
+        source.onended = () => {
+            try { source.disconnect(); } catch (e) {}
+            if (key === 'bgm' && loop && bgmSource === source) {
+                bgmSource = null;
+                if (isBgmWanted && audioCtx && audioCtx.state === 'running') {
+                    ensureBgmPlayingIfWanted();
+                }
+            }
+        };
+        if (typeof source.start === 'function') {
+            source.start(0);
+        } else if (typeof source.noteOn === 'function') {
+            source.noteOn(0);
+        }
         return source;
     } catch (e) {
         console.warn("Error starting sound source", key, e);
+        if (rawAudioData[key]) {
+            delete audioBuffers[key];
+            soundLoadStatus[key] = 'idle';
+            loadSingleSound(key);
+        }
         return null;
     }
 }
 
 function ensureBgmPlayingIfWanted() {
     if (!isBgmWanted) return;
-    if (bgmSource) return;
     const ctx = getOrCreateAudioContext();
     if (!ctx || ctx.state !== 'running') return;
+
+    if (bgmSource) {
+        if (bgmSource._ctx === ctx) {
+            return;
+        }
+        try {
+            bgmSource.onended = null;
+            bgmSource.stop();
+        } catch (e) {}
+        try { bgmSource.disconnect(); } catch (e) {}
+        bgmSource = null;
+    }
+
     if (soundLoadStatus['bgm'] === 'loaded' && audioBuffers['bgm']) {
         bgmSource = startBufferSourceNow('bgm', true);
-    } else if (soundLoadStatus['bgm'] !== 'loading' && soundLoadStatus['bgm'] !== 'failed') {
+    } else if (soundLoadStatus['bgm'] !== 'loading') {
         loadSingleSound('bgm');
     }
 }
@@ -252,48 +457,59 @@ async function processPendingSoundQueue() {
     if (pendingSoundQueue.length === 0) return;
 
     const ctx = getOrCreateAudioContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
 
     isProcessingSoundQueue = true;
     try {
-        if (ctx.state !== 'running') {
-            const resumed = await ensureAudioContextReady();
-            if (!resumed && ctx.state !== 'running') {
-                return;
-            }
-        }
-
         while (pendingSoundQueue.length > 0) {
-            if (ctx.state !== 'running') break;
+            const activeCtx = getOrCreateAudioContext();
+            if (!activeCtx || activeCtx.state !== 'running') break;
 
             const item = pendingSoundQueue[0];
-            const { key, loop } = item;
-
-            if (!soundFiles[key] || soundLoadStatus[key] === 'failed') {
+            if (!item || item.played || !soundFiles[item.key]) {
                 pendingSoundQueue.shift();
                 continue;
             }
 
+            const { key, loop } = item;
+
             if (soundLoadStatus[key] !== 'loaded' || !audioBuffers[key]) {
                 const buffer = await loadSingleSound(key);
+                const ctxAfterLoad = getOrCreateAudioContext();
+                if (!ctxAfterLoad || ctxAfterLoad.state !== 'running') {
+                    break;
+                }
                 if (!buffer) {
-                    pendingSoundQueue.shift();
+                    if (pendingSoundQueue[0] === item) {
+                        pendingSoundQueue.shift();
+                    }
                     continue;
                 }
-                if (ctx.state !== 'running') break;
+            }
+
+            const ctxBeforePlay = getOrCreateAudioContext();
+            if (!ctxBeforePlay || ctxBeforePlay.state !== 'running') {
+                break;
+            }
+
+            if (pendingSoundQueue[0] !== item) {
+                continue;
             }
 
             pendingSoundQueue.shift();
+            item.played = true;
+
             if (key === 'bgm' && loop) {
                 if (isBgmWanted) {
-                    if (bgmSource) {
-                        try { bgmSource.stop(); } catch (e) {}
-                        bgmSource = null;
-                    }
-                    bgmSource = startBufferSourceNow('bgm', true);
+                    ensureBgmPlayingIfWanted();
                 }
             } else {
-                startBufferSourceNow(key, loop);
+                const started = startBufferSourceNow(key, loop);
+                if (!started && (!audioCtx || audioCtx.state !== 'running' || soundLoadStatus[key] === 'loading')) {
+                    item.played = false;
+                    pendingSoundQueue.unshift(item);
+                    break;
+                }
             }
         }
     } finally {
@@ -319,8 +535,15 @@ function playSound(key, loop = false) {
     const isBufferReady = (soundLoadStatus[key] === 'loaded' && !!audioBuffers[key]);
     const isContextRunning = (ctx.state === 'running');
 
-    if (isContextRunning && isBufferReady) {
-        return startBufferSourceNow(key, loop);
+    if (pendingSoundQueue.length === 0 && !isProcessingSoundQueue && isContextRunning && isBufferReady) {
+        if (key === 'bgm' && loop) {
+            ensureBgmPlayingIfWanted();
+            return bgmSource;
+        }
+        const started = startBufferSourceNow(key, loop);
+        if (started) {
+            return started;
+        }
     }
 
     if (soundLoadStatus[key] !== 'loaded' && soundLoadStatus[key] !== 'loading') {
@@ -328,18 +551,25 @@ function playSound(key, loop = false) {
     }
 
     if (key === 'bgm' && loop) {
-        const hasBgmQueued = pendingSoundQueue.some(item => item.key === 'bgm' && item.loop);
+        const hasBgmQueued = pendingSoundQueue.some(item => item.key === 'bgm' && item.loop && !item.played);
         if (!hasBgmQueued) {
-            pendingSoundQueue.push({ key, loop: true, timestamp: Date.now() });
+            pendingSoundQueue.push({ key, loop: true, timestamp: Date.now(), played: false });
         }
     } else {
-        pendingSoundQueue.push({ key, loop, timestamp: Date.now() });
+        pendingSoundQueue.push({ key, loop, timestamp: Date.now(), played: false });
     }
 
-    ensureAudioContextReady().then(() => {
+    if (isContextRunning) {
         processPendingSoundQueue();
         ensureBgmPlayingIfWanted();
-    });
+    } else if (isAudioUnlocked || hasUserGestureOccurred) {
+        ensureAudioContextReady(false).then((ready) => {
+            if (ready) {
+                processPendingSoundQueue();
+                ensureBgmPlayingIfWanted();
+            }
+        });
+    }
 
     return null;
 }
@@ -352,8 +582,13 @@ function stopBGM() {
         }
     }
     if (bgmSource) {
-        try { bgmSource.stop(); } catch(e) {}
+        const src = bgmSource;
         bgmSource = null;
+        try {
+            src.onended = null;
+            src.stop();
+        } catch(e) {}
+        try { src.disconnect(); } catch(e) {}
     }
 }
 
@@ -363,24 +598,58 @@ function playBGM() {
     bgmSource = playSound('bgm', true);
 }
 
-function unlockAudioOnUserGesture() {
+function unlockAudioOnUserGesture(e) {
+    if (e && e.isTrusted === false && !hasUserGestureOccurred) return;
+    hasUserGestureOccurred = true;
+
     const ctx = getOrCreateAudioContext();
     if (!ctx) return;
-    if (ctx.state !== 'running') {
-        ensureAudioContextReady().then((ready) => {
+
+    if (ctx.state !== 'running' || !isAudioUnlocked) {
+        ensureAudioContextReady(true).then((ready) => {
             if (ready) {
+                retryFailedSounds();
                 processPendingSoundQueue();
                 ensureBgmPlayingIfWanted();
             }
         });
-    } else if (pendingSoundQueue.length > 0 || (isBgmWanted && !bgmSource)) {
-        processPendingSoundQueue();
-        ensureBgmPlayingIfWanted();
+    } else {
+        retryFailedSounds();
+        if (pendingSoundQueue.length > 0 || (isBgmWanted && !bgmSource)) {
+            processPendingSoundQueue();
+            ensureBgmPlayingIfWanted();
+        }
     }
 }
 
-['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evtName => {
+['touchstart', 'touchend', 'click', 'keydown', 'keyup', 'pointerdown', 'pointerup', 'mousedown'].forEach(evtName => {
+    window.addEventListener(evtName, unlockAudioOnUserGesture, { capture: true, passive: true });
     document.addEventListener(evtName, unlockAudioOnUserGesture, { passive: true, once: false });
+});
+
+function handleAudioLifecycleRestore() {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    retryFailedSounds();
+    if (!isAudioUnlocked && !hasUserGestureOccurred) return;
+    ensureAudioContextReady(false).then((ready) => {
+        if (ready) {
+            processPendingSoundQueue();
+            ensureBgmPlayingIfWanted();
+        }
+    });
+}
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleAudioLifecycleRestore);
+}
+window.addEventListener('pageshow', handleAudioLifecycleRestore);
+window.addEventListener('focus', handleAudioLifecycleRestore);
+window.addEventListener('online', () => {
+    retryFailedSounds();
+    if (audioCtx && audioCtx.state === 'running') {
+        processPendingSoundQueue();
+        ensureBgmPlayingIfWanted();
+    }
 });
 
 function sendSoundMessageToConn(conn, payload) {
@@ -1052,6 +1321,7 @@ function setupNameEntryEvents() {
 
     const handleConfirmName = (e) => {
         if (e) e.preventDefault();
+        unlockAudioOnUserGesture(e);
         if (isNameConfirmed) return;
 
         const trimmedName = nameInput.value.trim();
@@ -2441,130 +2711,4 @@ window.showFloatingScore = (targetId, amt) => {
 };
 
 window.showResultModal = (title, detail, isEnd, winners, losers) => {
-    const srOnlyAnnouncer = document.getElementById('sr-only-announcer'); if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
-    const visAnnouncer = document.getElementById('visible-game-announcer'); if (visAnnouncer) visAnnouncer.innerText = '';
-    window.isStartingRound = false;
-
-    let resolvedTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
-    let resolvedDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
-
-    document.getElementById('result-title').innerText = resolvedTitle;
-    document.getElementById('result-details').innerHTML = resolvedDetail;
-    
-    document.getElementById('result-modal').style.display = 'flex';
-    updateHomeBtnVisibility();
-
-    if (winners && losers) {
-        winners.forEach(id => { let el = document.getElementById(`avatar-result-status-bar-${id}`); if (el) el.classList.add('anim-happy'); });
-        losers.forEach(id => { let el = document.getElementById(`avatar-result-status-bar-${id}`); if (el) el.classList.add('anim-sad'); });
-    }
-
-    let btnNext = document.getElementById('btn-next-round'); let waitTxt = document.getElementById('guest-waiting-next-round');
-    
-    let hasZeroCoins = (gameState.players && gameState.players.some(p => p.points === 0)) ||
-                       (window.currentPublicState && window.currentPublicState.playersInfo && window.currentPublicState.playersInfo.some(p => p.points === 0));
-
-    if (btnNext) {
-        if (isHost && hasZeroCoins) {
-            btnNext.style.display = 'none';
-            if (waitTxt) waitTxt.style.display = 'none';
-        } else if (isEnd) {
-            btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = "กลับหน้าหลัก"; btnNext.onclick = () => window.location.reload();
-            if (waitTxt) waitTxt.style.display = 'none';
-        } else {
-            if (isHost) {
-                btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = "เริ่มรอบใหม่"; btnNext.onclick = closeResultModal;
-                if (waitTxt) waitTxt.style.display = 'none';
-            } else {
-                btnNext.style.display = 'none';
-                if (waitTxt) waitTxt.style.display = 'block';
-            }
-        }
-    }
-
-    if(myPeerId) {
-        if (winners && winners.includes(myPeerId)) playSound('win');
-        else if (losers && losers.includes(myPeerId)) playSound('lost');
-        else playSound('no'); 
-    }
-
-    setTimeout(() => {
-        if (!isLocalTempBotModalOpen) {
-            const resultTitle = document.getElementById('result-title');
-            if (resultTitle) resultTitle.focus();
-        }
-    }, 200);
-};
-
-// =========================================================
-// --- CHEAT MODE LOGIC (รวมฟังก์ชันไว้ล่างสุด) ---
-// =========================================================
-function setCheatHand(type) {
-    let newHand = [];
-    if (type === "ตอง") {
-        newHand = [
-            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
-            { suit: '♥', rank: '7', value: 5, val: 5, id: '7♥' },
-            { suit: '♦', rank: '7', value: 5, val: 5, id: '7♦' },
-            { suit: '♣', rank: '7', value: 5, val: 5, id: '7♣' },
-            { suit: '♠', rank: 'K', value: 10, val: 10, id: 'K♠' },
-            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' },
-            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' }
-        ];
-    } else if (type === "ดอก" || type === "สี") {
-        newHand = [
-            { suit: '♠', rank: '2', value: 5, val: 5, id: '2♠' },
-            { suit: '♠', rank: '3', value: 5, val: 5, id: '3♠' },
-            { suit: '♠', rank: '4', value: 5, val: 5, id: '4♠' },
-            { suit: '♠', rank: '5', value: 5, val: 5, id: '5♠' },
-            { suit: '♠', rank: '6', value: 5, val: 5, id: '6♠' },
-            { suit: '♠', rank: '7', value: 5, val: 5, id: '7♠' },
-            { suit: '♠', rank: '8', value: 5, val: 5, id: '8♠' }
-        ];
-    } else if (type === "เรียง") {
-        newHand = [
-            { suit: '♥', rank: '4', value: 5, val: 5, id: '4♥' },
-            { suit: '♥', rank: '5', value: 5, val: 5, id: '5♥' },
-            { suit: '♥', rank: '6', value: 5, val: 5, id: '6♥' },
-            { suit: '♣', rank: '8', value: 5, val: 5, id: '8♣' },
-            { suit: '♣', rank: '9', value: 5, val: 5, id: '9♣' },
-            { suit: '♣', rank: '10', value: 10, val: 10, id: '10♣' },
-            { suit: '♣', rank: 'J', value: 10, val: 10, id: 'J♣' }
-        ];
-    } else if (type === "50") {
-        newHand = [
-            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
-            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
-            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
-            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
-            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
-            { suit: '♦', rank: '10', value: 10, val: 10, id: '10♦' },
-            { suit: '♥', rank: 'K', value: 10, val: 10, id: 'K♥' }
-        ];
-    } else if (type === "3a") {
-        newHand = [
-            { suit: '♠', rank: 'A', value: 15, val: 15, id: 'A♠' },
-            { suit: '♥', rank: 'A', value: 15, val: 15, id: 'A♥' },
-            { suit: '♦', rank: 'A', value: 15, val: 15, id: 'A♦' },
-            { suit: '♠', rank: '2', value: 50, val: 50, id: '2♠' },
-            { suit: '♣', rank: 'Q', value: 50, val: 50, id: 'Q♣' },
-            { suit: '♦', rank: 'K', value: 10, val: 10, id: 'K♦' },
-            { suit: '♣', rank: 'K', value: 10, val: 10, id: 'K♣' }
-        ];
-    }
-
-    if (isHost) {
-        let p = gameState.players.find(x => x.id === myPeerId);
-        if (p) {
-            p.hand = newHand;
-            syncStateToAll();
-            announce("เสกไพ่สำเร็จ (Host)", false);
-        }
-    } else {
-        localPlayerState.hand = newHand;
-        if (window.currentPublicState) {
-            renderClientGame(window.currentPublicState, localPlayerState);
-        }
-        announce("เสกไพ่สำเร็จ (Client)", false);
-    }
-}
+    const srOnlyAnnouncer = document.getElementById('sr-only-announcer'); if (srOnlyAnnouncer) srOnlyAnnouncer.
