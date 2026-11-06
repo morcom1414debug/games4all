@@ -45,59 +45,318 @@ let isStartingGame = false;
 
 // Audio System States
 let bgmSource = null;
+let isBgmActive = false;
 let audioBuffers = {};
+let audioLoadingPromises = {};
 let previousHumanCount = null;
 let previousBotCount = null;
 let isShowingWinnerScene = false;
+let audioUnlocked = false;
+let unlockPromise = null;
+let hasPreloadedAudio = false;
+let isConfirmingName = false;
 
-// Audio Context Web API (Web Audio API)
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// All Audio Files Used in Game (Preserving exact file names)
+const AUDIO_FILES_LIST = [
+    'select.mp3', '1.mp3', 'start.mp3', 'bgm.mp3', 'win.mp3',
+    'turn.mp3', 'abc.mp3', 'dice.mp3', 'walk.mp3', 'sabuy.mp3',
+    'box1.mp3', 'forward.mp3', 'hole.mp3', 'water.mp3', 'ghost.mp3',
+    'cyclone.mp3', 'box2.mp3', 'door1.mp3', 'box4.mp3', 'box3.mp3',
+    'akey3.mp3', 'akey2.mp3', 'akey1.mp3', 'door2.mp3', 'shieldno.mp3',
+    'shield.mp3'
+];
 
-// Auto-resume AudioContext for iOS/Android/Desktop User Interaction Requirement
-const unlockAudio = () => {
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+// Audio Context Web API (Web Audio API) - Single Instance Management
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+let audioCtx = AudioContextClass ? new AudioContextClass() : null;
+
+function getAudioContext() {
+    if (!audioCtx && AudioContextClass) {
+        try {
+            audioCtx = new AudioContextClass();
+        } catch (e) {
+            console.error('AudioContext creation error:', e);
+        }
+    }
+    return audioCtx;
+}
+
+// Play 1-frame silent buffer inside User Gesture to unlock iOS/Safari WebKit audio pipeline
+function playSilentUnlockBuffer(ctx) {
+    if (!ctx) return;
+    try {
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        if (typeof source.start === 'function') {
+            source.start(0);
+        } else if (typeof source.noteOn === 'function') {
+            source.noteOn(0);
+        }
+    } catch (e) {
+        // Ignore silent buffer errors on strict states
+    }
+}
+
+// Unlock & Resume AudioContext safely with Promise deduplication
+function unlockAudioContext() {
+    const ctx = getAudioContext();
+    if (!ctx) return Promise.resolve(false);
+
+    // If already running and unlocked, return immediately without redundant calls
+    if (ctx.state === 'running' && audioUnlocked) {
+        return Promise.resolve(true);
+    }
+
+    // Prevent concurrent unlock calls
+    if (unlockPromise) {
+        return unlockPromise;
+    }
+
+    // Trigger silent buffer synchronously within the user gesture stack frame
+    playSilentUnlockBuffer(ctx);
+
+    unlockPromise = (async () => {
+        try {
+            if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+                await ctx.resume();
+            }
+            if (ctx.state === 'running') {
+                playSilentUnlockBuffer(ctx);
+                audioUnlocked = true;
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.warn('AudioContext resume warning:', err);
+            return ctx.state === 'running';
+        } finally {
+            unlockPromise = null;
+        }
+    })();
+
+    return unlockPromise;
+}
+
+// Handler for User Gesture Audio Recovery (Initial Unlock & Background/Lock Recovery)
+const handleUserGestureAudio = () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (!audioUnlocked || ctx.state === 'suspended' || ctx.state === 'interrupted') {
+        unlockAudioContext().then((ready) => {
+            if (ready && isBgmActive && !bgmSource) {
+                const gameScreen = document.getElementById('screen-game');
+                if (gameScreen && gameScreen.classList.contains('active-screen') && gameState && gameState.status === 'playing') {
+                    playAudio('bgm.mp3', true);
+                }
+            }
+        });
     }
 };
-document.addEventListener('click', unlockAudio, { capture: true });
-document.addEventListener('touchstart', unlockAudio, { capture: true });
-document.addEventListener('keydown', unlockAudio, { capture: true });
+
+document.addEventListener('click', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('touchstart', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('touchend', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('pointerdown', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('keydown', handleUserGestureAudio, { capture: true, passive: true });
+
+// Monitor AudioContext state changes and Page Visibility for Safari/iOS app switching & screen lock
+if (audioCtx && typeof audioCtx.addEventListener === 'function') {
+    audioCtx.addEventListener('statechange', () => {
+        if (audioCtx.state === 'running') {
+            audioUnlocked = true;
+        }
+    });
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        const ctx = getAudioContext();
+        if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+            ctx.resume().catch(() => {});
+        }
+    }
+});
+
+window.addEventListener('pageshow', () => {
+    const ctx = getAudioContext();
+    if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+        ctx.resume().catch(() => {});
+    }
+});
+
+window.addEventListener('focus', () => {
+    const ctx = getAudioContext();
+    if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+        ctx.resume().catch(() => {});
+    }
+});
+
+// Cross-browser & Legacy Safari compatible decodeAudioData wrapper
+function decodeAudioDataSafe(ctx, arrayBuffer) {
+    return new Promise((resolve, reject) => {
+        try {
+            const bufferCopy = arrayBuffer.slice(0);
+            const decodeResult = ctx.decodeAudioData(
+                bufferCopy,
+                (decodedBuffer) => resolve(decodedBuffer),
+                (err) => reject(err)
+            );
+            if (decodeResult && typeof decodeResult.then === 'function') {
+                decodeResult.then(resolve).catch(reject);
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
 
 async function loadAudio(name) {
+    if (!name) return null;
     if (audioBuffers[name]) return audioBuffers[name];
-    try {
-        const response = await fetch(`audio/${name}`);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        audioBuffers[name] = audioBuffer;
-        return audioBuffer;
-    } catch (e) {
-        console.error('Audio load error:', e);
-        return null;
+    if (audioLoadingPromises[name]) return audioLoadingPromises[name];
+
+    const ctx = getAudioContext();
+    if (!ctx) return null;
+
+    audioLoadingPromises[name] = (async () => {
+        try {
+            const response = await fetch(`audio/${name}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} while loading audio/${name}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await decodeAudioDataSafe(ctx, arrayBuffer);
+            if (audioBuffer) {
+                audioBuffers[name] = audioBuffer;
+            }
+            return audioBuffer;
+        } catch (e) {
+            console.error('Audio load error:', name, e);
+            return null;
+        } finally {
+            delete audioLoadingPromises[name];
+        }
+    })();
+
+    return audioLoadingPromises[name];
+}
+
+// Non-blocking background audio preloader triggered after player confirms name
+function preloadAllAudio() {
+    if (hasPreloadedAudio) return;
+    hasPreloadedAudio = true;
+
+    const priorityFiles = ['select.mp3', '1.mp3', 'start.mp3', 'turn.mp3', 'abc.mp3', 'dice.mp3', 'walk.mp3'];
+    priorityFiles.forEach((file) => {
+        loadAudio(file);
+    });
+
+    setTimeout(() => {
+        AUDIO_FILES_LIST.forEach((file) => {
+            if (!audioBuffers[file] && !audioLoadingPromises[file]) {
+                loadAudio(file);
+            }
+        });
+    }, 300);
+}
+
+// Ensure AudioContext is ready before playing without hanging non-gesture callbacks (Firebase/Timers)
+async function ensureAudioContextReady() {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    if (ctx.state === 'running') return true;
+
+    if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+        try {
+            await Promise.race([
+                unlockAudioContext(),
+                new Promise((resolve) => setTimeout(resolve, 250))
+            ]);
+        } catch (e) {
+            // Ignore resume rejections outside of user gesture
+        }
     }
+    return ctx.state === 'running';
 }
 
 function playAudio(name, loop = false) {
     return new Promise(async (resolve) => {
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        const buffer = await loadAudio(name);
-        if (!buffer) {
-            resolve();
-            return;
-        }
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioCtx.destination);
-        source.loop = loop;
-        
-        source.onended = () => resolve(source);
-        source.start(0);
-
-        if (loop && name === 'bgm.mp3') {
-            if (bgmSource) {
-                try { bgmSource.stop(); } catch(e){}
+        try {
+            const ctx = getAudioContext();
+            if (!ctx) {
+                resolve();
+                return;
             }
-            bgmSource = source;
+
+            if (loop && name === 'bgm.mp3') {
+                isBgmActive = true;
+            }
+
+            const [buffer] = await Promise.all([
+                loadAudio(name),
+                ensureAudioContextReady()
+            ]);
+
+            if (!buffer) {
+                resolve();
+                return;
+            }
+
+            if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+                try {
+                    await Promise.race([
+                        ctx.resume(),
+                        new Promise((r) => setTimeout(r, 100))
+                    ]);
+                } catch (e) {}
+            }
+
+            if (ctx.state !== 'running') {
+                resolve();
+                return;
+            }
+
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            source.loop = loop;
+
+            let settled = false;
+            const finish = () => {
+                if (!settled) {
+                    settled = true;
+                    resolve(source);
+                }
+            };
+
+            source.onended = () => {
+                if (loop && name === 'bgm.mp3' && bgmSource === source) {
+                    bgmSource = null;
+                }
+                finish();
+            };
+
+            if (loop && name === 'bgm.mp3') {
+                if (bgmSource) {
+                    try {
+                        bgmSource.onended = null;
+                        bgmSource.stop();
+                        bgmSource.disconnect();
+                    } catch (e) {}
+                }
+                bgmSource = source;
+            }
+
+            source.start(0);
+
+            if (loop) {
+                finish();
+            }
+        } catch (err) {
+            console.warn('Audio playback error:', name, err);
+            resolve();
         }
     });
 }
@@ -109,8 +368,13 @@ async function playAudioSequence(list) {
 }
 
 function stopBGM() {
+    isBgmActive = false;
     if (bgmSource) {
-        try { bgmSource.stop(); } catch(e){}
+        try {
+            bgmSource.onended = null;
+            bgmSource.stop();
+            bgmSource.disconnect();
+        } catch (e) {}
         bgmSource = null;
     }
 }
@@ -181,8 +445,21 @@ function switchScreen(screenId, focusHeadingId = null) {
     });
 }
 
-// Name and Navigation
+// Name and Navigation (Primary Audio Unlock & Preload Entry Point)
 window.confirmNameAndEnterLobby = function() {
+    if (isConfirmingName) return;
+    const welcomeScreen = document.getElementById('screen-welcome');
+    if (welcomeScreen && !welcomeScreen.classList.contains('active-screen')) return;
+
+    isConfirmingName = true;
+    setTimeout(() => {
+        isConfirmingName = false;
+    }, 400);
+
+    // Unlock AudioContext immediately inside direct User Gesture (Button click / Virtual Enter / Physical Enter)
+    unlockAudioContext();
+    preloadAllAudio();
+
     playAudio('select.mp3');
     const nameInput = document.getElementById('player-name-input');
     myPlayerName = nameInput.value.trim() || 'ผู้เล่นใหม่';
@@ -1451,14 +1728,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        nameInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
+        const handleEnterConfirm = (e) => {
+            const isEnterKey = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13;
+            if (isEnterKey && !e.isComposing) {
                 e.preventDefault();
-                if (nameInput.value.trim().length > 0) {
+                e.stopPropagation();
+                if (nameInput.value.trim().length > 0 && !confirmBtn.disabled) {
                     window.confirmNameAndEnterLobby();
                 }
             }
-        });
+        };
+
+        nameInput.addEventListener('keydown', handleEnterConfirm);
+
+        // Support form submission if input is wrapped in a form on mobile Safari
+        if (nameInput.form) {
+            nameInput.form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (nameInput.value.trim().length > 0 && !confirmBtn.disabled) {
+                    window.confirmNameAndEnterLobby();
+                }
+            });
+        }
     }
 
     // Keyboard Shortcuts
