@@ -1505,6 +1505,13 @@ class SoundEngine {
     this.bgmSource = null;
     this.bgmGain = null;
     this.bgmPlaying = false;
+    this.isAndroid = /Android/i.test(navigator.userAgent);
+  }
+
+  getAdjustedPan(pan) {
+    const clampedPan = Math.max(-1, Math.min(1, pan));
+    if (clampedPan === 0) return 0;
+    return this.isAndroid ? -clampedPan : clampedPan;
   }
 
   async init() {
@@ -1635,7 +1642,7 @@ class SoundEngine {
 
     if (this.ctx.createStereoPanner) {
       const panner = this.ctx.createStereoPanner();
-      panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), this.ctx.currentTime);
+      panner.pan.setValueAtTime(this.getAdjustedPan(pan), this.ctx.currentTime);
       gainNode.connect(panner);
       panner.connect(this.ctx.destination);
     } else {
@@ -1691,8 +1698,10 @@ class SoundEngine {
 
     if (this.ctx.createStereoPanner) {
       const panner = this.ctx.createStereoPanner();
-      panner.pan.setValueAtTime(startPan, now);
-      panner.pan.linearRampToValueAtTime(endPan, now + duration);
+      const actualStartPan = this.getAdjustedPan(startPan);
+      const actualEndPan = this.getAdjustedPan(endPan);
+      panner.pan.setValueAtTime(actualStartPan, now);
+      panner.pan.linearRampToValueAtTime(actualEndPan, now + duration);
       gain.connect(panner);
       panner.connect(this.ctx.destination);
     } else {
