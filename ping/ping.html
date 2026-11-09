@@ -687,7 +687,7 @@
         <li>ลูกศรซ้าย = ตีทางซ้าย</li>
         <li>ลูกศรขึ้น = ตีตรงกลาง</li>
         <li>ลูกศรขวา = ตีทางขวา</li>
-        <li>กดแป้น Shift ค้างไว้พร้อมลูกศรเพื่อตบแรง</li>
+        <li>กดแป้น Shiftค้างไว้พร้อมลูกศรเพื่อตบแรง</li>
       </ul>
       <p style="margin-top: 12px;"><strong>การควบคุมบนมือถือ:</strong></p>
       <ul style="margin-left: 24px; margin-top: 4px;">
@@ -1783,6 +1783,50 @@ class MotionDetector {
       wristSnap = Math.max(Math.abs(rot.alpha || 0), Math.abs(rot.beta || 0), Math.abs(rot.gamma || 0));
     }
 
+    // --- เริ่มการปรับแก้เฉพาะ Android (Sensor Normalization) ---
+    let activeGamma = rot ? (rot.gamma || 0) : 0;
+    const isAndroidOS = /Android/i.test(navigator.userAgent);
+
+    if (isAndroidOS) {
+      let angle = 0;
+      if (window.screen && window.screen.orientation && window.screen.orientation.angle !== undefined) {
+        angle = window.screen.orientation.angle;
+      } else if (typeof window.orientation !== 'undefined') {
+        angle = window.orientation;
+      }
+
+      let rawAx = 0;
+      let rawAy = 0;
+      if (acc) {
+        rawAx = acc.x || 0;
+        rawAy = acc.y || 0;
+      } else if (event.accelerationIncludingGravity) {
+        rawAx = event.accelerationIncludingGravity.x || 0;
+        rawAy = event.accelerationIncludingGravity.y || 0;
+      }
+      const rawBeta = rot ? (rot.beta || 0) : 0;
+      const rawGamma = rot ? (rot.gamma || 0) : 0;
+
+      if (angle === 90) {
+        // แนวนอน (หัวเครื่องหมุนไปทางซ้าย)
+        horizontalForce = rawAy;
+        activeGamma = rawBeta;
+      } else if (angle === -90 || angle === 270) {
+        // แนวนอน (หัวเครื่องหมุนไปทางขวา)
+        horizontalForce = -rawAy;
+        activeGamma = -rawBeta;
+      } else if (angle === 180) {
+        // แนวตั้งกลับหัว
+        horizontalForce = rawAx;
+        activeGamma = rawGamma;
+      } else {
+        // แนวตั้งปกติ (Portrait)
+        horizontalForce = -rawAx;
+        activeGamma = -rawGamma;
+      }
+    }
+    // --- สิ้นสุดการปรับแก้เฉพาะ Android ---
+
     const activeRallyCount = (onlineController && onlineController.inMatch)
       ? onlineController.rallyCount
       : rallyCount;
@@ -1808,9 +1852,9 @@ class MotionDetector {
         direction = 'left';
       } else if (horizontalForce < -sideThreshold) {
         direction = 'right';
-      } else if (rot && rot.gamma) {
-        if (rot.gamma > 70) direction = 'left';
-        else if (rot.gamma < -70) direction = 'right';
+      } else if (rot && activeGamma !== 0) {
+        if (activeGamma > 70) direction = 'left';
+        else if (activeGamma < -70) direction = 'right';
       }
 
       const combinedPower = forwardForce + (wristSnap / 20);
