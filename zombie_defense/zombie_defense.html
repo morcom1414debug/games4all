@@ -20,6 +20,7 @@
             flex-direction: column;
             justify-content: space-between;
             height: 90vh;
+            outline: none; /* เอาขอบ Focus ออกเวลาใช้ Screen Reader */
         }
         .status-bar {
             font-size: 24px;
@@ -84,7 +85,8 @@
         <button id="btnStart">เริ่มเกม</button>
     </div>
 
-    <div id="gameUI">
+    <!-- เพิ่ม tabindex="-1" เพื่อให้รับ Focus จาก JavaScript สำหรับผู้ใช้ Screen Reader -->
+    <div id="gameUI" tabindex="-1">
         <div class="status-bar" aria-live="polite">
             <span id="txtLevel">Level: 1</span>
             <span id="txtHP">HP: 3</span>
@@ -165,6 +167,12 @@
 
         let keys = { ArrowLeft: false, ArrowRight: false };
 
+        // Motion variables
+        let motionEnabled = false;
+        let motionListenersAttached = false;
+        let lastAlpha = null;
+        let lastMotionTime = 0;
+
         // DOM Elements
         const ui = {
             level: document.getElementById('txtLevel'),
@@ -175,7 +183,9 @@
 
         // --- Audio System ---
         async function loadAudio() {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
             listener = audioCtx.listener;
             
             // ตั้งค่า Listener ให้อยู่ตรงกลางเสมอ
@@ -191,16 +201,17 @@
                 listener.setOrientation(0, 0, -1, 0, 1, 0);
             }
 
+            let loadPromises = [];
             for (const [key, path] of Object.entries(AUDIO_FILES)) {
-                try {
-                    const response = await fetch(path);
-                    const arrayBuffer = await response.arrayBuffer();
-                    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-                    audioBuffers[key] = audioBuffer;
-                } catch (e) {
-                    console.error(`โหลดไฟล์เสียงไม่สำเร็จ: ${path}`);
-                }
+                if (audioBuffers[key]) continue; // โหลดครั้งเดียว
+                let p = fetch(path)
+                    .then(res => res.arrayBuffer())
+                    .then(data => audioCtx.decodeAudioData(data))
+                    .then(buffer => { audioBuffers[key] = buffer; })
+                    .catch(e => console.error(`โหลดไฟล์เสียงไม่สำเร็จ: ${path}`));
+                loadPromises.push(p);
             }
+            await Promise.all(loadPromises);
         }
 
         function playSound(bufferName, volume = 1.0) {
@@ -216,6 +227,71 @@
 
         function announce(text) {
             ui.announcer.innerText = text;
+        }
+
+        // --- Motion System ---
+        async function requestMotion() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permOrient = await DeviceOrientationEvent.requestPermission();
+                    const permMotion = await DeviceMotionEvent.requestPermission();
+                    if (permOrient === 'granted' && permMotion === 'granted') {
+                        motionEnabled = true;
+                    } else {
+                        motionEnabled = false;
+                    }
+                } catch (e) {
+                    console.error("Motion Request Error:", e);
+                    motionEnabled = false;
+                }
+            } else {
+                // สำหรับ Android หรือเบราว์เซอร์ที่ไม่ต้องขอ Permission แยก
+                motionEnabled = true;
+            }
+
+            if (motionEnabled && !motionListenersAttached) {
+                window.addEventListener('deviceorientation', handleOrientation);
+                window.addEventListener('devicemotion', handleMotion);
+                motionListenersAttached = true;
+            }
+        }
+
+        function handleOrientation(e) {
+            if (isGameOver || !motionEnabled) return;
+            let currentAlpha = e.alpha; // ค่า 0 - 360
+            if (currentAlpha !== null) {
+                if (lastAlpha !== null) {
+                    let delta = currentAlpha - lastAlpha;
+                    
+                    // ปรับค่า Delta สำหรับการหมุนข้ามรอบวงกลม
+                    if (delta > 180) delta -= 360;
+                    if (delta < -180) delta += 360;
+                    
+                    // ป้องกันอาการกระตุก (Noise)
+                    if (Math.abs(delta) > 0.3) {
+                        playerAngle -= delta;
+                        if (playerAngle < 0) playerAngle += 360;
+                        if (playerAngle >= 360) playerAngle -= 360;
+                    }
+                }
+                lastAlpha = currentAlpha;
+            }
+        }
+
+        function handleMotion(e) {
+            if (isGameOver || !motionEnabled) return;
+            let acc = e.acceleration;
+            if (!acc || acc.x === null) return;
+
+            // ตรวจจับการผลัก (ตัดแรงโน้มถ่วงออกแล้ว)
+            let mag = Math.sqrt(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z);
+            let now = Date.now();
+            
+            // ใช้ความเร่ง Threshold ที่ 15 และมี Cooldown เพื่อกันปืนลั่นซ้ำ
+            if (mag > 15 && (now - lastMotionTime > 500)) {
+                lastMotionTime = now;
+                shoot();
+            }
         }
 
         // --- Game Logic ---
@@ -283,6 +359,21 @@
             }
         }
 
+        function resetGame() {
+            hp = 3;
+            ammo = 10;
+            currentLevel = 1;
+            isReloading = false;
+            lastShotTime = 0;
+            isGameOver = false;
+            playerAngle = 0;
+            zombiesSpawned = 0;
+            activeZombies = [];
+            lastAlpha = null;
+            keys = { ArrowLeft: false, ArrowRight: false };
+            updateUI();
+        }
+
         function updateUI() {
             ui.level.innerText = `Level: ${currentLevel}`;
             ui.hp.innerText = `HP: ${hp}`;
@@ -346,17 +437,37 @@
             checkLevelClear();
         }
 
+        function getSpawnLimit(level) {
+            if (level <= 3) return 1;
+            if (level <= 9) return 2;
+            if (level <= 12) return 3;
+            return 4;
+        }
+
         function spawnZombie(levelData) {
+            if (isGameOver) return;
             if (zombiesSpawned >= levelData.total) return;
             
-            let types = levelData.types;
-            let randomType = types[Math.floor(Math.random() * types.length)];
-            activeZombies.push(new Zombie(randomType));
-            zombiesSpawned++;
+            clearTimeout(spawnTimer);
+            
+            let activeCount = activeZombies.filter(z => z.active).length;
+            let maxConcurrent = getSpawnLimit(currentLevel);
 
-            // สุ่มเวลาเกิดตัวถัดไป 1.5 - 3 วินาที (ป้องกันเสียงทับซ้อนทีเดียว)
-            let nextSpawnTime = Math.random() * 1500 + 1500;
-            spawnTimer = setTimeout(() => spawnZombie(levelData), nextSpawnTime);
+            if (activeCount < maxConcurrent) {
+                let types = levelData.types;
+                let randomType = types[Math.floor(Math.random() * types.length)];
+                activeZombies.push(new Zombie(randomType));
+                zombiesSpawned++;
+                
+                // ถัดไปหน่วงเวลา 1.5 - 3 วินาที
+                if (zombiesSpawned < levelData.total) {
+                    let nextSpawnTime = Math.random() * 1500 + 1500;
+                    spawnTimer = setTimeout(() => spawnZombie(levelData), nextSpawnTime);
+                }
+            } else {
+                // คิวซอมบี้เต็ม หน่วงเวลาเช็คใหม่โดยไม่ต้องรอนานนัก
+                spawnTimer = setTimeout(() => spawnZombie(levelData), 500);
+            }
         }
 
         function checkLevelClear() {
@@ -379,17 +490,39 @@
         function gameOver(isWin) {
             isGameOver = true;
             clearTimeout(spawnTimer);
-            cancelAnimationFrame(gameLoopTimer);
+            if (gameLoopTimer) {
+                cancelAnimationFrame(gameLoopTimer);
+                gameLoopTimer = null;
+            }
             activeZombies.forEach(z => z.die());
             activeZombies = [];
+
+            // จัดการคืนค่าให้ Screen Reader กลับเข้าสู่ Browse Mode
+            const gameUI = document.getElementById('gameUI');
+            gameUI.removeAttribute('role');
+            gameUI.removeAttribute('aria-label');
+            gameUI.blur();
+
+            document.getElementById('startScreen').style.display = "block";
+            document.getElementById('gameUI').style.display = "none";
+            
+            const btn = document.getElementById('btnStart');
+            btn.innerText = "เล่นอีกครั้ง";
+            btn.disabled = false;
 
             if (!isWin) {
                 playSound('lose');
                 announce("คุณแพ้แล้ว โดนซอมบี้บุกฐาน");
-                setTimeout(() => alert("Game Over! คุณถูกซอมบี้โจมตีครบ 3 ครั้ง"), 500);
+                setTimeout(() => {
+                    alert("Game Over! คุณถูกซอมบี้โจมตีครบ 3 ครั้ง");
+                    btn.focus(); // ส่ง Focus ไปที่ปุ่มเล่นใหม่
+                }, 500);
             } else {
                 announce("ยินดีด้วย คุณเอาชนะฝูงซอมบี้ทั้งหมด 18 เลเวลได้สำเร็จ!");
-                setTimeout(() => alert("Victory! คุณรอดชีวิตจากซอมบี้ทั้งหมด!"), 500);
+                setTimeout(() => {
+                    alert("Victory! คุณรอดชีวิตจากซอมบี้ทั้งหมด!");
+                    btn.focus(); // ส่ง Focus ไปที่ปุ่มเล่นใหม่
+                }, 500);
             }
         }
 
@@ -397,6 +530,7 @@
             updateUI();
             zombiesSpawned = 0;
             activeZombies = [];
+            clearTimeout(spawnTimer);
             announce(`เริ่มเลเวล ${currentLevel}`);
             
             let levelData = LEVELS[currentLevel - 1];
@@ -406,7 +540,7 @@
         function update() {
             if (isGameOver) return;
 
-            // การหมุนของผู้เล่น
+            // การหมุนของผู้เล่น (ปุ่มหรือคีย์บอร์ด)
             if (keys.ArrowLeft) playerAngle -= 1.5; // หมุนซ้าย
             if (keys.ArrowRight) playerAngle += 1.5; // หมุนขวา
             if (playerAngle < 0) playerAngle += 360;
@@ -472,13 +606,40 @@
 
         // --- Initialize ---
         document.getElementById('btnStart').addEventListener('click', async () => {
-            document.getElementById('btnStart').innerText = "กำลังโหลดเสียง...";
-            await loadAudio();
+            const btn = document.getElementById('btnStart');
+            btn.innerText = "กำลังโหลด...";
+            btn.disabled = true;
+
+            // AudioContext ต้องถูก Resume หรือสร้างใหม่พร้อมกับ User Gesture เพื่อป้องกันข้อจำกัดในเบราว์เซอร์
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            // ทำงานแบบขนาน ทั้งขอระบบ Motion และโหลดเสียง
+            let pAudio = loadAudio();
+            let pMotion = requestMotion();
+
+            await Promise.all([pAudio, pMotion]);
+
+            btn.disabled = false;
             document.getElementById('startScreen').style.display = "none";
-            document.getElementById('gameUI').style.display = "flex";
             
+            const gameUI = document.getElementById('gameUI');
+            gameUI.style.display = "flex";
+            
+            // เปิดใช้งาน Focus Mode สำหรับ Screen Reader
+            gameUI.setAttribute('role', 'application');
+            gameUI.setAttribute('aria-label', 'เริ่มเกมแล้ว ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด');
+            gameUI.focus();
+            
+            resetGame();
             startLevel();
-            gameLoopTimer = requestAnimationFrame(update);
+            if (!gameLoopTimer) {
+                gameLoopTimer = requestAnimationFrame(update);
+            }
         });
 
     </script>
