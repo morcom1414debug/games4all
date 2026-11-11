@@ -79,10 +79,24 @@
 </head>
 <body>
 
+    <!-- ปรับปรุงหน้าแรก -->
     <div id="startScreen">
         <h1>Zombie Defense</h1>
         <p>ใส่หูฟังเพื่อประสบการณ์ 360 องศา</p>
-        <button id="btnStart">เริ่มเกม</button>
+        <!-- ซ่อนปุ่มเล่นต่อไว้ก่อน จะแสดงเมื่อมี Save -->
+        <button id="btnContinue" style="display: none; background-color: #28a745; margin-bottom: 10px;">เล่นต่อ (Level ...)</button>
+        <button id="btnNewGame">เริ่มเกมใหม่</button>
+    </div>
+
+    <!-- เพิ่มหน้า Game Over / เมนูหลังจบเกม -->
+    <div id="gameOverScreen" style="display: none; margin-top: 15vh;">
+        <h1 id="gameOverTitle">Game Over</h1>
+        <p id="gameOverMessage"></p>
+        <div style="display: flex; flex-direction: column; gap: 15px; max-width: 300px; margin: 0 auto;">
+            <button id="btnRetry">เล่นอีกครั้ง (ด่านเดิม)</button>
+            <button id="btnRestartGame">เริ่มต้นใหม่ (Level 1)</button>
+            <button id="btnPauseExit">พักการเล่นไว้ก่อน</button>
+        </div>
     </div>
 
     <!-- เพิ่ม tabindex="-1" เพื่อให้รับ Focus จาก JavaScript สำหรับผู้ใช้ Screen Reader -->
@@ -151,6 +165,34 @@
             'lose': 'audio/lose.mp3',
             'reload': 'audio/reload.mp3' // เพิ่มไฟล์เสียง reload
         };
+
+        // ฟังก์ชันจัดการ Save/Load
+        const SAVE_KEY = 'zombieDefenseSavedLevel';
+
+        function saveProgress(level) {
+            localStorage.setItem(SAVE_KEY, level);
+        }
+
+        function loadProgress() {
+            let saved = localStorage.getItem(SAVE_KEY);
+            return saved ? parseInt(saved) : 1;
+        }
+
+        // ฟังก์ชันตรวจสอบและตั้งค่าหน้าแรกตอนโหลดหน้าเว็บ
+        function initStartScreen() {
+            let savedLevel = loadProgress();
+            const btnContinue = document.getElementById('btnContinue');
+            const btnNewGame = document.getElementById('btnNewGame');
+
+            if (savedLevel > 1 && savedLevel <= LEVELS.length) {
+                btnContinue.style.display = "inline-block";
+                btnContinue.innerText = `เล่นต่อ (Level ${savedLevel})`;
+            } else {
+                btnContinue.style.display = "none";
+            }
+        }
+        // เรียกใช้ทันทีเมื่อเปิดเว็บ
+        initStartScreen();
 
         // Variables
         let audioCtx, listener;
@@ -366,7 +408,6 @@
         function resetGame() {
             hp = 3;
             ammo = 10;
-            currentLevel = 1;
             isReloading = false;
             lastShotTime = 0;
             isGameOver = false;
@@ -480,19 +521,19 @@
             let levelData = LEVELS[currentLevel - 1];
 
             if (activeZombies.length === 0 && zombiesSpawned >= levelData.total) {
-                // ผ่านด่าน
                 playSound('levelup');
                 clearTimeout(spawnTimer);
                 announce(`ผ่านเลเวล ${currentLevel}`);
                 
                 if (currentLevel >= 18) {
+                    saveProgress(1); // จบเกมแล้ว รีเซ็ต Save
                     gameOver(true);
                 } else {
                     currentLevel++;
+                    saveProgress(currentLevel); // <--- บันทึกด่านใหม่ลงเครื่องทันที
                     setTimeout(startLevel, 3000);
                 }
             } else if (currentLevel === 1 && activeZombies.length === 0 && zombiesSpawned < levelData.total) {
-                // เร่งการเกิดในเลเวล 1 ให้เกิดตัวใหม่ทันทีเมื่อตัวเก่าตาย
                 clearTimeout(spawnTimer);
                 spawnZombie(levelData);
             }
@@ -508,33 +549,31 @@
             activeZombies.forEach(z => z.die());
             activeZombies = [];
 
-            // จัดการคืนค่าให้ Screen Reader กลับเข้าสู่ Browse Mode
             const gameUI = document.getElementById('gameUI');
             gameUI.removeAttribute('role');
             gameUI.removeAttribute('aria-label');
             gameUI.blur();
 
-            document.getElementById('startScreen').style.display = "block";
             document.getElementById('gameUI').style.display = "none";
-            
-            const btn = document.getElementById('btnStart');
-            btn.innerText = "เล่นอีกครั้ง";
-            btn.disabled = false;
+            document.getElementById('gameOverScreen').style.display = "block"; // แสดงหน้า Game Over
+
+            const title = document.getElementById('gameOverTitle');
+            const msg = document.getElementById('gameOverMessage');
+            const btnRetry = document.getElementById('btnRetry');
 
             if (!isWin) {
                 playSound('lose');
+                title.innerText = "Game Over!";
+                msg.innerText = "คุณถูกซอมบี้โจมตีฐานแตกแล้ว";
                 announce("คุณแพ้แล้ว โดนซอมบี้บุกฐาน");
-                setTimeout(() => {
-                    alert("Game Over! คุณถูกซอมบี้โจมตีครบ 3 ครั้ง");
-                    btn.focus(); // ส่ง Focus ไปที่ปุ่มเล่นใหม่
-                }, 500);
             } else {
+                title.innerText = "Victory!";
+                msg.innerText = "ยินดีด้วย คุณรอดชีวิตจากซอมบี้ทั้งหมด!";
                 announce("ยินดีด้วย คุณเอาชนะฝูงซอมบี้ทั้งหมด 18 เลเวลได้สำเร็จ!");
-                setTimeout(() => {
-                    alert("Victory! คุณรอดชีวิตจากซอมบี้ทั้งหมด!");
-                    btn.focus(); // ส่ง Focus ไปที่ปุ่มเล่นใหม่
-                }, 500);
             }
+
+            // ย้าย Focus ไปที่ปุ่มแรกให้ Screen Reader อ่านอัตโนมัติ
+            setTimeout(() => btnRetry.focus(), 500); 
         }
 
         function startLevel() {
@@ -616,34 +655,21 @@
 
 
         // --- Initialize ---
-        document.getElementById('btnStart').addEventListener('click', async () => {
-            const btn = document.getElementById('btnStart');
-            btn.innerText = "กำลังโหลด...";
-            btn.disabled = true;
-
-            // AudioContext ต้องถูก Resume หรือสร้างใหม่พร้อมกับ User Gesture เพื่อป้องกันข้อจำกัดในเบราว์เซอร์
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-
-            // ทำงานแบบขนาน ทั้งขอระบบ Motion และโหลดเสียง
+        async function startGamePrep() {
+            // ฟังก์ชันรวบยอดการเตรียม Audio และ Motion
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             let pAudio = loadAudio();
             let pMotion = requestMotion();
-
             await Promise.all([pAudio, pMotion]);
 
-            btn.disabled = false;
             document.getElementById('startScreen').style.display = "none";
+            document.getElementById('gameOverScreen').style.display = "none";
             
             const gameUI = document.getElementById('gameUI');
             gameUI.style.display = "flex";
-            
-            // เปิดใช้งาน Focus Mode สำหรับ Screen Reader
             gameUI.setAttribute('role', 'application');
-            gameUI.setAttribute('aria-label', 'เริ่มเกมแล้ว ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด');
+            gameUI.setAttribute('aria-label', `เริ่มเลเวล ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด`);
             gameUI.focus();
             
             resetGame();
@@ -651,8 +677,50 @@
             if (!gameLoopTimer) {
                 gameLoopTimer = requestAnimationFrame(update);
             }
+        }
+
+        // ปุ่ม: เล่นต่อ (โหลด Save)
+        document.getElementById('btnContinue')?.addEventListener('click', async () => {
+            currentLevel = loadProgress(); // ดึงด่านที่ค้างไว้
+            await startGamePrep();
+        });
+
+        // ปุ่ม: เริ่มเกมใหม่ (ล้าง Save ทิ้ง เริ่ม 1)
+        document.getElementById('btnNewGame').addEventListener('click', async () => {
+            currentLevel = 1;
+            saveProgress(1); // ล้าง Save เป็น Level 1
+            await startGamePrep();
+        });
+
+        // ปุ่ม: เล่นอีกครั้ง (เริ่มด่านเดิมที่เพิ่งแพ้)
+        document.getElementById('btnRetry').addEventListener('click', async () => {
+            // currentLevel ยังคงเป็นค่าเดิมตอนที่ตาย
+            await startGamePrep();
+        });
+
+        // ปุ่ม: เริ่มต้นใหม่ จากหน้า Game Over
+        document.getElementById('btnRestartGame').addEventListener('click', async () => {
+            currentLevel = 1;
+            saveProgress(1);
+            await startGamePrep();
+        });
+
+        // ปุ่ม: พักการเล่นไว้ก่อน (กลับไปหน้าแรก)
+        document.getElementById('btnPauseExit').addEventListener('click', () => {
+            document.getElementById('gameOverScreen').style.display = "none";
+            document.getElementById('startScreen').style.display = "block";
+            initStartScreen(); // อัปเดตปุ่ม "เล่นต่อ" ให้แสดงเลเวลล่าสุด
+            setTimeout(() => {
+                const btnContinue = document.getElementById('btnContinue');
+                if (btnContinue.style.display !== 'none') {
+                    btnContinue.focus();
+                } else {
+                    document.getElementById('btnNewGame').focus();
+                }
+            }, 100);
         });
 
     </script>
 </body>
 </html>
+```[cite: 4]
