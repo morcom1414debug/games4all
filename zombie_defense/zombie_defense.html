@@ -242,6 +242,9 @@
                 listener.forwardX.value = 0;
                 listener.forwardY.value = 0;
                 listener.forwardZ.value = -1;
+                listener.upX.value = 0;
+                listener.upY.value = 1;
+                listener.upZ.value = 0;
             } else {
                 listener.setPosition(0, 0, 0);
                 listener.setOrientation(0, 0, -1, 0, 1, 0);
@@ -350,11 +353,40 @@
                 this.angle = Math.random() * 360; // สุ่มทิศทางเกิด
                 this.active = true;
 
-                // Setup Spatial Audio
+                // Setup Spatial Audio & Front-Back / Aim Enhancement Nodes
                 this.source = audioCtx.createBufferSource();
                 this.source.buffer = audioBuffers[type];
                 this.source.loop = true;
 
+                // 1. ฟิลเตอร์ปรับโทนเสียงด้านหน้า (ชัดเจน/เปิด) และด้านหลัง (ทึบลงอย่างเหมาะสมโดยไม่เสียเอกลักษณ์)
+                this.toneFilter = audioCtx.createBiquadFilter();
+                this.toneFilter.type = 'lowpass';
+                this.toneFilter.frequency.value = 18000;
+                this.toneFilter.Q.value = 0.7;
+
+                this.presenceFilter = audioCtx.createBiquadFilter();
+                this.presenceFilter.type = 'peaking';
+                this.presenceFilter.frequency.value = 2800;
+                this.presenceFilter.Q.value = 1.0;
+                this.presenceFilter.gain.value = 0;
+
+                // 2. ชุดสร้างเสียงสะท้อนสั้นๆ (Early Reflection) สำหรับจำลองมิติเสียงเมื่อซอมบี้อยู่ด้านหลัง
+                this.rearDelay = audioCtx.createDelay(0.1);
+                this.rearDelay.delayTime.value = 0.028;
+
+                this.rearFilter = audioCtx.createBiquadFilter();
+                this.rearFilter.type = 'bandpass';
+                this.rearFilter.frequency.value = 750;
+                this.rearFilter.Q.value = 0.8;
+
+                this.rearReflectGain = audioCtx.createGain();
+                this.rearReflectGain.gain.value = 0.0;
+
+                // 3. Dynamic Gain สำหรับเพิ่มความเด่นเมื่อซอมบี้อยู่ในแนวยิง (±10 องศา)
+                this.aimGain = audioCtx.createGain();
+                this.aimGain.gain.value = 1.0;
+
+                // 4. PannerNode แบบ HRTF เดิม
                 this.panner = audioCtx.createPanner();
                 this.panner.panningModel = 'HRTF';
                 this.panner.distanceModel = 'linear';
@@ -362,14 +394,37 @@
                 this.panner.maxDistance = 100;
                 this.panner.rolloffFactor = 1;
 
-                this.source.connect(this.panner);
+                // เชื่อมต่อ Audio Graph สำหรับซอมบี้ตัวนี้
+                // สายสัญญาณหลัก: source -> toneFilter -> presenceFilter -> aimGain -> panner -> destination
+                this.source.connect(this.toneFilter);
+                this.toneFilter.connect(this.presenceFilter);
+                this.presenceFilter.connect(this.aimGain);
+
+                // สายสัญญาณสะท้อนด้านหลัง: toneFilter -> rearDelay -> rearFilter -> rearReflectGain -> aimGain
+                this.toneFilter.connect(this.rearDelay);
+                this.rearDelay.connect(this.rearFilter);
+                this.rearFilter.connect(this.rearReflectGain);
+                this.rearReflectGain.connect(this.aimGain);
+
+                this.aimGain.connect(this.panner);
                 this.panner.connect(audioCtx.destination);
                 this.source.start(0);
 
                 this.updateAudioPosition();
             }
 
+            setAudioParamSmooth(param, targetValue, timeConstant) {
+                let now = audioCtx.currentTime;
+                if (typeof param.setTargetAtTime === 'function') {
+                    param.setTargetAtTime(targetValue, now, timeConstant);
+                } else {
+                    param.value = targetValue;
+                }
+            }
+
             updateAudioPosition() {
+                if (!this.active) return;
+
                 // คำนวณมุมสัมพัทธ์ระหว่างทิศที่ผู้เล่นหัน กับ ทิศที่ซอมบี้อยู่
                 let relativeAngle = (this.angle - playerAngle) * (Math.PI / 180);
                 
@@ -384,6 +439,39 @@
                 } else {
                     this.panner.setPosition(x, 0, z);
                 }
+
+                // คำนวณผลต่างมุม (0 ถึง 180 องศา) ด้วยสูตรเดียวกับระบบ Hit Detection
+                let diff = Math.abs(this.angle - playerAngle) % 360;
+                if (diff > 180) diff = 360 - diff;
+
+                // 1) แยกเสียงด้านหน้า (cos >= 0) และด้านหลัง (cos < 0) ครบ 360 องศา
+                // frontFactor มีค่าตั้งแต่ +1 (หน้าตรง) -> 0 (ซ้าย/ขวา 90 องศา) -> -1 (หลังตรง 180 องศา)
+                let frontFactor = Math.cos(relativeAngle);
+                let targetCutoff;
+                let targetPresence;
+                let targetRearReflect;
+
+                if (frontFactor >= 0) {
+                    // ครึ่งวงกลมด้านหน้า (หน้าตรง, หน้าซ้าย, หน้าขวา): เสียงเปิดชัดเจน
+                    targetCutoff = 12000 + (frontFactor * 8000); // 12,000 Hz ถึง 20,000 Hz
+                    targetPresence = frontFactor * 2.2;          // บูสต์ย่านความชัดเจนเล็กน้อยสูงสุด +2.2 dB
+                    targetRearReflect = 0.0;                     // ไม่มีเสียงสะท้อนด้านหลัง
+                } else {
+                    // ครึ่งวงกลมด้านหลัง (หลังตรง, หลังซ้าย, หลังขวา): ลดความถี่สูงให้ทึบลงพอเหมาะและเพิ่มเสียงสะท้อนด้านหลัง
+                    let backAmount = -frontFactor;               // 0 (ข้าง) ถึง 1 (หลังตรง)
+                    // คงย่านความถี่ตั้งแต่ 1,350 Hz ขึ้นไปไว้เพื่อให้ซอมบี้ทั้ง 6 ประเภทยังคงเอกลักษณ์ชัดเจนและไม่หลอกระยะใกล้-ไกล
+                    targetCutoff = 12000 - (backAmount * 10650); // ค่อยๆ ลดลงจาก 12,000 Hz เหลือต่ำสุด 1,350 Hz ที่ด้านหลังตรง
+                    targetPresence = -backAmount * 3.0;          // ลดย่านความคมลงเล็กน้อยสูงสุด -3.0 dB
+                    targetRearReflect = backAmount * 0.24;       // เพิ่มมิติเสียงสะท้อนด้านหลังอย่างพอเหมาะ
+                }
+
+                this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
+                this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
+                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
+
+                // 2) เพิ่มความเด่นของเสียงเมื่ออยู่ในแนวยิง (diff <= 10 องศา อ้างอิงเงื่อนไขเดียวกับระบบยิง)
+                let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
+                this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
             }
 
             takeDamage() {
@@ -399,9 +487,21 @@
             }
 
             die() {
+                if (!this.active) return;
                 this.active = false;
-                this.source.stop();
-                this.source.disconnect();
+                try {
+                    this.source.stop();
+                } catch (e) {}
+                try {
+                    this.source.disconnect();
+                    this.toneFilter.disconnect();
+                    this.presenceFilter.disconnect();
+                    this.rearDelay.disconnect();
+                    this.rearFilter.disconnect();
+                    this.rearReflectGain.disconnect();
+                    this.aimGain.disconnect();
+                    this.panner.disconnect();
+                } catch (e) {}
             }
         }
 
