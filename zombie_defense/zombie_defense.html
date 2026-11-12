@@ -134,7 +134,7 @@
 <body>
 
     <!-- ปุ่มกลับสู่ชุมชน -->
-    <button id="btn-home-main" class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'">
+    <button id="btn-home-main" class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="goHome()">
         <span aria-hidden="true">🏠</span>
     </button>
 
@@ -225,7 +225,13 @@
             'hit2': 'audio/hit2.mp3',
             'levelup': 'audio/level up.mp3',
             'lose': 'audio/lose.mp3',
-            'reload': 'audio/reload.mp3' // เพิ่มไฟล์เสียง reload
+            'lose3': 'audio/lose3.mp3',
+            'end': 'audio/end.mp3',
+            'start': 'audio/start.mp3',
+            'bgm': 'audio/bgm.mp3',
+            'gift': 'audio/gift.mp3',
+            'giftup': 'audio/giftup.mp3',
+            'reload': 'audio/reload.mp3'
         };
 
         // ฟังก์ชันจัดการ Save/Load
@@ -281,6 +287,12 @@
         let lastAlpha = null;
         let lastMotionTime = 0;
 
+        // New Audio & Item variables
+        let bgmSource = null;
+        let isStartingGame = false;
+        let currentGift = null;
+        let giftSpawnTimer = null;
+
         // DOM Elements
         const ui = {
             level: document.getElementById('txtLevel'),
@@ -335,6 +347,35 @@
             gainNode.connect(audioCtx.destination);
             source.start(0);
         }
+        
+        function playBGM() {
+            if (bgmSource || !audioBuffers['bgm']) return;
+            bgmSource = audioCtx.createBufferSource();
+            bgmSource.buffer = audioBuffers['bgm'];
+            bgmSource.loop = true;
+            let bgmGain = audioCtx.createGain();
+            bgmGain.gain.value = 0.5; // ปรับระดับเสียงให้เหมาะสม
+            bgmSource.connect(bgmGain);
+            bgmGain.connect(audioCtx.destination);
+            bgmSource.start(0);
+        }
+        
+        function stopBGM() {
+            if (bgmSource) {
+                try { bgmSource.stop(); } catch(e) {}
+                try { bgmSource.disconnect(); } catch(e) {}
+                bgmSource = null;
+            }
+        }
+        
+        function goHome() {
+            stopBGM();
+            location.href = '../index.html';
+        }
+
+        window.addEventListener('beforeunload', () => {
+            stopBGM();
+        });
 
         function announce(text) {
             ui.announcer.innerText = text;
@@ -555,6 +596,130 @@
             }
         }
 
+        class LifeGift {
+            constructor() {
+                this.distance = Math.random() * 60 + 20; // สุ่มระยะใกล้ไกล 20 ถึง 80
+                this.angle = Math.random() * 360; // สุ่มทิศทางรอบตัว 360 องศา
+                this.active = true;
+
+                this.source = audioCtx.createBufferSource();
+                this.source.buffer = audioBuffers['gift'];
+                this.source.loop = true;
+
+                this.toneFilter = audioCtx.createBiquadFilter();
+                this.toneFilter.type = 'lowpass';
+                this.toneFilter.frequency.value = 18000;
+                this.toneFilter.Q.value = 0.7;
+
+                this.presenceFilter = audioCtx.createBiquadFilter();
+                this.presenceFilter.type = 'peaking';
+                this.presenceFilter.frequency.value = 2800;
+                this.presenceFilter.Q.value = 1.0;
+                this.presenceFilter.gain.value = 0;
+
+                this.rearDelay = audioCtx.createDelay(0.1);
+                this.rearDelay.delayTime.value = 0.028;
+
+                this.rearFilter = audioCtx.createBiquadFilter();
+                this.rearFilter.type = 'bandpass';
+                this.rearFilter.frequency.value = 750;
+                this.rearFilter.Q.value = 0.8;
+
+                this.rearReflectGain = audioCtx.createGain();
+                this.rearReflectGain.gain.value = 0.0;
+
+                this.aimGain = audioCtx.createGain();
+                this.aimGain.gain.value = 1.0;
+
+                this.panner = audioCtx.createPanner();
+                this.panner.panningModel = 'HRTF';
+                this.panner.distanceModel = 'linear';
+                this.panner.refDistance = 1;
+                this.panner.maxDistance = 100;
+                this.panner.rolloffFactor = 1;
+
+                this.source.connect(this.toneFilter);
+                this.toneFilter.connect(this.presenceFilter);
+                this.presenceFilter.connect(this.aimGain);
+
+                this.toneFilter.connect(this.rearDelay);
+                this.rearDelay.connect(this.rearFilter);
+                this.rearFilter.connect(this.rearReflectGain);
+                this.rearReflectGain.connect(this.aimGain);
+
+                this.aimGain.connect(this.panner);
+                this.panner.connect(audioCtx.destination);
+                this.source.start(0);
+
+                this.updateAudioPosition();
+            }
+
+            setAudioParamSmooth(param, targetValue, timeConstant) {
+                let now = audioCtx.currentTime;
+                if (typeof param.setTargetAtTime === 'function') {
+                    param.setTargetAtTime(targetValue, now, timeConstant);
+                } else {
+                    param.value = targetValue;
+                }
+            }
+
+            updateAudioPosition() {
+                if (!this.active) return;
+                
+                let relativeAngle = (this.angle - playerAngle) * (Math.PI / 180);
+                let x = Math.sin(relativeAngle) * (this.distance / 10);
+                let z = -Math.cos(relativeAngle) * (this.distance / 10);
+
+                if (this.panner.positionX) {
+                    this.panner.positionX.value = x;
+                    this.panner.positionY.value = 0;
+                    this.panner.positionZ.value = z;
+                } else {
+                    this.panner.setPosition(x, 0, z);
+                }
+
+                let diff = Math.abs(this.angle - playerAngle) % 360;
+                if (diff > 180) diff = 360 - diff;
+
+                let frontFactor = Math.cos(relativeAngle);
+                let targetCutoff, targetPresence, targetRearReflect;
+
+                if (frontFactor >= 0) {
+                    targetCutoff = 12000 + (frontFactor * 8000);
+                    targetPresence = frontFactor * 2.2;
+                    targetRearReflect = 0.0;
+                } else {
+                    let backAmount = -frontFactor;
+                    targetCutoff = 12000 - (backAmount * 10650);
+                    targetPresence = -backAmount * 3.0;
+                    targetRearReflect = backAmount * 0.24;
+                }
+
+                this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
+                this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
+                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
+
+                let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
+                this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
+            }
+
+            cleanUp() {
+                if (!this.active) return;
+                this.active = false;
+                try { this.source.stop(); } catch (e) {}
+                try {
+                    this.source.disconnect();
+                    this.toneFilter.disconnect();
+                    this.presenceFilter.disconnect();
+                    this.rearDelay.disconnect();
+                    this.rearFilter.disconnect();
+                    this.rearReflectGain.disconnect();
+                    this.aimGain.disconnect();
+                    this.panner.disconnect();
+                } catch (e) {}
+            }
+        }
+
         function resetGame() {
             hp = 3;
             ammo = 10;
@@ -563,7 +728,15 @@
             isGameOver = false;
             playerAngle = 0;
             zombiesSpawned = 0;
+            activeZombies.forEach(z => z.die());
             activeZombies = [];
+            
+            if (currentGift) {
+                currentGift.cleanUp();
+                currentGift = null;
+            }
+            clearTimeout(giftSpawnTimer);
+
             lastAlpha = null;
             keys = { ArrowLeft: false, ArrowRight: false };
             updateUI();
@@ -609,10 +782,11 @@
             playSound('shot');
             updateUI();
 
-            // Hit Detection - หาซอมบี้ที่อยู่ตรงหน้า (ระยะศูนย์เล็ง +- 10 องศา)
-            let hitZombie = null;
+            // Hit Detection - หาเป้าหมายที่อยู่ตรงหน้า (ระยะศูนย์เล็ง +- 10 องศา) และใกล้ที่สุด
+            let hitTarget = null;
             let minDistance = 999;
 
+            // เช็คซอมบี้
             for (let z of activeZombies) {
                 if (!z.active) continue;
                 let diff = Math.abs(z.angle - playerAngle) % 360;
@@ -621,13 +795,37 @@
                 if (diff <= 10) { // อยู่ในระยะเล็ง
                     if (z.distance < minDistance) {
                         minDistance = z.distance;
-                        hitZombie = z;
+                        hitTarget = z;
                     }
                 }
             }
 
-            if (hitZombie) {
-                hitZombie.takeDamage();
+            // เช็ค Life Gift
+            if (currentGift && currentGift.active) {
+                let diff = Math.abs(currentGift.angle - playerAngle) % 360;
+                if (diff > 180) diff = 360 - diff;
+                
+                if (diff <= 10) {
+                    if (currentGift.distance < minDistance) {
+                        minDistance = currentGift.distance;
+                        hitTarget = currentGift;
+                    }
+                }
+            }
+
+            if (hitTarget) {
+                if (hitTarget instanceof Zombie) {
+                    hitTarget.takeDamage();
+                } else if (hitTarget instanceof LifeGift) {
+                    playSound('giftup');
+                    hp = Math.min(3, hp + 1); // เพิ่มพลังสูงสุดไม่เกิน 3
+                    updateUI();
+                    announce(`เก็บ Life Gift สำเร็จ! พลังชีวิตเป็น ${hp}`);
+                    hitTarget.cleanUp();
+                    if (currentGift === hitTarget) {
+                        currentGift = null;
+                    }
+                }
             }
 
             checkLevelClear();
@@ -671,14 +869,14 @@
             let levelData = LEVELS[currentLevel - 1];
 
             if (activeZombies.length === 0 && zombiesSpawned >= levelData.total) {
-                playSound('levelup');
                 clearTimeout(spawnTimer);
-                announce(`ผ่านเลเวล ${currentLevel}`);
                 
                 if (currentLevel >= 18) {
                     saveProgress(1); // จบเกมแล้ว รีเซ็ต Save
                     gameOver(true);
                 } else {
+                    playSound('levelup');
+                    announce(`ผ่านเลเวล ${currentLevel}`);
                     currentLevel++;
                     saveProgress(currentLevel); // <--- บันทึกด่านใหม่ลงเครื่องทันที
                     setTimeout(startLevel, 3000);
@@ -692,6 +890,13 @@
         function gameOver(isWin) {
             isGameOver = true;
             clearTimeout(spawnTimer);
+            clearTimeout(giftSpawnTimer);
+
+            if (currentGift) {
+                currentGift.cleanUp();
+                currentGift = null;
+            }
+
             if (gameLoopTimer) {
                 cancelAnimationFrame(gameLoopTimer);
                 gameLoopTimer = null;
@@ -715,11 +920,12 @@
             const btnRetry = document.getElementById('btnRetry');
 
             if (!isWin) {
-                playSound('lose');
+                playSound('lose3');
                 title.innerText = "Game Over!";
                 msg.innerText = `คุณไม่รอด หยุดอยู่ที่ Level ${currentLevel}`;
                 announce(`คุณไม่รอด หยุดอยู่ที่ Level ${currentLevel}`);
             } else {
+                playSound('end');
                 title.innerText = "Victory!";
                 msg.innerText = "ยินดีด้วย คุณรอดชีวิตจากซอมบี้ทั้งหมด!";
                 announce("ยินดีด้วย คุณเอาชนะฝูงซอมบี้ทั้งหมด 18 เลเวลได้สำเร็จ!");
@@ -734,10 +940,27 @@
             zombiesSpawned = 0;
             activeZombies = [];
             clearTimeout(spawnTimer);
+            clearTimeout(giftSpawnTimer);
+
+            if (currentGift) {
+                currentGift.cleanUp();
+                currentGift = null;
+            }
+
             announce(`เริ่มเลเวล ${currentLevel}`);
             
             let levelData = LEVELS[currentLevel - 1];
             spawnTimer = setTimeout(() => spawnZombie(levelData), 2000);
+
+            // เกิด Life Gift ตั้งแต่ Level 4 ขึ้นไป ด่านละไม่เกิน 1 ชิ้น
+            if (currentLevel >= 4) {
+                let spawnDelay = Math.random() * 5000 + 3000;
+                giftSpawnTimer = setTimeout(() => {
+                    if (!isGameOver && !currentGift) {
+                        currentGift = new LifeGift();
+                    }
+                }, spawnDelay);
+            }
         }
 
         function update() {
@@ -748,6 +971,11 @@
             if (keys.ArrowRight) playerAngle += 1.5; // หมุนขวา
             if (playerAngle < 0) playerAngle += 360;
             if (playerAngle >= 360) playerAngle -= 360;
+
+            // อัปเดตตำแหน่งเสียง Life Gift ถ้ามี
+            if (currentGift && currentGift.active) {
+                currentGift.updateAudioPosition();
+            }
 
             // การเคลื่อนที่ของซอมบี้
             for (let z of activeZombies) {
@@ -882,6 +1110,9 @@
 
         // --- Initialize ---
         async function startGamePrep() {
+            if (isStartingGame) return;
+            isStartingGame = true;
+
             // ฟังก์ชันรวบยอดการเตรียม Audio และ Motion
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -897,6 +1128,25 @@
 
             const gameUI = document.getElementById('gameUI');
             gameUI.style.display = "flex";
+
+            // เล่น start.mp3 แล้วรอให้จบก่อนเริ่มเกม
+            await new Promise((resolve) => {
+                if (!audioBuffers['start']) {
+                    resolve();
+                    return;
+                }
+                const source = audioCtx.createBufferSource();
+                source.buffer = audioBuffers['start'];
+                source.connect(audioCtx.destination);
+                source.onended = resolve;
+                source.start(0);
+            });
+
+            isStartingGame = false;
+
+            // เริ่มเล่น BGM
+            playBGM();
+
             gameUI.setAttribute('role', 'application');
             gameUI.setAttribute('aria-label', `เริ่มเลเวล ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด`);
             gameUI.focus();
