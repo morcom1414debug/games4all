@@ -30,6 +30,7 @@
             justify-content: space-between;
             height: 90vh;
             outline: none; /* เอาขอบ Focus ออกเวลาใช้ Screen Reader */
+            position: relative; /* เพิ่มเพื่อรองรับ Absolute Layout ของปุ่มควบคุม */
         }
         .status-bar {
             font-size: 24px;
@@ -40,10 +41,17 @@
             padding: 15px;
             border-radius: 10px;
         }
+        /* ปรับปรุงโครงสร้าง Layout สำหรับระบบควบคุมใหม่ */
         .controls {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* ปล่อยให้สัมผัสผ่านไปยัง Swipe Area ได้ */
+        }
+        .controls > button {
+            pointer-events: auto; /* เปิดให้ปุ่มรับการสัมผัส/คลิกได้ตามปกติ */
         }
         button {
             background-color: #444;
@@ -59,12 +67,49 @@
             background-color: #666;
         }
         #btnShoot {
-            flex-grow: 1;
-            margin: 0 10px;
+            position: absolute;
+            bottom: 20px;
+            left: 5%;
+            width: 90%;
+            height: 80px;
+            font-size: 24px;
             background-color: #822;
+            margin: 0;
+            z-index: 100;
         }
         #btnLeft, #btnRight {
-            width: 80px;
+            position: absolute;
+            top: 45vh; /* กึ่งกลางค่อนไปทางด้านบน */
+            transform: translateY(-50%);
+            width: 50px;
+            height: 60px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            background-color: rgba(68, 68, 68, 0.4); /* ทำให้มองเห็นไม่เด่นชัดเกินไป */
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            z-index: 100;
+        }
+        #btnLeft {
+            left: 0;
+            border-radius: 0 10px 10px 0;
+        }
+        #btnRight {
+            right: 0;
+            border-radius: 10px 0 0 10px;
+        }
+        #swipeArea {
+            position: absolute;
+            top: 15vh;
+            left: 15%;
+            width: 70%;
+            height: 60vh;
+            z-index: 50;
+            background: transparent;
+            border: none;
+            touch-action: pan-y; /* ป้องกันการเลื่อนซ้ายขวาของ Browser แต่ไม่ปิดกั้นแนวดิ่งหรือ Screen Reader */
         }
         #startScreen {
             margin-top: 20vh;
@@ -123,10 +168,13 @@
         
         <div class="sr-only" aria-live="assertive" id="announcer"></div>
 
+        <!-- พื้นที่ Swipe สำหรับผู้เล่นทั่วไป -->
+        <div id="swipeArea" aria-hidden="true"></div>
+
         <div class="controls">
-            <button id="btnLeft" aria-label="หมุนซ้าย">&lt; ซ้าย</button>
+            <button id="btnLeft" aria-label="หมุนซ้าย">&#8592;</button>
             <button id="btnShoot" aria-label="ยิง หรือ รีโหลด">ยิง / Reload</button>
-            <button id="btnRight" aria-label="หมุนขวา">ขวา &gt;</button>
+            <button id="btnRight" aria-label="หมุนขวา">&#8594;</button>
         </div>
     </div>
 
@@ -314,7 +362,7 @@
 
             if (motionEnabled && !motionListenersAttached) {
                 window.addEventListener('deviceorientation', handleOrientation);
-                window.addEventListener('devicemotion', handleMotion);
+                // ยกเลิกการใช้งาน 'devicemotion' สำหรับยิงหรือ reload ตามข้อกำหนดใหม่
                 motionListenersAttached = true;
             }
         }
@@ -342,19 +390,7 @@
         }
 
         function handleMotion(e) {
-            if (isGameOver || !motionEnabled) return;
-            let acc = e.acceleration;
-            if (!acc || acc.x === null) return;
-
-            // ตรวจจับการผลัก (ตัดแรงโน้มถ่วงออกแล้ว)
-            let mag = Math.sqrt(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z);
-            let now = Date.now();
-            
-            // ใช้ความเร่ง Threshold ที่ 15 และมี Cooldown เพื่อกันปืนลั่นซ้ำ
-            if (mag > 15 && (now - lastMotionTime > 500)) {
-                lastMotionTime = now;
-                shoot();
-            }
+            // ถูกยกเลิกการตรวจจับเพื่อการยิงตามข้อกำหนด (ย้ายไปควบคุมด้วยปุ่มยิงทั้งหมด)
         }
 
         // --- Game Logic ---
@@ -755,22 +791,94 @@
             if (e.code === 'ArrowRight') keys.ArrowRight = false;
         });
 
-        // Mobile Buttons
-        document.getElementById('btnLeft').addEventListener('touchstart', (e) => { keys.ArrowLeft = true; e.preventDefault(); });
-        document.getElementById('btnLeft').addEventListener('touchend', (e) => { keys.ArrowLeft = false; e.preventDefault(); });
-        document.getElementById('btnLeft').addEventListener('mousedown', () => keys.ArrowLeft = true);
-        document.getElementById('btnLeft').addEventListener('mouseup', () => keys.ArrowLeft = false);
-        document.getElementById('btnLeft').addEventListener('mouseleave', () => keys.ArrowLeft = false);
+        // Mobile Buttons & Accessibility Updates
+        const btnLeft = document.getElementById('btnLeft');
+        const btnRight = document.getElementById('btnRight');
+        const btnShoot = document.getElementById('btnShoot');
 
-        document.getElementById('btnRight').addEventListener('touchstart', (e) => { keys.ArrowRight = true; e.preventDefault(); });
-        document.getElementById('btnRight').addEventListener('touchend', (e) => { keys.ArrowRight = false; e.preventDefault(); });
-        document.getElementById('btnRight').addEventListener('mousedown', () => keys.ArrowRight = true);
-        document.getElementById('btnRight').addEventListener('mouseup', () => keys.ArrowRight = false);
-        document.getElementById('btnRight').addEventListener('mouseleave', () => keys.ArrowRight = false);
+        function handleTurnStep(direction) {
+            if (isGameOver) return;
+            if (direction === 'left') {
+                playerAngle -= 15;
+                if (playerAngle < 0) playerAngle += 360;
+            } else {
+                playerAngle += 15;
+                if (playerAngle >= 360) playerAngle -= 360;
+            }
+        }
 
-        document.getElementById('btnShoot').addEventListener('touchstart', (e) => { shoot(); e.preventDefault(); });
-        document.getElementById('btnShoot').addEventListener('mousedown', () => shoot());
+        btnLeft.addEventListener('touchstart', (e) => { keys.ArrowLeft = true; e.preventDefault(); }, { passive: false });
+        btnLeft.addEventListener('touchend', (e) => { keys.ArrowLeft = false; e.preventDefault(); }, { passive: false });
+        btnLeft.addEventListener('mousedown', () => keys.ArrowLeft = true);
+        btnLeft.addEventListener('mouseup', () => keys.ArrowLeft = false);
+        btnLeft.addEventListener('mouseleave', () => keys.ArrowLeft = false);
+        btnLeft.addEventListener('click', (e) => {
+            // ดักจับการสั่งงานแบบทีละ Step ผ่าน Screen Reader และการคลิกเพื่อรองรับพฤติกรรมปุ่มมาตรฐาน
+            if (e.pointerType === '' || e.detail === 0 || e.isTrusted) {
+                handleTurnStep('left');
+            }
+        });
 
+        btnRight.addEventListener('touchstart', (e) => { keys.ArrowRight = true; e.preventDefault(); }, { passive: false });
+        btnRight.addEventListener('touchend', (e) => { keys.ArrowRight = false; e.preventDefault(); }, { passive: false });
+        btnRight.addEventListener('mousedown', () => keys.ArrowRight = true);
+        btnRight.addEventListener('mouseup', () => keys.ArrowRight = false);
+        btnRight.addEventListener('mouseleave', () => keys.ArrowRight = false);
+        btnRight.addEventListener('click', (e) => {
+            if (e.pointerType === '' || e.detail === 0 || e.isTrusted) {
+                handleTurnStep('right');
+            }
+        });
+
+        btnShoot.addEventListener('touchstart', (e) => { shoot(); e.preventDefault(); }, { passive: false });
+        btnShoot.addEventListener('mousedown', (e) => { if (e.button === 0) shoot(); });
+        btnShoot.addEventListener('click', () => { shoot(); });
+
+        // --- Swipe System ---
+        const swipeArea = document.getElementById('swipeArea');
+        let swipeStartX = null;
+        let swipeLastX = null;
+        let swipeActive = false;
+
+        swipeArea.addEventListener('pointerdown', (e) => {
+            if (!e.isPrimary) return;
+            swipeStartX = e.clientX;
+            swipeLastX = e.clientX;
+            swipeActive = true;
+            try { swipeArea.setPointerCapture(e.pointerId); } catch(err){}
+        });
+
+        swipeArea.addEventListener('pointermove', (e) => {
+            if (isGameOver || !swipeActive || swipeStartX === null) return;
+            let currentX = e.clientX;
+            let deltaX = currentX - swipeLastX;
+            
+            // Dead Zone Check (ต้องเลื่อนอย่างน้อย 15px)
+            if (Math.abs(currentX - swipeStartX) > 15) { 
+                let rotation = deltaX * 0.4;
+                // ป้องกันการหมุนกระชาก (จำกัดองศาต่อเฟรม)
+                if (rotation > 12) rotation = 12;
+                if (rotation < -12) rotation = -12;
+
+                playerAngle += rotation;
+                if (playerAngle < 0) playerAngle += 360;
+                if (playerAngle >= 360) playerAngle -= 360;
+            }
+            swipeLastX = currentX;
+        });
+
+        swipeArea.addEventListener('pointerup', (e) => {
+            swipeActive = false;
+            swipeStartX = null;
+            swipeLastX = null;
+            try { swipeArea.releasePointerCapture(e.pointerId); } catch(err){}
+        });
+        
+        swipeArea.addEventListener('pointercancel', (e) => {
+            swipeActive = false;
+            swipeStartX = null;
+            swipeLastX = null;
+        });
 
         // --- Initialize ---
         async function startGamePrep() {
