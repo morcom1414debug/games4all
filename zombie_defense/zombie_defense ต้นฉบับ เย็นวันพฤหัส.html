@@ -1,0 +1,2942 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Zombie Defense Audio Game</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            width: 100%;
+            height: 100dvh;
+            height: 100svh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #090b0f;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            position: relative;
+            padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        }
+
+        /* ================= VISUAL BACKDROP & ATMOSPHERE ================= */
+        #visualRoot {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 42%, #1b222c 0%, #0d1016 55%, #05070a 100%);
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Vignette & Damage / Level Flash Overlays */
+        #screenVignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+            background: radial-gradient(circle at center, transparent 48%, rgba(0, 0, 0, 0.72) 100%);
+            transition: box-shadow 0.15s ease, background 0.2s ease;
+        }
+        #damageOverlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 6;
+            opacity: 0;
+            background: radial-gradient(circle at center, rgba(220, 20, 20, 0.12) 35%, rgba(180, 0, 0, 0.78) 100%);
+            box-shadow: inset 0 0 65px rgba(255, 0, 0, 0.9);
+            transition: opacity 0.12s ease-out;
+        }
+        #damageCracks {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 7;
+            opacity: 0;
+            transition: opacity 0.35s ease-out;
+        }
+        #healOverlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 6;
+            opacity: 0;
+            background: radial-gradient(circle at center, rgba(40, 230, 120, 0.08) 40%, rgba(20, 200, 95, 0.45) 100%);
+            box-shadow: inset 0 0 50px rgba(46, 204, 113, 0.7);
+            transition: opacity 0.25s ease-out;
+        }
+        #levelBannerVisual {
+            position: fixed;
+            top: 22%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.92);
+            z-index: 8;
+            pointer-events: none;
+            opacity: 0;
+            text-align: center;
+            transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+            width: 90%;
+            max-width: 460px;
+        }
+        #levelBannerVisual.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+        .banner-title {
+            font-size: clamp(24px, 6vw, 40px);
+            font-weight: 900;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #f8fafc;
+            text-shadow: 0 0 18px rgba(245, 158, 11, 0.85), 0 4px 12px rgba(0,0,0,0.95);
+            margin: 0;
+        }
+        .banner-sub {
+            font-size: clamp(13px, 3.2vw, 17px);
+            color: #fbbf24;
+            letter-spacing: 1.5px;
+            margin-top: 4px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.95);
+            font-weight: 700;
+        }
+
+        /* ================= EXISTING BUTTONS & SCREENS (ENHANCED VISUALLY, IDENTICAL ACCESSIBILITY & FLOW) ================= */
+        .btn-home-main {
+            position: absolute;
+            top: max(16px, env(safe-area-inset-top, 16px));
+            left: max(16px, env(safe-area-inset-left, 16px));
+            padding: 10px 15px;
+            font-size: 22px;
+            z-index: 1000;
+            background: rgba(20, 26, 36, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(6px);
+        }
+
+        #startScreen {
+            position: relative;
+            z-index: 20;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 20px;
+            background: radial-gradient(circle at 50% 40%, rgba(25, 12, 12, 0.45), rgba(5, 7, 10, 0.82));
+        }
+        #startScreen h1 {
+            font-size: clamp(32px, 8vw, 56px);
+            margin: 0 0 10px 0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #f8fafc;
+            text-shadow: 0 0 25px rgba(220, 38, 38, 0.8), 0 4px 10px rgba(0,0,0,0.9);
+        }
+        #startScreen p {
+            font-size: clamp(15px, 3.8vw, 19px);
+            color: #cbd5e1;
+            margin: 0 0 28px 0;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+        }
+        #startScreen button {
+            font-size: clamp(20px, 4.8vw, 26px);
+            padding: 16px 34px;
+            background: linear-gradient(180deg, #2e8b3c 0%, #1c5e27 100%);
+            border: 2px solid rgba(255, 255, 255, 0.75);
+            box-shadow: 0 6px 22px rgba(0, 0, 0, 0.7), 0 0 15px rgba(46, 139, 60, 0.45);
+            min-width: 240px;
+            max-width: 90vw;
+        }
+        #startScreen button:hover {
+            filter: brightness(1.1);
+        }
+
+        #gameOverScreen {
+            display: none;
+            position: relative;
+            z-index: 25;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            background: radial-gradient(circle at 50% 35%, rgba(90, 10, 10, 0.55), rgba(5, 7, 10, 0.88));
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #gameOverScreen.victory-theme {
+            background: radial-gradient(circle at 50% 35%, rgba(18, 75, 45, 0.55), rgba(5, 10, 14, 0.86));
+        }
+        #gameOverTitle {
+            font-size: clamp(34px, 8vw, 54px);
+            margin: 0 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 22px rgba(239, 68, 68, 0.85), 0 4px 12px rgba(0,0,0,0.95);
+        }
+        #gameOverScreen.victory-theme #gameOverTitle {
+            color: #fde047;
+            text-shadow: 0 0 25px rgba(250, 204, 21, 0.85), 0 4px 12px rgba(0,0,0,0.95);
+        }
+        #gameOverMessage {
+            font-size: clamp(16px, 4vw, 21px);
+            color: #e2e8f0;
+            margin: 0 0 24px 0;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.95);
+        }
+        .gameover-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+            max-width: 310px;
+            margin: 0 auto;
+        }
+        .gameover-actions button {
+            padding: 14px 20px;
+            font-size: clamp(17px, 4vw, 20px);
+            background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+            border: 1.5px solid rgba(255, 255, 255, 0.65);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+        }
+        #btnRetry {
+            background: linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%);
+        }
+        #gameOverScreen.victory-theme #btnRetry {
+            background: linear-gradient(180deg, #15803d 0%, #14532d 100%);
+        }
+
+        /* ================= IN-GAME UI & CONTROLS ================= */
+        #gameUI {
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 100%;
+            height: 100%;
+            padding: max(12px, env(safe-area-inset-top, 12px)) max(12px, env(safe-area-inset-right, 12px)) max(12px, env(safe-area-inset-bottom, 12px)) max(12px, env(safe-area-inset-left, 12px));
+            outline: none;
+            position: relative;
+            z-index: 20;
+        }
+        .status-bar {
+            position: relative;
+            z-index: 110;
+            font-size: clamp(16px, 4.2vw, 22px);
+            font-weight: 800;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            background: linear-gradient(180deg, rgba(15, 20, 28, 0.86) 0%, rgba(10, 14, 20, 0.76) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(6px);
+            padding: 10px 12px;
+            border-radius: 12px;
+            letter-spacing: 0.5px;
+        }
+        .status-bar span {
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+        }
+        #txtHP {
+            color: #f87171;
+        }
+        #txtAmmo {
+            color: #fbbf24;
+        }
+        #txtLevel {
+            color: #60a5fa;
+        }
+
+        .controls {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .controls > button {
+            pointer-events: auto;
+        }
+        button {
+            background-color: #444;
+            color: #fff;
+            border: 2px solid #fff;
+            padding: 20px;
+            font-size: 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: transform 0.08s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+        }
+        button:active {
+            transform: scale(0.97);
+            background-color: #666;
+        }
+        #btnShoot {
+            position: absolute;
+            bottom: max(14px, env(safe-area-inset-bottom, 14px));
+            left: 5%;
+            width: 90%;
+            height: clamp(62px, 10vh, 78px);
+            font-size: clamp(20px, 5vw, 24px);
+            font-weight: 800;
+            letter-spacing: 1px;
+            background: linear-gradient(180deg, rgba(165, 32, 32, 0.92) 0%, rgba(110, 18, 18, 0.94) 100%);
+            border: 2px solid rgba(255, 220, 220, 0.78);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+            margin: 0;
+            z-index: 100;
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #btnShoot:active {
+            background: linear-gradient(180deg, rgba(200, 42, 42, 0.96) 0%, rgba(140, 22, 22, 0.98) 100%);
+        }
+        #btnLeft, #btnRight {
+            position: absolute;
+            top: 46%;
+            transform: translateY(-50%);
+            width: clamp(48px, 12vw, 60px);
+            height: clamp(64px, 11vh, 78px);
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            background-color: rgba(20, 28, 38, 0.52);
+            border: 1.5px solid rgba(255, 255, 255, 0.42);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+        }
+        #btnLeft:active, #btnRight:active {
+            transform: translateY(-50%) scale(0.95);
+            background-color: rgba(50, 68, 90, 0.75);
+        }
+        #btnLeft {
+            left: max(0px, env(safe-area-inset-left, 0px));
+            border-radius: 0 14px 14px 0;
+        }
+        #btnRight {
+            right: max(0px, env(safe-area-inset-right, 0px));
+            border-radius: 14px 0 0 14px;
+        }
+        #swipeArea {
+            position: absolute;
+            top: 12%;
+            left: 14%;
+            width: 72%;
+            height: 68%;
+            z-index: 50;
+            background: transparent;
+            border: none;
+            touch-action: pan-y;
+        }
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+
+        /* Landscape / Compact Height Adjustments */
+        @media (max-height: 520px) {
+            .status-bar {
+                padding: 6px 10px;
+                font-size: 16px;
+            }
+            #btnShoot {
+                height: 54px;
+                bottom: max(8px, env(safe-area-inset-bottom, 8px));
+                font-size: 18px;
+                width: 60%;
+                left: 20%;
+            }
+            #btnLeft, #btnRight {
+                top: 48%;
+                height: 56px;
+                width: 52px;
+            }
+            #startScreen h1 {
+                font-size: 30px;
+                margin-bottom: 6px;
+            }
+            #startScreen p {
+                margin-bottom: 14px;
+            }
+            #startScreen button {
+                padding: 10px 24px;
+                font-size: 18px;
+            }
+            .gameover-actions {
+                gap: 8px;
+            }
+            .gameover-actions button {
+                padding: 10px 14px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- VISUAL LAYER (COMPLETELY HIDDEN FROM SCREEN READERS & POINTERS) -->
+    <div id="visualRoot" aria-hidden="true">
+        <canvas id="gameCanvas"></canvas>
+        <div id="screenVignette"></div>
+        <div id="damageOverlay"></div>
+        <svg id="damageCracks" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <path d="M0,0 L18,14 L12,26 L28,34 M18,14 L32,10 L42,20" stroke="rgba(220,38,38,0.65)" stroke-width="0.45" fill="none"/>
+            <path d="M100,0 L80,16 L88,28 L72,38 M80,16 L66,12 L58,22" stroke="rgba(220,38,38,0.65)" stroke-width="0.45" fill="none"/>
+            <path d="M0,100 L20,82 L14,68 L30,60" stroke="rgba(220,38,38,0.55)" stroke-width="0.4" fill="none"/>
+            <path d="M100,100 L78,80 L86,66 L70,58" stroke="rgba(220,38,38,0.55)" stroke-width="0.4" fill="none"/>
+        </svg>
+        <div id="healOverlay"></div>
+        <div id="levelBannerVisual">
+            <div class="banner-title" id="bannerTitle">LEVEL 1</div>
+            <div class="banner-sub" id="bannerSub">SURVIVE THE HORDE</div>
+        </div>
+    </div>
+
+    <!-- ปุ่มกลับสู่ชุมชน -->
+    <button id="btn-home-main" class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="goHome()">
+        <span aria-hidden="true">🏠</span>
+    </button>
+
+    <!-- ปรับปรุงหน้าแรก -->
+    <div id="startScreen">
+        <h1>Zombie Defense</h1>
+        <p>ใส่หูฟังเพื่อประสบการณ์ 360 องศา</p>
+        <!-- ซ่อนปุ่มเล่นต่อไว้ก่อน จะแสดงเมื่อมี Save -->
+        <button id="btnContinue" style="display: none; background: linear-gradient(180deg, #28a745 0%, #196f2d 100%); margin-bottom: 12px;">เล่นต่อ (Level ...)</button>
+        <button id="btnNewGame">เริ่มเกมใหม่</button>
+    </div>
+
+    <!-- เพิ่มหน้า Game Over / เมนูหลังจบเกม -->
+    <div id="gameOverScreen" style="display: none;">
+        <h1 id="gameOverTitle">Game Over</h1>
+        <p id="gameOverMessage"></p>
+        <div class="gameover-actions">
+            <button id="btnRetry">เล่นอีกครั้ง (ด่านเดิม)</button>
+            <button id="btnRestartGame">เริ่มต้นใหม่ (Level 1)</button>
+            <button id="btnPauseExit">พักการเล่นไว้ก่อน</button>
+        </div>
+    </div>
+
+    <!-- เพิ่ม tabindex="-1" เพื่อให้รับ Focus จาก JavaScript สำหรับผู้ใช้ Screen Reader -->
+    <div id="gameUI" tabindex="-1">
+        <div class="status-bar" aria-live="polite">
+            <span id="txtLevel">Level: 1</span>
+            <span id="txtHP">HP: 3</span>
+            <span id="txtAmmo">Ammo: 10</span>
+        </div>
+        
+        <div class="sr-only" aria-live="assertive" id="announcer"></div>
+
+        <!-- พื้นที่ Swipe สำหรับผู้เล่นทั่วไป -->
+        <div id="swipeArea" aria-hidden="true"></div>
+
+        <div class="controls">
+            <button id="btnLeft" aria-label="หมุนซ้าย">&#8592;</button>
+            <button id="btnShoot" aria-label="ยิง หรือ รีโหลด">ยิง / Reload</button>
+            <button id="btnRight" aria-label="หมุนขวา">&#8594;</button>
+        </div>
+    </div>
+
+    <script>
+        // Game Configuration
+        const LEVELS = [
+            // --- โหมดแนะนำตัวละคร (Level 1-6) ---
+            { total: 2, types: ['ธรรมดา'] },                                      // 1: ซ้อมยิงและฟังทิศทางทีละตัว
+            { total: 3, types: ['ธรรมดา', 'วิ่งเร็ว'] },                            // 2: ฝึกความไว
+            { total: 4, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา'] },                  // 3: ฝึกยิงซ้ำ
+            { total: 5, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์'] },            // 4: ฝึกจัดลำดับความสำคัญเป้าหมายใหญ่
+            { total: 6, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด'] },   // 5: ฝึกรับมือตัวอันตรายระยะประชิด
+            { total: 8, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 6: รวมมิตรครบทุกชนิด
+
+            // --- โหมดท้าทาย (Level 7-18) ค่อยๆ ไต่ระดับ ---
+            { total: 10, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 7
+            { total: 12, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 8
+            { total: 14, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 9
+            { total: 16, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 10
+            { total: 18, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 11
+            { total: 20, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 12
+            { total: 22, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 13
+            { total: 24, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 14
+            { total: 26, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 15
+            { total: 28, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 16
+            { total: 30, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }, // 17
+            { total: 35, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }  // 18
+        ];
+
+        const ZOMBIE_STATS = {
+            'ธรรมดา': { hp: 1, speed: 2.0 },
+            'วิ่งเร็ว': { hp: 1, speed: 3.5 },
+            'เกราะหนา': { hp: 3, speed: 1.5 },
+            'ยักษ์': { hp: 5, speed: 1.0 },
+            'ระเบิด': { hp: 1, speed: 2.5 },
+            'พิเศษ': { hp: 2, speed: 3.0 }
+        };
+
+        const AUDIO_FILES = {
+            'ธรรมดา': 'audio/z ธรรมดา.mp3',
+            'วิ่งเร็ว': 'audio/z วิ่งเร็ว.mp3',
+            'เกราะหนา': 'audio/z เกราะหนา.mp3',
+            'ยักษ์': 'audio/z ยักษ์.mp3',
+            'ระเบิด': 'audio/z ระเบิด.mp3',
+            'พิเศษ': 'audio/z พิเศษ.mp3',
+            'shot': 'audio/shot.mp3',
+            'hit1': 'audio/hit1.mp3',
+            'hit2': 'audio/hit2.mp3',
+            'levelup': 'audio/level up.mp3',
+            'lose': 'audio/lose.mp3',
+            'lose3': 'audio/lose3.mp3',
+            'end': 'audio/end.mp3',
+            'start': 'audio/start.mp3',
+            'bgm': 'audio/bgm.mp3',
+            'gift': 'audio/gift.mp3',
+            'giftup': 'audio/giftup.mp3',
+            'reload': 'audio/reload.mp3'
+        };
+
+        // ฟังก์ชันจัดการ Save/Load
+        const SAVE_KEY = 'zombieDefenseSavedLevel';
+
+        function saveProgress(level) {
+            localStorage.setItem(SAVE_KEY, level);
+        }
+
+        function loadProgress() {
+            let saved = localStorage.getItem(SAVE_KEY);
+            return saved ? parseInt(saved) : 1;
+        }
+
+        // ฟังก์ชันตรวจสอบและตั้งค่าหน้าแรกตอนโหลดหน้าเว็บ
+        function initStartScreen() {
+            let savedLevel = loadProgress();
+            const btnContinue = document.getElementById('btnContinue');
+            const btnNewGame = document.getElementById('btnNewGame');
+
+            if (savedLevel > 1 && savedLevel <= LEVELS.length) {
+                btnContinue.style.display = "inline-block";
+                btnContinue.innerText = `เล่นต่อ (Level ${savedLevel})`;
+            } else {
+                btnContinue.style.display = "none";
+            }
+        }
+        // เรียกใช้ทันทีเมื่อเปิดเว็บ
+        initStartScreen();
+
+        // Variables
+        let audioCtx, listener;
+        let audioBuffers = {};
+        
+        let playerAngle = 0;
+        let hp = 3;
+        let ammo = 10;
+        let currentLevel = 1;
+        let isReloading = false;
+        let lastShotTime = 0;
+        let isGameOver = false;
+
+        let activeZombies = [];
+        let zombiesSpawned = 0;
+        let spawnTimer = null;
+        let gameLoopTimer = null;
+
+        let keys = { ArrowLeft: false, ArrowRight: false };
+
+        // Motion variables
+        let motionEnabled = false;
+        let motionListenersAttached = false;
+        let lastAlpha = null;
+        let lastMotionTime = 0;
+
+        // New Audio & Item variables
+        let bgmSource = null;
+        let isStartingGame = false;
+        let currentGift = null;
+        let giftSpawnTimer = null;
+
+        // DOM Elements
+        const ui = {
+            level: document.getElementById('txtLevel'),
+            hp: document.getElementById('txtHP'),
+            ammo: document.getElementById('txtAmmo'),
+            announcer: document.getElementById('announcer')
+        };
+
+        // =========================================================================
+        // FIRST-PERSON VISUAL & ANIMATION ENGINE (PURELY OBSERVER / NON-INTRUSIVE)
+        // =========================================================================
+        const VisualEngine = (() => {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d', { alpha: false });
+            const damageOverlay = document.getElementById('damageOverlay');
+            const damageCracks = document.getElementById('damageCracks');
+            const healOverlay = document.getElementById('healOverlay');
+            const levelBanner = document.getElementById('levelBannerVisual');
+            const bannerTitle = document.getElementById('bannerTitle');
+            const bannerSub = document.getElementById('bannerSub');
+
+            let width = 0;
+            let height = 0;
+            let dpr = 1;
+            let isLowEnd = false;
+
+            // Camera & Weapon Animation State
+            let gunRecoil = 0;          // 0..1 kickback
+            let muzzleFlashTimer = 0;   // seconds
+            let muzzleSeed = 0;
+            let weaponBobPhase = 0;
+            let cameraShake = 0;        // intensity
+            let reloadAnimProgress = 0; // 0..1
+            let reloadStartTime = 0;
+            let wasReloading = false;
+            let hitMarkerTimer = 0;
+            let hitMarkerKill = false;
+            let bannerTimeout = null;
+            let damageTimeout = null;
+            let healTimeout = null;
+
+            // Visual entities synced with game logic
+            let zombieVisualMeta = new WeakMap();
+            let deathAnimations = [];
+            let particles = [];
+            let floatingTexts = [];
+
+            // Pre-generated 360-degree apocalyptic city skyline & props
+            const BUILDINGS = [];
+            const STREET_LAMPS = [];
+            const DEBRIS = [];
+            const FOG_WISPS = [];
+            const STARS = [];
+
+            function initWorldProps() {
+                BUILDINGS.length = 0;
+                STREET_LAMPS.length = 0;
+                DEBRIS.length = 0;
+                FOG_WISPS.length = 0;
+                STARS.length = 0;
+
+                // Deterministic pseudo-random helper
+                let seed = 1337;
+                const rand = () => {
+                    seed = (seed * 16807) % 2147483647;
+                    return (seed - 1) / 2147483646;
+                };
+
+                // 360-degree ruined city buildings
+                const numBuildings = 44;
+                for (let i = 0; i < numBuildings; i++) {
+                    const angle = (i / numBuildings) * 360 + (rand() - 0.5) * 4;
+                    const wAngle = 6 + rand() * 8;
+                    const hFactor = 0.16 + rand() * 0.28;
+                    const ruinedType = Math.floor(rand() * 4);
+                    const windows = [];
+                    const cols = 3 + Math.floor(rand() * 3);
+                    const rows = 4 + Math.floor(rand() * 5);
+                    for (let r = 0; r < rows; r++) {
+                        for (let c = 0; c < cols; c++) {
+                            if (rand() > 0.35) {
+                                windows.push({
+                                    rx: (c + 0.5) / cols,
+                                    ry: (r + 0.5) / rows,
+                                    lit: rand() > 0.86,
+                                    broken: rand() > 0.55
+                                });
+                            }
+                        }
+                    }
+                    BUILDINGS.push({
+                        angle,
+                        wAngle,
+                        hFactor,
+                        ruinedType,
+                        shade: Math.floor(14 + rand() * 14),
+                        windows,
+                        antenna: rand() > 0.72
+                    });
+                }
+
+                // Street lamps & utility poles around 360 degrees
+                for (let i = 0; i < 16; i++) {
+                    STREET_LAMPS.push({
+                        angle: i * 22.5 + 8,
+                        flickerOffset: rand() * 100,
+                        broken: rand() > 0.55
+                    });
+                }
+
+                // Ground debris / barricades / burnt cars silhouettes
+                for (let i = 0; i < 24; i++) {
+                    DEBRIS.push({
+                        angle: rand() * 360,
+                        dist: 28 + rand() * 68,
+                        type: Math.floor(rand() * 3), // 0: rubble, 1: barrier, 2: wrecked car
+                        scale: 0.7 + rand() * 0.7
+                    });
+                }
+
+                // Atmospheric drifting fog wisps
+                for (let i = 0; i < 18; i++) {
+                    FOG_WISPS.push({
+                        angle: rand() * 360,
+                        yOffset: (rand() - 0.3) * 0.18,
+                        widthDeg: 18 + rand() * 25,
+                        speed: (rand() - 0.5) * 0.04,
+                        alpha: 0.04 + rand() * 0.06
+                    });
+                }
+
+                // Night sky stars / embers
+                for (let i = 0; i < 55; i++) {
+                    STARS.push({
+                        angle: rand() * 360,
+                        alt: 0.04 + rand() * 0.34,
+                        size: 0.8 + rand() * 1.4,
+                        twinkle: rand() * Math.PI * 2
+                    });
+                }
+            }
+
+            function resize() {
+                if (!canvas) return;
+                width = window.innerWidth;
+                height = window.innerHeight;
+                // Cap DPR at 1.75 for crisp visuals without hurting mobile FPS
+                const rawDpr = window.devicePixelRatio || 1;
+                isLowEnd = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || (width * height > 1200000 && rawDpr > 2);
+                dpr = isLowEnd ? Math.min(rawDpr, 1.25) : Math.min(rawDpr, 1.75);
+
+                canvas.width = Math.floor(width * dpr);
+                canvas.height = Math.floor(height * dpr);
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
+            window.addEventListener('resize', resize);
+            window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+            initWorldProps();
+            resize();
+
+            function normalizeAngleDiff(targetAngle, refAngle) {
+                let diff = ((targetAngle - refAngle + 540) % 360) - 180;
+                return diff; // -180 to +180
+            }
+
+            // FOV configuration (horizontal FOV ~86 degrees)
+            const FOV_DEG = 86;
+            const HALF_FOV = FOV_DEG / 2;
+
+            function angleToScreenX(relAngleDeg) {
+                const halfW = width * 0.5;
+                const focal = halfW / Math.tan((HALF_FOV * Math.PI) / 180);
+                const rad = (relAngleDeg * Math.PI) / 180;
+                return halfW + Math.tan(rad) * focal;
+            }
+
+            function distanceToScreenYAndScale(dist, horizonY) {
+                // dist ranges from ~100 (far) to 0 (player base)
+                const clampedDist = Math.max(2, Math.min(115, dist));
+                // Perspective projection: closer -> much larger and lower on screen
+                const normDepth = 16 / (clampedDist + 10); // ~0.13 at 110, ~1.33 at 2
+                const scale = Math.min(2.6, Math.max(0.11, normDepth * 1.18));
+                const groundSpan = height - horizonY;
+                // Ground contact point moves down as distance approaches 0
+                const t = Math.pow(Math.max(0, Math.min(1, 1 - clampedDist / 108)), 1.55);
+                const footY = horizonY + groundSpan * (0.04 + t * 0.86);
+                return { scale, footY };
+            }
+
+            function spawnParticles(x, y, color, count, speedScale = 1, gravity = 0.25) {
+                const maxP = isLowEnd ? 55 : 130;
+                if (particles.length > maxP) return;
+                const actualCount = isLowEnd ? Math.ceil(count * 0.6) : count;
+                for (let i = 0; i < actualCount; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const spd = (1.5 + Math.random() * 5.5) * speedScale;
+                    particles.push({
+                        x,
+                        y,
+                        vx: Math.cos(ang) * spd,
+                        vy: Math.sin(ang) * spd - 1.5 * speedScale,
+                        size: 2 + Math.random() * 3.8,
+                        color,
+                        alpha: 1,
+                        decay: 0.025 + Math.random() * 0.03,
+                        gravity
+                    });
+                }
+            }
+
+            function triggerBanner(title, sub, duration = 2200) {
+                if (!levelBanner) return;
+                bannerTitle.textContent = title;
+                bannerSub.textContent = sub || '';
+                levelBanner.classList.add('show');
+                clearTimeout(bannerTimeout);
+                bannerTimeout = setTimeout(() => {
+                    levelBanner.classList.remove('show');
+                }, duration);
+            }
+
+            // --- Public Hooks Called by Game Events (Read-Only Observation) ---
+            function onShootAttempt(didFire, hitTarget, wasKill) {
+                if (!didFire) {
+                    // Dry click / empty gun subtle nudge
+                    gunRecoil = Math.max(gunRecoil, 0.18);
+                    return;
+                }
+                gunRecoil = 1.0;
+                muzzleFlashTimer = 0.075;
+                muzzleSeed = Math.random() * 100;
+                cameraShake = Math.max(cameraShake, 4.5);
+
+                const cx = width * 0.5;
+                const cy = height * 0.48;
+
+                if (!hitTarget) {
+                    // Missed shot: subtle dust/tracer spark downrange
+                    spawnParticles(cx + (Math.random() - 0.5) * 28, cy + (Math.random() - 0.5) * 20, 'rgba(255, 220, 150, 0.85)', 5, 0.7, 0.05);
+                } else if (hitTarget instanceof Zombie) {
+                    hitMarkerTimer = 0.22;
+                    hitMarkerKill = !!wasKill;
+                    const relAngle = normalizeAngleDiff(hitTarget.angle, playerAngle);
+                    const horizonY = height * 0.44;
+                    const sx = Math.abs(relAngle) < 75 ? angleToScreenX(relAngle) : cx;
+                    const { scale, footY } = distanceToScreenYAndScale(hitTarget.distance, horizonY);
+                    const hitY = footY - 68 * scale;
+
+                    if (hitTarget.type === 'เกราะหนา' && !wasKill) {
+                        // Metallic armor sparks
+                        spawnParticles(sx, hitY, '#fde047', 14, 1.3, 0.22);
+                        spawnParticles(sx, hitY, '#ffffff', 7, 1.5, 0.15);
+                    } else {
+                        // Blood / impact splatter
+                        spawnParticles(sx, hitY, '#dc2626', wasKill ? 18 : 11, wasKill ? 1.35 : 0.95, 0.28);
+                        spawnParticles(sx, hitY, '#7f1d1d', 8, 0.8, 0.32);
+                    }
+
+                    // Mark flinch on zombie meta
+                    let meta = zombieVisualMeta.get(hitTarget);
+                    if (!meta) {
+                        meta = { walkPhase: Math.random() * 6, flinch: 0, lastDist: hitTarget.distance };
+                        zombieVisualMeta.set(hitTarget, meta);
+                    }
+                    meta.flinch = 1.0;
+
+                    if (wasKill) {
+                        // Queue visual death animation at zombie's last known position
+                        deathAnimations.push({
+                            type: hitTarget.type,
+                            angle: hitTarget.angle,
+                            distance: hitTarget.distance,
+                            progress: 0,
+                            isExplosive: hitTarget.type === 'ระเบิด'
+                        });
+                        if (hitTarget.type === 'ระเบิด') {
+                            cameraShake = Math.max(cameraShake, 12);
+                            spawnParticles(sx, hitY, '#fb923c', 26, 1.9, 0.12);
+                            spawnParticles(sx, hitY, '#facc15', 18, 1.6, 0.08);
+                            spawnParticles(sx, hitY, '#ef4444', 16, 1.4, 0.18);
+                        }
+                    }
+                } else if (hitTarget instanceof LifeGift) {
+                    hitMarkerTimer = 0.25;
+                    hitMarkerKill = true;
+                    const relAngle = normalizeAngleDiff(hitTarget.angle, playerAngle);
+                    const horizonY = height * 0.44;
+                    const sx = Math.abs(relAngle) < 75 ? angleToScreenX(relAngle) : cx;
+                    const { scale, footY } = distanceToScreenYAndScale(hitTarget.distance, horizonY);
+                    const gy = footY - 46 * scale;
+                    spawnParticles(sx, gy, '#4ade80', 22, 1.4, -0.05);
+                    spawnParticles(sx, gy, '#bbf7d0', 12, 1.0, -0.08);
+                }
+            }
+
+            function onPlayerDamaged() {
+                cameraShake = 16;
+                if (damageOverlay) {
+                    damageOverlay.style.opacity = '1';
+                    clearTimeout(damageTimeout);
+                    damageTimeout = setTimeout(() => {
+                        damageOverlay.style.opacity = '0';
+                    }, 260);
+                }
+                if (damageCracks) {
+                    damageCracks.style.opacity = '0.9';
+                    setTimeout(() => {
+                        damageCracks.style.opacity = '0';
+                    }, 900);
+                }
+            }
+
+            function onPlayerHealed() {
+                if (healOverlay) {
+                    healOverlay.style.opacity = '1';
+                    clearTimeout(healTimeout);
+                    healTimeout = setTimeout(() => {
+                        healOverlay.style.opacity = '0';
+                    }, 420);
+                }
+            }
+
+            function onLevelStart(lvl) {
+                deathAnimations.length = 0;
+                triggerBanner(`LEVEL ${lvl}`, lvl >= 7 ? 'NIGHTMARE WAVE' : 'DEFEND THE PERIMETER', 2100);
+            }
+
+            function onLevelClearVisual(lvl) {
+                triggerBanner('LEVEL COMPLETE!', `STAGE ${lvl} CLEARED`, 2600);
+                spawnParticles(width * 0.5, height * 0.35, '#fbbf24', 24, 1.2, 0.06);
+            }
+
+            function resetVisuals() {
+                gunRecoil = 0;
+                muzzleFlashTimer = 0;
+                cameraShake = 0;
+                reloadAnimProgress = 0;
+                wasReloading = false;
+                hitMarkerTimer = 0;
+                deathAnimations.length = 0;
+                particles.length = 0;
+                floatingTexts.length = 0;
+                if (damageOverlay) damageOverlay.style.opacity = '0';
+                if (damageCracks) damageCracks.style.opacity = '0';
+                if (healOverlay) healOverlay.style.opacity = '0';
+            }
+
+            // =====================================================================
+            // RENDERING PIPELINE
+            // =====================================================================
+            function drawEnvironment(nowSec, horizonY) {
+                // 1. Apocalyptic Sky Gradient
+                const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+                skyGrad.addColorStop(0, '#06080d');
+                skyGrad.addColorStop(0.55, '#111824');
+                skyGrad.addColorStop(0.88, '#231c24');
+                skyGrad.addColorStop(1, '#362220');
+                ctx.fillStyle = skyGrad;
+                ctx.fillRect(0, 0, width, horizonY + 2);
+
+                // Stars
+                ctx.fillStyle = '#cbd5e1';
+                for (let i = 0; i < STARS.length; i++) {
+                    const s = STARS[i];
+                    const rel = normalizeAngleDiff(s.angle, playerAngle);
+                    if (Math.abs(rel) > HALF_FOV + 5) continue;
+                    const sx = angleToScreenX(rel);
+                    const sy = horizonY * s.alt;
+                    const alpha = 0.25 + 0.35 * Math.sin(nowSec * 2 + s.twinkle);
+                    ctx.globalAlpha = alpha;
+                    ctx.fillRect(sx, sy, s.size, s.size);
+                }
+                ctx.globalAlpha = 1;
+
+                // Eerie Moon / Reddish Haze at Angle 35 deg
+                const moonRel = normalizeAngleDiff(35, playerAngle);
+                if (Math.abs(moonRel) < HALF_FOV + 18) {
+                    const mx = angleToScreenX(moonRel);
+                    const my = horizonY * 0.28;
+                    const moonGlow = ctx.createRadialGradient(mx, my, 4, mx, my, 95);
+                    moonGlow.addColorStop(0, 'rgba(254, 240, 210, 0.95)');
+                    moonGlow.addColorStop(0.22, 'rgba(253, 186, 116, 0.35)');
+                    moonGlow.addColorStop(1, 'rgba(253, 186, 116, 0)');
+                    ctx.fillStyle = moonGlow;
+                    ctx.beginPath();
+                    ctx.arc(mx, my, 95, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Distant Burning Horizon Glow (Angle 210 deg)
+                const fireRel = normalizeAngleDiff(210, playerAngle);
+                if (Math.abs(fireRel) < HALF_FOV + 35) {
+                    const fx = angleToScreenX(fireRel);
+                    const fireGlow = ctx.createRadialGradient(fx, horizonY, 5, fx, horizonY, 170);
+                    fireGlow.addColorStop(0, 'rgba(234, 88, 12, 0.36)');
+                    fireGlow.addColorStop(0.5, 'rgba(153, 27, 27, 0.16)');
+                    fireGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    ctx.fillStyle = fireGlow;
+                    ctx.fillRect(0, horizonY - 160, width, 165);
+                }
+
+                // 2. 360-Degree Ruined City Skyline
+                for (let i = 0; i < BUILDINGS.length; i++) {
+                    const b = BUILDINGS[i];
+                    const rel = normalizeAngleDiff(b.angle, playerAngle);
+                    if (Math.abs(rel) > HALF_FOV + b.wAngle) continue;
+
+                    const x1 = angleToScreenX(rel - b.wAngle * 0.5);
+                    const x2 = angleToScreenX(rel + b.wAngle * 0.5);
+                    const bw = Math.max(8, x2 - x1);
+                    const bh = height * b.hFactor;
+                    const by = horizonY - bh;
+
+                    // Building silhouette
+                    ctx.fillStyle = `rgb(${b.shade}, ${b.shade + 3}, ${b.shade + 8})`;
+                    ctx.beginPath();
+                    if (b.ruinedType === 0) {
+                        ctx.rect(x1, by, bw, bh);
+                    } else if (b.ruinedType === 1) {
+                        ctx.moveTo(x1, horizonY);
+                        ctx.lineTo(x1, by);
+                        ctx.lineTo(x1 + bw * 0.45, by + bh * 0.18);
+                        ctx.lineTo(x1 + bw * 0.65, by + bh * 0.08);
+                        ctx.lineTo(x2, by + bh * 0.28);
+                        ctx.lineTo(x2, horizonY);
+                    } else if (b.ruinedType === 2) {
+                        ctx.moveTo(x1, horizonY);
+                        ctx.lineTo(x1, by + bh * 0.22);
+                        ctx.lineTo(x1 + bw * 0.3, by + bh * 0.06);
+                        ctx.lineTo(x2, by);
+                        ctx.lineTo(x2, horizonY);
+                    } else {
+                        ctx.moveTo(x1, horizonY);
+                        ctx.lineTo(x1, by + bh * 0.1);
+                        ctx.lineTo(x1 + bw * 0.25, by + bh * 0.25);
+                        ctx.lineTo(x1 + bw * 0.5, by + bh * 0.12);
+                        ctx.lineTo(x1 + bw * 0.78, by + bh * 0.3);
+                        ctx.lineTo(x2, by + bh * 0.15);
+                        ctx.lineTo(x2, horizonY);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Edge rim light
+                    ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // Antenna
+                    if (b.antenna) {
+                        ctx.strokeStyle = 'rgba(100, 116, 139, 0.35)';
+                        ctx.beginPath();
+                        ctx.moveTo(x1 + bw * 0.5, by);
+                        ctx.lineTo(x1 + bw * 0.5, by - 18);
+                        ctx.stroke();
+                        if (Math.sin(nowSec * 3 + i) > 0.3) {
+                            ctx.fillStyle = 'rgba(239, 68, 68, 0.75)';
+                            ctx.fillRect(x1 + bw * 0.5 - 1, by - 19, 2, 2);
+                        }
+                    }
+
+                    // Windows
+                    if (!isLowEnd) {
+                        const winW = Math.max(2, bw * 0.12);
+                        const winH = Math.max(3, bh * 0.06);
+                        for (let w = 0; w < b.windows.length; w++) {
+                            const win = b.windows[w];
+                            const wx = x1 + win.rx * bw - winW * 0.5;
+                            const wy = by + win.ry * bh;
+                            if (wy < by + bh * 0.28) continue;
+                            ctx.fillStyle = win.lit ? 'rgba(251, 191, 36, 0.24)' : 'rgba(6, 9, 14, 0.65)';
+                            ctx.fillRect(wx, wy, winW, winH);
+                        }
+                    }
+                }
+
+                // 3. Cracked Asphalt Ground & Tactical Perimeter
+                const groundGrad = ctx.createLinearGradient(0, horizonY, 0, height);
+                groundGrad.addColorStop(0, '#161920');
+                groundGrad.addColorStop(0.35, '#1d2129');
+                groundGrad.addColorStop(1, '#0e1116');
+                ctx.fillStyle = groundGrad;
+                ctx.fillRect(0, horizonY, width, height - horizonY);
+
+                // Radial perspective grid / street lines rotating with playerAngle
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(0, horizonY, width, height - horizonY);
+                ctx.clip();
+
+                // Road markings every 45 degrees
+                for (let roadAng = 0; roadAng < 360; roadAng += 45) {
+                    const rel = normalizeAngleDiff(roadAng, playerAngle);
+                    if (Math.abs(rel) > HALF_FOV + 25) continue;
+                    const farX = angleToScreenX(rel);
+                    const nearX = width * 0.5 + (farX - width * 0.5) * 4.5;
+
+                    ctx.strokeStyle = roadAng % 90 === 0 ? 'rgba(234, 179, 8, 0.14)' : 'rgba(148, 163, 184, 0.08)';
+                    ctx.lineWidth = roadAng % 90 === 0 ? 2.5 : 1.5;
+                    ctx.setLineDash([14, 18]);
+                    ctx.beginPath();
+                    ctx.moveTo(farX, horizonY);
+                    ctx.lineTo(nearX, height);
+                    ctx.stroke();
+                }
+                ctx.setLineDash([]);
+
+                // Concentric distance rings on ground (visualizing 25m close range & 10m aim zone)
+                const ringDistances = [75, 45, 25, 12];
+                for (let d of ringDistances) {
+                    const { footY } = distanceToScreenYAndScale(d, horizonY);
+                    ctx.strokeStyle = d === 25 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(148, 163, 184, 0.07)';
+                    ctx.lineWidth = d === 25 ? 1.5 : 1;
+                    ctx.beginPath();
+                    ctx.moveTo(0, footY);
+                    ctx.lineTo(width, footY);
+                    ctx.stroke();
+                }
+
+                // Street Lamps around perimeter
+                for (let i = 0; i < STREET_LAMPS.length; i++) {
+                    const lamp = STREET_LAMPS[i];
+                    const rel = normalizeAngleDiff(lamp.angle, playerAngle);
+                    if (Math.abs(rel) > HALF_FOV + 10) continue;
+                    const lx = angleToScreenX(rel);
+                    const { scale, footY } = distanceToScreenYAndScale(82, horizonY);
+                    const poleH = 145 * scale;
+                    ctx.strokeStyle = '#0f1319';
+                    ctx.lineWidth = Math.max(2, 4 * scale);
+                    ctx.beginPath();
+                    ctx.moveTo(lx, footY);
+                    ctx.lineTo(lx, footY - poleH);
+                    ctx.lineTo(lx + 14 * scale, footY - poleH - 4 * scale);
+                    ctx.stroke();
+
+                    if (!lamp.broken) {
+                        const flicker = Math.sin(nowSec * 14 + lamp.flickerOffset) > -0.7 ? 1 : 0.25;
+                        const glowR = 32 * scale;
+                        const lGrad = ctx.createRadialGradient(lx + 14 * scale, footY - poleH, 1, lx + 14 * scale, footY - poleH, glowR);
+                        lGrad.addColorStop(0, `rgba(253, 224, 71, ${0.65 * flicker})`);
+                        lGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+                        ctx.fillStyle = lGrad;
+                        ctx.beginPath();
+                        ctx.arc(lx + 14 * scale, footY - poleH, glowR, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                // Ground Debris & Barricades
+                for (let i = 0; i < DEBRIS.length; i++) {
+                    const db = DEBRIS[i];
+                    const rel = normalizeAngleDiff(db.angle, playerAngle);
+                    if (Math.abs(rel) > HALF_FOV + 12) continue;
+                    const dx = angleToScreenX(rel);
+                    const { scale, footY } = distanceToScreenYAndScale(db.dist, horizonY);
+                    const s = scale * db.scale;
+
+                    ctx.fillStyle = '#0d1015';
+                    if (db.type === 0) {
+                        // Rubble pile
+                        ctx.beginPath();
+                        ctx.moveTo(dx - 24 * s, footY);
+                        ctx.lineTo(dx - 10 * s, footY - 12 * s);
+                        ctx.lineTo(dx + 6 * s, footY - 16 * s);
+                        ctx.lineTo(dx + 22 * s, footY);
+                        ctx.closePath();
+                        ctx.fill();
+                    } else if (db.type === 1) {
+                        // Concrete jersey barrier
+                        ctx.fillStyle = '#252b36';
+                        ctx.fillRect(dx - 22 * s, footY - 15 * s, 44 * s, 15 * s);
+                        ctx.fillStyle = 'rgba(234, 179, 8, 0.35)';
+                        ctx.fillRect(dx - 18 * s, footY - 12 * s, 10 * s, 4 * s);
+                        ctx.fillRect(dx + 8 * s, footY - 12 * s, 10 * s, 4 * s);
+                    } else {
+                        // Wrecked car silhouette
+                        ctx.fillStyle = '#11151c';
+                        ctx.beginPath();
+                        ctx.roundRect(dx - 34 * s, footY - 22 * s, 68 * s, 18 * s, 4 * s);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.moveTo(dx - 20 * s, footY - 22 * s);
+                        ctx.lineTo(dx - 10 * s, footY - 34 * s);
+                        ctx.lineTo(dx + 14 * s, footY - 34 * s);
+                        ctx.lineTo(dx + 24 * s, footY - 22 * s);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+
+                // Horizon Mist / Fog Band
+                const fogGrad = ctx.createLinearGradient(0, horizonY - 25, 0, horizonY + 55);
+                fogGrad.addColorStop(0, 'rgba(30, 38, 48, 0)');
+                fogGrad.addColorStop(0.45, 'rgba(36, 44, 56, 0.45)');
+                fogGrad.addColorStop(1, 'rgba(22, 27, 34, 0)');
+                ctx.fillStyle = fogGrad;
+                ctx.fillRect(0, horizonY - 25, width, 80);
+
+                ctx.restore();
+            }
+
+            // =====================================================================
+            // ZOMBIE CHARACTER RENDERER (6 DISTINCT TYPES)
+            // =====================================================================
+            function drawZombieCharacter(type, sx, footY, scale, phase, flinch, deathProgress, nowSec, hpRatio) {
+                ctx.save();
+                ctx.translate(sx, footY);
+
+                // Death animation transform
+                if (deathProgress > 0) {
+                    const fall = Math.min(1, deathProgress * 1.4);
+                    ctx.rotate(fall * 1.35);
+                    ctx.translate(0, fall * 18 * scale);
+                    ctx.globalAlpha = Math.max(0, 1 - Math.max(0, (deathProgress - 0.45) * 1.8));
+                }
+
+                // Flinch recoil
+                if (flinch > 0) {
+                    ctx.translate((Math.random() - 0.5) * 8 * flinch * scale, -6 * flinch * scale);
+                    ctx.rotate((Math.random() - 0.5) * 0.14 * flinch);
+                }
+
+                // Type-specific proportions & palettes
+                let sizeMult = 1.0;
+                let widthMult = 1.0;
+                let lean = 0;
+                let skinColor = '#7d927b';
+                let darkSkin = '#4b5c4a';
+                let coatColor = '#334155';
+                let pantsColor = '#1e293b';
+                let eyeColor = '#ef4444';
+                let auraColor = null;
+
+                switch (type) {
+                    case 'ธรรมดา': // Normal: Pale skin, tattered clothes, shambling
+                        sizeMult = 1.0;
+                        widthMult = 1.0;
+                        lean = Math.sin(phase) * 0.08;
+                        skinColor = '#849682';
+                        darkSkin = '#526150';
+                        coatColor = '#3b4252';
+                        pantsColor = '#232833';
+                        eyeColor = '#f87171';
+                        break;
+
+                    case 'วิ่งเร็ว': // Fast: Lean, forward hunch, rapid limbs, feral red eyes
+                        sizeMult = 0.96;
+                        widthMult = 0.82;
+                        lean = 0.22 + Math.sin(phase * 2) * 0.06;
+                        skinColor = '#9ca3af';
+                        darkSkin = '#6b7280';
+                        coatColor = '#7f1d1d';
+                        pantsColor = '#18181b';
+                        eyeColor = '#ff2a2a';
+                        break;
+
+                    case 'เกราะหนา': // Armored: Bulky riot gear, metallic plates, visor
+                        sizeMult = 1.12;
+                        widthMult = 1.28;
+                        lean = Math.sin(phase * 0.8) * 0.04;
+                        skinColor = '#64748b';
+                        darkSkin = '#334155';
+                        coatColor = '#475569';
+                        pantsColor = '#1e293b';
+                        eyeColor = '#38bdf8';
+                        break;
+
+                    case 'ยักษ์': // Giant: ~2x massive brute, broad shoulders, heavy stomp
+                        sizeMult = 1.85;
+                        widthMult = 1.55;
+                        lean = Math.sin(phase * 0.6) * 0.05;
+                        skinColor = '#6b7c65';
+                        darkSkin = '#3f4d3b';
+                        coatColor = '#451a03';
+                        pantsColor = '#292524';
+                        eyeColor = '#f97316';
+                        break;
+
+                    case 'ระเบิด': // Explosive: Glowing orange/red volatile sacs & pulsing veins
+                        sizeMult = 1.04;
+                        widthMult = 1.18;
+                        lean = Math.sin(phase * 1.1) * 0.07;
+                        skinColor = '#78350f';
+                        darkSkin = '#451a03';
+                        coatColor = '#27272a';
+                        pantsColor = '#18181b';
+                        eyeColor = '#facc15';
+                        auraColor = 'rgba(249, 115, 22, 0.35)';
+                        break;
+
+                    case 'พิเศษ': // Special: Unnatural posture, glowing purple/cyan aura & eyes
+                        sizeMult = 1.08;
+                        widthMult = 0.92;
+                        lean = -0.1 + Math.sin(phase * 1.6) * 0.14;
+                        skinColor = '#581c87';
+                        darkSkin = '#3b0764';
+                        coatColor = '#1e1b4b';
+                        pantsColor = '#0f172a';
+                        eyeColor = '#c084fc';
+                        auraColor = 'rgba(168, 85, 247, 0.38)';
+                        break;
+                }
+
+                const s = scale * sizeMult;
+                const w = s * widthMult;
+
+                // Ground contact shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 26 * w, 7 * s, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Aura glow for Explosive / Special
+                if (auraColor) {
+                    const pulse = 0.85 + 0.25 * Math.sin(nowSec * (type === 'ระเบิด' ? 8 : 5));
+                    const grad = ctx.createRadialGradient(0, -68 * s, 4 * s, 0, -68 * s, 58 * w * pulse);
+                    grad.addColorStop(0, auraColor);
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(0, -68 * s, 58 * w * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Stride & arm animation offsets
+                const stride = Math.sin(phase);
+                const armSwing = Math.cos(phase);
+                const bobY = Math.abs(Math.sin(phase)) * 4.5 * s;
+
+                ctx.rotate(lean);
+
+                // --- LEGS ---
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 10 * w;
+                // Left Leg
+                ctx.strokeStyle = pantsColor;
+                ctx.beginPath();
+                ctx.moveTo(-8 * w, -46 * s - bobY);
+                ctx.lineTo(-10 * w + stride * 5 * w, -22 * s - Math.max(0, stride) * 4 * s);
+                ctx.lineTo(-11 * w + stride * 7 * w, -2 * s);
+                ctx.stroke();
+
+                // Right Leg
+                ctx.beginPath();
+                ctx.moveTo(8 * w, -46 * s - bobY);
+                ctx.lineTo(10 * w - stride * 5 * w, -22 * s - Math.max(0, -stride) * 4 * s);
+                ctx.lineTo(11 * w - stride * 7 * w, -2 * s);
+                ctx.stroke();
+
+                // Armored shin guards
+                if (type === 'เกราะหนา') {
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.fillRect(-15 * w + stride * 5 * w, -24 * s, 9 * w, 18 * s);
+                    ctx.fillRect(6 * w - stride * 5 * w, -24 * s, 9 * w, 18 * s);
+                }
+
+                // --- TORSO ---
+                const torsoBottom = -44 * s - bobY;
+                const torsoTop = -92 * s - bobY;
+                ctx.fillStyle = coatColor;
+                ctx.beginPath();
+                ctx.moveTo(-15 * w, torsoBottom);
+                ctx.lineTo(-19 * w, torsoTop);
+                ctx.lineTo(19 * w, torsoTop);
+                ctx.lineTo(15 * w, torsoBottom);
+                ctx.closePath();
+                ctx.fill();
+
+                // Tattered shirt / muscle details
+                if (type === 'ธรรมดา') {
+                    ctx.fillStyle = darkSkin;
+                    ctx.beginPath();
+                    ctx.moveTo(-6 * w, torsoTop + 6 * s);
+                    ctx.lineTo(4 * w, torsoTop + 18 * s);
+                    ctx.lineTo(-3 * w, torsoTop + 26 * s);
+                    ctx.fill();
+                } else if (type === 'วิ่งเร็ว') {
+                    // Rib/claw slash marks
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 1.6 * s;
+                    ctx.beginPath();
+                    ctx.moveTo(-8 * w, torsoTop + 12 * s);
+                    ctx.lineTo(6 * w, torsoTop + 22 * s);
+                    ctx.moveTo(-6 * w, torsoTop + 18 * s);
+                    ctx.lineTo(8 * w, torsoTop + 28 * s);
+                    ctx.stroke();
+                } else if (type === 'เกราะหนา') {
+                    // Heavy steel chestplate & shoulder pads
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.beginPath();
+                    ctx.roundRect(-17 * w, torsoTop + 3 * s, 34 * w, 34 * s, 4 * s);
+                    ctx.fill();
+                    ctx.strokeStyle = '#cbd5e1';
+                    ctx.lineWidth = 1.5 * s;
+                    ctx.stroke();
+
+                    // Rivets & tactical vest lines
+                    ctx.fillStyle = '#1e293b';
+                    ctx.fillRect(-12 * w, torsoTop + 16 * s, 24 * w, 3 * s);
+                    ctx.fillRect(-2 * w, torsoTop + 4 * s, 4 * w, 32 * s);
+
+                    // Pauldrons (Shoulder Armor)
+                    ctx.fillStyle = '#64748b';
+                    ctx.beginPath();
+                    ctx.arc(-20 * w, torsoTop + 6 * s, 9 * w, Math.PI, 0);
+                    ctx.arc(20 * w, torsoTop + 6 * s, 9 * w, Math.PI, 0);
+                    ctx.fill();
+                } else if (type === 'ยักษ์') {
+                    // Massive scarred chest & leather straps
+                    ctx.fillStyle = skinColor;
+                    ctx.fillRect(-12 * w, torsoTop + 4 * s, 24 * w, 24 * s);
+                    ctx.strokeStyle = '#292524';
+                    ctx.lineWidth = 4 * s;
+                    ctx.beginPath();
+                    ctx.moveTo(-18 * w, torsoTop + 2 * s);
+                    ctx.lineTo(16 * w, torsoBottom - 4 * s);
+                    ctx.stroke();
+                } else if (type === 'ระเบิด') {
+                    // Volatile glowing explosive sacs on chest & shoulders
+                    const pulse = 0.85 + 0.2 * Math.sin(nowSec * 10);
+                    ctx.fillStyle = '#ea580c';
+                    ctx.beginPath();
+                    ctx.arc(-7 * w, torsoTop + 20 * s, 9 * w * pulse, 0, Math.PI * 2);
+                    ctx.arc(8 * w, torsoTop + 24 * s, 10 * w * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#fde047';
+                    ctx.beginPath();
+                    ctx.arc(-7 * w, torsoTop + 20 * s, 4.5 * w * pulse, 0, Math.PI * 2);
+                    ctx.arc(8 * w, torsoTop + 24 * s, 5 * w * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (type === 'พิเศษ') {
+                    // Glowing psychic core & tendrils
+                    const pulse = 0.8 + 0.25 * Math.sin(nowSec * 7);
+                    ctx.fillStyle = '#a855f7';
+                    ctx.beginPath();
+                    ctx.arc(0, torsoTop + 20 * s, 7 * w * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#e0f2fe';
+                    ctx.beginPath();
+                    ctx.arc(0, torsoTop + 20 * s, 3 * w * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // --- ARMS (Reaching forward toward player) ---
+                ctx.strokeStyle = type === 'เกราะหนา' ? '#64748b' : skinColor;
+                ctx.lineWidth = (type === 'ยักษ์' ? 11 : 7.5) * w;
+                // Left Arm
+                ctx.beginPath();
+                ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                ctx.lineTo(-24 * w, torsoTop + 22 * s + armSwing * 5 * s);
+                ctx.lineTo(-16 * w, torsoTop + 34 * s + armSwing * 8 * s);
+                ctx.stroke();
+
+                // Right Arm
+                ctx.beginPath();
+                ctx.moveTo(18 * w, torsoTop + 6 * s);
+                ctx.lineTo(24 * w, torsoTop + 22 * s - armSwing * 5 * s);
+                ctx.lineTo(16 * w, torsoTop + 34 * s - armSwing * 8 * s);
+                ctx.stroke();
+
+                // --- HEAD ---
+                const headY = torsoTop - 13 * s;
+                const headR = 12.5 * s * (type === 'ยักษ์' ? 0.88 : 1.0);
+                ctx.fillStyle = skinColor;
+                ctx.beginPath();
+                ctx.arc(0, headY, headR, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (type === 'เกราะหนา') {
+                    // Riot Helmet & Glowing Blue Visor
+                    ctx.fillStyle = '#334155';
+                    ctx.beginPath();
+                    ctx.arc(0, headY - 2 * s, headR * 1.15, Math.PI, 0);
+                    ctx.lineTo(headR * 1.15, headY + 4 * s);
+                    ctx.lineTo(-headR * 1.15, headY + 4 * s);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Visor slit
+                    ctx.fillStyle = '#0ea5e9';
+                    ctx.fillRect(-headR * 0.85, headY - 3 * s, headR * 1.7, 5 * s);
+                } else {
+                    // Glowing Zombie Eyes
+                    ctx.fillStyle = eyeColor;
+                    ctx.shadowColor = eyeColor;
+                    ctx.shadowBlur = 8 * s;
+                    ctx.beginPath();
+                    ctx.arc(-4.2 * s, headY - 1.5 * s, 2.1 * s, 0, Math.PI * 2);
+                    ctx.arc(4.2 * s, headY - 1.5 * s, 2.1 * s, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Dark mouth
+                    ctx.fillStyle = '#18181b';
+                    ctx.beginPath();
+                    ctx.ellipse(0, headY + 5 * s, 3.8 * s, 2.5 * s, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Special Zombie floating crown / horns
+                if (type === 'พิเศษ') {
+                    ctx.strokeStyle = '#c084fc';
+                    ctx.lineWidth = 2 * s;
+                    ctx.beginPath();
+                    ctx.moveTo(-9 * s, headY - 8 * s);
+                    ctx.lineTo(-14 * s, headY - 20 * s);
+                    ctx.moveTo(9 * s, headY - 8 * s);
+                    ctx.lineTo(14 * s, headY - 20 * s);
+                    ctx.stroke();
+                }
+
+                // Subtle HP bar above multi-HP zombies when damaged
+                if (hpRatio < 1 && hpRatio > 0 && deathProgress === 0) {
+                    const barW = 36 * w;
+                    const barH = Math.max(3, 4.5 * s);
+                    const barY = headY - headR - 12 * s;
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(-barW * 0.5, barY, barW, barH);
+                    ctx.fillStyle = type === 'เกราะหนา' ? '#38bdf8' : '#ef4444';
+                    ctx.fillRect(-barW * 0.5, barY, barW * hpRatio, barH);
+                }
+
+                ctx.restore();
+            }
+
+            // =====================================================================
+            // LIFE GIFT (FLOATING GREEN MEDKIT) RENDERER
+            // =====================================================================
+            function drawLifeGift(sx, footY, scale, nowSec) {
+                ctx.save();
+                const bob = Math.sin(nowSec * 3.5) * 8 * scale;
+                const spinWidth = 0.65 + 0.35 * Math.abs(Math.cos(nowSec * 2.2));
+                const cy = footY - 46 * scale + bob;
+                const boxW = 34 * scale * spinWidth;
+                const boxH = 28 * scale;
+
+                // Ground shadow
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
+                ctx.beginPath();
+                ctx.ellipse(sx, footY, 22 * scale, 6 * scale, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Green radiant halo
+                const glowR = 52 * scale;
+                const halo = ctx.createRadialGradient(sx, cy, 2 * scale, sx, cy, glowR);
+                halo.addColorStop(0, 'rgba(74, 222, 128, 0.65)');
+                halo.addColorStop(0.5, 'rgba(34, 197, 94, 0.24)');
+                halo.addColorStop(1, 'rgba(34, 197, 94, 0)');
+                ctx.fillStyle = halo;
+                ctx.beginPath();
+                ctx.arc(sx, cy, glowR, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Medkit case
+                ctx.fillStyle = '#15803d';
+                ctx.strokeStyle = '#86efac';
+                ctx.lineWidth = Math.max(1.5, 2.2 * scale);
+                ctx.beginPath();
+                ctx.roundRect(sx - boxW * 0.5, cy - boxH * 0.5, boxW, boxH, 5 * scale);
+                ctx.fill();
+                ctx.stroke();
+
+                // Handle on top
+                ctx.strokeStyle = '#bbf7d0';
+                ctx.lineWidth = Math.max(1.5, 2.5 * scale);
+                ctx.beginPath();
+                ctx.arc(sx, cy - boxH * 0.5, 6 * scale * spinWidth, Math.PI, 0);
+                ctx.stroke();
+
+                // White Medical Cross
+                ctx.fillStyle = '#ffffff';
+                const crossThick = 5 * scale * spinWidth;
+                const crossLen = 15 * scale;
+                ctx.fillRect(sx - crossThick * 0.5, cy - crossLen * 0.5, crossThick, crossLen);
+                ctx.fillRect(sx - (crossLen * 0.5) * spinWidth, cy - (5 * scale) * 0.5, crossLen * spinWidth, 5 * scale);
+
+                ctx.restore();
+            }
+
+            // =====================================================================
+            // TACTICAL RETICLE & 360 COMPASS INDICATOR
+            // =====================================================================
+            function drawHUDVisuals(horizonY, hasTargetInSight, hasGiftInSight, nowSec) {
+                const cx = width * 0.5;
+                const cy = horizonY + (height - horizonY) * 0.14;
+
+                // Top-center subtle 360 degree compass strip (below status bar)
+                const compY = Math.min(height * 0.16, 86);
+                const compW = Math.min(240, width * 0.56);
+                ctx.save();
+                ctx.fillStyle = 'rgba(10, 15, 22, 0.55)';
+                ctx.beginPath();
+                ctx.roundRect(cx - compW * 0.5, compY - 10, compW, 20, 10);
+                ctx.fill();
+
+                const dirs = [
+                    { deg: 0, label: 'N' },
+                    { deg: 90, label: 'E' },
+                    { deg: 180, label: 'S' },
+                    { deg: 270, label: 'W' }
+                ];
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                for (let d of dirs) {
+                    const rel = normalizeAngleDiff(d.deg, playerAngle);
+                    if (Math.abs(rel) <= 55) {
+                        const dx = cx + (rel / 55) * (compW * 0.44);
+                        ctx.fillStyle = d.label === 'N' ? '#f87171' : '#94a3b8';
+                        ctx.fillText(d.label, dx, compY);
+                    }
+                }
+                // Center needle
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.moveTo(cx, compY - 11);
+                ctx.lineTo(cx - 4, compY - 16);
+                ctx.lineTo(cx + 4, compY - 16);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+
+                // Center Crosshair / Aim Reticle (±10 deg hit zone visual guide)
+                ctx.save();
+                const inAim = hasTargetInSight || hasGiftInSight;
+                const retColor = hasGiftInSight ? '#4ade80' : (hasTargetInSight ? '#ef4444' : 'rgba(226, 232, 240, 0.65)');
+                const radius = inAim ? 16 + Math.sin(nowSec * 12) * 2 : 20;
+
+                ctx.strokeStyle = retColor;
+                ctx.lineWidth = inAim ? 2.4 : 1.6;
+
+                // Outer brackets
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, -0.35, 0.35);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, Math.PI - 0.35, Math.PI + 0.35);
+                ctx.stroke();
+
+                // Center dot
+                ctx.fillStyle = retColor;
+                ctx.beginPath();
+                ctx.arc(cx, cy, inAim ? 3 : 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Hit marker X when landing a shot
+                if (hitMarkerTimer > 0) {
+                    ctx.strokeStyle = hitMarkerKill ? '#ef4444' : '#facc15';
+                    ctx.lineWidth = 2.8;
+                    const mIn = 6;
+                    const mOut = 15;
+                    ctx.beginPath();
+                    ctx.moveTo(cx - mOut, cy - mOut); ctx.lineTo(cx - mIn, cy - mIn);
+                    ctx.moveTo(cx + mOut, cy - mOut); ctx.lineTo(cx + mIn, cy - mIn);
+                    ctx.moveTo(cx - mOut, cy + mOut); ctx.lineTo(cx - mIn, cy + mIn);
+                    ctx.moveTo(cx + mOut, cy + mOut); ctx.lineTo(cx + mIn, cy + mIn);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+
+            // =====================================================================
+            // FIRST-PERSON WEAPON RENDERER (BOTTOM CENTER, ABOVE SHOOT BUTTON)
+            // =====================================================================
+            function drawFirstPersonWeapon(nowSec) {
+                ctx.save();
+
+                // Position weapon cleanly above btnShoot so it never blocks controls or center view
+                const shootReserve = height < 520 ? 64 : Math.max(82, height * 0.115);
+                const baseX = width * 0.5 + Math.min(48, width * 0.08);
+                const baseY = height - shootReserve + 14;
+
+                // Idle / turning sway
+                const turning = (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0);
+                const bobX = Math.cos(weaponBobPhase) * 5 + turning * -8;
+                const bobY = Math.abs(Math.sin(weaponBobPhase)) * 4;
+
+                // Recoil kickback
+                const kickY = gunRecoil * 26;
+                const kickRot = gunRecoil * 0.12;
+
+                // Reload tilt & dip animation
+                let reloadY = 0;
+                let reloadRot = 0;
+                if (isReloading) {
+                    const t = Math.min(1, (performance.now() - reloadStartTime) / 2500);
+                    const dip = Math.sin(t * Math.PI);
+                    reloadY = dip * 48;
+                    reloadRot = -dip * 0.42;
+                }
+
+                const weaponScale = Math.min(1.25, Math.max(0.75, Math.min(width, height) / 480));
+
+                ctx.translate(baseX + bobX, baseY + bobY + kickY + reloadY);
+                ctx.rotate(kickRot + reloadRot);
+                ctx.scale(weaponScale, weaponScale);
+
+                // Muzzle Flash (when firing)
+                if (muzzleFlashTimer > 0) {
+                    ctx.save();
+                    ctx.translate(-16, -118);
+                    const flashAlpha = Math.min(1, muzzleFlashTimer / 0.04);
+                    const fGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 75);
+                    fGrad.addColorStop(0, `rgba(255, 255, 240, ${flashAlpha})`);
+                    fGrad.addColorStop(0.35, `rgba(251, 191, 36, ${flashAlpha * 0.85})`);
+                    fGrad.addColorStop(0.75, `rgba(234, 88, 12, ${flashAlpha * 0.4})`);
+                    fGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
+                    ctx.fillStyle = fGrad;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 75, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Starburst spikes
+                    ctx.fillStyle = `rgba(255, 250, 205, ${flashAlpha})`;
+                    ctx.beginPath();
+                    const spikes = 7;
+                    for (let i = 0; i < spikes * 2; i++) {
+                        const r = i % 2 === 0 ? (38 + ((i * 17 + muzzleSeed) % 24)) : 10;
+                        const a = (i * Math.PI) / spikes + muzzleSeed;
+                        const px = Math.cos(a) * r;
+                        const py = Math.sin(a) * r;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // Gloved Right Hand / Forearm gripping tactical pistol/carbine
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.moveTo(10, 40);
+                ctx.lineTo(-8, -28);
+                ctx.lineTo(22, -28);
+                ctx.lineTo(48, 40);
+                ctx.closePath();
+                ctx.fill();
+
+                // Tactical Glove Knuckles
+                ctx.fillStyle = '#334155';
+                ctx.beginPath();
+                ctx.roundRect(-14, -36, 36, 24, 8);
+                ctx.fill();
+
+                // Gun Frame / Lower Receiver
+                ctx.fillStyle = '#18181b';
+                ctx.beginPath();
+                ctx.moveTo(-22, -32);
+                ctx.lineTo(-26, -86);
+                ctx.lineTo(14, -86);
+                ctx.lineTo(18, -32);
+                ctx.closePath();
+                ctx.fill();
+
+                // Gun Slide / Barrel (Metallic Steel with Rim Lighting)
+                const slideGrad = ctx.createLinearGradient(-26, -90, 14, -90);
+                slideGrad.addColorStop(0, '#3f3f46');
+                slideGrad.addColorStop(0.45, '#71717a');
+                slideGrad.addColorStop(1, '#27272a');
+                ctx.fillStyle = slideGrad;
+                ctx.beginPath();
+                ctx.roundRect(-24, -108, 36, 68, 4);
+                ctx.fill();
+
+                // Barrel Muzzle Tip
+                ctx.fillStyle = '#09090b';
+                ctx.fillRect(-13, -114, 14, 7);
+
+                // Top Rail & Glowing Iron Sights / Reflex Sight
+                ctx.fillStyle = '#18181b';
+                ctx.fillRect(-10, -104, 8, 62);
+
+                // Rear glowing tritium sights (changes color when empty/reloading)
+                const sightColor = isReloading ? '#f59e0b' : (ammo === 0 ? '#ef4444' : '#22c55e');
+                ctx.fillStyle = sightColor;
+                ctx.shadowColor = sightColor;
+                ctx.shadowBlur = 6;
+                ctx.fillRect(-14, -46, 3, 4);
+                ctx.fillRect(-1, -46, 3, 4);
+                ctx.fillRect(-7.5, -105, 3, 3);
+                ctx.shadowBlur = 0;
+
+                // Subtle ammo indicator bar on back of slide
+                const ammoRatio = Math.max(0, Math.min(1, ammo / 10));
+                ctx.fillStyle = '#09090b';
+                ctx.fillRect(-16, -64, 20, 4);
+                ctx.fillStyle = sightColor;
+                ctx.fillRect(-16, -64, 20 * ammoRatio, 4);
+
+                ctx.restore();
+            }
+
+            // =====================================================================
+            // MAIN VISUAL FRAME UPDATE (CALLED INSIDE EXISTING update() LOOP)
+            // =====================================================================
+            function renderFrame() {
+                if (!ctx || width === 0 || height === 0) return;
+                const nowMs = performance.now();
+                const nowSec = nowMs * 0.001;
+                const dt = 0.016; // Fixed step aligned with 60fps logic
+
+                // Detect reload state transitions cleanly
+                if (isReloading && !wasReloading) {
+                    reloadStartTime = nowMs;
+                }
+                wasReloading = isReloading;
+
+                // Decay animation timers
+                gunRecoil = Math.max(0, gunRecoil - dt * 5.5);
+                muzzleFlashTimer = Math.max(0, muzzleFlashTimer - dt);
+                cameraShake = Math.max(0, cameraShake - dt * 38);
+                hitMarkerTimer = Math.max(0, hitMarkerTimer - dt);
+                weaponBobPhase += dt * (keys.ArrowLeft || keys.ArrowRight ? 7.5 : 2.2);
+
+                ctx.save();
+                if (cameraShake > 0.1) {
+                    const sx = (Math.random() - 0.5) * cameraShake;
+                    const sy = (Math.random() - 0.5) * cameraShake;
+                    ctx.translate(sx, sy);
+                }
+
+                const horizonY = height * 0.44;
+                drawEnvironment(nowSec, horizonY);
+
+                // Collect renderable world objects (Zombies + LifeGift + Dying Zombies)
+                const renderQueue = [];
+                let hasTargetInSight = false;
+                let hasGiftInSight = false;
+
+                for (let i = 0; i < activeZombies.length; i++) {
+                    const z = activeZombies[i];
+                    if (!z.active) continue;
+
+                    let meta = zombieVisualMeta.get(z);
+                    if (!meta) {
+                        meta = { walkPhase: Math.random() * Math.PI * 2, flinch: 0, lastDist: z.distance };
+                        zombieVisualMeta.set(z, meta);
+                    }
+                    // Advance walk phase proportional to zombie speed
+                    meta.walkPhase += dt * (2.2 + z.speed * 1.45);
+                    meta.flinch = Math.max(0, meta.flinch - dt * 4.5);
+
+                    const relAngle = normalizeAngleDiff(z.angle, playerAngle);
+                    if (Math.abs(relAngle) <= 10) {
+                        hasTargetInSight = true;
+                    }
+
+                    // Only render entities within visible forward frustum
+                    if (Math.abs(relAngle) <= HALF_FOV + 22) {
+                        const maxHp = ZOMBIE_STATS[z.type] ? ZOMBIE_STATS[z.type].hp : 1;
+                        renderQueue.push({
+                            kind: 'zombie',
+                            distance: z.distance,
+                            relAngle,
+                            type: z.type,
+                            phase: meta.walkPhase,
+                            flinch: meta.flinch,
+                            deathProgress: 0,
+                            hpRatio: z.hp / maxHp
+                        });
+                    }
+                }
+
+                // Dying zombies visual transition
+                for (let i = deathAnimations.length - 1; i >= 0; i--) {
+                    const d = deathAnimations[i];
+                    d.progress += dt * 1.9;
+                    if (d.progress >= 1) {
+                        deathAnimations.splice(i, 1);
+                        continue;
+                    }
+                    const relAngle = normalizeAngleDiff(d.angle, playerAngle);
+                    if (Math.abs(relAngle) <= HALF_FOV + 22) {
+                        renderQueue.push({
+                            kind: 'zombie',
+                            distance: d.distance,
+                            relAngle,
+                            type: d.type,
+                            phase: 0,
+                            flinch: 0,
+                            deathProgress: d.progress,
+                            hpRatio: 0
+                        });
+                    }
+                }
+
+                // Life Gift visual
+                if (currentGift && currentGift.active) {
+                    const relAngle = normalizeAngleDiff(currentGift.angle, playerAngle);
+                    if (Math.abs(relAngle) <= 10) {
+                        hasGiftInSight = true;
+                    }
+                    if (Math.abs(relAngle) <= HALF_FOV + 20) {
+                        renderQueue.push({
+                            kind: 'gift',
+                            distance: currentGift.distance,
+                            relAngle
+                        });
+                    }
+                }
+
+                // Painter's Algorithm: Sort far-to-near so closer zombies occlude distant ones
+                renderQueue.sort((a, b) => b.distance - a.distance);
+
+                for (let i = 0; i < renderQueue.length; i++) {
+                    const item = renderQueue[i];
+                    const sx = angleToScreenX(item.relAngle);
+                    const { scale, footY } = distanceToScreenYAndScale(item.distance, horizonY);
+
+                    if (item.kind === 'zombie') {
+                        drawZombieCharacter(
+                            item.type,
+                            sx,
+                            footY,
+                            scale,
+                            item.phase,
+                            item.flinch,
+                            item.deathProgress,
+                            nowSec,
+                            item.hpRatio
+                        );
+                    } else if (item.kind === 'gift') {
+                        drawLifeGift(sx, footY, scale, nowSec);
+                    }
+                }
+
+                // Render & update particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += p.gravity;
+                    p.alpha -= p.decay;
+                    if (p.alpha <= 0) {
+                        particles.splice(i, 1);
+                        continue;
+                    }
+                    ctx.globalAlpha = Math.max(0, p.alpha);
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+
+                // Subtle directional threat edge glow when an active zombie is off-screen left/right & close
+                let leftThreat = 0;
+                let rightThreat = 0;
+                for (let i = 0; i < activeZombies.length; i++) {
+                    const z = activeZombies[i];
+                    if (!z.active) continue;
+                    const rel = normalizeAngleDiff(z.angle, playerAngle);
+                    if (Math.abs(rel) > HALF_FOV && z.distance < 65) {
+                        const urgency = Math.min(1, (65 - z.distance) / 55);
+                        if (rel < 0) leftThreat = Math.max(leftThreat, urgency);
+                        else rightThreat = Math.max(rightThreat, urgency);
+                    }
+                }
+                if (leftThreat > 0.05) {
+                    const lGrad = ctx.createLinearGradient(0, 0, 42, 0);
+                    lGrad.addColorStop(0, `rgba(239, 68, 68, ${leftThreat * 0.42})`);
+                    lGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+                    ctx.fillStyle = lGrad;
+                    ctx.fillRect(0, 0, 42, height);
+                }
+                if (rightThreat > 0.05) {
+                    const rGrad = ctx.createLinearGradient(width, 0, width - 42, 0);
+                    rGrad.addColorStop(0, `rgba(239, 68, 68, ${rightThreat * 0.42})`);
+                    rGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+                    ctx.fillStyle = rGrad;
+                    ctx.fillRect(width - 42, 0, 42, height);
+                }
+
+                // Draw Reticle & Compass
+                drawHUDVisuals(horizonY, hasTargetInSight, hasGiftInSight, nowSec);
+
+                // Draw First-Person Weapon
+                drawFirstPersonWeapon(nowSec);
+
+                ctx.restore();
+            }
+
+            // Render initial static backdrop on load
+            requestAnimationFrame(() => {
+                resize();
+                const horizonY = height * 0.44;
+                drawEnvironment(0, horizonY);
+            });
+
+            return {
+                renderFrame,
+                onShootAttempt,
+                onPlayerDamaged,
+                onPlayerHealed,
+                onLevelStart,
+                onLevelClearVisual,
+                resetVisuals,
+                resize
+            };
+        })();
+
+        // --- Audio System ---
+        async function loadAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            listener = audioCtx.listener;
+            
+            // ตั้งค่า Listener ให้อยู่ตรงกลางเสมอ
+            if(listener.positionX) {
+                listener.positionX.value = 0;
+                listener.positionY.value = 0;
+                listener.positionZ.value = 0;
+                listener.forwardX.value = 0;
+                listener.forwardY.value = 0;
+                listener.forwardZ.value = -1;
+                listener.upX.value = 0;
+                listener.upY.value = 1;
+                listener.upZ.value = 0;
+            } else {
+                listener.setPosition(0, 0, 0);
+                listener.setOrientation(0, 0, -1, 0, 1, 0);
+            }
+
+            let loadPromises = [];
+            for (const [key, path] of Object.entries(AUDIO_FILES)) {
+                if (audioBuffers[key]) continue; // โหลดครั้งเดียว
+                let p = fetch(path)
+                    .then(res => res.arrayBuffer())
+                    .then(data => audioCtx.decodeAudioData(data))
+                    .then(buffer => { audioBuffers[key] = buffer; })
+                    .catch(e => console.error(`โหลดไฟล์เสียงไม่สำเร็จ: ${path}`));
+                loadPromises.push(p);
+            }
+            await Promise.all(loadPromises);
+        }
+
+        function playSound(bufferName, volume = 1.0) {
+            if (!audioBuffers[bufferName]) return;
+            const source = audioCtx.createBufferSource();
+            const gainNode = audioCtx.createGain();
+            source.buffer = audioBuffers[bufferName];
+            gainNode.gain.value = volume;
+            source.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            source.start(0);
+        }
+        
+        function playBGM() {
+            if (bgmSource || !audioBuffers['bgm']) return;
+            bgmSource = audioCtx.createBufferSource();
+            bgmSource.buffer = audioBuffers['bgm'];
+            bgmSource.loop = true;
+            let bgmGain = audioCtx.createGain();
+            bgmGain.gain.value = 0.5; // ปรับระดับเสียงให้เหมาะสม
+            bgmSource.connect(bgmGain);
+            bgmGain.connect(audioCtx.destination);
+            bgmSource.start(0);
+        }
+        
+        function stopBGM() {
+            if (bgmSource) {
+                try { bgmSource.stop(); } catch(e) {}
+                try { bgmSource.disconnect(); } catch(e) {}
+                bgmSource = null;
+            }
+        }
+        
+        function goHome() {
+            stopBGM();
+            location.href = '../index.html';
+        }
+
+        window.addEventListener('beforeunload', () => {
+            stopBGM();
+        });
+
+        function announce(text) {
+            ui.announcer.innerText = text;
+        }
+
+        // --- Motion System ---
+        async function requestMotion() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permOrient = await DeviceOrientationEvent.requestPermission();
+                    const permMotion = await DeviceMotionEvent.requestPermission();
+                    if (permOrient === 'granted' && permMotion === 'granted') {
+                        motionEnabled = true;
+                    } else {
+                        motionEnabled = false;
+                    }
+                } catch (e) {
+                    console.error("Motion Request Error:", e);
+                    motionEnabled = false;
+                }
+            } else {
+                // สำหรับ Android หรือเบราว์เซอร์ที่ไม่ต้องขอ Permission แยก
+                motionEnabled = true;
+            }
+
+            if (motionEnabled && !motionListenersAttached) {
+                window.addEventListener('deviceorientation', handleOrientation);
+                // ยกเลิกการใช้งาน 'devicemotion' สำหรับยิงหรือ reload ตามข้อกำหนดใหม่
+                motionListenersAttached = true;
+            }
+        }
+
+        function handleOrientation(e) {
+            if (isGameOver || !motionEnabled) return;
+            let currentAlpha = e.alpha; // ค่า 0 - 360
+            if (currentAlpha !== null) {
+                if (lastAlpha !== null) {
+                    let delta = currentAlpha - lastAlpha;
+                    
+                    // ปรับค่า Delta สำหรับการหมุนข้ามรอบวงกลม
+                    if (delta > 180) delta -= 360;
+                    if (delta < -180) delta += 360;
+                    
+                    // ป้องกันอาการกระตุก (Noise)
+                    if (Math.abs(delta) > 0.3) {
+                        playerAngle -= delta;
+                        if (playerAngle < 0) playerAngle += 360;
+                        if (playerAngle >= 360) playerAngle -= 360;
+                    }
+                }
+                lastAlpha = currentAlpha;
+            }
+        }
+
+        function handleMotion(e) {
+            // ถูกยกเลิกการตรวจจับเพื่อการยิงตามข้อกำหนด (ย้ายไปควบคุมด้วยปุ่มยิงทั้งหมด)
+        }
+
+        // --- Game Logic ---
+        class Zombie {
+            constructor(type) {
+                this.type = type;
+                this.hp = ZOMBIE_STATS[type].hp;
+                this.speed = ZOMBIE_STATS[type].speed;
+                this.distance = 100; // เริ่มต้นห่างออกไป
+                this.baseAngle = Math.random() * 360; // องศาตั้งต้นที่ซอมบี้เกิด
+                this.swayAmplitude = 6 + Math.random() * 5; // สุ่มระยะการโยกซ้าย-ขวา ±6 ถึง ±11 องศา เพื่อให้อยู่ในกรอบเล็งง่ายขึ้น
+                this.swayPhase = Math.random() * Math.PI * 2; // สุ่มเฟสเริ่มต้นเพื่อให้แต่ละตัวโยกไม่พร้อมกัน
+                this.swaySpeed = (0.012 + Math.random() * 0.008) * (0.75 + this.speed * 0.1); // ความเร็วการส่ายสมูทและสัมพันธ์กับความเร็วซอมบี้
+                this.angle = (this.baseAngle + Math.sin(this.swayPhase) * this.swayAmplitude + 360) % 360;
+                this.active = true;
+
+                // Setup Spatial Audio & Front-Back / Aim Enhancement Nodes
+                this.source = audioCtx.createBufferSource();
+                this.source.buffer = audioBuffers[type];
+                this.source.loop = true;
+
+                // 1. ฟิลเตอร์ปรับโทนเสียงด้านหน้า (ชัดเจน/เปิด) และด้านหลัง (ทึบลงอย่างเหมาะสมโดยไม่เสียเอกลักษณ์)
+                this.toneFilter = audioCtx.createBiquadFilter();
+                this.toneFilter.type = 'lowpass';
+                this.toneFilter.frequency.value = 18000;
+                this.toneFilter.Q.value = 0.7;
+
+                this.presenceFilter = audioCtx.createBiquadFilter();
+                this.presenceFilter.type = 'peaking';
+                this.presenceFilter.frequency.value = 2800;
+                this.presenceFilter.Q.value = 1.0;
+                this.presenceFilter.gain.value = 0;
+
+                // 2. ชุดสร้างเสียงสะท้อนสั้นๆ (Early Reflection) สำหรับจำลองมิติเสียงเมื่อซอมบี้อยู่ด้านหลัง
+                this.rearDelay = audioCtx.createDelay(0.1);
+                this.rearDelay.delayTime.value = 0.028;
+
+                this.rearFilter = audioCtx.createBiquadFilter();
+                this.rearFilter.type = 'bandpass';
+                this.rearFilter.frequency.value = 750;
+                this.rearFilter.Q.value = 0.8;
+
+                this.rearReflectGain = audioCtx.createGain();
+                this.rearReflectGain.gain.value = 0.0;
+
+                // 3. Dynamic Gain สำหรับเพิ่มความเด่นเมื่อซอมบี้อยู่ในแนวยิง (±10 องศา)
+                this.aimGain = audioCtx.createGain();
+                this.aimGain.gain.value = 1.0;
+
+                // 4. PannerNode แบบ HRTF เดิม
+                this.panner = audioCtx.createPanner();
+                this.panner.panningModel = 'HRTF';
+                this.panner.distanceModel = 'linear';
+                this.panner.refDistance = 1;
+                this.panner.maxDistance = 100;
+                this.panner.rolloffFactor = 1;
+
+                // เชื่อมต่อ Audio Graph สำหรับซอมบี้ตัวนี้
+                // สายสัญญาณหลัก: source -> toneFilter -> presenceFilter -> aimGain -> panner -> destination
+                this.source.connect(this.toneFilter);
+                this.toneFilter.connect(this.presenceFilter);
+                this.presenceFilter.connect(this.aimGain);
+
+                // สายสัญญาณสะท้อนด้านหลัง: toneFilter -> rearDelay -> rearFilter -> rearReflectGain -> aimGain
+                this.toneFilter.connect(this.rearDelay);
+                this.rearDelay.connect(this.rearFilter);
+                this.rearFilter.connect(this.rearReflectGain);
+                this.rearReflectGain.connect(this.aimGain);
+
+                this.aimGain.connect(this.panner);
+                this.panner.connect(audioCtx.destination);
+                this.source.start(0);
+
+                this.updateAudioPosition();
+            }
+
+            updateMovement() {
+                if (!this.active) return;
+
+                // เดินเข้าหา (ระยะลดลงเรื่อยๆ) * อิงเฟรมเรต 60fps คงเดิม 100%
+                this.distance -= this.speed * 0.02;
+
+                // ระบบการเดินโยกซ้าย-ขวาแบบสุ่ม (Swaying)
+                if (this.distance > 25) {
+                    this.swayPhase += this.swaySpeed;
+                    // ค่อยๆ ลดระยะการส่ายลงอย่างนุ่มนวลตั้งแต่ระยะ 45 ถึง 25 เพื่อให้ยิงสกัดในระยะประชิดได้แม่นยำขึ้น
+                    let swayFactor = 1.0;
+                    if (this.distance < 45) {
+                        swayFactor = (this.distance - 25) / 20;
+                    }
+                    let offset = Math.sin(this.swayPhase) * this.swayAmplitude * swayFactor;
+                    this.angle = (this.baseAngle + offset + 360) % 360;
+                } else {
+                    // เมื่ออยู่ในระยะประชิด (distance <= 25) ให้หยุดโยกและเดินพุ่งตรงเข้ามาหาผู้เล่นตามองศาตั้งต้น
+                    this.angle = this.baseAngle;
+                }
+            }
+
+            setAudioParamSmooth(param, targetValue, timeConstant) {
+                let now = audioCtx.currentTime;
+                if (typeof param.setTargetAtTime === 'function') {
+                    param.setTargetAtTime(targetValue, now, timeConstant);
+                } else {
+                    param.value = targetValue;
+                }
+            }
+
+            updateAudioPosition() {
+                if (!this.active) return;
+
+                // คำนวณมุมสัมพัทธ์ระหว่างทิศที่ผู้เล่นหัน กับ ทิศที่ซอมบี้อยู่
+                let relativeAngle = (this.angle - playerAngle) * (Math.PI / 180);
+                
+                // แปลงพิกัด 2D เป็นตำแหน่ง Panner (X, Z) รอบตัว Listener (0,0,0)
+                let x = Math.sin(relativeAngle) * (this.distance / 10);
+                let z = -Math.cos(relativeAngle) * (this.distance / 10);
+
+                if (this.panner.positionX) {
+                    this.panner.positionX.value = x;
+                    this.panner.positionY.value = 0;
+                    this.panner.positionZ.value = z;
+                } else {
+                    this.panner.setPosition(x, 0, z);
+                }
+
+                // คำนวณผลต่างมุม (0 ถึง 180 องศา) ด้วยสูตรเดียวกับระบบ Hit Detection
+                let diff = Math.abs(this.angle - playerAngle) % 360;
+                if (diff > 180) diff = 360 - diff;
+
+                // 1) แยกเสียงด้านหน้า (cos >= 0) และด้านหลัง (cos < 0) ครบ 360 องศา
+                // frontFactor มีค่าตั้งแต่ +1 (หน้าตรง) -> 0 (ซ้าย/ขวา 90 องศา) -> -1 (หลังตรง 180 องศา)
+                let frontFactor = Math.cos(relativeAngle);
+                let targetCutoff;
+                let targetPresence;
+                let targetRearReflect;
+
+                if (frontFactor >= 0) {
+                    // ครึ่งวงกลมด้านหน้า (หน้าตรง, หน้าซ้าย, หน้าขวา): เสียงเปิดชัดเจน
+                    targetCutoff = 12000 + (frontFactor * 8000); // 12,000 Hz ถึง 20,000 Hz
+                    targetPresence = frontFactor * 2.2;          // บูสต์ย่านความชัดเจนเล็กน้อยสูงสุด +2.2 dB
+                    targetRearReflect = 0.0;                     // ไม่มีเสียงสะท้อนด้านหลัง
+                } else {
+                    // ครึ่งวงกลมด้านหลัง (หลังตรง, หลังซ้าย, หลังขวา): ลดความถี่สูงให้ทึบลงพอเหมาะและเพิ่มเสียงสะท้อนด้านหลัง
+                    let backAmount = -frontFactor;               // 0 (ข้าง) ถึง 1 (หลังตรง)
+                    // คงย่านความถี่ตั้งแต่ 1,350 Hz ขึ้นไปไว้เพื่อให้ซอมบี้ทั้ง 6 ประเภทยังคงเอกลักษณ์ชัดเจนและไม่หลอกระยะใกล้-ไกล
+                    targetCutoff = 12000 - (backAmount * 10650); // ค่อยๆ ลดลงจาก 12,000 Hz เหลือต่ำสุด 1,350 Hz ที่ด้านหลังตรง
+                    targetPresence = -backAmount * 3.0;          // ลดย่านความคมลงเล็กน้อยสูงสุด -3.0 dB
+                    targetRearReflect = backAmount * 0.24;       // เพิ่มมิติเสียงสะท้อนด้านหลังอย่างพอเหมาะ
+                }
+
+                this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
+                this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
+                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
+
+                // 2) เพิ่มความเด่นของเสียงเมื่ออยู่ในแนวยิง (diff <= 10 องศา อ้างอิงเงื่อนไขเดียวกับระบบยิง)
+                let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
+                this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
+            }
+
+            takeDamage() {
+                this.hp--;
+                if (this.hp <= 0) {
+                    playSound('hit2');
+                    this.die();
+                    return true;
+                } else {
+                    playSound('hit1');
+                    return false;
+                }
+            }
+
+            die() {
+                if (!this.active) return;
+                this.active = false;
+                try {
+                    this.source.stop();
+                } catch (e) {}
+                try {
+                    this.source.disconnect();
+                    this.toneFilter.disconnect();
+                    this.presenceFilter.disconnect();
+                    this.rearDelay.disconnect();
+                    this.rearFilter.disconnect();
+                    this.rearReflectGain.disconnect();
+                    this.aimGain.disconnect();
+                    this.panner.disconnect();
+                } catch (e) {}
+            }
+        }
+
+        class LifeGift {
+            constructor() {
+                this.distance = Math.random() * 60 + 20; // สุ่มระยะใกล้ไกล 20 ถึง 80
+                this.angle = Math.random() * 360; // สุ่มทิศทางรอบตัว 360 องศา
+                this.active = true;
+
+                this.source = audioCtx.createBufferSource();
+                this.source.buffer = audioBuffers['gift'];
+                this.source.loop = true;
+
+                this.toneFilter = audioCtx.createBiquadFilter();
+                this.toneFilter.type = 'lowpass';
+                this.toneFilter.frequency.value = 18000;
+                this.toneFilter.Q.value = 0.7;
+
+                this.presenceFilter = audioCtx.createBiquadFilter();
+                this.presenceFilter.type = 'peaking';
+                this.presenceFilter.frequency.value = 2800;
+                this.presenceFilter.Q.value = 1.0;
+                this.presenceFilter.gain.value = 0;
+
+                this.rearDelay = audioCtx.createDelay(0.1);
+                this.rearDelay.delayTime.value = 0.028;
+
+                this.rearFilter = audioCtx.createBiquadFilter();
+                this.rearFilter.type = 'bandpass';
+                this.rearFilter.frequency.value = 750;
+                this.rearFilter.Q.value = 0.8;
+
+                this.rearReflectGain = audioCtx.createGain();
+                this.rearReflectGain.gain.value = 0.0;
+
+                this.aimGain = audioCtx.createGain();
+                this.aimGain.gain.value = 1.0;
+
+                this.panner = audioCtx.createPanner();
+                this.panner.panningModel = 'HRTF';
+                this.panner.distanceModel = 'linear';
+                this.panner.refDistance = 1;
+                this.panner.maxDistance = 100;
+                this.panner.rolloffFactor = 1;
+
+                this.source.connect(this.toneFilter);
+                this.toneFilter.connect(this.presenceFilter);
+                this.presenceFilter.connect(this.aimGain);
+
+                this.toneFilter.connect(this.rearDelay);
+                this.rearDelay.connect(this.rearFilter);
+                this.rearFilter.connect(this.rearReflectGain);
+                this.rearReflectGain.connect(this.aimGain);
+
+                this.aimGain.connect(this.panner);
+                this.panner.connect(audioCtx.destination);
+                this.source.start(0);
+
+                this.updateAudioPosition();
+            }
+
+            setAudioParamSmooth(param, targetValue, timeConstant) {
+                let now = audioCtx.currentTime;
+                if (typeof param.setTargetAtTime === 'function') {
+                    param.setTargetAtTime(targetValue, now, timeConstant);
+                } else {
+                    param.value = targetValue;
+                }
+            }
+
+            updateAudioPosition() {
+                if (!this.active) return;
+                
+                let relativeAngle = (this.angle - playerAngle) * (Math.PI / 180);
+                let x = Math.sin(relativeAngle) * (this.distance / 10);
+                let z = -Math.cos(relativeAngle) * (this.distance / 10);
+
+                if (this.panner.positionX) {
+                    this.panner.positionX.value = x;
+                    this.panner.positionY.value = 0;
+                    this.panner.positionZ.value = z;
+                } else {
+                    this.panner.setPosition(x, 0, z);
+                }
+
+                let diff = Math.abs(this.angle - playerAngle) % 360;
+                if (diff > 180) diff = 360 - diff;
+
+                let frontFactor = Math.cos(relativeAngle);
+                let targetCutoff, targetPresence, targetRearReflect;
+
+                if (frontFactor >= 0) {
+                    targetCutoff = 12000 + (frontFactor * 8000);
+                    targetPresence = frontFactor * 2.2;
+                    targetRearReflect = 0.0;
+                } else {
+                    let backAmount = -frontFactor;
+                    targetCutoff = 12000 - (backAmount * 10650);
+                    targetPresence = -backAmount * 3.0;
+                    targetRearReflect = backAmount * 0.24;
+                }
+
+                this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
+                this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
+                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
+
+                let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
+                this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
+            }
+
+            cleanUp() {
+                if (!this.active) return;
+                this.active = false;
+                try { this.source.stop(); } catch (e) {}
+                try {
+                    this.source.disconnect();
+                    this.toneFilter.disconnect();
+                    this.presenceFilter.disconnect();
+                    this.rearDelay.disconnect();
+                    this.rearFilter.disconnect();
+                    this.rearReflectGain.disconnect();
+                    this.aimGain.disconnect();
+                    this.panner.disconnect();
+                } catch (e) {}
+            }
+        }
+
+        function resetGame() {
+            hp = 3;
+            ammo = 10;
+            isReloading = false;
+            lastShotTime = 0;
+            isGameOver = false;
+            playerAngle = 0;
+            zombiesSpawned = 0;
+            activeZombies.forEach(z => z.die());
+            activeZombies = [];
+            
+            if (currentGift) {
+                currentGift.cleanUp();
+                currentGift = null;
+            }
+            clearTimeout(giftSpawnTimer);
+
+            lastAlpha = null;
+            keys = { ArrowLeft: false, ArrowRight: false };
+            VisualEngine.resetVisuals();
+            updateUI();
+        }
+
+        function updateUI() {
+            ui.level.innerText = `Level: ${currentLevel}`;
+            ui.hp.innerText = `HP: ${hp}`;
+            if (isReloading) {
+                ui.ammo.innerText = `Reloading...`;
+            } else {
+                ui.ammo.innerText = `Ammo: ${ammo}`;
+            }
+        }
+
+        function shoot() {
+            if (isGameOver) return;
+            let now = audioCtx.currentTime;
+            
+            // Reload System
+            if (ammo === 0) {
+                if (!isReloading) {
+                    isReloading = true;
+                    playSound('reload'); // เล่นเสียง reload เมื่อกดกระสุนหมด
+                    updateUI();
+                    announce("กำลังรีโหลด");
+                    setTimeout(() => {
+                        ammo = 10;
+                        isReloading = false;
+                        updateUI();
+                        announce("รีโหลดเสร็จสิ้น");
+                    }, 2500);
+                }
+                VisualEngine.onShootAttempt(false, null, false);
+                return;
+            }
+
+            if (isReloading) return;
+            if (now - lastShotTime < 0.5) return; // ยิงห่างกัน 0.5 วิ
+
+            // ยิงกระสุน 1 นัด
+            ammo--;
+            lastShotTime = now;
+            playSound('shot');
+            updateUI();
+
+            // Hit Detection - หาเป้าหมายที่อยู่ตรงหน้า (ระยะศูนย์เล็ง +- 10 องศา) และใกล้ที่สุด
+            let hitTarget = null;
+            let minDistance = 999;
+
+            // เช็คซอมบี้
+            for (let z of activeZombies) {
+                if (!z.active) continue;
+                let diff = Math.abs(z.angle - playerAngle) % 360;
+                if (diff > 180) diff = 360 - diff;
+
+                if (diff <= 10) { // อยู่ในระยะเล็ง
+                    if (z.distance < minDistance) {
+                        minDistance = z.distance;
+                        hitTarget = z;
+                    }
+                }
+            }
+
+            // เช็ค Life Gift
+            if (currentGift && currentGift.active) {
+                let diff = Math.abs(currentGift.angle - playerAngle) % 360;
+                if (diff > 180) diff = 360 - diff;
+                
+                if (diff <= 10) {
+                    if (currentGift.distance < minDistance) {
+                        minDistance = currentGift.distance;
+                        hitTarget = currentGift;
+                    }
+                }
+            }
+
+            let wasKill = false;
+            if (hitTarget) {
+                if (hitTarget instanceof Zombie) {
+                    wasKill = hitTarget.takeDamage();
+                } else if (hitTarget instanceof LifeGift) {
+                    playSound('giftup');
+                    hp = Math.min(3, hp + 1); // เพิ่มพลังสูงสุดไม่เกิน 3
+                    updateUI();
+                    announce(`เก็บ Life Gift สำเร็จ! พลังชีวิตเป็น ${hp}`);
+                    VisualEngine.onPlayerHealed();
+                    hitTarget.cleanUp();
+                    if (currentGift === hitTarget) {
+                        currentGift = null;
+                    }
+                    wasKill = true;
+                }
+            }
+
+            VisualEngine.onShootAttempt(true, hitTarget, wasKill);
+            checkLevelClear();
+        }
+
+        function getSpawnLimit(level) {
+            if (level === 1) return 1; // เลเวล 1 ให้ออกทีละตัวเท่านั้น
+            if (level <= 4) return 2;  // เลเวล 2-4 ออกพร้อมกันได้สูงสุด 2 ตัว
+            if (level <= 9) return 3;  // เลเวล 5-9 ออกพร้อมกันได้สูงสุด 3 ตัว
+            return 4;                  // เลเวล 10 ขึ้นไป ออกพร้อมกันสูงสุด 4 ตัว
+        }
+
+        function spawnZombie(levelData) {
+            if (isGameOver) return;
+            if (zombiesSpawned >= levelData.total) return;
+            
+            clearTimeout(spawnTimer);
+            
+            let activeCount = activeZombies.filter(z => z.active).length;
+            let maxConcurrent = getSpawnLimit(currentLevel);
+
+            if (activeCount < maxConcurrent) {
+                let types = levelData.types;
+                let randomType = types[Math.floor(Math.random() * types.length)];
+                activeZombies.push(new Zombie(randomType));
+                zombiesSpawned++;
+                
+                // ถัดไปหน่วงเวลา 1.5 - 3 วินาที (ถ้าไม่ใช่เลเวล 1 ที่ต้องรอให้ตายก่อน)
+                if (zombiesSpawned < levelData.total && currentLevel > 1) {
+                    let nextSpawnTime = Math.random() * 1500 + 1500;
+                    spawnTimer = setTimeout(() => spawnZombie(levelData), nextSpawnTime);
+                }
+            } else {
+                // คิวซอมบี้เต็ม หน่วงเวลาเช็คใหม่โดยไม่ต้องรอนานนัก
+                spawnTimer = setTimeout(() => spawnZombie(levelData), 500);
+            }
+        }
+
+        function checkLevelClear() {
+            activeZombies = activeZombies.filter(z => z.active);
+            let levelData = LEVELS[currentLevel - 1];
+
+            if (activeZombies.length === 0 && zombiesSpawned >= levelData.total) {
+                clearTimeout(spawnTimer);
+                
+                if (currentLevel >= 18) {
+                    saveProgress(1); // จบเกมแล้ว รีเซ็ต Save
+                    gameOver(true);
+                } else {
+                    playSound('levelup');
+                    announce(`ผ่านเลเวล ${currentLevel}`);
+                    VisualEngine.onLevelClearVisual(currentLevel);
+                    currentLevel++;
+                    saveProgress(currentLevel); // <--- บันทึกด่านใหม่ลงเครื่องทันที
+                    setTimeout(startLevel, 3000);
+                }
+            } else if (currentLevel === 1 && activeZombies.length === 0 && zombiesSpawned < levelData.total) {
+                clearTimeout(spawnTimer);
+                spawnZombie(levelData);
+            }
+        }
+
+        function gameOver(isWin) {
+            isGameOver = true;
+            clearTimeout(spawnTimer);
+            clearTimeout(giftSpawnTimer);
+
+            if (currentGift) {
+                currentGift.cleanUp();
+                currentGift = null;
+            }
+
+            if (gameLoopTimer) {
+                cancelAnimationFrame(gameLoopTimer);
+                gameLoopTimer = null;
+            }
+            activeZombies.forEach(z => z.die());
+            activeZombies = [];
+
+            const gameUI = document.getElementById('gameUI');
+            gameUI.removeAttribute('role');
+            gameUI.removeAttribute('aria-label');
+            gameUI.blur();
+
+            document.getElementById('gameUI').style.display = "none";
+            const gameOverScreen = document.getElementById('gameOverScreen');
+            gameOverScreen.style.display = "flex"; // แสดงหน้า Game Over
+            
+            // แสดงปุ่มโฮมอีกครั้งในหน้าจบเกม
+            document.getElementById('btn-home-main').style.display = "block";
+
+            const title = document.getElementById('gameOverTitle');
+            const msg = document.getElementById('gameOverMessage');
+            const btnRetry = document.getElementById('btnRetry');
+
+            if (!isWin) {
+                gameOverScreen.classList.remove('victory-theme');
+                playSound('lose3');
+                title.innerText = "Game Over!";
+                msg.innerText = `คุณไม่รอด หยุดอยู่ที่ Level ${currentLevel}`;
+                announce(`คุณไม่รอด หยุดอยู่ที่ Level ${currentLevel}`);
+            } else {
+                gameOverScreen.classList.add('victory-theme');
+                playSound('end');
+                title.innerText = "Victory!";
+                msg.innerText = "ยินดีด้วย คุณรอดชีวิตจากซอมบี้ทั้งหมด!";
+                announce("ยินดีด้วย คุณเอาชนะฝูงซอมบี้ทั้งหมด 18 เลเวลได้สำเร็จ!");
+            }
+
+            // ย้าย Focus ไปที่ปุ่มแรกให้ Screen Reader อ่านอัตโนมัติ
+            setTimeout(() => btnRetry.focus(), 500); 
+        }
+
+        function startLevel() {
+            updateUI();
+            zombiesSpawned = 0;
+            activeZombies = [];
+            clearTimeout(spawnTimer);
+            clearTimeout(giftSpawnTimer);
+
+            if (currentGift) {
+                currentGift.cleanUp();
+                currentGift = null;
+            }
+
+            announce(`เริ่มเลเวล ${currentLevel}`);
+            VisualEngine.onLevelStart(currentLevel);
+            
+            let levelData = LEVELS[currentLevel - 1];
+            spawnTimer = setTimeout(() => spawnZombie(levelData), 2000);
+
+            // เกิด Life Gift ตั้งแต่ Level 4 ขึ้นไป ด่านละไม่เกิน 1 ชิ้น
+            if (currentLevel >= 4) {
+                let spawnDelay = Math.random() * 5000 + 3000;
+                giftSpawnTimer = setTimeout(() => {
+                    if (!isGameOver && !currentGift) {
+                        currentGift = new LifeGift();
+                    }
+                }, spawnDelay);
+            }
+        }
+
+        function update() {
+            if (isGameOver) return;
+
+            // การหมุนของผู้เล่น (ปุ่มหรือคีย์บอร์ด)
+            if (keys.ArrowLeft) playerAngle -= 1.5; // หมุนซ้าย
+            if (keys.ArrowRight) playerAngle += 1.5; // หมุนขวา
+            if (playerAngle < 0) playerAngle += 360;
+            if (playerAngle >= 360) playerAngle -= 360;
+
+            // อัปเดตตำแหน่งเสียง Life Gift ถ้ามี
+            if (currentGift && currentGift.active) {
+                currentGift.updateAudioPosition();
+            }
+
+            // การเคลื่อนที่ของซอมบี้
+            for (let z of activeZombies) {
+                if (!z.active) continue;
+                
+                // อัปเดตระยะทางและองศาการโยกซ้าย-ขวาของซอมบี้
+                z.updateMovement();
+                z.updateAudioPosition();
+
+                // ซอมบี้ถึงฐาน (ทำร้ายผู้เล่น)
+                if (z.distance <= 0) {
+                    hp--;
+                    VisualEngine.onPlayerDamaged();
+                    z.distance = 40; // ซอมบี้กระเด็นถอยหลังกลับไปที่ระยะ 40
+                    // คำนวณองศาให้ตรงกับระยะ 40 ทันทีเพื่อความต่อเนื่องของทิศทางเสียง
+                    let swayFactor = (z.distance < 45) ? ((z.distance - 25) / 20) : 1.0;
+                    z.angle = (z.baseAngle + Math.sin(z.swayPhase) * z.swayAmplitude * swayFactor + 360) % 360;
+                    z.updateAudioPosition(); // อัปเดตตำแหน่งและระยะเสียงทันที เพื่อไม่ให้เสียงขาดตอน
+                    updateUI();
+                    
+                    if (hp <= 0) {
+                        gameOver(false);
+                        return;
+                    } else {
+                        playSound('lose', 0.5);
+                        announce(`ถูกโจมตี! พลังชีวิตเหลือ ${hp}`);
+                        // ตัด checkLevelClear() ออก เพราะซอมบี้ยังไม่ตาย
+                    }
+                }
+            }
+
+            // อัปเดตภาพ First-Person ให้สอดคล้องกับสถานะจริงในทุกเฟรม
+            VisualEngine.renderFrame();
+
+            gameLoopTimer = requestAnimationFrame(update);
+        }
+
+        // --- Controls & Events ---
+        window.addEventListener('keydown', (e) => {
+            if (isGameOver) return;
+            if (e.code === 'ArrowLeft') { keys.ArrowLeft = true; e.preventDefault(); }
+            if (e.code === 'ArrowRight') { keys.ArrowRight = true; e.preventDefault(); }
+            if (e.code === 'Space') { shoot(); e.preventDefault(); }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft') keys.ArrowLeft = false;
+            if (e.code === 'ArrowRight') keys.ArrowRight = false;
+        });
+
+        // Mobile Buttons & Accessibility Updates
+        const btnLeft = document.getElementById('btnLeft');
+        const btnRight = document.getElementById('btnRight');
+        const btnShoot = document.getElementById('btnShoot');
+
+        function handleTurnStep(direction) {
+            if (isGameOver) return;
+            if (direction === 'left') {
+                playerAngle -= 15;
+                if (playerAngle < 0) playerAngle += 360;
+            } else {
+                playerAngle += 15;
+                if (playerAngle >= 360) playerAngle -= 360;
+            }
+        }
+
+        btnLeft.addEventListener('touchstart', (e) => { keys.ArrowLeft = true; e.preventDefault(); }, { passive: false });
+        btnLeft.addEventListener('touchend', (e) => { keys.ArrowLeft = false; e.preventDefault(); }, { passive: false });
+        btnLeft.addEventListener('mousedown', () => keys.ArrowLeft = true);
+        btnLeft.addEventListener('mouseup', () => keys.ArrowLeft = false);
+        btnLeft.addEventListener('mouseleave', () => keys.ArrowLeft = false);
+        btnLeft.addEventListener('click', (e) => {
+            // ดักจับการสั่งงานแบบทีละ Step ผ่าน Screen Reader และการคลิกเพื่อรองรับพฤติกรรมปุ่มมาตรฐาน
+            if (e.pointerType === '' || e.detail === 0 || e.isTrusted) {
+                handleTurnStep('left');
+            }
+        });
+
+        btnRight.addEventListener('touchstart', (e) => { keys.ArrowRight = true; e.preventDefault(); }, { passive: false });
+        btnRight.addEventListener('touchend', (e) => { keys.ArrowRight = false; e.preventDefault(); }, { passive: false });
+        btnRight.addEventListener('mousedown', () => keys.ArrowRight = true);
+        btnRight.addEventListener('mouseup', () => keys.ArrowRight = false);
+        btnRight.addEventListener('mouseleave', () => keys.ArrowRight = false);
+        btnRight.addEventListener('click', (e) => {
+            if (e.pointerType === '' || e.detail === 0 || e.isTrusted) {
+                handleTurnStep('right');
+            }
+        });
+
+        btnShoot.addEventListener('touchstart', (e) => { shoot(); e.preventDefault(); }, { passive: false });
+        btnShoot.addEventListener('mousedown', (e) => { if (e.button === 0) shoot(); });
+        btnShoot.addEventListener('click', () => { shoot(); });
+
+        // --- Swipe System ---
+        const swipeArea = document.getElementById('swipeArea');
+        let swipeStartX = null;
+        let swipeLastX = null;
+        let swipeActive = false;
+
+        swipeArea.addEventListener('pointerdown', (e) => {
+            if (!e.isPrimary) return;
+            swipeStartX = e.clientX;
+            swipeLastX = e.clientX;
+            swipeActive = true;
+            try { swipeArea.setPointerCapture(e.pointerId); } catch(err){}
+        });
+
+        swipeArea.addEventListener('pointermove', (e) => {
+            if (isGameOver || !swipeActive || swipeStartX === null) return;
+            let currentX = e.clientX;
+            let deltaX = currentX - swipeLastX;
+            
+            // Dead Zone Check (ต้องเลื่อนอย่างน้อย 15px)
+            if (Math.abs(currentX - swipeStartX) > 15) { 
+                let rotation = deltaX * 0.4;
+                // ป้องกันการหมุนกระชาก (จำกัดองศาต่อเฟรม)
+                if (rotation > 12) rotation = 12;
+                if (rotation < -12) rotation = -12;
+
+                playerAngle += rotation;
+                if (playerAngle < 0) playerAngle += 360;
+                if (playerAngle >= 360) playerAngle -= 360;
+            }
+            swipeLastX = currentX;
+        });
+
+        swipeArea.addEventListener('pointerup', (e) => {
+            swipeActive = false;
+            swipeStartX = null;
+            swipeLastX = null;
+            try { swipeArea.releasePointerCapture(e.pointerId); } catch(err){}
+        });
+        
+        swipeArea.addEventListener('pointercancel', (e) => {
+            swipeActive = false;
+            swipeStartX = null;
+            swipeLastX = null;
+        });
+
+        // --- Initialize ---
+        async function startGamePrep() {
+            if (isStartingGame) return;
+            isStartingGame = true;
+
+            // ฟังก์ชันรวบยอดการเตรียม Audio และ Motion
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            let pAudio = loadAudio();
+            let pMotion = requestMotion();
+            await Promise.all([pAudio, pMotion]);
+
+            document.getElementById('startScreen').style.display = "none";
+            document.getElementById('gameOverScreen').style.display = "none";
+            
+            // ซ่อนปุ่มกลับหน้าโฮมระหว่างการเล่น
+            document.getElementById('btn-home-main').style.display = "none";
+
+            const gameUI = document.getElementById('gameUI');
+            gameUI.style.display = "flex";
+            VisualEngine.resize();
+
+            // เล่น start.mp3 แล้วรอให้จบก่อนเริ่มเกม
+            await new Promise((resolve) => {
+                if (!audioBuffers['start']) {
+                    resolve();
+                    return;
+                }
+                const source = audioCtx.createBufferSource();
+                source.buffer = audioBuffers['start'];
+                source.connect(audioCtx.destination);
+                source.onended = resolve;
+                source.start(0);
+            });
+
+            isStartingGame = false;
+
+            // เริ่มเล่น BGM
+            playBGM();
+
+            gameUI.setAttribute('role', 'application');
+            gameUI.setAttribute('aria-label', `เริ่มเลเวล ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด`);
+            gameUI.focus();
+            
+            resetGame();
+            startLevel();
+            if (!gameLoopTimer) {
+                gameLoopTimer = requestAnimationFrame(update);
+            }
+        }
+
+        // ปุ่ม: เล่นต่อ (โหลด Save)
+        document.getElementById('btnContinue')?.addEventListener('click', async () => {
+            currentLevel = loadProgress(); // ดึงด่านที่ค้างไว้
+            await startGamePrep();
+        });
+
+        // ปุ่ม: เริ่มเกมใหม่ (ล้าง Save ทิ้ง เริ่ม 1)
+        document.getElementById('btnNewGame').addEventListener('click', async () => {
+            currentLevel = 1;
+            saveProgress(1); // ล้าง Save เป็น Level 1
+            await startGamePrep();
+        });
+
+        // ปุ่ม: เล่นอีกครั้ง (เริ่มด่านเดิมที่เพิ่งแพ้)
+        document.getElementById('btnRetry').addEventListener('click', async () => {
+            // currentLevel ยังคงเป็นค่าเดิมตอนที่ตาย
+            await startGamePrep();
+        });
+
+        // ปุ่ม: เริ่มต้นใหม่ จากหน้า Game Over
+        document.getElementById('btnRestartGame').addEventListener('click', async () => {
+            currentLevel = 1;
+            saveProgress(1);
+            await startGamePrep();
+        });
+
+        // ปุ่ม: พักการเล่นไว้ก่อน (กลับไปหน้าแรก)
+        document.getElementById('btnPauseExit').addEventListener('click', () => {
+            document.getElementById('gameOverScreen').style.display = "none";
+            document.getElementById('startScreen').style.display = "flex";
+            
+            // แสดงปุ่มกลับหน้าโฮมเมื่อกลับมาที่หน้าแรก
+            document.getElementById('btn-home-main').style.display = "block";
+            
+            initStartScreen(); // อัปเดตปุ่ม "เล่นต่อ" ให้แสดงเลเวลล่าสุด
+            setTimeout(() => {
+                const btnContinue = document.getElementById('btnContinue');
+                if (btnContinue.style.display !== 'none') {
+                    btnContinue.focus();
+                } else {
+                    document.getElementById('btnNewGame').focus();
+                }
+            }, 100);
+        });
+
+    </script>
+</body>
+</html>
