@@ -498,12 +498,12 @@
         ];
 
         const ZOMBIE_STATS = {
-            'ธรรมดา': { hp: 1, speed: 2.0 },
-            'วิ่งเร็ว': { hp: 1, speed: 3.5 },
-            'เกราะหนา': { hp: 3, speed: 1.5 },
-            'ยักษ์': { hp: 5, speed: 1.0 },
-            'ระเบิด': { hp: 1, speed: 2.5 },
-            'พิเศษ': { hp: 2, speed: 3.0 }
+            'ธรรมดา': { hp: 1, speed: 2.0, audioY: -0.35 },
+            'วิ่งเร็ว': { hp: 1, speed: 3.5, audioY: -0.55 },
+            'เกราะหนา': { hp: 3, speed: 1.5, audioY: -0.15 },
+            'ยักษ์': { hp: 5, speed: 1.0, audioY: 0.0 },
+            'ระเบิด': { hp: 1, speed: 2.5, audioY: -0.30 },
+            'พิเศษ': { hp: 2, speed: 3.0, audioY: -0.20 }
         };
 
         const AUDIO_FILES = {
@@ -2129,6 +2129,7 @@
                 this.type = type;
                 this.hp = ZOMBIE_STATS[type].hp;
                 this.speed = ZOMBIE_STATS[type].speed;
+                this.audioY = ZOMBIE_STATS[type].audioY;
                 this.distance = 100; // เริ่มต้นห่างออกไป
                 this.baseAngle = Math.random() * 360; // องศาตั้งต้นที่ซอมบี้เกิด
                 this.swayAmplitude = (6 + Math.random() * 5) * 0.6; // ลดระยะการโยกซ้าย-ขวาลง 40% จากค่าเดิม (±3.6 ถึง ±6.6 องศา)
@@ -2234,16 +2235,16 @@
                 // คำนวณมุมสัมพัทธ์ระหว่างทิศที่ผู้เล่นหัน กับ ทิศที่ซอมบี้อยู่
                 let relativeAngle = (this.angle - playerAngle) * (Math.PI / 180);
                 
-                // แปลงพิกัด 2D เป็นตำแหน่ง Panner (X, Z) รอบตัว Listener (0,0,0)
+                // แปลงพิกัด 2D เป็นตำแหน่ง Panner (X, Z) รอบตัว Listener (0,0,0) และปรับระดับความสูงตามประเภท (Y)
                 let x = Math.sin(relativeAngle) * (this.distance / 10);
                 let z = -Math.cos(relativeAngle) * (this.distance / 10);
 
                 if (this.panner.positionX) {
                     this.panner.positionX.value = x;
-                    this.panner.positionY.value = 0;
+                    this.panner.positionY.value = this.audioY;
                     this.panner.positionZ.value = z;
                 } else {
-                    this.panner.setPosition(x, 0, z);
+                    this.panner.setPosition(x, this.audioY, z);
                 }
 
                 // คำนวณผลต่างมุม (0 ถึง 180 องศา) ด้วยสูตรเดียวกับระบบ Hit Detection
@@ -2315,6 +2316,7 @@
             constructor() {
                 this.distance = Math.random() * 60 + 20; // สุ่มระยะใกล้ไกล 20 ถึง 80
                 this.angle = Math.random() * 360; // สุ่มทิศทางรอบตัว 360 องศา
+                this.audioY = -0.45; // ระดับหน้าอก แยกจากเสียงซอมบี้ได้ชัดเจน
                 this.active = true;
 
                 this.source = audioCtx.createBufferSource();
@@ -2387,10 +2389,10 @@
 
                 if (this.panner.positionX) {
                     this.panner.positionX.value = x;
-                    this.panner.positionY.value = 0;
+                    this.panner.positionY.value = this.audioY;
                     this.panner.positionZ.value = z;
                 } else {
-                    this.panner.setPosition(x, 0, z);
+                    this.panner.setPosition(x, this.audioY, z);
                 }
 
                 let diff = Math.abs(this.angle - playerAngle) % 360;
@@ -2939,3 +2941,9 @@
     </script>
 </body>
 </html>
+```[cite: 2]
+
+### สรุปจุดที่แก้ไข (4 จุดย่อยในส่วนเสียงเท่านั้น)
+* **`ZOMBIE_STATS`**: เพิ่มค่า `audioY` ประจำแต่ละประเภท (`ยักษ์: 0.0`, `เกราะหนา: -0.15`, `พิเศษ: -0.20`, `ระเบิด: -0.30`, `ธรรมดา: -0.35`, `วิ่งเร็ว: -0.55`)[cite: 2]
+* **`Zombie.constructor` และ `Zombie.updateAudioPosition`**: ส่งค่า `this.audioY` เข้า `panner.positionY` แทนเลข `0` เดิม[cite: 2]
+* **`LifeGift.constructor` และ `LifeGift.updateAudioPosition`**: ตั้งค่า `this.audioY = -0.45` และส่งเข้า `panner.positionY` แทนเลข `0` เดิม[cite: 2]
