@@ -473,6 +473,8 @@
 
     <script>
         // Game Configuration
+        const ATTACK_RANGE = 5; // ระยะโจมตีประชิดของซอมบี้เมื่อเข้าใกล้ฐาน
+
         const LEVELS = [
             // --- โหมดแนะนำตัวละคร (Level 1-6) ---
             { total: 1, types: ['ธรรมดา'] },                                                      // 1
@@ -497,13 +499,14 @@
             { total: 18, types: ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'] }         // 18
         ];
 
+        // ปรับลดระดับความสูงเสียง (audioY) ลงอีกระดับทั้ง 6 ประเภท
         const ZOMBIE_STATS = {
-            'ธรรมดา': { hp: 1, speed: 2.0, audioY: -0.35 },
-            'วิ่งเร็ว': { hp: 1, speed: 3.5, audioY: -0.55 },
-            'เกราะหนา': { hp: 3, speed: 1.5, audioY: -0.15 },
-            'ยักษ์': { hp: 5, speed: 1.0, audioY: 0.0 },
-            'ระเบิด': { hp: 1, speed: 2.5, audioY: -0.30 },
-            'พิเศษ': { hp: 2, speed: 3.0, audioY: -0.20 }
+            'ธรรมดา': { hp: 1, speed: 2.0, audioY: -0.60 },
+            'วิ่งเร็ว': { hp: 1, speed: 3.5, audioY: -0.80 },
+            'เกราะหนา': { hp: 3, speed: 1.5, audioY: -0.40 },
+            'ยักษ์': { hp: 5, speed: 1.0, audioY: -0.25 },
+            'ระเบิด': { hp: 1, speed: 2.5, audioY: -0.55 },
+            'พิเศษ': { hp: 2, speed: 3.0, audioY: -0.45 }
         };
 
         const AUDIO_FILES = {
@@ -630,6 +633,7 @@
             // Visual entities synced with game logic
             let zombieVisualMeta = new WeakMap();
             let deathAnimations = [];
+            let attackEffects = []; // เก็บเอฟเฟกต์จังหวะโจมตีระยะประชิดของแต่ละประเภท
             let particles = [];
             let floatingTexts = [];
 
@@ -764,14 +768,15 @@
             }
 
             function distanceToScreenYAndScale(dist, horizonY) {
-                // dist ranges from ~100 (far) to 0 (player base)
-                const clampedDist = Math.max(2, Math.min(115, dist));
+                // dist ranges from ~100 (far) to ATTACK_RANGE (5 = melee strike distance)
+                const clampedDist = Math.max(ATTACK_RANGE, Math.min(115, dist));
                 // Perspective projection: closer -> much larger and lower on screen
-                const normDepth = 16 / (clampedDist + 10); // ~0.13 at 110, ~1.33 at 2
-                const scale = Math.min(2.6, Math.max(0.11, normDepth * 1.18));
+                const normDepth = 16 / (clampedDist + 10); // ~0.13 at 110, ~1.07 at 5
+                const scale = Math.min(2.4, Math.max(0.11, normDepth * 1.18));
                 const groundSpan = height - horizonY;
-                // Ground contact point moves down as distance approaches 0
-                const t = Math.pow(Math.max(0, Math.min(1, 1 - clampedDist / 108)), 1.55);
+                // Ground contact point reaches foreground right at ATTACK_RANGE (5)
+                const normDist = Math.max(0, Math.min(1, (clampedDist - ATTACK_RANGE) / (108 - ATTACK_RANGE)));
+                const t = Math.pow(1 - normDist, 1.55);
                 const footY = horizonY + groundSpan * (0.04 + t * 0.86);
                 return { scale, footY };
             }
@@ -848,7 +853,7 @@
                     // Mark flinch on zombie meta
                     let meta = zombieVisualMeta.get(hitTarget);
                     if (!meta) {
-                        meta = { walkPhase: Math.random() * 6, flinch: 0, lastDist: hitTarget.distance };
+                        meta = { walkPhase: Math.random() * 6, flinch: 0, lastDist: hitTarget.distance, strikePulse: 0 };
                         zombieVisualMeta.set(hitTarget, meta);
                     }
                     meta.flinch = 1.0;
@@ -882,6 +887,47 @@
                 }
             }
 
+            // บันทึกเอฟเฟกต์และท่าทางโจมตีเฉพาะตัวของซอมบี้แต่ละประเภทเมื่อเข้าถึงระยะโจมตี (ATTACK_RANGE = 5)
+            function onZombieAttack(zombie, strikeAngle) {
+                if (!zombie) return;
+                let meta = zombieVisualMeta.get(zombie);
+                if (!meta) {
+                    meta = { walkPhase: 0, flinch: 0, lastDist: zombie.distance, strikePulse: 1.0 };
+                    zombieVisualMeta.set(zombie, meta);
+                } else {
+                    meta.strikePulse = 1.0;
+                }
+
+                const relAngle = normalizeAngleDiff(strikeAngle, playerAngle);
+                const horizonY = height * 0.44;
+                const sx = Math.abs(relAngle) <= 75
+                    ? angleToScreenX(relAngle)
+                    : (relAngle < 0 ? width * 0.15 : width * 0.85);
+                const sy = horizonY + (height - horizonY) * 0.42;
+
+                attackEffects.push({
+                    type: zombie.type,
+                    sx,
+                    sy,
+                    progress: 0
+                });
+
+                // พาร์ติเคิลตามเอกลักษณ์การโจมตีของแต่ละตัว
+                if (zombie.type === 'ระเบิด') {
+                    spawnParticles(sx, sy, '#fb923c', 22, 1.8, 0.12);
+                    spawnParticles(sx, sy, '#facc15', 14, 1.5, 0.08);
+                } else if (zombie.type === 'พิเศษ') {
+                    spawnParticles(sx, sy, '#c084fc', 18, 1.4, -0.04);
+                    spawnParticles(sx, sy, '#38bdf8', 10, 1.1, 0.02);
+                } else if (zombie.type === 'เกราะหนา') {
+                    spawnParticles(sx, sy, '#94a3b8', 14, 1.3, 0.25);
+                } else if (zombie.type === 'ยักษ์') {
+                    spawnParticles(sx, sy + 45, '#f97316', 18, 1.6, 0.3);
+                } else {
+                    spawnParticles(sx, sy, '#ef4444', 12, 1.2, 0.2);
+                }
+            }
+
             function onPlayerDamaged() {
                 cameraShake = 16;
                 if (damageOverlay) {
@@ -911,6 +957,7 @@
 
             function onLevelStart(lvl) {
                 deathAnimations.length = 0;
+                attackEffects.length = 0;
                 triggerBanner(`LEVEL ${lvl}`, lvl >= 7 ? 'NIGHTMARE WAVE' : 'DEFEND THE PERIMETER', 2100);
             }
 
@@ -927,6 +974,7 @@
                 wasReloading = false;
                 hitMarkerTimer = 0;
                 deathAnimations.length = 0;
+                attackEffects.length = 0;
                 particles.length = 0;
                 floatingTexts.length = 0;
                 if (damageOverlay) damageOverlay.style.opacity = '0';
@@ -1094,12 +1142,12 @@
                 }
                 ctx.setLineDash([]);
 
-                // Concentric distance rings on ground (visualizing 25m close range & 10m aim zone)
+                // Concentric distance rings on ground (visualizing 25m close range & 12m danger zone)
                 const ringDistances = [75, 45, 25, 12];
                 for (let d of ringDistances) {
                     const { footY } = distanceToScreenYAndScale(d, horizonY);
-                    ctx.strokeStyle = d === 25 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(148, 163, 184, 0.07)';
-                    ctx.lineWidth = d === 25 ? 1.5 : 1;
+                    ctx.strokeStyle = d === 25 ? 'rgba(239, 68, 68, 0.18)' : (d === 12 ? 'rgba(239, 68, 68, 0.30)' : 'rgba(148, 163, 184, 0.07)');
+                    ctx.lineWidth = d === 25 || d === 12 ? 1.5 : 1;
                     ctx.beginPath();
                     ctx.moveTo(0, footY);
                     ctx.lineTo(width, footY);
@@ -1189,9 +1237,9 @@
             }
 
             // =====================================================================
-            // ZOMBIE CHARACTER RENDERER (6 DISTINCT TYPES)
+            // ZOMBIE CHARACTER RENDERER (6 DISTINCT TYPES + UNIQUE MELEE ATTACKS)
             // =====================================================================
-            function drawZombieCharacter(type, sx, footY, scale, phase, flinch, deathProgress, nowSec, hpRatio) {
+            function drawZombieCharacter(type, sx, footY, scale, phase, flinch, deathProgress, nowSec, hpRatio, attackCharge, strikePulse) {
                 ctx.save();
                 ctx.translate(sx, footY);
 
@@ -1221,10 +1269,10 @@
                 let auraColor = null;
 
                 switch (type) {
-                    case 'ธรรมดา': // Normal: Pale skin, tattered clothes, shambling
+                    case 'ธรรมดา': // Normal: Pale skin, tattered clothes, shambling -> ยื่นสองมือคว้า/ตะปบ
                         sizeMult = 1.0;
                         widthMult = 1.0;
-                        lean = Math.sin(phase) * 0.08;
+                        lean = Math.sin(phase) * 0.08 + attackCharge * 0.24;
                         skinColor = '#849682';
                         darkSkin = '#526150';
                         coatColor = '#3b4252';
@@ -1232,10 +1280,10 @@
                         eyeColor = '#f87171';
                         break;
 
-                    case 'วิ่งเร็ว': // Fast: Lean, forward hunch, rapid limbs, feral red eyes
+                    case 'วิ่งเร็ว': // Fast: Lean, forward hunch, rapid limbs -> กระโจนตัวลอยกางกรงเล็บพุ่งกัด
                         sizeMult = 0.96;
                         widthMult = 0.82;
-                        lean = 0.22 + Math.sin(phase * 2) * 0.06;
+                        lean = 0.22 + Math.sin(phase * 2) * 0.06 + attackCharge * 0.36;
                         skinColor = '#9ca3af';
                         darkSkin = '#6b7280';
                         coatColor = '#7f1d1d';
@@ -1243,10 +1291,10 @@
                         eyeColor = '#ff2a2a';
                         break;
 
-                    case 'เกราะหนา': // Armored: Bulky riot gear, metallic plates, visor
+                    case 'เกราะหนา': // Armored: Bulky riot gear, metallic plates, visor -> ยกแขนเหล็กกระแทก/พุ่งชน
                         sizeMult = 1.12;
                         widthMult = 1.28;
-                        lean = Math.sin(phase * 0.8) * 0.04;
+                        lean = Math.sin(phase * 0.8) * 0.04 + attackCharge * 0.18;
                         skinColor = '#64748b';
                         darkSkin = '#334155';
                         coatColor = '#475569';
@@ -1254,10 +1302,10 @@
                         eyeColor = '#38bdf8';
                         break;
 
-                    case 'ยักษ์': // Giant: ~2x massive brute, broad shoulders, heavy stomp
+                    case 'ยักษ์': // Giant: ~2x massive brute, broad shoulders -> ง้างสองแขนยักษ์ขึ้นสูงแล้วทุบลงเต็มแรง
                         sizeMult = 1.85;
                         widthMult = 1.55;
-                        lean = Math.sin(phase * 0.6) * 0.05;
+                        lean = Math.sin(phase * 0.6) * 0.05 - attackCharge * 0.14 + strikePulse * 0.35;
                         skinColor = '#6b7c65';
                         darkSkin = '#3f4d3b';
                         coatColor = '#451a03';
@@ -1265,10 +1313,10 @@
                         eyeColor = '#f97316';
                         break;
 
-                    case 'ระเบิด': // Explosive: Glowing orange/red volatile sacs & pulsing veins
-                        sizeMult = 1.04;
-                        widthMult = 1.18;
-                        lean = Math.sin(phase * 1.1) * 0.07;
+                    case 'ระเบิด': // Explosive: Glowing orange/red volatile sacs -> พองตัวสั่นรุนแรงพร้อมระเบิด
+                        sizeMult = 1.04 + attackCharge * 0.14 + strikePulse * 0.22;
+                        widthMult = 1.18 + attackCharge * 0.16;
+                        lean = Math.sin(phase * 1.1) * 0.07 + attackCharge * 0.15;
                         skinColor = '#78350f';
                         darkSkin = '#451a03';
                         coatColor = '#27272a';
@@ -1277,10 +1325,10 @@
                         auraColor = 'rgba(249, 115, 22, 0.35)';
                         break;
 
-                    case 'พิเศษ': // Special: Unnatural posture, glowing purple/cyan aura & eyes
+                    case 'พิเศษ': // Special: Unnatural posture, glowing purple/cyan aura -> ลอยตัวปล่อยคลื่นพลังจิต/กางแขนร่าย
                         sizeMult = 1.08;
                         widthMult = 0.92;
-                        lean = -0.1 + Math.sin(phase * 1.6) * 0.14;
+                        lean = -0.1 + Math.sin(phase * 1.6) * 0.14 - attackCharge * 0.12;
                         skinColor = '#581c87';
                         darkSkin = '#3b0764';
                         coatColor = '#1e1b4b';
@@ -1293,15 +1341,38 @@
                 const s = scale * sizeMult;
                 const w = s * widthMult;
 
-                // Ground contact shadow
+                // ท่ากระโจน / ลอยตัวเฉพาะประเภทเมื่อเข้าใกล้ระยะโจมตี (distance <= 15 -> 5)
+                let pounceLiftY = 0;
+                let pounceScale = 1.0;
+                if (deathProgress === 0) {
+                    if (type === 'วิ่งเร็ว') {
+                        // กระโจนตัวลอยพุ่งเข้าหาหน้าจอ
+                        pounceLiftY = (attackCharge * 22 + strikePulse * 28) * s;
+                        pounceScale = 1 + (attackCharge * 0.14 + strikePulse * 0.18);
+                    } else if (type === 'พิเศษ') {
+                        // ลอยตัวเหนือพื้นปล่อยพลังจิต
+                        pounceLiftY = (attackCharge * 18 + Math.sin(nowSec * 9) * 5) * s;
+                    } else if (type === 'ระเบิด') {
+                        // ตัวสั่นระริกเมื่อใกล้ระเบิด
+                        ctx.translate((Math.random() - 0.5) * (attackCharge * 7 + strikePulse * 12) * s, 0);
+                    } else if (type === 'เกราะหนา') {
+                        // พุ่งกระแทกไหล่เข้ามาข้างหน้า
+                        pounceScale = 1 + (attackCharge * 0.10 + strikePulse * 0.14);
+                    }
+                }
+
+                // Ground contact shadow (ยังคงติดพื้นแม้ตัวจะกระโจน/ลอยขึ้น)
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
                 ctx.beginPath();
                 ctx.ellipse(0, 0, 26 * w, 7 * s, 0, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Aura glow for Explosive / Special
+                ctx.translate(0, -pounceLiftY);
+                ctx.scale(pounceScale, pounceScale);
+
+                // Aura glow for Explosive / Special (เข้มขึ้นเมื่อเข้าใกล้ระยะโจมตี)
                 if (auraColor) {
-                    const pulse = 0.85 + 0.25 * Math.sin(nowSec * (type === 'ระเบิด' ? 8 : 5));
+                    const pulse = 0.85 + 0.25 * Math.sin(nowSec * (type === 'ระเบิด' ? 8 : 5)) + attackCharge * 0.45;
                     const grad = ctx.createRadialGradient(0, -68 * s, 4 * s, 0, -68 * s, 58 * w * pulse);
                     grad.addColorStop(0, auraColor);
                     grad.addColorStop(1, 'rgba(0,0,0,0)');
@@ -1321,20 +1392,35 @@
                 // --- LEGS ---
                 ctx.lineCap = 'round';
                 ctx.lineWidth = 10 * w;
-                // Left Leg
                 ctx.strokeStyle = pantsColor;
-                ctx.beginPath();
-                ctx.moveTo(-8 * w, -46 * s - bobY);
-                ctx.lineTo(-10 * w + stride * 5 * w, -22 * s - Math.max(0, stride) * 4 * s);
-                ctx.lineTo(-11 * w + stride * 7 * w, -2 * s);
-                ctx.stroke();
+                if (type === 'วิ่งเร็ว' && (attackCharge > 0.35 || strikePulse > 0.1)) {
+                    // ท่ากระโจน: ขางอพับไปด้านหลังกลางอากาศ
+                    ctx.beginPath();
+                    ctx.moveTo(-8 * w, -46 * s - bobY);
+                    ctx.lineTo(-14 * w, -26 * s);
+                    ctx.lineTo(-8 * w, -12 * s);
+                    ctx.stroke();
 
-                // Right Leg
-                ctx.beginPath();
-                ctx.moveTo(8 * w, -46 * s - bobY);
-                ctx.lineTo(10 * w - stride * 5 * w, -22 * s - Math.max(0, -stride) * 4 * s);
-                ctx.lineTo(11 * w - stride * 7 * w, -2 * s);
-                ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(8 * w, -46 * s - bobY);
+                    ctx.lineTo(14 * w, -26 * s);
+                    ctx.lineTo(8 * w, -12 * s);
+                    ctx.stroke();
+                } else {
+                    // Left Leg
+                    ctx.beginPath();
+                    ctx.moveTo(-8 * w, -46 * s - bobY);
+                    ctx.lineTo(-10 * w + stride * 5 * w, -22 * s - Math.max(0, stride) * 4 * s);
+                    ctx.lineTo(-11 * w + stride * 7 * w, -2 * s);
+                    ctx.stroke();
+
+                    // Right Leg
+                    ctx.beginPath();
+                    ctx.moveTo(8 * w, -46 * s - bobY);
+                    ctx.lineTo(10 * w - stride * 5 * w, -22 * s - Math.max(0, -stride) * 4 * s);
+                    ctx.lineTo(11 * w - stride * 7 * w, -2 * s);
+                    ctx.stroke();
+                }
 
                 // Armored shin guards
                 if (type === 'เกราะหนา') {
@@ -1405,8 +1491,9 @@
                     ctx.lineTo(16 * w, torsoBottom - 4 * s);
                     ctx.stroke();
                 } else if (type === 'ระเบิด') {
-                    // Volatile glowing explosive sacs on chest & shoulders
-                    const pulse = 0.85 + 0.2 * Math.sin(nowSec * 10);
+                    // Volatile glowing explosive sacs on chest & shoulders (พองใหญ่ขึ้นเมื่อใกล้ระเบิด)
+                    const sacBoost = 1 + attackCharge * 0.45 + strikePulse * 0.5;
+                    const pulse = (0.85 + 0.2 * Math.sin(nowSec * (10 + attackCharge * 14))) * sacBoost;
                     ctx.fillStyle = '#ea580c';
                     ctx.beginPath();
                     ctx.arc(-7 * w, torsoTop + 20 * s, 9 * w * pulse, 0, Math.PI * 2);
@@ -1420,7 +1507,7 @@
                     ctx.fill();
                 } else if (type === 'พิเศษ') {
                     // Glowing psychic core & tendrils
-                    const pulse = 0.8 + 0.25 * Math.sin(nowSec * 7);
+                    const pulse = (0.8 + 0.25 * Math.sin(nowSec * 7)) * (1 + attackCharge * 0.4);
                     ctx.fillStyle = '#a855f7';
                     ctx.beginPath();
                     ctx.arc(0, torsoTop + 20 * s, 7 * w * pulse, 0, Math.PI * 2);
@@ -1431,22 +1518,114 @@
                     ctx.fill();
                 }
 
-                // --- ARMS (Reaching forward toward player) ---
+                // --- ARMS (ท่าทางยื่นแขน/ง้างฟาด/กางกรงเล็บ เฉพาะแต่ละประเภทเมื่อเข้าใกล้ระยะโจมตี) ---
                 ctx.strokeStyle = type === 'เกราะหนา' ? '#64748b' : skinColor;
                 ctx.lineWidth = (type === 'ยักษ์' ? 11 : 7.5) * w;
-                // Left Arm
-                ctx.beginPath();
-                ctx.moveTo(-18 * w, torsoTop + 6 * s);
-                ctx.lineTo(-24 * w, torsoTop + 22 * s + armSwing * 5 * s);
-                ctx.lineTo(-16 * w, torsoTop + 34 * s + armSwing * 8 * s);
-                ctx.stroke();
 
-                // Right Arm
-                ctx.beginPath();
-                ctx.moveTo(18 * w, torsoTop + 6 * s);
-                ctx.lineTo(24 * w, torsoTop + 22 * s - armSwing * 5 * s);
-                ctx.lineTo(16 * w, torsoTop + 34 * s - armSwing * 8 * s);
-                ctx.stroke();
+                if (attackCharge > 0.05 || strikePulse > 0.05) {
+                    const atk = Math.min(1.25, attackCharge + strikePulse * 0.8);
+                    if (type === 'ธรรมดา') {
+                        // ยื่นสองแขนตรงมาข้างหน้าคว้า/ตะปบผู้เล่น
+                        ctx.beginPath();
+                        ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(-20 * w, torsoTop + (14 - atk * 18) * s);
+                        ctx.lineTo(-10 * w, torsoTop + (24 - atk * 30) * s);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(20 * w, torsoTop + (14 - atk * 18) * s);
+                        ctx.lineTo(10 * w, torsoTop + (24 - atk * 30) * s);
+                        ctx.stroke();
+                    } else if (type === 'วิ่งเร็ว') {
+                        // กางกรงเล็บสองข้างอ้าออกกว้างขณะกระโจนกัด
+                        ctx.beginPath();
+                        ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(-34 * w, torsoTop - (4 + atk * 10) * s);
+                        ctx.lineTo(-24 * w, torsoTop - (16 + atk * 14) * s);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(34 * w, torsoTop - (4 + atk * 10) * s);
+                        ctx.lineTo(24 * w, torsoTop - (16 + atk * 14) * s);
+                        ctx.stroke();
+                    } else if (type === 'เกราะหนา') {
+                        // ยกแขนเกราะเหล็กขึ้นตั้งการ์ดพุ่งกระแทก
+                        ctx.beginPath();
+                        ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(-26 * w, torsoTop + 2 * s);
+                        ctx.lineTo(-8 * w, torsoTop - (12 + atk * 14) * s);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(26 * w, torsoTop + 2 * s);
+                        ctx.lineTo(8 * w, torsoTop - (12 + atk * 14) * s);
+                        ctx.stroke();
+                    } else if (type === 'ยักษ์') {
+                        // ง้างสองแขนยักษ์ขึ้นเหนือหัว แล้วทุบฟาดลงพื้นอย่างแรง
+                        const slamOffset = strikePulse > 0 ? strikePulse * 48 * s : -atk * 28 * s;
+                        ctx.beginPath();
+                        ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(-28 * w, torsoTop - 16 * s + slamOffset * 0.6);
+                        ctx.lineTo(-14 * w, torsoTop - 32 * s + slamOffset);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(28 * w, torsoTop - 16 * s + slamOffset * 0.6);
+                        ctx.lineTo(14 * w, torsoTop - 32 * s + slamOffset);
+                        ctx.stroke();
+                    } else if (type === 'ระเบิด') {
+                        // กางแขนออกเปิดหน้าอกที่เรืองแสงเตรียมระเบิดใส่
+                        ctx.beginPath();
+                        ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(-32 * w, torsoTop + 14 * s);
+                        ctx.lineTo(-38 * w, torsoTop + (4 - atk * 12) * s);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(32 * w, torsoTop + 14 * s);
+                        ctx.lineTo(38 * w, torsoTop + (4 - atk * 12) * s);
+                        ctx.stroke();
+                    } else if (type === 'พิเศษ') {
+                        // ชูแขนสองข้างขึ้นร่ายคลื่นพลังจิตพร้อมวงแหวนพลังงานที่ปลายมือ
+                        ctx.beginPath();
+                        ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(-28 * w, torsoTop - 12 * s);
+                        ctx.lineTo(-22 * w, torsoTop - (24 + atk * 12) * s);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(18 * w, torsoTop + 6 * s);
+                        ctx.lineTo(28 * w, torsoTop - 12 * s);
+                        ctx.lineTo(22 * w, torsoTop - (24 + atk * 12) * s);
+                        ctx.stroke();
+
+                        ctx.fillStyle = 'rgba(192, 132, 252, 0.85)';
+                        ctx.beginPath();
+                        ctx.arc(-22 * w, torsoTop - (24 + atk * 12) * s, 5 * s, 0, Math.PI * 2);
+                        ctx.arc(22 * w, torsoTop - (24 + atk * 12) * s, 5 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else {
+                    // ท่าแกว่งแขนเดินตามปกติ
+                    // Left Arm
+                    ctx.beginPath();
+                    ctx.moveTo(-18 * w, torsoTop + 6 * s);
+                    ctx.lineTo(-24 * w, torsoTop + 22 * s + armSwing * 5 * s);
+                    ctx.lineTo(-16 * w, torsoTop + 34 * s + armSwing * 8 * s);
+                    ctx.stroke();
+
+                    // Right Arm
+                    ctx.beginPath();
+                    ctx.moveTo(18 * w, torsoTop + 6 * s);
+                    ctx.lineTo(24 * w, torsoTop + 22 * s - armSwing * 5 * s);
+                    ctx.lineTo(16 * w, torsoTop + 34 * s - armSwing * 8 * s);
+                    ctx.stroke();
+                }
 
                 // --- HEAD ---
                 const headY = torsoTop - 13 * s;
@@ -1473,17 +1652,18 @@
                     // Glowing Zombie Eyes
                     ctx.fillStyle = eyeColor;
                     ctx.shadowColor = eyeColor;
-                    ctx.shadowBlur = 8 * s;
+                    ctx.shadowBlur = (8 + attackCharge * 8) * s;
                     ctx.beginPath();
                     ctx.arc(-4.2 * s, headY - 1.5 * s, 2.1 * s, 0, Math.PI * 2);
                     ctx.arc(4.2 * s, headY - 1.5 * s, 2.1 * s, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.shadowBlur = 0;
 
-                    // Dark mouth
+                    // Dark mouth (อ้าปากกว้างขึ้นเมื่อพุ่งเข้ากัด)
                     ctx.fillStyle = '#18181b';
+                    const mouthOpen = 1 + attackCharge * 1.15 + strikePulse * 0.8;
                     ctx.beginPath();
-                    ctx.ellipse(0, headY + 5 * s, 3.8 * s, 2.5 * s, 0, 0, Math.PI * 2);
+                    ctx.ellipse(0, headY + 5 * s, 3.8 * s * (1 + attackCharge * 0.25), 2.5 * s * mouthOpen, 0, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
@@ -1511,6 +1691,97 @@
                 }
 
                 ctx.restore();
+            }
+
+            // =====================================================================
+            // MELEE STRIKE OVERLAY EFFECTS (รอยกรงเล็บ / เขี้ยวกัด / แรงกระแทกเฉพาะตัว)
+            // =====================================================================
+            function drawAttackEffects() {
+                for (let i = attackEffects.length - 1; i >= 0; i--) {
+                    const ef = attackEffects[i];
+                    ef.progress += 0.045;
+                    if (ef.progress >= 1) {
+                        attackEffects.splice(i, 1);
+                        continue;
+                    }
+
+                    const alpha = Math.sin((1 - ef.progress) * Math.PI * 0.5);
+                    ctx.save();
+                    ctx.translate(ef.sx, ef.sy);
+                    ctx.globalAlpha = Math.max(0, alpha);
+
+                    if (ef.type === 'ธรรมดา') {
+                        // รอยข่วนกรงเล็บ 3 เส้นเฉียง
+                        ctx.strokeStyle = '#ef4444';
+                        ctx.lineWidth = 5;
+                        ctx.lineCap = 'round';
+                        for (let k = -1; k <= 1; k++) {
+                            ctx.beginPath();
+                            ctx.moveTo(-48 + k * 20, -42 + k * 8);
+                            ctx.lineTo(48 + k * 20, 42 + k * 8);
+                            ctx.stroke();
+                        }
+                    } else if (ef.type === 'วิ่งเร็ว') {
+                        // รอยเขี้ยวกัดบน-ล่างประกบเข้าหากัน
+                        const snap = Math.max(0, 1 - ef.progress * 2.2) * 28;
+                        ctx.fillStyle = '#dc2626';
+                        for (let t = -2; t <= 2; t++) {
+                            const tx = t * 24;
+                            // เขี้ยวบน
+                            ctx.beginPath();
+                            ctx.moveTo(tx - 8, -48 - snap);
+                            ctx.lineTo(tx + 8, -48 - snap);
+                            ctx.lineTo(tx, -18 - snap);
+                            ctx.closePath();
+                            ctx.fill();
+                            // เขี้ยวล่าง
+                            ctx.beginPath();
+                            ctx.moveTo(tx - 8, 48 + snap);
+                            ctx.lineTo(tx + 8, 48 + snap);
+                            ctx.lineTo(tx, 18 + snap);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                    } else if (ef.type === 'เกราะหนา') {
+                        // คลื่นกระแทกโล่เหล็กสี่เหลี่ยมขยายออก
+                        const expand = 1 + ef.progress * 0.7;
+                        ctx.strokeStyle = '#38bdf8';
+                        ctx.lineWidth = 6 * (1 - ef.progress);
+                        ctx.strokeRect(-65 * expand, -50 * expand, 130 * expand, 100 * expand);
+                    } else if (ef.type === 'ยักษ์') {
+                        // วงแหวนแรงทุบสะเทือนขนาดใหญ่
+                        const r = 35 + ef.progress * 115;
+                        ctx.strokeStyle = '#f97316';
+                        ctx.lineWidth = 8 * (1 - ef.progress);
+                        ctx.beginPath();
+                        ctx.arc(0, 20, r, 0, Math.PI * 2);
+                        ctx.stroke();
+                    } else if (ef.type === 'ระเบิด') {
+                        // แสงวาบระเบิดสีส้ม-เหลือง
+                        const r = 30 + ef.progress * 135;
+                        const bGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, r);
+                        bGrad.addColorStop(0, 'rgba(254, 240, 138, 0.9)');
+                        bGrad.addColorStop(0.5, 'rgba(249, 115, 22, 0.55)');
+                        bGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+                        ctx.fillStyle = bGrad;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, r, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else if (ef.type === 'พิเศษ') {
+                        // คลื่นพลังจิตสีม่วงหมุนวน
+                        const r = 25 + ef.progress * 95;
+                        ctx.strokeStyle = '#c084fc';
+                        ctx.lineWidth = 4;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, r, ef.progress * 4, ef.progress * 4 + Math.PI * 1.4);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(0, 0, r * 0.65, -ef.progress * 4, -ef.progress * 4 + Math.PI * 1.4);
+                        ctx.stroke();
+                    }
+
+                    ctx.restore();
+                }
             }
 
             // =====================================================================
@@ -1824,12 +2095,19 @@
 
                     let meta = zombieVisualMeta.get(z);
                     if (!meta) {
-                        meta = { walkPhase: Math.random() * Math.PI * 2, flinch: 0, lastDist: z.distance };
+                        meta = { walkPhase: Math.random() * Math.PI * 2, flinch: 0, lastDist: z.distance, strikePulse: 0 };
                         zombieVisualMeta.set(z, meta);
                     }
                     // Advance walk phase proportional to zombie speed
                     meta.walkPhase += dt * (2.2 + z.speed * 1.45);
                     meta.flinch = Math.max(0, meta.flinch - dt * 4.5);
+                    meta.strikePulse = Math.max(0, meta.strikePulse - dt * 2.4);
+
+                    // คำนวณระดับท่าทางเตรียมโจมตีเมื่อเข้าใกล้ระยะ ATTACK_RANGE (เริ่มตั้งท่าตั้งแต่ระยะ 16 ลงมาจนถึง 5)
+                    const attackWindupRange = 11;
+                    const attackCharge = z.distance < (ATTACK_RANGE + attackWindupRange)
+                        ? Math.max(0, Math.min(1, 1 - (z.distance - ATTACK_RANGE) / attackWindupRange))
+                        : 0;
 
                     const relAngle = normalizeAngleDiff(z.angle, playerAngle);
                     if (Math.abs(relAngle) <= 10) {
@@ -1847,7 +2125,9 @@
                             phase: meta.walkPhase,
                             flinch: meta.flinch,
                             deathProgress: 0,
-                            hpRatio: z.hp / maxHp
+                            hpRatio: z.hp / maxHp,
+                            attackCharge,
+                            strikePulse: meta.strikePulse
                         });
                     }
                 }
@@ -1870,7 +2150,9 @@
                             phase: 0,
                             flinch: 0,
                             deathProgress: d.progress,
-                            hpRatio: 0
+                            hpRatio: 0,
+                            attackCharge: 0,
+                            strikePulse: 0
                         });
                     }
                 }
@@ -1908,12 +2190,17 @@
                             item.flinch,
                             item.deathProgress,
                             nowSec,
-                            item.hpRatio
+                            item.hpRatio,
+                            item.attackCharge,
+                            item.strikePulse
                         );
                     } else if (item.kind === 'gift') {
                         drawLifeGift(sx, footY, scale, nowSec);
                     }
                 }
+
+                // วาดเอฟเฟกต์การโจมตีประชิดเฉพาะตัว (รอยข่วน, เขี้ยวกัด, คลื่นกระแทก)
+                drawAttackEffects();
 
                 // Render & update particles
                 for (let i = particles.length - 1; i >= 0; i--) {
@@ -1942,7 +2229,7 @@
                     if (!z.active) continue;
                     const rel = normalizeAngleDiff(z.angle, playerAngle);
                     if (Math.abs(rel) > HALF_FOV && z.distance < 65) {
-                        const urgency = Math.min(1, (65 - z.distance) / 55);
+                        const urgency = Math.min(1, (65 - z.distance) / (65 - ATTACK_RANGE));
                         if (rel < 0) leftThreat = Math.max(leftThreat, urgency);
                         else rightThreat = Math.max(rightThreat, urgency);
                     }
@@ -1981,6 +2268,7 @@
             return {
                 renderFrame,
                 onShootAttempt,
+                onZombieAttack,
                 onPlayerDamaged,
                 onPlayerHealed,
                 onLevelStart,
@@ -2316,7 +2604,7 @@
             constructor() {
                 this.distance = Math.random() * 60 + 20; // สุ่มระยะใกล้ไกล 20 ถึง 80
                 this.angle = Math.random() * 360; // สุ่มทิศทางรอบตัว 360 องศา
-                this.audioY = -0.45; // ระดับหน้าอก แยกจากเสียงซอมบี้ได้ชัดเจน
+                this.audioY = -0.70; // ปรับลดระดับเสียงลงอีกระดับให้สอดคล้องกับทั้ง 6 ประเภท
                 this.active = true;
 
                 this.source = audioCtx.createBufferSource();
@@ -2712,9 +3000,11 @@
                 z.updateMovement();
                 z.updateAudioPosition();
 
-                // ซอมบี้ถึงฐาน (ทำร้ายผู้เล่น)
-                if (z.distance <= 0) {
+                // ซอมบี้เข้าถึงระยะโจมตีประชิดฐาน (ATTACK_RANGE = 5)
+                if (z.distance <= ATTACK_RANGE) {
+                    let strikeAngle = z.angle;
                     hp--;
+                    VisualEngine.onZombieAttack(z, strikeAngle);
                     VisualEngine.onPlayerDamaged();
                     z.distance = 40; // ซอมบี้กระเด็นถอยหลังกลับไปที่ระยะ 40
                     // คำนวณองศาให้ตรงกับระยะ 40 ทันทีเพื่อความต่อเนื่องของทิศทางเสียง
@@ -2941,9 +3231,3 @@
     </script>
 </body>
 </html>
-```[cite: 2]
-
-### สรุปจุดที่แก้ไข (4 จุดย่อยในส่วนเสียงเท่านั้น)
-* **`ZOMBIE_STATS`**: เพิ่มค่า `audioY` ประจำแต่ละประเภท (`ยักษ์: 0.0`, `เกราะหนา: -0.15`, `พิเศษ: -0.20`, `ระเบิด: -0.30`, `ธรรมดา: -0.35`, `วิ่งเร็ว: -0.55`)[cite: 2]
-* **`Zombie.constructor` และ `Zombie.updateAudioPosition`**: ส่งค่า `this.audioY` เข้า `panner.positionY` แทนเลข `0` เดิม[cite: 2]
-* **`LifeGift.constructor` และ `LifeGift.updateAudioPosition`**: ตั้งค่า `this.audioY = -0.45` และส่งเข้า `panner.positionY` แทนเลข `0` เดิม[cite: 2]
