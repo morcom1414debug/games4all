@@ -809,7 +809,7 @@
             }
 
             // --- Public Hooks Called by Game Events (Read-Only Observation) ---
-            function onShootAttempt(didFire, hitTarget, wasKill) {
+            function onShootAttempt(didFire, hitTarget, wasKill, impactDelaySec = 0) {
                 if (!didFire) {
                     // Dry click / empty gun subtle nudge
                     gunRecoil = Math.max(gunRecoil, 0.18);
@@ -827,47 +827,59 @@
                     // Missed shot: subtle dust/tracer spark downrange
                     spawnParticles(cx + (Math.random() - 0.5) * 28, cy + (Math.random() - 0.5) * 20, 'rgba(255, 220, 150, 0.85)', 5, 0.7, 0.05);
                 } else if (hitTarget instanceof Zombie) {
-                    hitMarkerTimer = 0.22;
-                    hitMarkerKill = !!wasKill;
-                    const relAngle = normalizeAngleDiff(hitTarget.angle, playerAngle);
-                    const horizonY = height * 0.44;
-                    const sx = Math.abs(relAngle) < 75 ? angleToScreenX(relAngle) : cx;
-                    const { scale, footY } = distanceToScreenYAndScale(hitTarget.distance, horizonY);
-                    const hitY = footY - 68 * scale;
+                    const targetAngle = hitTarget.angle;
+                    const targetDistance = hitTarget.distance;
+                    const targetType = hitTarget.type;
 
-                    if (hitTarget.type === 'เกราะหนา' && !wasKill) {
-                        // Metallic armor sparks
-                        spawnParticles(sx, hitY, '#fde047', 14, 1.3, 0.22);
-                        spawnParticles(sx, hitY, '#ffffff', 7, 1.5, 0.15);
-                    } else {
-                        // Blood / impact splatter
-                        spawnParticles(sx, hitY, '#dc2626', wasKill ? 18 : 11, wasKill ? 1.35 : 0.95, 0.28);
-                        spawnParticles(sx, hitY, '#7f1d1d', 8, 0.8, 0.32);
-                    }
+                    const triggerZombieImpact = () => {
+                        hitMarkerTimer = 0.22;
+                        hitMarkerKill = !!wasKill;
+                        const relAngle = normalizeAngleDiff(targetAngle, playerAngle);
+                        const horizonY = height * 0.44;
+                        const sx = Math.abs(relAngle) < 75 ? angleToScreenX(relAngle) : width * 0.5;
+                        const { scale, footY } = distanceToScreenYAndScale(targetDistance, horizonY);
+                        const hitY = footY - 68 * scale;
 
-                    // Mark flinch on zombie meta
-                    let meta = zombieVisualMeta.get(hitTarget);
-                    if (!meta) {
-                        meta = { walkPhase: Math.random() * 6, flinch: 0, lastDist: hitTarget.distance };
-                        zombieVisualMeta.set(hitTarget, meta);
-                    }
-                    meta.flinch = 1.0;
-
-                    if (wasKill) {
-                        // Queue visual death animation at zombie's last known position
-                        deathAnimations.push({
-                            type: hitTarget.type,
-                            angle: hitTarget.angle,
-                            distance: hitTarget.distance,
-                            progress: 0,
-                            isExplosive: hitTarget.type === 'ระเบิด'
-                        });
-                        if (hitTarget.type === 'ระเบิด') {
-                            cameraShake = Math.max(cameraShake, 12);
-                            spawnParticles(sx, hitY, '#fb923c', 26, 1.9, 0.12);
-                            spawnParticles(sx, hitY, '#facc15', 18, 1.6, 0.08);
-                            spawnParticles(sx, hitY, '#ef4444', 16, 1.4, 0.18);
+                        if (targetType === 'เกราะหนา' && !wasKill) {
+                            // Metallic armor sparks
+                            spawnParticles(sx, hitY, '#fde047', 14, 1.3, 0.22);
+                            spawnParticles(sx, hitY, '#ffffff', 7, 1.5, 0.15);
+                        } else {
+                            // Blood / impact splatter
+                            spawnParticles(sx, hitY, '#dc2626', wasKill ? 18 : 11, wasKill ? 1.35 : 0.95, 0.28);
+                            spawnParticles(sx, hitY, '#7f1d1d', 8, 0.8, 0.32);
                         }
+
+                        // Mark flinch on zombie meta
+                        let meta = zombieVisualMeta.get(hitTarget);
+                        if (!meta) {
+                            meta = { walkPhase: Math.random() * 6, flinch: 0, lastDist: targetDistance };
+                            zombieVisualMeta.set(hitTarget, meta);
+                        }
+                        meta.flinch = 1.0;
+
+                        if (wasKill) {
+                            // Queue visual death animation at zombie's last known position
+                            deathAnimations.push({
+                                type: targetType,
+                                angle: targetAngle,
+                                distance: targetDistance,
+                                progress: 0,
+                                isExplosive: targetType === 'ระเบิด'
+                            });
+                            if (targetType === 'ระเบิด') {
+                                cameraShake = Math.max(cameraShake, 12);
+                                spawnParticles(sx, hitY, '#fb923c', 26, 1.9, 0.12);
+                                spawnParticles(sx, hitY, '#facc15', 18, 1.6, 0.08);
+                                spawnParticles(sx, hitY, '#ef4444', 16, 1.4, 0.18);
+                            }
+                        }
+                    };
+
+                    if (impactDelaySec > 0) {
+                        setTimeout(triggerZombieImpact, impactDelaySec * 1000);
+                    } else {
+                        triggerZombieImpact();
                     }
                 } else if (hitTarget instanceof LifeGift) {
                     hitMarkerTimer = 0.25;
@@ -2150,7 +2162,7 @@
             await Promise.all(loadPromises);
         }
 
-        function playSound(bufferName, volume = 1.0) {
+        function playSound(bufferName, volume = 1.0, delay = 0) {
             if (!audioBuffers[bufferName]) return;
             const source = audioCtx.createBufferSource();
             const gainNode = audioCtx.createGain();
@@ -2158,7 +2170,7 @@
             gainNode.gain.value = volume;
             source.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-            source.start(0);
+            source.start(audioCtx.currentTime + delay);
         }
         
         function playBGM() {
@@ -2406,14 +2418,14 @@
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
             }
 
-            takeDamage() {
+            takeDamage(hitDelay = 0.14) {
                 this.hp--;
                 if (this.hp <= 0) {
-                    playSound('hit2');
+                    playSound('hit2', 1.0, hitDelay);
                     this.die();
                     return true;
                 } else {
-                    playSound('hit1');
+                    playSound('hit1', 1.0, hitDelay);
                     return false;
                 }
             }
@@ -2658,9 +2670,13 @@
             }
 
             let wasKill = false;
+            let hitDelay = 0;
             if (hitTarget) {
                 if (hitTarget instanceof Zombie) {
-                    wasKill = hitTarget.takeDamage();
+                    // หน่วงเสียงและเอฟเฟกต์กระทบเป้าตามระยะทาง (0.10 วินาทีระยะประชิด ถึง 0.22 วินาทีระยะไกล)
+                    const distRatio = Math.max(0, Math.min(1, hitTarget.distance / 100));
+                    hitDelay = 0.10 + distRatio * 0.12;
+                    wasKill = hitTarget.takeDamage(hitDelay);
                 } else if (hitTarget instanceof LifeGift) {
                     playSound('giftup');
                     hp = Math.min(3, hp + 1); // เพิ่มพลังสูงสุดไม่เกิน 3
@@ -2675,7 +2691,7 @@
                 }
             }
 
-            VisualEngine.onShootAttempt(true, hitTarget, wasKill);
+            VisualEngine.onShootAttempt(true, hitTarget, wasKill, hitDelay);
             checkLevelClear();
         }
 
