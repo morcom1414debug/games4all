@@ -2296,6 +2296,10 @@
                 this.aimGain = audioCtx.createGain();
                 this.aimGain.gain.value = 1.0;
 
+                // 3.5 Distance Gain สำหรับควบคุมความดังตามระยะ 70% ถึง 100% แบบเส้นตรง
+                this.distanceGain = audioCtx.createGain();
+                this.distanceGain.gain.value = 0.70;
+
                 // 4. PannerNode แบบ HRTF เดิม
                 this.panner = audioCtx.createPanner();
                 this.panner.panningModel = 'HRTF';
@@ -2305,7 +2309,7 @@
                 this.panner.rolloffFactor = 1;
 
                 // เชื่อมต่อ Audio Graph สำหรับซอมบี้ตัวนี้
-                // สายสัญญาณหลัก: source -> toneFilter -> presenceFilter -> aimGain -> panner -> destination
+                // สายสัญญาณหลัก: source -> toneFilter -> presenceFilter -> aimGain -> distanceGain -> panner -> destination
                 this.source.connect(this.toneFilter);
                 this.toneFilter.connect(this.presenceFilter);
                 this.presenceFilter.connect(this.aimGain);
@@ -2316,7 +2320,8 @@
                 this.rearFilter.connect(this.rearReflectGain);
                 this.rearReflectGain.connect(this.aimGain);
 
-                this.aimGain.connect(this.panner);
+                this.aimGain.connect(this.distanceGain);
+                this.distanceGain.connect(this.panner);
                 this.panner.connect(audioCtx.destination);
                 this.source.start(0);
 
@@ -2404,6 +2409,18 @@
                 // 2) เพิ่มความเด่นของเสียงเมื่ออยู่ในแนวยิง (diff <= 10 องศา อ้างอิงเงื่อนไขเดียวกับระบบยิง)
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
+
+                // 3) คำนวณระดับความดังตามระยะแบบเส้นตรง (70% ที่ระยะ >= 100 ถึง 100% ที่ระยะ <= 5)
+                let volumePercent;
+                if (this.distance > 100) {
+                    volumePercent = 70;
+                } else if (this.distance < 5) {
+                    volumePercent = 100;
+                } else {
+                    volumePercent = 70 + ((100 - this.distance) / (100 - 5)) * 30;
+                }
+                let targetDistanceGain = volumePercent / 100;
+                this.setAudioParamSmooth(this.distanceGain.gain, targetDistanceGain, 0.04);
             }
 
             takeDamage() {
@@ -2432,6 +2449,7 @@
                     this.rearFilter.disconnect();
                     this.rearReflectGain.disconnect();
                     this.aimGain.disconnect();
+                    this.distanceGain.disconnect();
                     this.panner.disconnect();
                 } catch (e) {}
             }
@@ -2473,6 +2491,9 @@
                 this.aimGain = audioCtx.createGain();
                 this.aimGain.gain.value = 1.0;
 
+                this.distanceGain = audioCtx.createGain();
+                this.distanceGain.gain.value = 0.70;
+
                 this.panner = audioCtx.createPanner();
                 this.panner.panningModel = 'HRTF';
                 this.panner.distanceModel = 'linear';
@@ -2489,7 +2510,8 @@
                 this.rearFilter.connect(this.rearReflectGain);
                 this.rearReflectGain.connect(this.aimGain);
 
-                this.aimGain.connect(this.panner);
+                this.aimGain.connect(this.distanceGain);
+                this.distanceGain.connect(this.panner);
                 this.panner.connect(audioCtx.destination);
                 this.source.start(0);
 
@@ -2543,6 +2565,17 @@
 
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
+
+                let volumePercent;
+                if (this.distance > 100) {
+                    volumePercent = 70;
+                } else if (this.distance < 5) {
+                    volumePercent = 100;
+                } else {
+                    volumePercent = 70 + ((100 - this.distance) / (100 - 5)) * 30;
+                }
+                let targetDistanceGain = volumePercent / 100;
+                this.setAudioParamSmooth(this.distanceGain.gain, targetDistanceGain, 0.04);
             }
 
             cleanUp() {
@@ -2557,6 +2590,7 @@
                     this.rearFilter.disconnect();
                     this.rearReflectGain.disconnect();
                     this.aimGain.disconnect();
+                    this.distanceGain.disconnect();
                     this.panner.disconnect();
                 } catch (e) {}
             }
