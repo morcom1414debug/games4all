@@ -498,12 +498,12 @@
         ];
 
         const ZOMBIE_STATS = {
-            'ธรรมดา': { hp: 1, speed: 2.0, audioY: -1.15 },
-            'วิ่งเร็ว': { hp: 1, speed: 3.5, audioY: -1.35 },
-            'เกราะหนา': { hp: 3, speed: 1.5, audioY: -0.95 },
-            'ยักษ์': { hp: 5, speed: 1.0, audioY: -0.80 },
-            'ระเบิด': { hp: 1, speed: 2.5, audioY: -1.10 },
-            'พิเศษ': { hp: 2, speed: 3.0, audioY: -1.00 }
+            'ธรรมดา': { hp: 1, speed: 2.0, audioY: -1.65 },
+            'วิ่งเร็ว': { hp: 1, speed: 3.5, audioY: -1.85 },
+            'เกราะหนา': { hp: 3, speed: 1.5, audioY: -1.45 },
+            'ยักษ์': { hp: 5, speed: 1.0, audioY: -1.30 },
+            'ระเบิด': { hp: 1, speed: 2.5, audioY: -1.60 },
+            'พิเศษ': { hp: 2, speed: 3.0, audioY: -1.50 }
         };
 
         const AUDIO_FILES = {
@@ -557,19 +557,21 @@
         initStartScreen();
 
         // Constants for 180-Degree Forward Mode
-        const MIN_PLAYER_ANGLE = -90;
-        const MAX_PLAYER_ANGLE = 90;
-        const SPAWN_ANGLE_MARGIN = 18;
-        const MIN_SPAWN_ANGLE = MIN_PLAYER_ANGLE + SPAWN_ANGLE_MARGIN; // -72
-        const MAX_SPAWN_ANGLE = MAX_PLAYER_ANGLE - SPAWN_ANGLE_MARGIN; // +72
+        const MIN_PLAYER_ANGLE = -115; // ขยายมุมหันของผู้เล่นเป็น ±115 องศา
+        const MAX_PLAYER_ANGLE = 115;
+        const MIN_ENTITY_ANGLE = -85;  // ล็อกขอบเขตสูงสุดของซอมบี้และไอเทมไม่ให้เกิน ±85 องศา (ไม่ตกขอบจอและเล็งตรงกลางได้เสมอ)
+        const MAX_ENTITY_ANGLE = 85;
+        const MIN_SPAWN_ANGLE = -78;   // สุ่มเกิดซอมบี้ในช่วง -78 ถึง +78 องศา (กระจายตัวมากขึ้นและเหลือพื้นที่ให้โยกตัวไม่ชนขอบ)
+        const MAX_SPAWN_ANGLE = 78;
         const BOUNDARY_EPSILON = 0.001;
 
         // Variables
         let audioCtx, listener;
         let audioBuffers = {};
         
-        let playerAngle = 0; // -90 ถึง +90 องศา (ตรงกลาง = 0)
+        let playerAngle = 0; // -115 ถึง +115 องศา (ตรงกลาง = 0)
         let isAtBoundaryEdge = false; // สถานะชนขอบเพื่อป้องกันเสียงเตือนเล่นซ้ำทุกเฟรม
+        let lastBoundarySoundTime = 0; // Cooldown กันเสียงชนขอบดังซ้ำถี่เกินไป
         let edgeHitPulse = 0; // เอฟเฟกต์แสงเมื่อชนขอบพลังงาน
 
         let hp = 3;
@@ -606,7 +608,7 @@
             announcer: document.getElementById('announcer')
         };
 
-        // ฟังก์ชันกลางสำหรับควบคุมการหมุนและจำกัดขอบเขต -90 ถึง +90 องศา ทุกช่องทาง
+        // ฟังก์ชันกลางสำหรับควบคุมการหมุนและจำกัดขอบเขต -115 ถึง +115 องศา ทุกช่องทาง
         function clampPlayerAngle(angle) {
             if (angle <= MIN_PLAYER_ANGLE) return MIN_PLAYER_ANGLE;
             if (angle >= MAX_PLAYER_ANGLE) return MAX_PLAYER_ANGLE;
@@ -621,20 +623,25 @@
             const atRightEdge = (clamped >= MAX_PLAYER_ANGLE - BOUNDARY_EPSILON);
             const currentlyAtEdge = atLeftEdge || atRightEdge;
 
+            // เช็คการชนขอบ + Cooldown 600ms ป้องกันเสียงเตือนเด้งซ้ำ
             if (currentlyAtEdge && !isAtBoundaryEdge) {
                 isAtBoundaryEdge = true;
                 edgeHitPulse = 1.0;
-                if (!isGameOver && audioCtx) {
+                const now = performance.now();
+                if (!isGameOver && audioCtx && (now - lastBoundarySoundTime > 600)) {
                     playSound('edge90', 0.85);
+                    lastBoundarySoundTime = now;
                 }
-            } else if (!currentlyAtEdge && isAtBoundaryEdge) {
+            } 
+            // Hysteresis: ต้องหันออกจากขอบเข้ามาเกิน 4 องศา ถึงจะปลดล็อกสถานะชนขอบ (กันเซ็นเซอร์ Motion สั่น)
+            else if (isAtBoundaryEdge && clamped > (MIN_PLAYER_ANGLE + 4) && clamped < (MAX_PLAYER_ANGLE - 4)) {
                 isAtBoundaryEdge = false;
             }
         }
 
         function clampWorldEntityAngle(angle) {
-            if (angle < MIN_PLAYER_ANGLE) return MIN_PLAYER_ANGLE;
-            if (angle > MAX_PLAYER_ANGLE) return MAX_PLAYER_ANGLE;
+            if (angle < MIN_ENTITY_ANGLE) return MIN_ENTITY_ANGLE;
+            if (angle > MAX_ENTITY_ANGLE) return MAX_ENTITY_ANGLE;
             return angle;
         }
 
@@ -681,7 +688,7 @@
             let particles = [];
             let floatingTexts = [];
 
-            // Pre-generated 180-degree forward city skyline & props (-135 to +135 deg for peripheral coverage)
+            // Pre-generated forward city skyline & props (-155 to +155 deg for peripheral coverage up to ±115° player angle)
             const BUILDINGS = [];
             const STREET_LAMPS = [];
             const DEBRIS = [];
@@ -702,10 +709,10 @@
                     return (seed - 1) / 2147483646;
                 };
 
-                // Forward sector ruined city buildings (-135 to +135 deg so edges at ±90 never look empty)
-                const numBuildings = 34;
+                // Forward sector ruined city buildings (-155 to +155 deg so edges at ±115° never look empty)
+                const numBuildings = 38;
                 for (let i = 0; i < numBuildings; i++) {
-                    const angle = -135 + (i / (numBuildings - 1)) * 270 + (rand() - 0.5) * 3.5;
+                    const angle = -155 + (i / (numBuildings - 1)) * 310 + (rand() - 0.5) * 3.5;
                     const wAngle = 6 + rand() * 8;
                     const hFactor = 0.16 + rand() * 0.28;
                     const ruinedType = Math.floor(rand() * 4);
@@ -735,8 +742,8 @@
                     });
                 }
 
-                // Street lamps & utility poles across forward arc (-112.5 to +112.5)
-                for (let ang = -112.5; ang <= 112.5; ang += 22.5) {
+                // Street lamps & utility poles across forward arc (-135 to +135)
+                for (let ang = -135; ang <= 135; ang += 22.5) {
                     STREET_LAMPS.push({
                         angle: ang + 4,
                         flickerOffset: rand() * 100,
@@ -744,7 +751,7 @@
                     });
                 }
 
-                // Ground debris / barricades / wrecked cars silhouettes inside playable 180-degree zone (-85 to +85)
+                // Ground debris / barricades / wrecked cars silhouettes inside playable zone (-85 to +85)
                 for (let i = 0; i < 18; i++) {
                     DEBRIS.push({
                         angle: -84 + rand() * 168,
@@ -757,7 +764,7 @@
                 // Atmospheric drifting fog wisps
                 for (let i = 0; i < 14; i++) {
                     FOG_WISPS.push({
-                        angle: -110 + rand() * 220,
+                        angle: -130 + rand() * 260,
                         yOffset: (rand() - 0.3) * 0.18,
                         widthDeg: 18 + rand() * 25,
                         speed: (rand() - 0.5) * 0.04,
@@ -766,9 +773,9 @@
                 }
 
                 // Night sky stars / embers
-                for (let i = 0; i < 45; i++) {
+                for (let i = 0; i < 50; i++) {
                     STARS.push({
-                        angle: -135 + rand() * 270,
+                        angle: -155 + rand() * 310,
                         alt: 0.04 + rand() * 0.34,
                         size: 0.8 + rand() * 1.4,
                         twinkle: rand() * Math.PI * 2
@@ -794,7 +801,7 @@
             initWorldProps();
             resize();
 
-            // 180-degree linear angle difference (no 360 wrap-around)
+            // Linear angle difference (no 360 wrap-around)
             function getRelativeAngle(targetAngle, refAngle) {
                 return targetAngle - refAngle;
             }
@@ -1040,8 +1047,8 @@
                     const bh = height * b.hFactor;
                     const by = horizonY - bh;
 
-                    // Dim buildings beyond the ±90 degree sector boundary
-                    const outsideSector = Math.abs(b.angle) > 90;
+                    // Dim buildings beyond the ±85 degree entity sector boundary
+                    const outsideSector = Math.abs(b.angle) > MAX_ENTITY_ANGLE;
                     const shadeShift = outsideSector ? -6 : 0;
                     const sVal = Math.max(6, b.shade + shadeShift);
 
@@ -1117,14 +1124,15 @@
                 ctx.rect(0, horizonY, width, height - horizonY);
                 ctx.clip();
 
-                // Road markings only inside playable 180-degree forward sector (-90 to +90)
-                for (let roadAng = -90; roadAng <= 90; roadAng += 45) {
+                // Road markings inside playable entity sector (-85, -42.5, 0, +42.5, +85)
+                const roadAngles = [MIN_ENTITY_ANGLE, -42.5, 0, 42.5, MAX_ENTITY_ANGLE];
+                for (let roadAng of roadAngles) {
                     const rel = getRelativeAngle(roadAng, playerAngle);
                     if (Math.abs(rel) > HALF_FOV + 25) continue;
                     const farX = angleToScreenX(rel);
                     const nearX = width * 0.5 + (farX - width * 0.5) * 4.5;
 
-                    ctx.strokeStyle = roadAng === 0 ? 'rgba(234, 179, 8, 0.20)' : (Math.abs(roadAng) === 90 ? 'rgba(56, 189, 248, 0.28)' : 'rgba(148, 163, 184, 0.10)');
+                    ctx.strokeStyle = roadAng === 0 ? 'rgba(234, 179, 8, 0.20)' : (Math.abs(roadAng) === MAX_ENTITY_ANGLE ? 'rgba(56, 189, 248, 0.28)' : 'rgba(148, 163, 184, 0.10)');
                     ctx.lineWidth = roadAng === 0 ? 2.5 : 1.5;
                     ctx.setLineDash([14, 18]);
                     ctx.beginPath();
@@ -1226,26 +1234,26 @@
             }
 
             // =====================================================================
-            // ENERGY BOUNDARY WALLS (-90 DEG LEFT & +90 DEG RIGHT)
+            // ENERGY BOUNDARY WALLS (-85 DEG LEFT & +85 DEG RIGHT ENTITY SECTOR)
             // =====================================================================
             function drawEnergyBoundaries(nowSec, horizonY) {
                 const boundaries = [
-                    { worldAngle: MIN_PLAYER_ANGLE, side: 'left' },
-                    { worldAngle: MAX_PLAYER_ANGLE, side: 'right' }
+                    { worldAngle: MIN_ENTITY_ANGLE, side: 'left' },
+                    { worldAngle: MAX_ENTITY_ANGLE, side: 'right' }
                 ];
 
                 for (let i = 0; i < boundaries.length; i++) {
                     const b = boundaries[i];
                     const rel = getRelativeAngle(b.worldAngle, playerAngle);
-                    // Only draw when the boundary at ±90 deg enters or nears the player's visual frustum
+                    // Only draw when the boundary at ±85 deg enters or nears the player's visual frustum
                     if (Math.abs(rel) > HALF_FOV + 18) continue;
 
                     // Exact world-angle screen X at the horizon and perspective expansion toward player
                     const farX = angleToScreenX(rel);
                     const nearX = width * 0.5 + (farX - width * 0.5) * 4.5;
 
-                    // Proximity factor: 0 when far from edge, 1 when right at ±90 deg
-                    const distToEdgeDeg = Math.abs(playerAngle - b.worldAngle);
+                    // Proximity factor: 0 when far from edge, 1 when near or past ±85 deg
+                    const distToEdgeDeg = Math.max(0, Math.abs(playerAngle - b.worldAngle));
                     const proximity = Math.max(0, Math.min(1, 1 - (distToEdgeDeg / 45)));
                     const pulse = edgeHitPulse > 0.01 ? edgeHitPulse : 0;
 
@@ -1254,7 +1262,7 @@
 
                     ctx.save();
 
-                    // 1. Subtle darkened out-of-bounds zone beyond the ±90° wall so rear area looks non-playable
+                    // 1. Subtle darkened out-of-bounds zone beyond the ±85° wall so non-spawn area looks distinct
                     ctx.beginPath();
                     if (b.side === 'left') {
                         ctx.moveTo(0, 0);
@@ -1273,7 +1281,7 @@
                     ctx.fillStyle = `rgba(3, 6, 12, ${0.42 + proximity * 0.18})`;
                     ctx.fill();
 
-                    // 2. Translucent vertical energy curtain extending along the ±90° boundary line
+                    // 2. Translucent vertical energy curtain extending along the ±85° boundary line
                     const wallTopY = Math.max(0, horizonY - height * 0.34);
                     const curtainWidth = Math.max(26, width * (0.045 + proximity * 0.025));
                     const dirSign = b.side === 'left' ? 1 : -1;
@@ -1312,7 +1320,7 @@
                     }
                     ctx.restore();
 
-                    // 4. Crisp glowing energy boundary pillar/beam along exact ±90° edge
+                    // 4. Crisp glowing energy boundary pillar/beam along exact ±85° edge
                     ctx.strokeStyle = `rgba(125, 211, 252, ${0.42 + proximity * 0.25 + pulse * 0.28})`;
                     ctx.lineWidth = 2.2 + proximity * 1.2 + pulse * 1.5;
                     ctx.shadowColor = 'rgba(56, 189, 248, 0.85)';
@@ -1799,13 +1807,13 @@
             }
 
             // =====================================================================
-            // TACTICAL RETICLE & 180-DEGREE COMPASS INDICATOR
+            // TACTICAL RETICLE & SECTOR COMPASS INDICATOR (-85° TO +85°)
             // =====================================================================
             function drawHUDVisuals(horizonY, hasTargetInSight, hasGiftInSight, nowSec) {
                 const cx = width * 0.5;
                 const cy = horizonY + (height - horizonY) * 0.14;
 
-                // Top-center 180-degree forward sector compass (-90 to +90)
+                // Top-center forward sector compass (-85 to +85)
                 const compY = Math.min(height * 0.16, 86);
                 const compW = Math.min(240, width * 0.56);
                 ctx.save();
@@ -1815,11 +1823,11 @@
                 ctx.fill();
 
                 const dirs = [
-                    { deg: -90, label: '-90°' },
-                    { deg: -45, label: 'NW' },
+                    { deg: MIN_ENTITY_ANGLE, label: '-85°' },
+                    { deg: -42.5, label: 'NW' },
                     { deg: 0, label: '0°' },
-                    { deg: 45, label: 'NE' },
-                    { deg: 90, label: '+90°' }
+                    { deg: 42.5, label: 'NE' },
+                    { deg: MAX_ENTITY_ANGLE, label: '+85°' }
                 ];
                 ctx.font = 'bold 11px sans-serif';
                 ctx.textAlign = 'center';
@@ -1828,7 +1836,7 @@
                     const rel = getRelativeAngle(d.deg, playerAngle);
                     if (Math.abs(rel) <= 65) {
                         const dx = cx + (rel / 65) * (compW * 0.44);
-                        ctx.fillStyle = d.deg === 0 ? '#f87171' : (Math.abs(d.deg) === 90 ? '#38bdf8' : '#94a3b8');
+                        ctx.fillStyle = d.deg === 0 ? '#f87171' : (Math.abs(d.deg) === MAX_ENTITY_ANGLE ? '#38bdf8' : '#94a3b8');
                         ctx.fillText(d.label, dx, compY);
                     }
                 }
@@ -2126,7 +2134,7 @@
                     }
                 }
 
-                // Draw translucent energy boundary walls after entities with low alpha so zombies near edge remain visible
+                // Draw translucent energy boundary walls at ±85° after entities with low alpha so zombies near edge remain visible
                 drawEnergyBoundaries(nowSec, horizonY);
 
                 // Render & update particles
@@ -2321,12 +2329,14 @@
                     if (delta > 180) delta -= 360;
                     if (delta < -180) delta += 360;
                     
-                    // ป้องกันอาการกระตุก (Noise) และใช้ชุดจำกัดขอบเขต -90 ถึง +90 เดียวกัน
-                    if (Math.abs(delta) > 0.3) {
+                    // เพิ่ม Deadzone เป็น 0.8 องศา เพื่อตัดอาการสั่น (Jitter) ของเซ็นเซอร์มือถือ
+                    if (Math.abs(delta) > 0.8) {
+                        lastAlpha = currentAlpha;
                         setPlayerAngle(playerAngle - delta);
                     }
+                } else {
+                    lastAlpha = currentAlpha;
                 }
-                lastAlpha = currentAlpha;
             }
         }
 
@@ -2342,7 +2352,7 @@
                 this.speed = ZOMBIE_STATS[type].speed;
                 this.audioY = ZOMBIE_STATS[type].audioY;
                 this.distance = 100;
-                // เกิดเฉพาะด้านหน้าในช่วง -72 ถึง +72 องศา (เว้นขอบซ้าย-ขวาอย่างละ 18 องศา)
+                // เกิดเฉพาะด้านหน้าในช่วง -78 ถึง +78 องศา
                 this.baseAngle = getRandomForwardSpawnAngle();
                 this.swayAmplitude = (type === 'ธรรมดา') ? 0 : (6 + Math.random() * 5) * 0.6;
                 this.swayPhase = Math.random() * Math.PI * 2;
@@ -2350,7 +2360,7 @@
                 this.angle = clampWorldEntityAngle(this.baseAngle + Math.sin(this.swayPhase) * this.swayAmplitude);
                 this.active = true;
 
-                // Setup Spatial Audio Nodes (180-Degree Forward Hemisphere)
+                // Setup Spatial Audio Nodes (Forward Hemisphere)
                 this.source = audioCtx.createBufferSource();
                 this.source.buffer = audioBuffers[type];
                 this.source.loop = true;
@@ -2395,7 +2405,7 @@
                 this.toneFilter.connect(this.presenceFilter);
                 this.presenceFilter.connect(this.aimGain);
 
-                // สายสัญญาณสะท้อนด้านหลัง (ปิดการทำงาน gain = 0 ในโหมด 180 องศาด้านหน้า)
+                // สายสัญญาณสะท้อนด้านหลัง (ปิดการทำงาน gain = 0 ในโหมดด้านหน้า)
                 this.toneFilter.connect(this.rearDelay);
                 this.rearDelay.connect(this.rearFilter);
                 this.rearFilter.connect(this.rearReflectGain);
@@ -2439,9 +2449,9 @@
             updateAudioPosition() {
                 if (!this.active) return;
 
-                // มุมสัมพัทธ์แบบเชิงเส้นในระบบ 180 องศา (-180 ถึง +180)
+                // มุมสัมพัทธ์แบบเชิงเส้นระหว่างทิศทางเป้าหมายกับมุมหันของผู้เล่น
                 let relDeg = this.angle - playerAngle;
-                // จำกัดมุมเสียงให้อยู่ในซีกหน้าของ PannerNode (-90 ถึง +90 องศา) เท่านั้น ไม่ส่งเสียงไปด้านหลัง
+                // จำกัดมุมเสียงให้อยู่ในซีกหน้าของ PannerNode (-90 ถึง +90 องศา) เท่านั้น ไม่ส่งเสียงหลุดไปด้านหลัง
                 let clampedAudioDeg = Math.max(-90, Math.min(90, relDeg));
                 let relativeAngle = clampedAudioDeg * (Math.PI / 180);
 
@@ -2461,9 +2471,9 @@
                 // ผลต่างมุมจริงสำหรับระบบ Aim และความชัดเจนด้านหน้า
                 let diff = Math.abs(relDeg);
 
-                // โทนเสียงซีกหน้าเท่านั้น (ไม่มีการสร้างเสียงสะท้อนด้านหลัง)
+                // ปรับความถี่เสียงแหลมตามมุมเยื้อง (4,500 Hz ด้านข้าง ถึง 20,000 Hz ด้านหน้าตรง)
                 let frontFactor = Math.max(0, Math.cos(relativeAngle));
-                let targetCutoff = 12000 + (frontFactor * 8000);
+                let targetCutoff = 4500 + (frontFactor * 15500);
                 let targetPresence = frontFactor * 2.2;
                 let targetRearReflect = 0.0;
 
@@ -2523,9 +2533,9 @@
         class LifeGift {
             constructor() {
                 this.distance = Math.random() * 60 + 20; // สุ่มระยะใกล้ไกล 20 ถึง 80
-                // เกิดเฉพาะด้านหน้าในช่วง -72 ถึง +72 องศา (เว้นขอบซ้าย-ขวาอย่างละ 18 องศา)
+                // เกิดเฉพาะด้านหน้าในช่วง -78 ถึง +78 องศา
                 this.angle = getRandomForwardSpawnAngle();
-                this.audioY = -1.25;
+                this.audioY = -1.75;
                 this.active = true;
 
                 this.source = audioCtx.createBufferSource();
@@ -2615,7 +2625,7 @@
                 let diff = Math.abs(relDeg);
 
                 let frontFactor = Math.max(0, Math.cos(relativeAngle));
-                let targetCutoff = 12000 + (frontFactor * 8000);
+                let targetCutoff = 4500 + (frontFactor * 15500);
                 let targetPresence = frontFactor * 2.2;
                 let targetRearReflect = 0.0;
 
@@ -2664,6 +2674,7 @@
             isGameOver = false;
             playerAngle = 0;
             isAtBoundaryEdge = false;
+            lastBoundarySoundTime = 0;
             edgeHitPulse = 0;
             zombiesSpawned = 0;
             activeZombies.forEach(z => z.die());
@@ -2721,7 +2732,7 @@
             playSound('shot');
             updateUI();
 
-            // Hit Detection (180-degree linear angle difference)
+            // Hit Detection (linear angle difference)
             let hitTarget = null;
             let minDistance = 999;
 
@@ -2906,7 +2917,7 @@
         function update() {
             if (isGameOver) return;
 
-            // การหมุนของผู้เล่น (ปุ่มหรือคีย์บอร์ด) พร้อมจำกัดขอบเขต -90 ถึง +90 องศาทุกเฟรม
+            // การหมุนของผู้เล่น (ปุ่มหรือคีย์บอร์ด) พร้อมจำกัดขอบเขต -115 ถึง +115 องศาทุกเฟรม
             if (keys.ArrowLeft) setPlayerAngle(playerAngle - 1.5);
             if (keys.ArrowRight) setPlayerAngle(playerAngle + 1.5);
             setPlayerAngle(playerAngle);
