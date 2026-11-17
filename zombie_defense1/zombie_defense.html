@@ -434,7 +434,7 @@
     <!-- ปรับปรุงหน้าแรก -->
     <div id="startScreen">
         <h1>Zombie Defense</h1>
-        <p>ใส่หูฟังเพื่อประสบการณ์ 360 องศา</p>
+        <p>ใส่หูฟังเพื่อรับฟังเสียงซ้าย-ขวาด้านหน้า 180 องศา</p>
         <!-- ซ่อนปุ่มเล่นต่อไว้ก่อน จะแสดงเมื่อมี Save -->
         <button id="btnContinue" style="display: none; background: linear-gradient(180deg, #28a745 0%, #196f2d 100%); margin-bottom: 12px;">เล่นต่อ (Level ...)</button>
         <button id="btnNewGame">เริ่มเกมใหม่</button>
@@ -473,6 +473,10 @@
 
     <script>
         // Game Configuration
+        const MIN_VIEW_ANGLE = -90;  // สุดขอบซ้าย (-90 องศา)
+        const MAX_VIEW_ANGLE = 90;   // สุดขอบขวา (+90 องศา)
+        const SPAWN_MAX_ANGLE = 82;  // ช่วงสุ่มเกิด (-82 ถึง +82 องศา) เผื่อระยะส่ายไม่ให้หลุดนอกขอบยิง
+
         const LEVELS = [
             // --- โหมดแนะนำตัวละคร (Level 1-6) ---
             { total: 1, types: ['ธรรมดา'] },                                                      // 1
@@ -524,7 +528,8 @@
             'bgm': 'audio/bgm.mp3',
             'gift': 'audio/gift.mp3',
             'giftup': 'audio/giftup.mp3',
-            'reload': 'audio/reload.mp3'
+            'reload': 'audio/reload.mp3',
+            'edge90': 'audio/90.mp3'
         };
 
         // ฟังก์ชันจัดการ Save/Load
@@ -559,7 +564,7 @@
         let audioCtx, listener;
         let audioBuffers = {};
         
-        let playerAngle = 0;
+        let playerAngle = 0; // 0 = ตรงกลางด้านหน้า, -90 = ซ้ายสุด, +90 = ขวาสุด
         let hp = 3;
         let ammo = 10;
         let currentLevel = 1;
@@ -573,6 +578,11 @@
         let gameLoopTimer = null;
 
         let keys = { ArrowLeft: false, ArrowRight: false };
+
+        // Edge boundary sound state (90.mp3)
+        let lastEdgeSoundTime = 0;
+        let motionEdgeNotifiedLeft = false;
+        let motionEdgeNotifiedRight = false;
 
         // Motion variables
         let motionEnabled = false;
@@ -593,6 +603,52 @@
             ammo: document.getElementById('txtAmmo'),
             announcer: document.getElementById('announcer')
         };
+
+        // ฟังก์ชันเล่นเสียงแจ้งเตือนชนขอบซ้าย/ขวา (90.mp3)
+        function playEdgeWarningSound(force = false) {
+            if (!audioCtx || !audioBuffers['edge90']) return;
+            const now = performance.now();
+            // ป้องกันเสียงซ้อนรัวเกินไปขณะกดค้างหรือลากค้าง (เว้นระยะ 260ms ยกเว้นการกด/ปัดใหม่แต่ละครั้งที่ force = true)
+            if (!force && now - lastEdgeSoundTime < 260) return;
+            lastEdgeSoundTime = now;
+            playSound('edge90', 1.0);
+        }
+
+        // ฟังก์ชันอัปเดตมุมหันผู้เล่นแบบจำกัดขอบ 180 องศา (-90 ถึง +90) และจัดการเสียงชนขอบ
+        function applyPlayerTurn(deltaAngle, options = {}) {
+            if (isGameOver || deltaAngle === 0) return;
+            const { forceSound = false, isMotion = false } = options;
+
+            const prevAngle = playerAngle;
+            const nextAngle = playerAngle + deltaAngle;
+
+            if (nextAngle <= MIN_VIEW_ANGLE) {
+                playerAngle = MIN_VIEW_ANGLE;
+                if (isMotion) {
+                    // สำหรับ Motion: เล่น 1 ครั้งเมื่อชนขอบ และจะเล่นอีกครั้งเมื่อหมุนกลับเข้าด้านในแล้วดันมาชนซ้ำ
+                    if (prevAngle > MIN_VIEW_ANGLE || !motionEdgeNotifiedLeft) {
+                        playEdgeWarningSound(true);
+                        motionEdgeNotifiedLeft = true;
+                    }
+                } else {
+                    playEdgeWarningSound(forceSound || prevAngle > MIN_VIEW_ANGLE);
+                }
+            } else if (nextAngle >= MAX_VIEW_ANGLE) {
+                playerAngle = MAX_VIEW_ANGLE;
+                if (isMotion) {
+                    if (prevAngle < MAX_VIEW_ANGLE || !motionEdgeNotifiedRight) {
+                        playEdgeWarningSound(true);
+                        motionEdgeNotifiedRight = true;
+                    }
+                } else {
+                    playEdgeWarningSound(forceSound || prevAngle < MAX_VIEW_ANGLE);
+                }
+            } else {
+                playerAngle = nextAngle;
+                if (playerAngle > MIN_VIEW_ANGLE + 1.5) motionEdgeNotifiedLeft = false;
+                if (playerAngle < MAX_VIEW_ANGLE - 1.5) motionEdgeNotifiedRight = false;
+            }
+        }
 
         // =========================================================================
         // FIRST-PERSON VISUAL & ANIMATION ENGINE (PURELY OBSERVER / NON-INTRUSIVE)
@@ -633,7 +689,7 @@
             let particles = [];
             let floatingTexts = [];
 
-            // Pre-generated 360-degree apocalyptic city skyline & props
+            // Pre-generated 180-degree (+ FOV margin) apocalyptic city skyline & props
             const BUILDINGS = [];
             const STREET_LAMPS = [];
             const DEBRIS = [];
@@ -654,10 +710,10 @@
                     return (seed - 1) / 2147483646;
                 };
 
-                // 360-degree ruined city buildings
-                const numBuildings = 44;
+                // Forward-facing 180-degree (+ edge margin -150 to +150) ruined city buildings
+                const numBuildings = 38;
                 for (let i = 0; i < numBuildings; i++) {
-                    const angle = (i / numBuildings) * 360 + (rand() - 0.5) * 4;
+                    const angle = -150 + (i / (numBuildings - 1)) * 300 + (rand() - 0.5) * 4;
                     const wAngle = 6 + rand() * 8;
                     const hFactor = 0.16 + rand() * 0.28;
                     const ruinedType = Math.floor(rand() * 4);
@@ -687,19 +743,19 @@
                     });
                 }
 
-                // Street lamps & utility poles around 360 degrees
-                for (let i = 0; i < 16; i++) {
+                // Street lamps & utility poles across front 180-degree perimeter
+                for (let i = 0; i < 14; i++) {
                     STREET_LAMPS.push({
-                        angle: i * 22.5 + 8,
+                        angle: -140 + i * 21.5,
                         flickerOffset: rand() * 100,
                         broken: rand() > 0.55
                     });
                 }
 
                 // Ground debris / barricades / burnt cars silhouettes
-                for (let i = 0; i < 24; i++) {
+                for (let i = 0; i < 22; i++) {
                     DEBRIS.push({
-                        angle: rand() * 360,
+                        angle: -135 + rand() * 270,
                         dist: 28 + rand() * 68,
                         type: Math.floor(rand() * 3), // 0: rubble, 1: barrier, 2: wrecked car
                         scale: 0.7 + rand() * 0.7
@@ -707,9 +763,9 @@
                 }
 
                 // Atmospheric drifting fog wisps
-                for (let i = 0; i < 18; i++) {
+                for (let i = 0; i < 16; i++) {
                     FOG_WISPS.push({
-                        angle: rand() * 360,
+                        angle: -140 + rand() * 280,
                         yOffset: (rand() - 0.3) * 0.18,
                         widthDeg: 18 + rand() * 25,
                         speed: (rand() - 0.5) * 0.04,
@@ -718,9 +774,9 @@
                 }
 
                 // Night sky stars / embers
-                for (let i = 0; i < 55; i++) {
+                for (let i = 0; i < 48; i++) {
                     STARS.push({
-                        angle: rand() * 360,
+                        angle: -145 + rand() * 290,
                         alt: 0.04 + rand() * 0.34,
                         size: 0.8 + rand() * 1.4,
                         twinkle: rand() * Math.PI * 2
@@ -747,9 +803,9 @@
             initWorldProps();
             resize();
 
+            // คำนวณส่วนต่างมุมตรงๆ สำหรับระบบ 180 องศาด้านหน้า (-90 ถึง +90)
             function normalizeAngleDiff(targetAngle, refAngle) {
-                let diff = ((targetAngle - refAngle + 540) % 360) - 180;
-                return diff; // -180 to +180
+                return targetAngle - refAngle;
             }
 
             // FOV configuration (horizontal FOV ~86 degrees)
@@ -973,8 +1029,8 @@
                 }
                 ctx.globalAlpha = 1;
 
-                // Eerie Moon / Reddish Haze at Angle 35 deg
-                const moonRel = normalizeAngleDiff(35, playerAngle);
+                // Eerie Moon / Reddish Haze at Angle 25 deg
+                const moonRel = normalizeAngleDiff(25, playerAngle);
                 if (Math.abs(moonRel) < HALF_FOV + 18) {
                     const mx = angleToScreenX(moonRel);
                     const my = horizonY * 0.28;
@@ -988,8 +1044,8 @@
                     ctx.fill();
                 }
 
-                // Distant Burning Horizon Glow (Angle 210 deg)
-                const fireRel = normalizeAngleDiff(210, playerAngle);
+                // Distant Burning Horizon Glow at Angle -42 deg
+                const fireRel = normalizeAngleDiff(-42, playerAngle);
                 if (Math.abs(fireRel) < HALF_FOV + 35) {
                     const fx = angleToScreenX(fireRel);
                     const fireGlow = ctx.createRadialGradient(fx, horizonY, 5, fx, horizonY, 170);
@@ -1000,7 +1056,7 @@
                     ctx.fillRect(0, horizonY - 160, width, 165);
                 }
 
-                // 2. 360-Degree Ruined City Skyline
+                // 2. Ruined City Skyline
                 for (let i = 0; i < BUILDINGS.length; i++) {
                     const b = BUILDINGS[i];
                     const rel = normalizeAngleDiff(b.angle, playerAngle);
@@ -1089,15 +1145,15 @@
                 ctx.rect(0, horizonY, width, height - horizonY);
                 ctx.clip();
 
-                // Road markings every 45 degrees
-                for (let roadAng = 0; roadAng < 360; roadAng += 45) {
+                // Road markings every 45 degrees across -135 to +135
+                for (let roadAng = -135; roadAng <= 135; roadAng += 45) {
                     const rel = normalizeAngleDiff(roadAng, playerAngle);
                     if (Math.abs(rel) > HALF_FOV + 25) continue;
                     const farX = angleToScreenX(rel);
                     const nearX = width * 0.5 + (farX - width * 0.5) * 4.5;
 
-                    ctx.strokeStyle = roadAng % 90 === 0 ? 'rgba(234, 179, 8, 0.14)' : 'rgba(148, 163, 184, 0.08)';
-                    ctx.lineWidth = roadAng % 90 === 0 ? 2.5 : 1.5;
+                    ctx.strokeStyle = roadAng === 0 ? 'rgba(234, 179, 8, 0.20)' : (Math.abs(roadAng) === 90 ? 'rgba(239, 68, 68, 0.22)' : 'rgba(148, 163, 184, 0.09)');
+                    ctx.lineWidth = (roadAng === 0 || Math.abs(roadAng) === 90) ? 2.5 : 1.5;
                     ctx.setLineDash([14, 18]);
                     ctx.beginPath();
                     ctx.moveTo(farX, horizonY);
@@ -1186,6 +1242,24 @@
                         ctx.lineTo(dx + 24 * s, footY - 22 * s);
                         ctx.closePath();
                         ctx.fill();
+                    }
+                }
+
+                // Boundary Hazard Barriers at -95 deg (Left Limit) & +95 deg (Right Limit)
+                for (let boundAng of [-95, 95]) {
+                    const rel = normalizeAngleDiff(boundAng, playerAngle);
+                    if (Math.abs(rel) <= HALF_FOV + 15) {
+                        const bx = angleToScreenX(rel);
+                        const { scale, footY } = distanceToScreenYAndScale(18, horizonY);
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(185, 28, 28, 0.38)';
+                        ctx.strokeStyle = 'rgba(248, 113, 113, 0.75)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.roundRect(bx - 16 * scale, footY - 58 * scale, 32 * scale, 58 * scale, 4 * scale);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
                     }
                 }
 
@@ -1703,13 +1777,13 @@
             }
 
             // =====================================================================
-            // TACTICAL RETICLE & 360 COMPASS INDICATOR
+            // TACTICAL RETICLE & 180-DEGREE FRONT COMPASS INDICATOR
             // =====================================================================
             function drawHUDVisuals(horizonY, hasTargetInSight, hasGiftInSight, nowSec) {
                 const cx = width * 0.5;
                 const cy = horizonY + (height - horizonY) * 0.14;
 
-                // Top-center subtle 360 degree compass strip (below status bar)
+                // Top-center subtle 180-degree front compass strip (-90 W | 0 N | +90 E)
                 const compY = Math.min(height * 0.16, 86);
                 const compW = Math.min(240, width * 0.56);
                 ctx.save();
@@ -1718,20 +1792,31 @@
                 ctx.roundRect(cx - compW * 0.5, compY - 10, compW, 20, 10);
                 ctx.fill();
 
+                // Edge limit markers on compass
+                ctx.strokeStyle = 'rgba(248, 113, 113, 0.65)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cx - compW * 0.46, compY - 6);
+                ctx.lineTo(cx - compW * 0.46, compY + 6);
+                ctx.moveTo(cx + compW * 0.46, compY - 6);
+                ctx.lineTo(cx + compW * 0.46, compY + 6);
+                ctx.stroke();
+
                 const dirs = [
-                    { deg: 0, label: 'N' },
-                    { deg: 90, label: 'E' },
-                    { deg: 180, label: 'S' },
-                    { deg: 270, label: 'W' }
+                    { deg: -90, label: 'L90' },
+                    { deg: -45, label: 'NW' },
+                    { deg: 0, label: 'FRONT' },
+                    { deg: 45, label: 'NE' },
+                    { deg: 90, label: 'R90' }
                 ];
-                ctx.font = 'bold 11px sans-serif';
+                ctx.font = 'bold 10px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 for (let d of dirs) {
                     const rel = normalizeAngleDiff(d.deg, playerAngle);
-                    if (Math.abs(rel) <= 55) {
-                        const dx = cx + (rel / 55) * (compW * 0.44);
-                        ctx.fillStyle = d.label === 'N' ? '#f87171' : '#94a3b8';
+                    if (Math.abs(rel) <= 95) {
+                        const dx = cx + (rel / 95) * (compW * 0.44);
+                        ctx.fillStyle = d.deg === 0 ? '#f87171' : (Math.abs(d.deg) === 90 ? '#fbbf24' : '#94a3b8');
                         ctx.fillText(d.label, dx, compY);
                     }
                 }
@@ -2240,15 +2325,13 @@
                 if (lastAlpha !== null) {
                     let delta = currentAlpha - lastAlpha;
                     
-                    // ปรับค่า Delta สำหรับการหมุนข้ามรอบวงกลม
+                    // ปรับค่า Delta สำหรับการหมุนข้ามจุด 0/360 ของเข็มทิศอุปกรณ์
                     if (delta > 180) delta -= 360;
                     if (delta < -180) delta += 360;
                     
-                    // ป้องกันอาการกระตุก (Noise)
+                    // ป้องกันอาการกระตุก (Noise) และล็อกขอบ -90 ถึง +90
                     if (Math.abs(delta) > 0.3) {
-                        playerAngle -= delta;
-                        if (playerAngle < 0) playerAngle += 360;
-                        if (playerAngle >= 360) playerAngle -= 360;
+                        applyPlayerTurn(-delta, { isMotion: true });
                     }
                 }
                 lastAlpha = currentAlpha;
@@ -2267,12 +2350,13 @@
                 this.speed = ZOMBIE_STATS[type].speed;
                 this.audioY = ZOMBIE_STATS[type].audioY;
                 this.distance = 100; // เริ่มต้นห่างออกไป
-                this.baseAngle = Math.random() * 360; // องศาตั้งต้นที่ซอมบี้เกิด
+                // สุ่มองศาเกิดด้านหน้าในช่วง -82 ถึง +82 องศา (0 = ตรงกลาง, - = ซ้าย, + = ขวา)
+                this.baseAngle = (Math.random() * 2 - 1) * SPAWN_MAX_ANGLE;
                 // ซอมบี้ประเภท 'ธรรมดา' เดินตรงอย่างเดียวไม่ส่ายซ้าย-ขวาในทุกเลเวล ส่วนประเภทอื่นส่ายตามปกติ
                 this.swayAmplitude = (type === 'ธรรมดา') ? 0 : (6 + Math.random() * 5) * 0.6;
                 this.swayPhase = Math.random() * Math.PI * 2; // สุ่มเฟสเริ่มต้นเพื่อให้แต่ละตัวโยกไม่พร้อมกัน
                 this.swaySpeed = ((0.012 + Math.random() * 0.008) * (0.75 + this.speed * 0.1)) * 0.75; // ลดความเร็วในการโยกลง 25% จากค่าเดิม
-                this.angle = (this.baseAngle + Math.sin(this.swayPhase) * this.swayAmplitude + 360) % 360;
+                this.angle = Math.max(MIN_VIEW_ANGLE, Math.min(MAX_VIEW_ANGLE, this.baseAngle + Math.sin(this.swayPhase) * this.swayAmplitude));
                 this.active = true;
 
                 // Setup Spatial Audio & Front-Back / Aim Enhancement Nodes
@@ -2280,7 +2364,7 @@
                 this.source.buffer = audioBuffers[type];
                 this.source.loop = true;
 
-                // 1. ฟิลเตอร์ปรับโทนเสียงด้านหน้า (ชัดเจน/เปิด) และด้านหลัง (ทึบลงอย่างเหมาะสมโดยไม่เสียเอกลักษณ์)
+                // 1. ฟิลเตอร์ปรับโทนเสียงด้านหน้า (ชัดเจน/เปิด)
                 this.toneFilter = audioCtx.createBiquadFilter();
                 this.toneFilter.type = 'lowpass';
                 this.toneFilter.frequency.value = 18000;
@@ -2292,7 +2376,7 @@
                 this.presenceFilter.Q.value = 1.0;
                 this.presenceFilter.gain.value = 0;
 
-                // 2. ชุดสร้างเสียงสะท้อนสั้นๆ (Early Reflection) สำหรับจำลองมิติเสียงเมื่อซอมบี้อยู่ด้านหลัง
+                // 2. ชุดสร้างเสียงสะท้อนสั้นๆ (คงโครงสร้าง Audio Graph เดิม)
                 this.rearDelay = audioCtx.createDelay(0.1);
                 this.rearDelay.delayTime.value = 0.028;
 
@@ -2317,12 +2401,10 @@
                 this.panner.rolloffFactor = 1;
 
                 // เชื่อมต่อ Audio Graph สำหรับซอมบี้ตัวนี้
-                // สายสัญญาณหลัก: source -> toneFilter -> presenceFilter -> aimGain -> panner -> destination
                 this.source.connect(this.toneFilter);
                 this.toneFilter.connect(this.presenceFilter);
                 this.presenceFilter.connect(this.aimGain);
 
-                // สายสัญญาณสะท้อนด้านหลัง: toneFilter -> rearDelay -> rearFilter -> rearReflectGain -> aimGain
                 this.toneFilter.connect(this.rearDelay);
                 this.rearDelay.connect(this.rearFilter);
                 this.rearFilter.connect(this.rearReflectGain);
@@ -2350,7 +2432,7 @@
                         swayFactor = (this.distance - 25) / 20;
                     }
                     let offset = Math.sin(this.swayPhase) * this.swayAmplitude * swayFactor;
-                    this.angle = (this.baseAngle + offset + 360) % 360;
+                    this.angle = Math.max(MIN_VIEW_ANGLE, Math.min(MAX_VIEW_ANGLE, this.baseAngle + offset));
                 } else {
                     // ซอมบี้ธรรมดา หรือเมื่ออยู่ในระยะประชิด (distance <= 25) ให้เดินพุ่งตรงเข้ามาหาผู้เล่นตามองศาตั้งต้น
                     this.angle = this.baseAngle;
@@ -2369,12 +2451,13 @@
             updateAudioPosition() {
                 if (!this.active) return;
 
-                // คำนวณมุมสัมพัทธ์ระหว่างทิศที่ผู้เล่นหัน กับ ทิศที่ซอมบี้อยู่
+                // คำนวณมุมสัมพัทธ์ระหว่างทิศที่ผู้เล่นหัน กับ ทิศที่ซอมบี้อยู่ (อยู่ในกรอบด้านหน้า -180 ถึง +180)
                 let relativeAngle = (this.angle - playerAngle) * (Math.PI / 180);
                 
-                // แปลงพิกัด 2D เป็นตำแหน่ง Panner (X, Z) รอบตัว Listener (0,0,0) และปรับระดับความสูงตามประเภท (Y)
-                let x = Math.sin(relativeAngle) * (this.distance / 10);
-                let z = -Math.cos(relativeAngle) * (this.distance / 10);
+                // แปลงพิกัด 2D เป็นตำแหน่ง Panner (X, Z) โดยให้ซอมบี้อยู่ด้านหน้า Listener (z <= -0.15) เสมอ เพื่อแยกซ้าย-ขวาได้ชัดเจน 100%
+                let distScale = this.distance / 10;
+                let x = Math.sin(relativeAngle) * distScale;
+                let z = -Math.max(0.15, Math.abs(Math.cos(relativeAngle))) * distScale;
 
                 if (this.panner.positionX) {
                     this.panner.positionX.value = x;
@@ -2384,36 +2467,19 @@
                     this.panner.setPosition(x, this.audioY, z);
                 }
 
-                // คำนวณผลต่างมุม (0 ถึง 180 องศา) ด้วยสูตรเดียวกับระบบ Hit Detection
-                let diff = Math.abs(this.angle - playerAngle) % 360;
-                if (diff > 180) diff = 360 - diff;
+                // คำนวณผลต่างมุมตรงๆ สำหรับระบบ 180 องศาด้านหน้า
+                let diff = Math.abs(this.angle - playerAngle);
 
-                // 1) แยกเสียงด้านหน้า (cos >= 0) และด้านหลัง (cos < 0) ครบ 360 องศา
-                // frontFactor มีค่าตั้งแต่ +1 (หน้าตรง) -> 0 (ซ้าย/ขวา 90 องศา) -> -1 (หลังตรง 180 องศา)
-                let frontFactor = Math.cos(relativeAngle);
-                let targetCutoff;
-                let targetPresence;
-                let targetRearReflect;
-
-                if (frontFactor >= 0) {
-                    // ครึ่งวงกลมด้านหน้า (หน้าตรง, หน้าซ้าย, หน้าขวา): เสียงเปิดชัดเจน
-                    targetCutoff = 12000 + (frontFactor * 8000); // 12,000 Hz ถึง 20,000 Hz
-                    targetPresence = frontFactor * 2.2;          // บูสต์ย่านความชัดเจนเล็กน้อยสูงสุด +2.2 dB
-                    targetRearReflect = 0.0;                     // ไม่มีเสียงสะท้อนด้านหลัง
-                } else {
-                    // ครึ่งวงกลมด้านหลัง (หลังตรง, หลังซ้าย, หลังขวา): ลดความถี่สูงให้ทึบลงพอเหมาะและเพิ่มเสียงสะท้อนด้านหลัง
-                    let backAmount = -frontFactor;               // 0 (ข้าง) ถึง 1 (หลังตรง)
-                    // คงย่านความถี่ตั้งแต่ 1,350 Hz ขึ้นไปไว้เพื่อให้ซอมบี้ทั้ง 6 ประเภทยังคงเอกลักษณ์ชัดเจนและไม่หลอกระยะใกล้-ไกล
-                    targetCutoff = 12000 - (backAmount * 10650); // ค่อยๆ ลดลงจาก 12,000 Hz เหลือต่ำสุด 1,350 Hz ที่ด้านหลังตรง
-                    targetPresence = -backAmount * 3.0;          // ลดย่านความคมลงเล็กน้อยสูงสุด -3.0 dB
-                    targetRearReflect = backAmount * 0.24;       // เพิ่มมิติเสียงสะท้อนด้านหลังอย่างพอเหมาะ
-                }
+                // เสียงด้านหน้าเปิดคมชัดตลอดช่วง 180 องศา
+                let frontFocus = Math.max(0, Math.cos(relativeAngle));
+                let targetCutoff = 14000 + (frontFocus * 6000); // 14,000 Hz ถึง 20,000 Hz
+                let targetPresence = frontFocus * 2.2;          // บูสต์ความชัดเจนสูงสุด +2.2 dB
 
                 this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
                 this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
-                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
+                this.setAudioParamSmooth(this.rearReflectGain.gain, 0.0, 0.05);
 
-                // 2) เพิ่มความเด่นของเสียงเมื่ออยู่ในแนวยิง (diff <= 10 องศา อ้างอิงเงื่อนไขเดียวกับระบบยิง)
+                // เพิ่มความเด่นของเสียงเมื่ออยู่ในแนวยิง (diff <= 10 องศา)
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
             }
@@ -2452,7 +2518,7 @@
         class LifeGift {
             constructor() {
                 this.distance = Math.random() * 60 + 20; // สุ่มระยะใกล้ไกล 20 ถึง 80
-                this.angle = Math.random() * 360; // สุ่มทิศทางรอบตัว 360 องศา
+                this.angle = (Math.random() * 2 - 1) * SPAWN_MAX_ANGLE; // สุ่มทิศทางด้านหน้า -82 ถึง +82 องศา
                 this.audioY = -1.25; // ระดับลิ้นปี่ แยกจากเสียงซอมบี้ได้ชัดเจน
                 this.active = true;
 
@@ -2521,8 +2587,9 @@
                 if (!this.active) return;
                 
                 let relativeAngle = (this.angle - playerAngle) * (Math.PI / 180);
-                let x = Math.sin(relativeAngle) * (this.distance / 10);
-                let z = -Math.cos(relativeAngle) * (this.distance / 10);
+                let distScale = this.distance / 10;
+                let x = Math.sin(relativeAngle) * distScale;
+                let z = -Math.max(0.15, Math.abs(Math.cos(relativeAngle))) * distScale;
 
                 if (this.panner.positionX) {
                     this.panner.positionX.value = x;
@@ -2532,26 +2599,15 @@
                     this.panner.setPosition(x, this.audioY, z);
                 }
 
-                let diff = Math.abs(this.angle - playerAngle) % 360;
-                if (diff > 180) diff = 360 - diff;
+                let diff = Math.abs(this.angle - playerAngle);
 
-                let frontFactor = Math.cos(relativeAngle);
-                let targetCutoff, targetPresence, targetRearReflect;
-
-                if (frontFactor >= 0) {
-                    targetCutoff = 12000 + (frontFactor * 8000);
-                    targetPresence = frontFactor * 2.2;
-                    targetRearReflect = 0.0;
-                } else {
-                    let backAmount = -frontFactor;
-                    targetCutoff = 12000 - (backAmount * 10650);
-                    targetPresence = -backAmount * 3.0;
-                    targetRearReflect = backAmount * 0.24;
-                }
+                let frontFocus = Math.max(0, Math.cos(relativeAngle));
+                let targetCutoff = 14000 + (frontFocus * 6000);
+                let targetPresence = frontFocus * 2.2;
 
                 this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
                 this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
-                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
+                this.setAudioParamSmooth(this.rearReflectGain.gain, 0.0, 0.05);
 
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
@@ -2581,6 +2637,9 @@
             lastShotTime = 0;
             isGameOver = false;
             playerAngle = 0;
+            lastEdgeSoundTime = 0;
+            motionEdgeNotifiedLeft = false;
+            motionEdgeNotifiedRight = false;
             zombiesSpawned = 0;
             activeZombies.forEach(z => z.die());
             activeZombies = [];
@@ -2645,8 +2704,7 @@
             // เช็คซอมบี้
             for (let z of activeZombies) {
                 if (!z.active) continue;
-                let diff = Math.abs(z.angle - playerAngle) % 360;
-                if (diff > 180) diff = 360 - diff;
+                let diff = Math.abs(z.angle - playerAngle);
 
                 if (diff <= 12) { // อยู่ในระยะเล็ง ±12 องศา
                     if (z.distance < minDistance) {
@@ -2658,8 +2716,7 @@
 
             // เช็ค Life Gift
             if (currentGift && currentGift.active) {
-                let diff = Math.abs(currentGift.angle - playerAngle) % 360;
-                if (diff > 180) diff = 360 - diff;
+                let diff = Math.abs(currentGift.angle - playerAngle);
                 
                 if (diff <= 10) {
                     if (currentGift.distance < minDistance) {
@@ -2834,11 +2891,9 @@
         function update() {
             if (isGameOver) return;
 
-            // การหมุนของผู้เล่น (ปุ่มหรือคีย์บอร์ด)
-            if (keys.ArrowLeft) playerAngle -= 1.5; // หมุนซ้าย
-            if (keys.ArrowRight) playerAngle += 1.5; // หมุนขวา
-            if (playerAngle < 0) playerAngle += 360;
-            if (playerAngle >= 360) playerAngle -= 360;
+            // การหมุนของผู้เล่น (ปุ่มกดค้างหรือคีย์บอร์ด) ล็อกขอบ -90 ถึง +90
+            if (keys.ArrowLeft) applyPlayerTurn(-1.5); // หมุนซ้าย
+            if (keys.ArrowRight) applyPlayerTurn(1.5); // หมุนขวา
 
             // อัปเดตตำแหน่งเสียง Life Gift ถ้ามี
             if (currentGift && currentGift.active) {
@@ -2860,7 +2915,7 @@
                     z.distance = 40; // ซอมบี้กระเด็นถอยหลังกลับไปที่ระยะ 40
                     // คำนวณองศาให้ตรงกับระยะ 40 ทันทีเพื่อความต่อเนื่องของทิศทางเสียง
                     let swayFactor = (z.distance < 45) ? ((z.distance - 25) / 20) : 1.0;
-                    z.angle = (z.baseAngle + Math.sin(z.swayPhase) * z.swayAmplitude * swayFactor + 360) % 360;
+                    z.angle = Math.max(MIN_VIEW_ANGLE, Math.min(MAX_VIEW_ANGLE, z.baseAngle + Math.sin(z.swayPhase) * z.swayAmplitude * swayFactor));
                     z.updateAudioPosition(); // อัปเดตตำแหน่งและระยะเสียงทันที เพื่อไม่ให้เสียงขาดตอน
                     updateUI();
                     
@@ -2884,8 +2939,20 @@
         // --- Controls & Events ---
         window.addEventListener('keydown', (e) => {
             if (isGameOver) return;
-            if (e.code === 'ArrowLeft') { keys.ArrowLeft = true; e.preventDefault(); }
-            if (e.code === 'ArrowRight') { keys.ArrowRight = true; e.preventDefault(); }
+            if (e.code === 'ArrowLeft') {
+                if (!e.repeat && playerAngle <= MIN_VIEW_ANGLE) {
+                    playEdgeWarningSound(true);
+                }
+                keys.ArrowLeft = true;
+                e.preventDefault();
+            }
+            if (e.code === 'ArrowRight') {
+                if (!e.repeat && playerAngle >= MAX_VIEW_ANGLE) {
+                    playEdgeWarningSound(true);
+                }
+                keys.ArrowRight = true;
+                e.preventDefault();
+            }
             if (e.code === 'Space') { shoot(); e.preventDefault(); }
         });
 
@@ -2902,17 +2969,22 @@
         function handleTurnStep(direction) {
             if (isGameOver) return;
             if (direction === 'left') {
-                playerAngle -= 15;
-                if (playerAngle < 0) playerAngle += 360;
+                applyPlayerTurn(-15, { forceSound: true });
             } else {
-                playerAngle += 15;
-                if (playerAngle >= 360) playerAngle -= 360;
+                applyPlayerTurn(15, { forceSound: true });
             }
         }
 
-        btnLeft.addEventListener('touchstart', (e) => { keys.ArrowLeft = true; e.preventDefault(); }, { passive: false });
+        btnLeft.addEventListener('touchstart', (e) => {
+            if (playerAngle <= MIN_VIEW_ANGLE) playEdgeWarningSound(true);
+            keys.ArrowLeft = true;
+            e.preventDefault();
+        }, { passive: false });
         btnLeft.addEventListener('touchend', (e) => { keys.ArrowLeft = false; e.preventDefault(); }, { passive: false });
-        btnLeft.addEventListener('mousedown', () => keys.ArrowLeft = true);
+        btnLeft.addEventListener('mousedown', () => {
+            if (playerAngle <= MIN_VIEW_ANGLE) playEdgeWarningSound(true);
+            keys.ArrowLeft = true;
+        });
         btnLeft.addEventListener('mouseup', () => keys.ArrowLeft = false);
         btnLeft.addEventListener('mouseleave', () => keys.ArrowLeft = false);
         btnLeft.addEventListener('click', (e) => {
@@ -2922,9 +2994,16 @@
             }
         });
 
-        btnRight.addEventListener('touchstart', (e) => { keys.ArrowRight = true; e.preventDefault(); }, { passive: false });
+        btnRight.addEventListener('touchstart', (e) => {
+            if (playerAngle >= MAX_VIEW_ANGLE) playEdgeWarningSound(true);
+            keys.ArrowRight = true;
+            e.preventDefault();
+        }, { passive: false });
         btnRight.addEventListener('touchend', (e) => { keys.ArrowRight = false; e.preventDefault(); }, { passive: false });
-        btnRight.addEventListener('mousedown', () => keys.ArrowRight = true);
+        btnRight.addEventListener('mousedown', () => {
+            if (playerAngle >= MAX_VIEW_ANGLE) playEdgeWarningSound(true);
+            keys.ArrowRight = true;
+        });
         btnRight.addEventListener('mouseup', () => keys.ArrowRight = false);
         btnRight.addEventListener('mouseleave', () => keys.ArrowRight = false);
         btnRight.addEventListener('click', (e) => {
@@ -2942,12 +3021,14 @@
         let swipeStartX = null;
         let swipeLastX = null;
         let swipeActive = false;
+        let swipeEdgeNotifiedThisStroke = false;
 
         swipeArea.addEventListener('pointerdown', (e) => {
             if (!e.isPrimary) return;
             swipeStartX = e.clientX;
             swipeLastX = e.clientX;
             swipeActive = true;
+            swipeEdgeNotifiedThisStroke = false;
             try { swipeArea.setPointerCapture(e.pointerId); } catch(err){}
         });
 
@@ -2963,9 +3044,22 @@
                 if (rotation > 12) rotation = 12;
                 if (rotation < -12) rotation = -12;
 
-                playerAngle += rotation;
-                if (playerAngle < 0) playerAngle += 360;
-                if (playerAngle >= 360) playerAngle -= 360;
+                const hittingLeftEdge = (rotation < 0 && playerAngle <= MIN_VIEW_ANGLE);
+                const hittingRightEdge = (rotation > 0 && playerAngle >= MAX_VIEW_ANGLE);
+
+                if (hittingLeftEdge || hittingRightEdge) {
+                    if (!swipeEdgeNotifiedThisStroke) {
+                        playEdgeWarningSound(true);
+                        swipeEdgeNotifiedThisStroke = true;
+                    }
+                } else {
+                    applyPlayerTurn(rotation);
+                    if (playerAngle <= MIN_VIEW_ANGLE || playerAngle >= MAX_VIEW_ANGLE) {
+                        swipeEdgeNotifiedThisStroke = true;
+                    } else {
+                        swipeEdgeNotifiedThisStroke = false;
+                    }
+                }
             }
             swipeLastX = currentX;
         });
@@ -2974,6 +3068,7 @@
             swipeActive = false;
             swipeStartX = null;
             swipeLastX = null;
+            swipeEdgeNotifiedThisStroke = false;
             try { swipeArea.releasePointerCapture(e.pointerId); } catch(err){}
         });
         
@@ -2981,6 +3076,7 @@
             swipeActive = false;
             swipeStartX = null;
             swipeLastX = null;
+            swipeEdgeNotifiedThisStroke = false;
         });
 
         // --- Initialize ---
@@ -3024,7 +3120,7 @@
             playBGM();
 
             gameUI.setAttribute('role', 'application');
-            gameUI.setAttribute('aria-label', `เริ่มเลเวล ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด`);
+            gameUI.setAttribute('aria-label', `เริ่มเลเวล ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุนซ้ายขวาด้านหน้า สเปซบาร์เพื่อยิงและรีโหลด`);
             gameUI.focus();
             
             resetGame();
