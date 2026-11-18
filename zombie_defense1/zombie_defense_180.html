@@ -615,6 +615,11 @@
             return angle;
         }
 
+        function resetPlayerOrientation() {
+            resetPlayerOrientation();
+            lastAlpha = null;
+        }
+
         function setPlayerAngle(newAngle) {
             const clamped = clampPlayerAngle(newAngle);
             playerAngle = clamped;
@@ -629,6 +634,9 @@
                 edgeHitPulse = 1.0;
                 const now = performance.now();
                 if (!isGameOver && audioCtx && (now - lastBoundarySoundTime > 600)) {
+                    if (audioCtx.state === 'suspended') {
+                        audioCtx.resume().catch(() => {});
+                    }
                     playSound('edge90', 0.85);
                     lastBoundarySoundTime = now;
                 }
@@ -2391,7 +2399,7 @@
                 this.aimGain.gain.value = 1.0;
 
                 this.distanceGain = audioCtx.createGain();
-                this.distanceGain.gain.value = 0.70;
+                this.distanceGain.gain.value = 0.55;
 
                 this.panner = audioCtx.createPanner();
                 this.panner.panningModel = 'HRTF';
@@ -2485,14 +2493,14 @@
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
 
-                // คำนวณระดับความดังตามระยะแบบเส้นตรง (70% ถึง 100%)
+                // คำนวณระดับความดังตามระยะแบบเส้นตรง (55% ถึง 100%)
                 let volumePercent;
                 if (this.distance > 100) {
-                    volumePercent = 70;
+                    volumePercent = 55;
                 } else if (this.distance < 5) {
                     volumePercent = 100;
                 } else {
-                    volumePercent = 70 + ((100 - this.distance) / (100 - 5)) * 30;
+                    volumePercent = 55 + ((100 - this.distance) / 95) * 45;
                 }
                 let targetDistanceGain = volumePercent / 100;
                 this.setAudioParamSmooth(this.distanceGain.gain, targetDistanceGain, 0.04);
@@ -2685,8 +2693,6 @@
                 currentGift = null;
             }
             clearTimeout(giftSpawnTimer);
-
-            lastAlpha = null;
             keys = { ArrowLeft: false, ArrowRight: false };
             VisualEngine.resetVisuals();
             updateUI();
@@ -2887,6 +2893,7 @@
         }
 
         function startLevel() {
+            resetPlayerOrientation();
             updateUI();
             zombiesSpawned = 0;
             activeZombies = [];
