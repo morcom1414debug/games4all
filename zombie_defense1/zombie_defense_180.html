@@ -615,11 +615,6 @@
             return angle;
         }
 
-        function resetPlayerOrientation() {
-            resetPlayerOrientation();
-            lastAlpha = null;
-        }
-
         function setPlayerAngle(newAngle) {
             const clamped = clampPlayerAngle(newAngle);
             playerAngle = clamped;
@@ -634,9 +629,6 @@
                 edgeHitPulse = 1.0;
                 const now = performance.now();
                 if (!isGameOver && audioCtx && (now - lastBoundarySoundTime > 600)) {
-                    if (audioCtx.state === 'suspended') {
-                        audioCtx.resume().catch(() => {});
-                    }
                     playSound('edge90', 0.85);
                     lastBoundarySoundTime = now;
                 }
@@ -645,6 +637,17 @@
             else if (isAtBoundaryEdge && clamped > (MIN_PLAYER_ANGLE + 4) && clamped < (MAX_PLAYER_ANGLE - 4)) {
                 isAtBoundaryEdge = false;
             }
+        }
+
+        function resetPlayerOrientation() {
+            playerAngle = 0;
+            isAtBoundaryEdge = false;
+            lastBoundarySoundTime = 0;
+            edgeHitPulse = 0;
+            lastAlpha = null;
+            lastMotionTime = 0;
+            keys = { ArrowLeft: false, ArrowRight: false };
+            setPlayerAngle(0);
         }
 
         function clampWorldEntityAngle(angle) {
@@ -2680,10 +2683,7 @@
             isReloading = false;
             lastShotTime = 0;
             isGameOver = false;
-            playerAngle = 0;
-            isAtBoundaryEdge = false;
-            lastBoundarySoundTime = 0;
-            edgeHitPulse = 0;
+            resetPlayerOrientation();
             zombiesSpawned = 0;
             activeZombies.forEach(z => z.die());
             activeZombies = [];
@@ -2693,7 +2693,7 @@
                 currentGift = null;
             }
             clearTimeout(giftSpawnTimer);
-            keys = { ArrowLeft: false, ArrowRight: false };
+
             VisualEngine.resetVisuals();
             updateUI();
         }
