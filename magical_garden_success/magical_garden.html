@@ -894,7 +894,8 @@
                 edgeHitPulse = 1.0;
                 const now = performance.now();
                 if (!silent && !isGameOver && !isLevelTransition && audioCtx && (now - lastBoundarySoundTime > 600)) {
-                    playCenterSound('edge90', 0.85);
+                    const edgePan = atLeftEdge ? -1 : 1; // ชนซ้ายออกหูซ้ายสุด (-1), ชนขวาออกหูขวาสุด (1)
+                    playCenterSound('edge90', 0.85, edgePan);
                     lastBoundarySoundTime = now;
                 }
             } else if (isAtBoundaryEdge && clamped > (MIN_PLAYER_ANGLE + 4) && clamped < (MAX_PLAYER_ANGLE - 4)) {
@@ -964,14 +965,23 @@
             await Promise.all(loadPromises);
         }
 
-        function playCenterSound(bufferName, volume = 1.0) {
+        function playCenterSound(bufferName, volume = 1.0, pan = 0) {
             if (!audioCtx || !audioBuffers[bufferName]) return;
             const source = audioCtx.createBufferSource();
             const gainNode = audioCtx.createGain();
             source.buffer = audioBuffers[bufferName];
             gainNode.gain.value = volume;
-            source.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
+
+            if (pan !== 0 && audioCtx.createStereoPanner) {
+                const stereoPanner = audioCtx.createStereoPanner();
+                stereoPanner.pan.value = Math.max(-1, Math.min(1, pan));
+                source.connect(gainNode);
+                gainNode.connect(stereoPanner);
+                stereoPanner.connect(audioCtx.destination);
+            } else {
+                source.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+            }
             source.start(0);
         }
 
