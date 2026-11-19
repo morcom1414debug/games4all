@@ -784,6 +784,8 @@
         let isGameOver = false;
         let isLevelTransition = false;
         let isStartingGame = false;
+        let endCinematic = null; // null | 'win' | 'lose'
+        let endCinematicTimer = 0;
 
         let activeEnemies = [];
         let activeProjectiles = [];
@@ -972,6 +974,27 @@
             source.start(0);
         }
 
+        function playCenterSoundAsync(bufferName, volume = 1.0) {
+            return new Promise((resolve) => {
+                if (!audioCtx || !audioBuffers[bufferName]) {
+                    resolve();
+                    return;
+                }
+                const source = audioCtx.createBufferSource();
+                const gainNode = audioCtx.createGain();
+                source.buffer = audioBuffers[bufferName];
+                gainNode.gain.value = volume;
+                source.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                source.onended = () => {
+                    try { source.disconnect(); } catch (e) {}
+                    try { gainNode.disconnect(); } catch (e) {}
+                    resolve();
+                };
+                source.start(0);
+            });
+        }
+
         function playRandomCenterSound(names, volume = 1.0) {
             const chosen = names[Math.floor(Math.random() * names.length)];
             playCenterSound(chosen, volume);
@@ -1113,7 +1136,7 @@
         }
 
         function handleOrientation(e) {
-            if (isGameOver || isLevelTransition || !motionEnabled) return;
+            if (isGameOver || isLevelTransition || endCinematic || !motionEnabled) return;
             const currentAlpha = e.alpha;
             if (currentAlpha !== null) {
                 if (lastAlpha !== null) {
@@ -1156,6 +1179,7 @@
             let hitMarkerKill = false;
             let bannerTimeout = null;
             let overlayTimeout = null;
+            let lastFireworkTime = 0;
 
             const enemyVisualMeta = new WeakMap();
             const deathAnimations = [];
@@ -1261,10 +1285,10 @@
                 return halfW + Math.tan(rad) * focal;
             }
 
+            // สเปกขนาดตัวศัตรูตามระยะทาง (ไกลสุด 100 -> 0.45, กลาง 50 -> 0.95, ใกล้สุด 5 -> 2.35)
             function distanceToScreenYAndScale(dist, horizonY) {
                 const clampedDist = Math.max(5, Math.min(115, dist));
-                const normDepth = 16 / (clampedDist + 10);
-                const scale = Math.min(2.45, Math.max(0.12, normDepth * 1.15));
+                const scale = Math.min(2.6, Math.max(0.42, 49.5 / (clampedDist + 16)));
                 const groundSpan = height - horizonY;
                 const t = Math.pow(Math.max(0, Math.min(1, 1 - clampedDist / 108)), 1.5);
                 const footY = horizonY + groundSpan * (0.04 + t * 0.80);
@@ -1272,9 +1296,9 @@
             }
 
             function spawnSparkles(x, y, colors, count, speedScale = 1, gravity = 0.08) {
-                const maxP = isLowEnd ? 65 : 150;
+                const maxP = isLowEnd ? 75 : 180;
                 if (particles.length > maxP) return;
-                const actualCount = isLowEnd ? Math.ceil(count * 0.6) : count;
+                const actualCount = isLowEnd ? Math.ceil(count * 0.65) : count;
                 for (let i = 0; i < actualCount; i++) {
                     const ang = Math.random() * Math.PI * 2;
                     const spd = (1.2 + Math.random() * 4.5) * speedScale;
@@ -1319,7 +1343,6 @@
                 wandCastRecoil = 1.0;
                 wandSparkTimer = 0.22;
 
-                const horizonY = height * 0.41;
                 const startX = width * 0.5 + 24;
                 const startY = height - (height < 520 ? 85 : 122);
 
@@ -1342,7 +1365,7 @@
                 const relAngle = getRelativeAngle(worldAngle, playerAngle);
                 const sx = Math.abs(relAngle) < 82 ? angleToScreenX(relAngle) : width * 0.5;
                 const { scale, footY } = distanceToScreenYAndScale(distance, horizonY);
-                const hitY = footY - 52 * scale;
+                const hitY = footY - 42 * scale;
 
                 if (targetEnemy) {
                     hitMarkerTimer = 0.24;
@@ -1372,9 +1395,16 @@
                 }
             }
 
-            function onGardenDamaged() {
+            function onGardenDamaged(enemyAngle = null, enemyDistance = 5) {
                 cameraShake = 13;
                 flashOverlay(damageOverlay, 280);
+                if (enemyAngle !== null) {
+                    const horizonY = height * 0.41;
+                    const relAngle = getRelativeAngle(enemyAngle, playerAngle);
+                    const sx = Math.abs(relAngle) < 85 ? angleToScreenX(relAngle) : (relAngle < 0 ? 40 : width - 40);
+                    const { footY } = distanceToScreenYAndScale(enemyDistance, horizonY);
+                    spawnSparkles(sx, footY - 22, ['#fb7185', '#f43f5e', '#fde047', '#ffffff'], 16, 1.15, 0.07);
+                }
             }
 
             function onShieldBlocked(worldAngle, distance) {
@@ -1406,11 +1436,22 @@
                 spawnSparkles(width * 0.5, height * 0.36, ['#fef08a', '#f472b6', '#c084fc'], 28, 1.3, 0.04);
             }
 
+            function onEndCinematicStart(isWin) {
+                if (isWin) {
+                    triggerBanner('ชัยชนะแห่งสวนเวทมนตร์ ✨', 'ดอกไม้ทุกต้นเบ่งบานและเต้นรำอย่างมีความสุข!', 5500);
+                    spawnSparkles(width * 0.5, height * 0.32, ['#fef08a', '#f472b6', '#38bdf8', '#6ee7b7', '#c084fc'], 42, 1.5, 0.04);
+                } else {
+                    triggerBanner('สวนเวทมนตร์ถูกทำลาย...', 'ดอกไม้ทั้งหมดเหี่ยวเฉาลงแล้ว', 5500);
+                    spawnSparkles(width * 0.5, height * 0.58, ['#9f1239', '#78350f', '#a855f7'], 28, 0.8, 0.09);
+                }
+            }
+
             function resetVisuals() {
                 wandCastRecoil = 0;
                 wandSparkTimer = 0;
                 cameraShake = 0;
                 hitMarkerTimer = 0;
+                lastFireworkTime = 0;
                 deathAnimations.length = 0;
                 activeProjectiles.length = 0;
                 particles.length = 0;
@@ -1423,27 +1464,43 @@
             // RENDERING: MAGICAL FAIRYTALE GARDEN (2.5D THIRD-PERSON)
             // =====================================================================
             function drawFairyGardenWorld(nowSec, horizonY) {
-                // 1. Pastel Magical Sky
+                const isWinCine = (endCinematic === 'win');
+                const isLoseCine = (endCinematic === 'lose');
+                const loseProgress = isLoseCine ? Math.min(1, endCinematicTimer / 4.2) : 0;
+
+                // 1. Pastel Magical Sky (ปรับอารมณ์สีตามฉากชนะ/แพ้)
                 const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
-                skyGrad.addColorStop(0, '#4c1d95');
-                skyGrad.addColorStop(0.45, '#a855f7');
-                skyGrad.addColorStop(0.82, '#f9a8d4');
-                skyGrad.addColorStop(1, '#fef3c7');
+                if (isLoseCine) {
+                    skyGrad.addColorStop(0, '#1e1b2e');
+                    skyGrad.addColorStop(0.5, '#4c1d3d');
+                    skyGrad.addColorStop(1, '#78350f');
+                } else if (isWinCine) {
+                    skyGrad.addColorStop(0, '#6d28d9');
+                    skyGrad.addColorStop(0.4, '#ec4899');
+                    skyGrad.addColorStop(0.78, '#fde047');
+                    skyGrad.addColorStop(1, '#a7f3d0');
+                } else {
+                    skyGrad.addColorStop(0, '#4c1d95');
+                    skyGrad.addColorStop(0.45, '#a855f7');
+                    skyGrad.addColorStop(0.82, '#f9a8d4');
+                    skyGrad.addColorStop(1, '#fef3c7');
+                }
                 ctx.fillStyle = skyGrad;
                 ctx.fillRect(0, 0, width, horizonY + 2);
 
                 // Soft glowing sun / magic moon & clouds
                 const sunRel = getRelativeAngle(18, playerAngle);
-                if (Math.abs(sunRel) < HALF_FOV + 25) {
+                if (Math.abs(sunRel) < HALF_FOV + 25 && !isLoseCine) {
                     const sx = angleToScreenX(sunRel);
                     const sy = horizonY * 0.30;
-                    const glow = ctx.createRadialGradient(sx, sy, 6, sx, sy, 110);
-                    glow.addColorStop(0, 'rgba(255, 255, 240, 0.95)');
-                    glow.addColorStop(0.35, 'rgba(253, 224, 71, 0.45)');
+                    const sunRadius = isWinCine ? 145 : 110;
+                    const glow = ctx.createRadialGradient(sx, sy, 6, sx, sy, sunRadius);
+                    glow.addColorStop(0, 'rgba(255, 255, 240, 0.98)');
+                    glow.addColorStop(0.35, 'rgba(253, 224, 71, 0.55)');
                     glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
                     ctx.fillStyle = glow;
                     ctx.beginPath();
-                    ctx.arc(sx, sy, 110, 0, Math.PI * 2);
+                    ctx.arc(sx, sy, sunRadius, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
@@ -1454,21 +1511,21 @@
                     const hy = horizonY;
                     ctx.save();
                     ctx.translate(hx, hy);
-                    // Cottage body
-                    ctx.fillStyle = '#fef3c7';
+                    if (isLoseCine) {
+                        ctx.rotate(loseProgress * 0.08);
+                    }
+                    ctx.fillStyle = isLoseCine ? '#a8a29e' : '#fef3c7';
                     ctx.beginPath();
                     ctx.roundRect(-34, -46, 68, 46, 6);
                     ctx.fill();
-                    // Pink/Lavender Roof
-                    ctx.fillStyle = '#db2777';
+                    ctx.fillStyle = isLoseCine ? '#4c0519' : '#db2777';
                     ctx.beginPath();
                     ctx.moveTo(-42, -44);
                     ctx.lineTo(0, -78);
                     ctx.lineTo(42, -44);
                     ctx.closePath();
                     ctx.fill();
-                    // Glowing window & cute door
-                    ctx.fillStyle = '#fde047';
+                    ctx.fillStyle = isLoseCine ? '#27272a' : '#fde047';
                     ctx.beginPath();
                     ctx.arc(-14, -26, 7, 0, Math.PI * 2);
                     ctx.fill();
@@ -1488,16 +1545,16 @@
                     const s = t.scale;
 
                     if (t.isTree) {
-                        ctx.fillStyle = '#78350f';
+                        ctx.fillStyle = isLoseCine ? '#451a03' : '#78350f';
                         ctx.fillRect(tx - 6 * s, horizonY - 45 * s, 12 * s, 45 * s);
-                        ctx.fillStyle = t.hue;
+                        ctx.fillStyle = isLoseCine ? '#57534e' : t.hue;
                         ctx.beginPath();
                         ctx.arc(tx, horizonY - 62 * s, 32 * s, 0, Math.PI * 2);
                         ctx.arc(tx - 20 * s, horizonY - 48 * s, 22 * s, 0, Math.PI * 2);
                         ctx.arc(tx + 20 * s, horizonY - 48 * s, 22 * s, 0, Math.PI * 2);
                         ctx.fill();
                     } else {
-                        ctx.fillStyle = t.leafHue;
+                        ctx.fillStyle = isLoseCine ? '#44403c' : t.leafHue;
                         ctx.beginPath();
                         ctx.arc(tx, horizonY - 10 * s, 24 * s, Math.PI, 0);
                         ctx.arc(tx - 16 * s, horizonY - 6 * s, 16 * s, Math.PI, 0);
@@ -1507,9 +1564,13 @@
                 }
 
                 // 4. Lush Magical Meadow Ground
-                const hpRatio = Math.max(0, gardenHP / MAX_GARDEN_HP);
+                const hpRatio = isLoseCine ? 0 : (isWinCine ? 1 : Math.max(0, gardenHP / MAX_GARDEN_HP));
                 const groundGrad = ctx.createLinearGradient(0, horizonY, 0, height);
-                if (hpRatio > 0.5) {
+                if (isLoseCine) {
+                    groundGrad.addColorStop(0, '#78350f');
+                    groundGrad.addColorStop(0.45, '#451a03');
+                    groundGrad.addColorStop(1, '#1c1917');
+                } else if (hpRatio > 0.5) {
                     groundGrad.addColorStop(0, '#6ee7b7');
                     groundGrad.addColorStop(0.4, '#34d399');
                     groundGrad.addColorStop(1, '#059669');
@@ -1550,77 +1611,129 @@
                     if (Math.abs(rel) > HALF_FOV + 10) continue;
                     const mx = angleToScreenX(rel);
                     const { scale, footY } = distanceToScreenYAndScale(m.dist, horizonY);
-                    const s = scale * m.scale;
+                    const s = scale * m.scale * 0.55;
 
-                    ctx.fillStyle = '#fef3c7';
+                    ctx.fillStyle = isLoseCine ? '#78716c' : '#fef3c7';
                     ctx.fillRect(mx - 4 * s, footY - 14 * s, 8 * s, 14 * s);
-                    ctx.fillStyle = m.capColor;
+                    ctx.fillStyle = isLoseCine ? '#57534e' : m.capColor;
                     ctx.beginPath();
                     ctx.arc(mx, footY - 14 * s, 13 * s, Math.PI, 0);
                     ctx.fill();
-                    ctx.fillStyle = '#fff';
-                    ctx.beginPath();
-                    ctx.arc(mx - 4 * s, footY - 19 * s, 2.2 * s, 0, Math.PI * 2);
-                    ctx.arc(mx + 4 * s, footY - 18 * s, 2.2 * s, 0, Math.PI * 2);
-                    ctx.fill();
+                    if (!isLoseCine) {
+                        ctx.fillStyle = '#fff';
+                        ctx.beginPath();
+                        ctx.arc(mx - 4 * s, footY - 19 * s, 2.2 * s, 0, Math.PI * 2);
+                        ctx.arc(mx + 4 * s, footY - 18 * s, 2.2 * s, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
                 }
 
-                // 3 Flower Beds (reflecting overall Garden HP state)
+                // 3 Flower Beds (เต้นรำในฉากชนะ / เหี่ยวเฉาร่วงโรยในฉากแพ้)
                 for (let i = 0; i < flowersBed.length; i++) {
                     const fl = flowersBed[i];
                     const rel = getRelativeAngle(fl.angle, playerAngle);
                     if (Math.abs(rel) > HALF_FOV + 12) continue;
                     const fx = angleToScreenX(rel);
                     const { scale, footY } = distanceToScreenYAndScale(fl.dist, horizonY);
-                    const s = scale * fl.size;
-                    const droop = (1 - hpRatio) * 8 * s;
-                    const sway = Math.sin(nowSec * 2.5 + fl.swayOffset) * 3 * s * hpRatio;
+                    const s = scale * fl.size * 0.58;
 
-                    // Stem
-                    ctx.strokeStyle = hpRatio > 0.3 ? '#15803d' : '#713f12';
-                    ctx.lineWidth = Math.max(1.5, 2.5 * s);
-                    ctx.beginPath();
-                    ctx.moveTo(fx, footY);
-                    ctx.quadraticCurveTo(fx + sway, footY - 10 * s, fx + sway + droop * 0.5, footY - 18 * s + droop);
-                    ctx.stroke();
+                    if (isLoseCine) {
+                        // ดอกไม้คอตกเหี่ยวเฉาและกลีบดอกร่วงลงพื้น
+                        const wilt = 11 * s;
+                        ctx.strokeStyle = '#57534e';
+                        ctx.lineWidth = Math.max(1.5, 2.4 * s);
+                        ctx.beginPath();
+                        ctx.moveTo(fx, footY);
+                        ctx.quadraticCurveTo(fx + 5 * s, footY - 6 * s, fx + 9 * s, footY - 7 * s + wilt * 0.35);
+                        ctx.stroke();
 
-                    // Blossom (if Garden HP > 0)
-                    if (gardenHP > 0) {
-                        const bx = fx + sway + droop * 0.5;
-                        const by = footY - 18 * s + droop;
-                        ctx.globalAlpha = 0.45 + 0.55 * hpRatio;
+                        // กลีบดอกไม้ร่วงบนพื้นดิน
+                        ctx.fillStyle = '#7f1d1d';
+                        ctx.globalAlpha = Math.max(0.25, 1 - loseProgress * 0.7);
+                        ctx.beginPath();
+                        ctx.ellipse(fx + 8 * s, footY - 1 * s, 4 * s, 2 * s, 0.3, 0, Math.PI * 2);
+                        ctx.ellipse(fx - 4 * s, footY, 3.5 * s, 1.8 * s, -0.4, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (isWinCine) {
+                        // ดอกไม้กระโดดและโยกเต้นรำเป็นจังหวะ
+                        const danceJump = Math.abs(Math.sin(nowSec * 6.5 + fl.swayOffset)) * 8 * s;
+                        const danceSway = Math.sin(nowSec * 6.5 + fl.swayOffset) * 7 * s;
+                        const by = footY - 20 * s - danceJump;
+                        const bx = fx + danceSway;
+
+                        ctx.strokeStyle = '#15803d';
+                        ctx.lineWidth = Math.max(2, 2.8 * s);
+                        ctx.beginPath();
+                        ctx.moveTo(fx, footY);
+                        ctx.quadraticCurveTo(fx + danceSway * 0.5, footY - 10 * s, bx, by);
+                        ctx.stroke();
+
                         ctx.fillStyle = fl.color;
-                        const petalR = (4.5 + 2 * hpRatio) * s;
+                        const petalR = 7.2 * s;
                         for (let p = 0; p < 5; p++) {
-                            const pa = (p * Math.PI * 2) / 5 + nowSec * 0.4;
+                            const pa = (p * Math.PI * 2) / 5 + nowSec * 2.2;
                             ctx.beginPath();
-                            ctx.arc(bx + Math.cos(pa) * petalR, by + Math.sin(pa) * petalR, petalR * 0.72, 0, Math.PI * 2);
+                            ctx.arc(bx + Math.cos(pa) * petalR, by + Math.sin(pa) * petalR, petalR * 0.75, 0, Math.PI * 2);
                             ctx.fill();
                         }
                         ctx.fillStyle = '#fef08a';
                         ctx.beginPath();
-                        ctx.arc(bx, by, petalR * 0.65, 0, Math.PI * 2);
+                        ctx.arc(bx, by, petalR * 0.68, 0, Math.PI * 2);
                         ctx.fill();
-                        ctx.globalAlpha = 1;
+                    } else {
+                        const droop = (1 - hpRatio) * 8 * s;
+                        const sway = Math.sin(nowSec * 2.5 + fl.swayOffset) * 3 * s * hpRatio;
+
+                        ctx.strokeStyle = hpRatio > 0.3 ? '#15803d' : '#713f12';
+                        ctx.lineWidth = Math.max(1.5, 2.5 * s);
+                        ctx.beginPath();
+                        ctx.moveTo(fx, footY);
+                        ctx.quadraticCurveTo(fx + sway, footY - 10 * s, fx + sway + droop * 0.5, footY - 18 * s + droop);
+                        ctx.stroke();
+
+                        if (gardenHP > 0) {
+                            const bx = fx + sway + droop * 0.5;
+                            const by = footY - 18 * s + droop;
+                            ctx.globalAlpha = 0.45 + 0.55 * hpRatio;
+                            ctx.fillStyle = fl.color;
+                            const petalR = (4.5 + 2 * hpRatio) * s;
+                            for (let p = 0; p < 5; p++) {
+                                const pa = (p * Math.PI * 2) / 5 + nowSec * 0.4;
+                                ctx.beginPath();
+                                ctx.arc(bx + Math.cos(pa) * petalR, by + Math.sin(pa) * petalR, petalR * 0.72, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                            ctx.fillStyle = '#fef08a';
+                            ctx.beginPath();
+                            ctx.arc(bx, by, petalR * 0.65, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.globalAlpha = 1;
+                        }
                     }
                 }
 
-                // Floating Butterflies
-                for (let i = 0; i < butterflies.length; i++) {
-                    const bf = butterflies[i];
-                    const animAngle = bf.angle + Math.sin(nowSec * bf.speed + bf.phase) * 5;
-                    const rel = getRelativeAngle(animAngle, playerAngle);
-                    if (Math.abs(rel) > HALF_FOV + 10) continue;
-                    const bx = angleToScreenX(rel);
-                    const { scale, footY } = distanceToScreenYAndScale(bf.dist, horizonY);
-                    const by = footY - 45 * scale + Math.cos(nowSec * 3 + bf.phase) * 10;
-                    const flap = Math.abs(Math.sin(nowSec * 12 + bf.phase));
+                // Floating Butterflies (ซ่อนในฉากแพ้ / บินคึกคักในฉากชนะ)
+                if (!isLoseCine) {
+                    const bfCount = isWinCine ? butterflies.length : Math.min(butterflies.length, 10);
+                    for (let i = 0; i < bfCount; i++) {
+                        const bf = butterflies[i];
+                        const speedMult = isWinCine ? 2.2 : 1.0;
+                        const animAngle = bf.angle + Math.sin(nowSec * bf.speed * speedMult + bf.phase) * 6;
+                        const rel = getRelativeAngle(animAngle, playerAngle);
+                        if (Math.abs(rel) > HALF_FOV + 10) continue;
+                        const bx = angleToScreenX(rel);
+                        const { scale, footY } = distanceToScreenYAndScale(bf.dist, horizonY);
+                        const s = scale * 0.6;
+                        const by = footY - 38 * s + Math.cos(nowSec * 3.5 + bf.phase) * 12;
+                        const flap = Math.abs(Math.sin(nowSec * 14 + bf.phase));
 
-                    ctx.fillStyle = bf.color;
-                    ctx.beginPath();
-                    ctx.ellipse(bx - 4 * scale * flap, by, 5 * scale * flap, 3.5 * scale, -0.3, 0, Math.PI * 2);
-                    ctx.ellipse(bx + 4 * scale * flap, by, 5 * scale * flap, 3.5 * scale, 0.3, 0, Math.PI * 2);
-                    ctx.fill();
+                        ctx.fillStyle = bf.color;
+                        ctx.beginPath();
+                        ctx.ellipse(bx - 5 * s * flap, by, 6 * s * flap, 4 * s, -0.3, 0, Math.PI * 2);
+                        ctx.ellipse(bx + 5 * s * flap, by, 6 * s * flap, 4 * s, 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
                 }
             }
 
@@ -1660,7 +1773,7 @@
             }
 
             // =====================================================================
-            // CUTE FANTASY MONSTER RENDERER (6 TYPES)
+            // CUTE FANTASY MONSTER RENDERER (6 TYPES - LARGE & HIGH CONTRAST)
             // =====================================================================
             function drawEnemyCharacter(type, sx, footY, scale, phase, flinch, deathProgress, nowSec, hpRatio, distance) {
                 ctx.save();
@@ -1679,10 +1792,15 @@
                     ctx.translate((Math.random() - 0.5) * 10 * flinch * scale, -8 * flinch * scale);
                 }
 
+                // เส้นขอบตัดพื้นหลังเพื่อการมองเห็นที่คมชัดในทุกระยะ
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                const outlineW = Math.max(1.8, 2.2 * scale);
+
                 // Shadow
-                ctx.fillStyle = 'rgba(46, 16, 101, 0.35)';
+                ctx.fillStyle = 'rgba(24, 6, 51, 0.45)';
                 ctx.beginPath();
-                ctx.ellipse(0, 0, 24 * scale, 6.5 * scale, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 0, 26 * scale, 7.5 * scale, 0, 0, Math.PI * 2);
                 ctx.fill();
 
                 if (type === ENEMY_TYPES.SLIME) {
@@ -1693,96 +1811,123 @@
                     ctx.scale(stretchX, stretchY);
 
                     const grad = ctx.createRadialGradient(-6 * scale, -28 * scale, 4 * scale, 0, -22 * scale, 28 * scale);
-                    grad.addColorStop(0, '#93c5fd');
-                    grad.addColorStop(1, '#3b82f6');
+                    grad.addColorStop(0, '#bae6fd');
+                    grad.addColorStop(1, '#2563eb');
                     ctx.fillStyle = grad;
+                    ctx.strokeStyle = '#1e1b4b';
+                    ctx.lineWidth = outlineW;
                     ctx.beginPath();
-                    ctx.arc(0, -18 * scale, 22 * scale, Math.PI, 0);
-                    ctx.quadraticCurveTo(24 * scale, 0, 0, 0);
-                    ctx.quadraticCurveTo(-24 * scale, 0, -22 * scale, -18 * scale);
+                    ctx.arc(0, -18 * scale, 23 * scale, Math.PI, 0);
+                    ctx.quadraticCurveTo(25 * scale, 0, 0, 0);
+                    ctx.quadraticCurveTo(-25 * scale, 0, -23 * scale, -18 * scale);
+                    ctx.closePath();
                     ctx.fill();
+                    ctx.stroke();
 
                     // Eyes & Mouth
-                    ctx.fillStyle = '#1e1b4b';
+                    ctx.fillStyle = '#ffffff';
                     ctx.beginPath();
-                    ctx.arc(-7 * scale, -18 * scale, 2.8 * scale, 0, Math.PI * 2);
-                    ctx.arc(7 * scale, -18 * scale, 2.8 * scale, 0, Math.PI * 2);
+                    ctx.arc(-7 * scale, -19 * scale, 4.2 * scale, 0, Math.PI * 2);
+                    ctx.arc(7 * scale, -19 * scale, 4.2 * scale, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#0f172a';
+                    ctx.beginPath();
+                    ctx.arc(-7 * scale, -19 * scale, 2.4 * scale, 0, Math.PI * 2);
+                    ctx.arc(7 * scale, -19 * scale, 2.4 * scale, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.fillStyle = '#f43f5e';
                     ctx.beginPath();
-                    ctx.arc(0, -11 * scale, isAttacking ? 5 * scale : 3 * scale, 0, Math.PI);
+                    ctx.arc(0, -11 * scale, isAttacking ? 5.8 * scale : 3.5 * scale, 0, Math.PI);
                     ctx.fill();
 
                 } else if (type === ENEMY_TYPES.WORM) {
-                    // หนอนจอมมุด (โผล่จากดินสีเขียวสดใส)
+                    // หนอนจอมมุด (โผล่จากดินสีเขียวสดใสตัดขอบเข้ม)
                     const wiggle = Math.sin(phase * 2.5) * 5 * scale;
-                    ctx.fillStyle = '#92400e';
+                    ctx.fillStyle = '#78350f';
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = Math.max(1.2, 1.4 * scale);
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, 22 * scale, 6 * scale, 0, 0, Math.PI * 2);
+                    ctx.ellipse(0, 0, 23 * scale, 6.5 * scale, 0, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.stroke();
 
                     ctx.fillStyle = '#84cc16';
+                    ctx.strokeStyle = '#1a2e05';
+                    ctx.lineWidth = outlineW;
                     ctx.beginPath();
-                    ctx.roundRect(-12 * scale + wiggle * 0.4, -36 * scale, 24 * scale, 36 * scale, 12 * scale);
+                    ctx.roundRect(-13 * scale + wiggle * 0.4, -38 * scale, 26 * scale, 38 * scale, 13 * scale);
                     ctx.fill();
+                    ctx.stroke();
 
                     ctx.fillStyle = '#fef08a';
                     ctx.beginPath();
-                    ctx.arc(-5 * scale + wiggle * 0.5, -26 * scale, 3 * scale, 0, Math.PI * 2);
-                    ctx.arc(5 * scale + wiggle * 0.5, -26 * scale, 3 * scale, 0, Math.PI * 2);
+                    ctx.arc(-5.5 * scale + wiggle * 0.5, -27 * scale, 3.6 * scale, 0, Math.PI * 2);
+                    ctx.arc(5.5 * scale + wiggle * 0.5, -27 * scale, 3.6 * scale, 0, Math.PI * 2);
                     ctx.fill();
 
                 } else if (type === ENEMY_TYPES.SPIKE) {
-                    // ลูกหนามกลิ้ง (ทรงกลมเกราะหนามสีม่วงเข้ม)
-                    ctx.translate(0, -22 * scale - bounce * 0.5);
+                    // ลูกหนามกลิ้ง (ทรงกลมเกราะหนามสีม่วงเข้มขอบเหลืองทอง)
+                    ctx.translate(0, -24 * scale - bounce * 0.5);
                     ctx.rotate(phase * 0.8);
                     ctx.fillStyle = '#6b21a8';
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = outlineW;
                     ctx.beginPath();
-                    ctx.arc(0, 0, 22 * scale, 0, Math.PI * 2);
+                    ctx.arc(0, 0, 23 * scale, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.stroke();
 
                     // Spikes
                     ctx.fillStyle = '#f472b6';
+                    ctx.strokeStyle = '#3b0764';
+                    ctx.lineWidth = Math.max(1.4, 1.6 * scale);
                     for (let i = 0; i < 8; i++) {
                         const a = (i * Math.PI) / 4;
                         ctx.beginPath();
-                        ctx.moveTo(Math.cos(a - 0.2) * 20 * scale, Math.sin(a - 0.2) * 20 * scale);
-                        ctx.lineTo(Math.cos(a) * 30 * scale, Math.sin(a) * 30 * scale);
-                        ctx.lineTo(Math.cos(a + 0.2) * 20 * scale, Math.sin(a + 0.2) * 20 * scale);
+                        ctx.moveTo(Math.cos(a - 0.22) * 21 * scale, Math.sin(a - 0.22) * 21 * scale);
+                        ctx.lineTo(Math.cos(a) * 32 * scale, Math.sin(a) * 32 * scale);
+                        ctx.lineTo(Math.cos(a + 0.22) * 21 * scale, Math.sin(a + 0.22) * 21 * scale);
+                        ctx.closePath();
                         ctx.fill();
+                        ctx.stroke();
                     }
                     ctx.fillStyle = '#fef08a';
                     ctx.beginPath();
-                    ctx.arc(-6 * scale, -3 * scale, 3 * scale, 0, Math.PI * 2);
-                    ctx.arc(6 * scale, -3 * scale, 3 * scale, 0, Math.PI * 2);
+                    ctx.arc(-6.5 * scale, -3 * scale, 3.6 * scale, 0, Math.PI * 2);
+                    ctx.arc(6.5 * scale, -3 * scale, 3.6 * scale, 0, Math.PI * 2);
                     ctx.fill();
 
                 } else if (type === ENEMY_TYPES.MUSHROOM) {
                     // เห็ดปีศาจตัวใหญ่ (ตัวใหญ่ อึด 5 HP)
-                    const s = scale * 1.45;
+                    const s = scale * 1.38;
                     ctx.translate(0, -bounce * 0.3);
                     ctx.fillStyle = '#fde68a';
+                    ctx.strokeStyle = '#4c0519';
+                    ctx.lineWidth = outlineW;
                     ctx.beginPath();
                     ctx.roundRect(-16 * s, -36 * s, 32 * s, 36 * s, 8 * s);
                     ctx.fill();
+                    ctx.stroke();
 
                     // Big Spotted Cap
                     ctx.fillStyle = '#be185d';
                     ctx.beginPath();
                     ctx.arc(0, -34 * s, 32 * s, Math.PI, 0);
+                    ctx.closePath();
                     ctx.fill();
+                    ctx.stroke();
 
                     ctx.fillStyle = '#fbcfe8';
                     ctx.beginPath();
-                    ctx.arc(-14 * s, -48 * s, 5 * s, 0, Math.PI * 2);
-                    ctx.arc(12 * s, -46 * s, 6 * s, 0, Math.PI * 2);
-                    ctx.arc(0, -56 * s, 4.5 * s, 0, Math.PI * 2);
+                    ctx.arc(-14 * s, -48 * s, 5.5 * s, 0, Math.PI * 2);
+                    ctx.arc(12 * s, -46 * s, 6.5 * s, 0, Math.PI * 2);
+                    ctx.arc(0, -56 * s, 5 * s, 0, Math.PI * 2);
                     ctx.fill();
 
                     ctx.fillStyle = '#4c0519';
                     ctx.beginPath();
-                    ctx.arc(-7 * s, -20 * s, 3 * s, 0, Math.PI * 2);
-                    ctx.arc(7 * s, -20 * s, 3 * s, 0, Math.PI * 2);
+                    ctx.arc(-7 * s, -20 * s, 3.4 * s, 0, Math.PI * 2);
+                    ctx.arc(7 * s, -20 * s, 3.4 * s, 0, Math.PI * 2);
                     ctx.fill();
 
                 } else if (type === ENEMY_TYPES.BAT) {
@@ -1791,71 +1936,83 @@
                     const flap = Math.sin(nowSec * 18 + phase) * 0.55;
                     ctx.translate(0, hoverY);
 
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = Math.max(1.5, 1.8 * scale);
+
                     // Wings
                     ctx.fillStyle = '#7e22ce';
                     ctx.beginPath();
                     ctx.moveTo(-8 * scale, 0);
-                    ctx.quadraticCurveTo(-28 * scale, -18 * scale * flap, -34 * scale, 6 * scale);
-                    ctx.lineTo(-10 * scale, 8 * scale);
+                    ctx.quadraticCurveTo(-30 * scale, -20 * scale * flap, -36 * scale, 7 * scale);
+                    ctx.lineTo(-10 * scale, 9 * scale);
+                    ctx.closePath();
                     ctx.fill();
+                    ctx.stroke();
 
                     ctx.beginPath();
                     ctx.moveTo(8 * scale, 0);
-                    ctx.quadraticCurveTo(28 * scale, -18 * scale * flap, 34 * scale, 6 * scale);
-                    ctx.lineTo(10 * scale, 8 * scale);
+                    ctx.quadraticCurveTo(30 * scale, -20 * scale * flap, 36 * scale, 7 * scale);
+                    ctx.lineTo(10 * scale, 9 * scale);
+                    ctx.closePath();
                     ctx.fill();
+                    ctx.stroke();
 
                     // Cute Body
                     ctx.fillStyle = '#581c87';
                     ctx.beginPath();
-                    ctx.arc(0, 0, 14 * scale, 0, Math.PI * 2);
+                    ctx.arc(0, 0, 15 * scale, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.stroke();
 
                     ctx.fillStyle = '#facc15';
                     ctx.beginPath();
-                    ctx.arc(-5 * scale, -2 * scale, 2.5 * scale, 0, Math.PI * 2);
-                    ctx.arc(5 * scale, -2 * scale, 2.5 * scale, 0, Math.PI * 2);
+                    ctx.arc(-5.5 * scale, -2 * scale, 3.2 * scale, 0, Math.PI * 2);
+                    ctx.arc(5.5 * scale, -2 * scale, 3.2 * scale, 0, Math.PI * 2);
                     ctx.fill();
 
                 } else if (type === ENEMY_TYPES.FLOWER) {
                     // ดอกไม้ปีศาจ (ศัตรูพิเศษ 2 HP โจมตีแรง 20)
                     const s = scale * 1.15;
-                    ctx.strokeStyle = '#15803d';
-                    ctx.lineWidth = 6 * s;
+                    ctx.strokeStyle = '#14532d';
+                    ctx.lineWidth = 7 * s;
                     ctx.beginPath();
                     ctx.moveTo(0, 0);
                     ctx.lineTo(0, -34 * s);
                     ctx.stroke();
 
                     ctx.translate(0, -42 * s - bounce * 0.4);
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = Math.max(1.5, 1.7 * scale);
                     // Petals
                     ctx.fillStyle = '#e11d48';
                     for (let p = 0; p < 6; p++) {
                         const a = (p * Math.PI) / 3 + nowSec * 1.5;
                         ctx.beginPath();
-                        ctx.arc(Math.cos(a) * 16 * s, Math.sin(a) * 16 * s, 9 * s, 0, Math.PI * 2);
+                        ctx.arc(Math.cos(a) * 17 * s, Math.sin(a) * 17 * s, 9.5 * s, 0, Math.PI * 2);
                         ctx.fill();
+                        ctx.stroke();
                     }
                     ctx.fillStyle = '#881337';
                     ctx.beginPath();
-                    ctx.arc(0, 0, 14 * s, 0, Math.PI * 2);
+                    ctx.arc(0, 0, 15 * s, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.stroke();
 
                     ctx.fillStyle = '#fef08a';
                     ctx.beginPath();
-                    ctx.arc(-5 * s, -3 * s, 2.5 * s, 0, Math.PI * 2);
-                    ctx.arc(5 * s, -3 * s, 2.5 * s, 0, Math.PI * 2);
+                    ctx.arc(-5.5 * s, -3 * s, 3 * s, 0, Math.PI * 2);
+                    ctx.arc(5.5 * s, -3 * s, 3 * s, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
-                // HP Bar สำหรับศัตรูที่ต้องยิงหลายนัด
+                // HP Bar สำหรับศัตรูที่ต้องยิงหลายนัด (ขยายให้หนาและเห็นชัด)
                 if (hpRatio < 1 && hpRatio > 0 && deathProgress === 0) {
-                    const barW = 36 * scale;
-                    const barH = Math.max(4, 5 * scale);
-                    const barY = -72 * scale;
-                    ctx.fillStyle = 'rgba(24, 6, 51, 0.75)';
-                    ctx.fillRect(-barW * 0.5, barY, barW, barH);
-                    ctx.fillStyle = '#f472b6';
+                    const barW = 44 * scale;
+                    const barH = Math.max(6, 7 * scale);
+                    const barY = -78 * scale;
+                    ctx.fillStyle = 'rgba(15, 5, 35, 0.88)';
+                    ctx.fillRect(-barW * 0.5 - 1.5, barY - 1.5, barW + 3, barH + 3);
+                    ctx.fillStyle = '#f43f5e';
                     ctx.fillRect(-barW * 0.5, barY, barW * hpRatio, barH);
                 }
 
@@ -1872,14 +2029,30 @@
                 const girlY = height - shootReserve + 12;
                 const scale = Math.min(1.25, Math.max(0.78, Math.min(width, height) / 500));
 
-                const idleBob = Math.sin(nowSec * 3.2) * 3;
-                const recoilOffset = wandCastRecoil * 10;
+                const isWinCine = (endCinematic === 'win');
+                const isLoseCine = (endCinematic === 'lose');
 
-                ctx.translate(girlX, girlY + idleBob + recoilOffset);
+                let animOffsetY = Math.sin(nowSec * 3.2) * 3;
+                let recoilOffset = wandCastRecoil * 10;
+                let bodyTilt = 0;
+
+                if (isWinCine) {
+                    // กระโดดดีใจและโยกตัวเต้นรำ
+                    animOffsetY = -Math.abs(Math.sin(nowSec * 6.5)) * 26;
+                    bodyTilt = Math.sin(nowSec * 6.5) * 0.12;
+                } else if (isLoseCine) {
+                    // ทรุดเข่าลงพื้นและก้มหน้าเสียใจ
+                    const kneelT = Math.min(1, endCinematicTimer / 1.4);
+                    animOffsetY = kneelT * 24;
+                    bodyTilt = kneelT * 0.16;
+                }
+
+                ctx.translate(girlX, girlY + animOffsetY + recoilOffset);
                 ctx.scale(scale, scale);
+                ctx.rotate(bodyTilt);
 
                 // Shield Aura around Magical Girl when shieldCharges > 0
-                if (shieldCharges > 0) {
+                if (shieldCharges > 0 && !isLoseCine) {
                     const pulse = 1 + Math.sin(nowSec * 5) * 0.05;
                     const aura = ctx.createRadialGradient(0, -68, 12, 0, -68, 78 * pulse);
                     aura.addColorStop(0, 'rgba(244, 114, 182, 0.08)');
@@ -1892,7 +2065,7 @@
                 }
 
                 // Magical Dress Skirt (Pastel Pink & Lavender frills)
-                ctx.fillStyle = '#ec4899';
+                ctx.fillStyle = isLoseCine ? '#9d174d' : '#ec4899';
                 ctx.beginPath();
                 ctx.moveTo(-18, -62);
                 ctx.lineTo(-38, -14);
@@ -1901,7 +2074,7 @@
                 ctx.closePath();
                 ctx.fill();
 
-                ctx.fillStyle = '#fbcfe8';
+                ctx.fillStyle = isLoseCine ? '#f9a8d4' : '#fbcfe8';
                 ctx.beginPath();
                 ctx.moveTo(-24, -44);
                 ctx.lineTo(-34, -18);
@@ -1911,7 +2084,7 @@
                 ctx.fill();
 
                 // Ribbon Bow at Back
-                ctx.fillStyle = '#fef08a';
+                ctx.fillStyle = isLoseCine ? '#ca8a04' : '#fef08a';
                 ctx.beginPath();
                 ctx.ellipse(-12, -56, 11, 6, -0.3, 0, Math.PI * 2);
                 ctx.ellipse(12, -56, 11, 6, 0.3, 0, Math.PI * 2);
@@ -1921,14 +2094,14 @@
                 ctx.fill();
 
                 // Torso & Sleeves
-                ctx.fillStyle = '#f472b6';
+                ctx.fillStyle = isLoseCine ? '#db2777' : '#f472b6';
                 ctx.beginPath();
                 ctx.roundRect(-16, -88, 32, 30, 8);
                 ctx.fill();
 
                 // Long Flowing Pink Hair (Back View)
-                const hairSway = Math.sin(nowSec * 2.6) * 4;
-                ctx.fillStyle = '#f9a8d4';
+                const hairSway = isLoseCine ? 0 : Math.sin(nowSec * (isWinCine ? 6.5 : 2.6)) * (isWinCine ? 9 : 4);
+                ctx.fillStyle = isLoseCine ? '#f472b6' : '#f9a8d4';
                 ctx.beginPath();
                 ctx.moveTo(-22, -105);
                 ctx.quadraticCurveTo(-30 + hairSway, -60, -24 + hairSway, -34);
@@ -1937,48 +2110,73 @@
                 ctx.closePath();
                 ctx.fill();
 
-                // Head & Cute Witch/Magical Hat
+                // Head & Cute Witch/Magical Hat (ก้มศีรษะลงเล็กน้อยตอนเสียใจ)
+                const headDropY = isLoseCine ? 8 : 0;
                 ctx.fillStyle = '#f472b6';
                 ctx.beginPath();
-                ctx.arc(0, -106, 21, 0, Math.PI * 2);
+                ctx.arc(0, -106 + headDropY, 21, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Magical Hat
-                ctx.fillStyle = '#7e22ce';
+                ctx.fillStyle = isLoseCine ? '#4c1d95' : '#7e22ce';
                 ctx.beginPath();
-                ctx.ellipse(0, -120, 32, 8, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, -120 + headDropY, 32, 8, isLoseCine ? 0.12 : 0, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.beginPath();
-                ctx.moveTo(-18, -120);
-                ctx.lineTo(4, -152);
-                ctx.lineTo(18, -120);
+                ctx.moveTo(-18, -120 + headDropY);
+                ctx.lineTo(4, -152 + headDropY);
+                ctx.lineTo(18, -120 + headDropY);
                 ctx.closePath();
                 ctx.fill();
+
+                // Left Arm (ชูขึ้นดีใจในฉากชนะ)
+                if (isWinCine) {
+                    ctx.save();
+                    ctx.translate(-22, -82);
+                    ctx.rotate(-0.4 + Math.sin(nowSec * 9) * 0.25);
+                    ctx.strokeStyle = '#f9a8d4';
+                    ctx.lineWidth = 8;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(-14, -32);
+                    ctx.stroke();
+                    ctx.restore();
+                }
 
                 // Right Arm Holding Star Magic Wand
                 ctx.save();
                 ctx.translate(22, -78);
-                ctx.rotate(-0.25 - wandCastRecoil * 0.35);
+                if (isWinCine) {
+                    ctx.rotate(0.15 + Math.sin(nowSec * 9) * 0.25);
+                } else if (isLoseCine) {
+                    ctx.rotate(1.15); // วางไม้เท้าตกข้างตัว
+                } else {
+                    ctx.rotate(-0.25 - wandCastRecoil * 0.35);
+                }
 
                 // Wand Stick
-                ctx.strokeStyle = '#fef08a';
+                ctx.strokeStyle = isLoseCine ? '#a16207' : '#fef08a';
                 ctx.lineWidth = 4;
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
                 ctx.lineTo(14, -44);
                 ctx.stroke();
 
-                // Glowing Star Tip
-                const starX = 14;
-                const starY = -48;
-                const tipGlow = ctx.createRadialGradient(starX, starY, 2, starX, starY, wandSparkTimer > 0 ? 30 : 18);
-                tipGlow.addColorStop(0, '#ffffff');
-                tipGlow.addColorStop(0.4, magicStarShots > 0 ? 'rgba(250, 204, 21, 0.9)' : 'rgba(244, 114, 182, 0.85)');
-                tipGlow.addColorStop(1, 'rgba(244, 114, 182, 0)');
-                ctx.fillStyle = tipGlow;
-                ctx.beginPath();
-                ctx.arc(starX, starY, wandSparkTimer > 0 ? 30 : 18, 0, Math.PI * 2);
-                ctx.fill();
+                // Glowing Star Tip (ดับแสงในฉากแพ้ / เปล่งประกายจัดในฉากชนะ)
+                if (!isLoseCine) {
+                    const starX = 14;
+                    const starY = -48;
+                    const glowRadius = isWinCine ? 34 : (wandSparkTimer > 0 ? 30 : 18);
+                    const tipGlow = ctx.createRadialGradient(starX, starY, 2, starX, starY, glowRadius);
+                    tipGlow.addColorStop(0, '#ffffff');
+                    tipGlow.addColorStop(0.4, (magicStarShots > 0 || isWinCine) ? 'rgba(250, 204, 21, 0.95)' : 'rgba(244, 114, 182, 0.85)');
+                    tipGlow.addColorStop(1, 'rgba(244, 114, 182, 0)');
+                    ctx.fillStyle = tipGlow;
+                    ctx.beginPath();
+                    ctx.arc(starX, starY, glowRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
                 ctx.restore();
                 ctx.restore();
@@ -1988,6 +2186,8 @@
             // HUD COMPASS & AIM RETICLE
             // =====================================================================
             function drawHUDVisuals(horizonY, hasTargetInSight, nowSec) {
+                if (endCinematic) return;
+
                 const cx = width * 0.5;
                 const cy = horizonY + (height - horizonY) * 0.14;
 
@@ -2069,6 +2269,19 @@
                 hitMarkerTimer = Math.max(0, hitMarkerTimer - dt);
                 edgeHitPulse = Math.max(0, edgeHitPulse - dt * 2.8);
 
+                // เอฟเฟกต์พลุและกลีบดอกไม้ต่อเนื่องในฉากจบ Cinematic
+                if (endCinematic === 'win' && nowSec - lastFireworkTime > 0.55) {
+                    lastFireworkTime = nowSec;
+                    const fx = width * (0.18 + Math.random() * 0.64);
+                    const fy = height * (0.16 + Math.random() * 0.28);
+                    spawnSparkles(fx, fy, ['#fef08a', '#f472b6', '#38bdf8', '#6ee7b7', '#c084fc'], 22, 1.35, 0.04);
+                } else if (endCinematic === 'lose' && nowSec - lastFireworkTime > 0.7) {
+                    lastFireworkTime = nowSec;
+                    const fx = width * (0.2 + Math.random() * 0.6);
+                    const fy = height * (0.45 + Math.random() * 0.35);
+                    spawnSparkles(fx, fy, ['#881337', '#78350f', '#57534e'], 10, 0.55, 0.06);
+                }
+
                 ctx.save();
                 if (cameraShake > 0.1) {
                     ctx.translate((Math.random() - 0.5) * cameraShake, (Math.random() - 0.5) * cameraShake);
@@ -2112,7 +2325,7 @@
                     }
                 }
 
-                if (hasTargetInSight && !wasTargetLocked && !isGameOver && !isLevelTransition) {
+                if (hasTargetInSight && !wasTargetLocked && !isGameOver && !isLevelTransition && !endCinematic) {
                     playTargetLockCue();
                 }
                 wasTargetLocked = hasTargetInSight;
@@ -2170,7 +2383,7 @@
                     const relAngle = getRelativeAngle(targetWorldAngle, playerAngle);
                     const destX = Math.abs(relAngle) < 82 ? angleToScreenX(relAngle) : width * 0.5;
                     const { scale, footY } = distanceToScreenYAndScale(targetDist, horizonY);
-                    const destY = proj.targetEnemy ? (footY - 40 * scale) : (horizonY + 25);
+                    const destY = proj.targetEnemy ? (footY - 35 * scale) : (horizonY + 25);
 
                     const t = Math.min(1, proj.progress);
                     const curX = proj.startX + (destX - proj.startX) * t;
@@ -2216,7 +2429,7 @@
                 }
 
                 // Fairy Pollen visual tint when active
-                if (fairyPollenTimer > 0) {
+                if (fairyPollenTimer > 0 && !endCinematic) {
                     ctx.fillStyle = 'rgba(254, 240, 138, 0.08)';
                     ctx.fillRect(0, 0, width, height);
                 }
@@ -2243,6 +2456,7 @@
                 onGiftApplied,
                 onLevelStart,
                 onLevelClearVisual,
+                onEndCinematicStart,
                 resetVisuals,
                 resize
             };
@@ -2485,7 +2699,7 @@
         }
 
         function handleEnemyGardenAttack(enemy) {
-            if (isGameOver || isLevelTransition || !enemy.active) return;
+            if (isGameOver || isLevelTransition || endCinematic || !enemy.active) return;
 
             // ตรวจสอบโล่ป้องกันก่อนหัก Garden HP เสมอ
             if (shieldCharges > 0) {
@@ -2497,11 +2711,12 @@
                 return;
             }
 
-            // ไม่มีโล่: ลด Garden HP และสุ่มเสียง eat1-eat3
+            // ไม่มีโล่: ลด Garden HP และสุ่มเสียง eat1-eat3 ณ มุม/ระยะจริงของศัตรูตัวนั้น
             gardenHP = Math.max(0, gardenHP - enemy.damage);
             updateUI();
-            playRandomCenterSound(['eat1', 'eat2', 'eat3'], 0.95);
-            VisualEngine.onGardenDamaged();
+            const chosenEat = ['eat1', 'eat2', 'eat3'][Math.floor(Math.random() * 3)];
+            playSpatialEventSound(chosenEat, enemy.angle, enemy.distance, enemy.audioY, 0.98);
+            VisualEngine.onGardenDamaged(enemy.angle, enemy.distance);
 
             if (gardenHP <= 0) {
                 gameOver(false);
@@ -2511,7 +2726,7 @@
         }
 
         function shootMagic() {
-            if (isGameOver || isLevelTransition || !audioCtx) return;
+            if (isGameOver || isLevelTransition || endCinematic || !audioCtx) return;
             const now = audioCtx.currentTime;
             if (now - lastShotTime < 0.42) return;
             lastShotTime = now;
@@ -2545,7 +2760,7 @@
 
         // Callback เมื่อลำแสงเวทมนตร์เดินทางไปถึงเป้าหมายจริง
         function resolveProjectileHit(proj, impactAngle, impactDist) {
-            if (isGameOver || isLevelTransition) return;
+            if (isGameOver || isLevelTransition || endCinematic) return;
 
             const enemy = proj.targetEnemy;
             if (enemy && enemy.active) {
@@ -2587,7 +2802,7 @@
         }
 
         function spawnNextEnemy(levelData) {
-            if (isGameOver || isLevelTransition) return;
+            if (isGameOver || isLevelTransition || endCinematic) return;
             if (enemiesSpawned >= levelData.total) return;
 
             clearTimeout(spawnTimer);
@@ -2645,13 +2860,13 @@
                     // หลังผ่าน Level 4 ถึง Level 19 เปิดหน้าเลือก Gift 3 ชนิด
                     if (currentLevel >= 4) {
                         setTimeout(() => {
-                            if (!isGameOver) showGiftSelectionScreen();
+                            if (!isGameOver && !endCinematic) showGiftSelectionScreen();
                         }, 1800);
                     } else {
                         currentLevel++;
                         saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
                         setTimeout(() => {
-                            if (!isGameOver) startLevel();
+                            if (!isGameOver && !endCinematic) startLevel();
                         }, 2400);
                     }
                 }
@@ -2736,7 +2951,7 @@
             saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
 
             setTimeout(() => {
-                if (!isGameOver) {
+                if (!isGameOver && !endCinematic) {
                     const gameUI = document.getElementById('gameUI');
                     gameUI.focus();
                     startLevel();
@@ -2779,6 +2994,8 @@
             lastShotTime = 0;
             isGameOver = false;
             isLevelTransition = false;
+            endCinematic = null;
+            endCinematicTimer = 0;
 
             resetPlayerOrientation();
             enemiesSpawned = 0;
@@ -2792,16 +3009,13 @@
             updateUI();
         }
 
-        function gameOver(isWin) {
-            if (isGameOver) return;
-            isGameOver = true;
-            isLevelTransition = false;
+        async function gameOver(isWin) {
+            if (isGameOver || endCinematic) return;
+            isLevelTransition = true;
+            endCinematic = isWin ? 'win' : 'lose';
+            endCinematicTimer = 0;
             clearTimeout(spawnTimer);
 
-            if (gameLoopTimer) {
-                cancelAnimationFrame(gameLoopTimer);
-                gameLoopTimer = null;
-            }
             activeEnemies.forEach(e => e.die());
             activeEnemies = [];
             activeProjectiles = [];
@@ -2814,6 +3028,24 @@
             document.getElementById('giftScreen').style.display = 'none';
             gameUI.style.display = 'none';
 
+            // หันกล้องกลับตรงกลาง 0° เพื่อรับชมฉากแอนิเมชันตัวละครและสวนเต็มจอ
+            setPlayerAngle(0, true);
+            VisualEngine.onEndCinematicStart(isWin);
+
+            // รอครบ 6 วินาที และรอให้ไฟล์เสียง win.mp3 / lose.mp3 เล่นจบสมบูรณ์ก่อนแสดงหน้าจบเกม
+            const soundPromise = playCenterSoundAsync(isWin ? 'win' : 'lose', 1.0);
+            const minAnimDelay = new Promise(resolve => setTimeout(resolve, 6000));
+            await Promise.all([soundPromise, minAnimDelay]);
+
+            isGameOver = true;
+            isLevelTransition = false;
+            endCinematic = null;
+
+            if (gameLoopTimer) {
+                cancelAnimationFrame(gameLoopTimer);
+                gameLoopTimer = null;
+            }
+
             const gameOverScreen = document.getElementById('gameOverScreen');
             gameOverScreen.style.display = 'flex';
             document.getElementById('btn-home-main').style.display = 'block';
@@ -2824,14 +3056,12 @@
 
             if (!isWin) {
                 gameOverScreen.classList.remove('victory-theme');
-                playCenterSound('lose', 1.0);
                 title.innerText = 'สวนดอกไม้เหี่ยวเฉา';
                 msg.innerText = `พลังชีวิตสวนเหลือ 0 หยุดอยู่ที่ Level ${currentLevel} จาก ${MAX_LEVEL}`;
                 announce(`จบเกม พลังชีวิตสวนเหลือ 0 คุณแพ้ที่ Level ${currentLevel}`);
                 btnRetry.style.display = 'block';
             } else {
                 gameOverScreen.classList.add('victory-theme');
-                playCenterSound('win', 1.0);
                 title.innerText = 'ชัยชนะแห่งสวนเวทมนตร์ ✨';
                 msg.innerText = `ยินดีด้วย! คุณปกป้องสวนดอกไม้ครบทั้ง 20 Level สำเร็จ (พลังสวนเหลือ ${gardenHP}/${MAX_GARDEN_HP})`;
                 announce(`ยินดีด้วย คุณชนะเกม Magical Garden ผ่านครบทั้ง 20 Level สำเร็จ พลังชีวิตสวนเหลือ ${gardenHP}`);
@@ -2853,7 +3083,9 @@
             const dt = Math.min(0.05, (timestamp - lastFrameTime) / 1000);
             lastFrameTime = timestamp;
 
-            if (!isLevelTransition) {
+            if (endCinematic) {
+                endCinematicTimer += dt;
+            } else if (!isLevelTransition) {
                 // อัปเดตการหมุนของผู้เล่น (-90 ถึง +90 องศา)
                 if (keys.ArrowLeft) setPlayerAngle(playerAngle - 80 * dt);
                 if (keys.ArrowRight) setPlayerAngle(playerAngle + 80 * dt);
@@ -2869,7 +3101,7 @@
                     const e = activeEnemies[i];
                     if (e.active) {
                         e.update(dt);
-                        if (isGameOver) return;
+                        if (isGameOver || endCinematic) break;
                     }
                 }
             }
@@ -2882,7 +3114,7 @@
         // 12. INPUT CONTROLS (KEYBOARD, TOUCH BUTTONS, SWIPE, ACCESSIBILITY)
         // =========================================================================
         window.addEventListener('keydown', (e) => {
-            if (isGameOver || isLevelTransition) return;
+            if (isGameOver || isLevelTransition || endCinematic) return;
             if (e.code === 'ArrowLeft') { keys.ArrowLeft = true; e.preventDefault(); }
             if (e.code === 'ArrowRight') { keys.ArrowRight = true; e.preventDefault(); }
             if (e.code === 'Space' || e.code === 'Enter') {
@@ -2908,7 +3140,7 @@
         const btnShoot = document.getElementById('btnShoot');
 
         function handleTurnStep(direction) {
-            if (isGameOver || isLevelTransition) return;
+            if (isGameOver || isLevelTransition || endCinematic) return;
             setPlayerAngle(playerAngle + (direction === 'left' ? -15 : 15));
         }
 
@@ -2952,7 +3184,7 @@
         });
 
         swipeArea.addEventListener('pointermove', (e) => {
-            if (isGameOver || isLevelTransition || !swipeActive || swipeStartX === null) return;
+            if (isGameOver || isLevelTransition || endCinematic || !swipeActive || swipeStartX === null) return;
             const currentX = e.clientX;
             const deltaX = currentX - swipeLastX;
             if (Math.abs(currentX - swipeStartX) > 10) {
@@ -2967,7 +3199,7 @@
         });
 
         swipeArea.addEventListener('pointerup', (e) => {
-            if (!isGameOver && !isLevelTransition && swipeActive) {
+            if (!isGameOver && !isLevelTransition && !endCinematic && swipeActive) {
                 if (!swipeMoved) {
                     // แตะ 2 ครั้ง (Double Tap) เพื่อหันกลับตรงกลาง 0° ทันที
                     const now = performance.now();
