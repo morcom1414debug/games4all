@@ -509,7 +509,7 @@
         <div class="status-bar">
             <span id="txtLevel">Level: 1/20</span>
             <span id="txtGardenHP">พลังสวน: 100/100</span>
-            <span id="txtShield">โล่: 0</span>
+            <span id="txtShield">โล่: 0/5</span>
             <span id="txtPower">พลังเวท: 1</span>
         </div>
 
@@ -529,6 +529,7 @@
         // 1. GAME CONFIGURATION & CONSTANTS (MAGICAL GARDEN SPEC)
         // =========================================================================
         const MAX_GARDEN_HP = 100;
+        const MAX_SHIELD = 5;
         const MAX_LEVEL = 20;
 
         // ขอบเขตการหมุน 180 องศาด้านหน้า (-90 ถึง +90 องศา)
@@ -3177,12 +3178,20 @@
         // =========================================================================
         // 8. ENEMY ENTITY CLASS (6 TYPES WITH SPATIAL AUDIO & ATTACK TIMERS)
         // =========================================================================
+        function getLevelSpeedMultiplier(level) {
+            if (level <= 10) return 1.00;
+            if (level <= 13) return 1.05;
+            if (level <= 16) return 1.10;
+            if (level <= 19) return 1.15;
+            return 1.20;
+        }
+
         class GardenEnemy {
             constructor(type) {
                 this.type = type;
                 const stats = ENEMY_STATS[type];
                 this.hp = stats.hp;
-                this.speed = stats.speed;
+                this.speed = stats.speed * getLevelSpeedMultiplier(currentLevel);
                 this.damage = stats.damage;
                 this.attackInterval = stats.attackInterval;
                 this.audioY = stats.audioY;
@@ -3381,7 +3390,7 @@
         function updateUI() {
             ui.level.innerText = `Level: ${currentLevel}/${MAX_LEVEL}`;
             ui.gardenHP.innerText = `พลังสวน: ${gardenHP}/${MAX_GARDEN_HP}`;
-            ui.shield.innerText = `โล่: ${shieldCharges}`;
+            ui.shield.innerText = `โล่: ${shieldCharges}/${MAX_SHIELD}`;
             ui.power.innerText = magicStarShots > 0 ? `พลังเวท: 2 (${magicStarShots})` : `พลังเวท: 1`;
         }
 
@@ -3569,8 +3578,9 @@
                     announce(`ผ่าน Level ${clearedLevel} สำเร็จ`);
                     setPlayerAngle(0, true);
 
-                    // หลังผ่าน Level 4 ถึง Level 19: แอนิเมชันกล่องของขวัญกระชับ (~2.0 วินาที) แล้วเปิดหน้าเลือก Gift
-                    if (clearedLevel >= 4) {
+                    // หลังผ่าน Level 4-16 (เฉพาะเลขคู่: 4, 6, 8, 10, 12, 14, 16) และ Level 17-19: แอนิเมชันกล่องของขวัญ (~2.0 วินาที) แล้วเปิดหน้าเลือก Gift
+                    const shouldOfferGift = (clearedLevel >= 4 && clearedLevel <= 16 && clearedLevel % 2 === 0) || (clearedLevel >= 17 && clearedLevel <= 19);
+                    if (shouldOfferGift) {
                         playCenterSound('level', 1.0);
                         VisualEngine.startLevelGiftDropAnimation(clearedLevel, 2.0);
                         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -3648,10 +3658,19 @@
                     gardenHP = Math.min(MAX_GARDEN_HP, gardenHP + 35);
                     resultText = `ใช้น้ำค้างแห่งชีวิต ฟื้นฟูพลังสวน +35 เป็น ${gardenHP}`;
                     break;
-                case 'heartshield':
-                    shieldCharges += 2;
-                    resultText = `ใช้โล่หัวใจ เพิ่มการป้องกัน 2 ครั้ง รวมโล่ ${shieldCharges} ครั้ง`;
+                case 'heartshield': {
+                    if (shieldCharges >= MAX_SHIELD) {
+                        resultText = `ใช้โล่หัวใจ โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`;
+                    } else {
+                        const prevShield = shieldCharges;
+                        shieldCharges = Math.min(MAX_SHIELD, shieldCharges + 2);
+                        const added = shieldCharges - prevShield;
+                        resultText = shieldCharges >= MAX_SHIELD
+                            ? `ใช้โล่หัวใจ เพิ่มการป้องกัน ${added} ครั้ง โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`
+                            : `ใช้โล่หัวใจ เพิ่มการป้องกัน ${added} ครั้ง รวมโล่ ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง`;
+                    }
                     break;
+                }
                 case 'magicstar':
                     magicStarShots += 10;
                     resultText = `ใช้ดาวเวทมนตร์ พลังยิงเพิ่มเป็น 2 หน่วยสำหรับ ${magicStarShots} นัดถัดไป`;
@@ -3660,11 +3679,18 @@
                     fairyPollenTimer = 15;
                     resultText = `ใช้เกสรนางฟ้า ลดความเร็วศัตรู 30% ในช่วง 15 วินาทีแรกของด่านถัดไป`;
                     break;
-                case 'sunshine':
+                case 'sunshine': {
                     gardenHP = Math.min(MAX_GARDEN_HP, gardenHP + 10);
-                    shieldCharges += 1;
-                    resultText = `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${gardenHP} และเพิ่มโล่ป้องกันรวม ${shieldCharges} ครั้ง`;
+                    if (shieldCharges >= MAX_SHIELD) {
+                        resultText = `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${gardenHP} โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`;
+                    } else {
+                        shieldCharges = Math.min(MAX_SHIELD, shieldCharges + 1);
+                        resultText = shieldCharges >= MAX_SHIELD
+                            ? `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${gardenHP} โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`
+                            : `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${gardenHP} และเพิ่มโล่ป้องกันรวม ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง`;
+                    }
                     break;
+                }
             }
 
             evaluateGardenStatusAnnouncement(false);
@@ -3715,7 +3741,7 @@
         function resetGame(keepLevelState = null) {
             if (keepLevelState) {
                 gardenHP = keepLevelState.gardenHP ?? MAX_GARDEN_HP;
-                shieldCharges = keepLevelState.shieldCharges ?? 0;
+                shieldCharges = Math.min(MAX_SHIELD, keepLevelState.shieldCharges ?? 0);
                 magicStarShots = keepLevelState.magicStarShots ?? 0;
             } else {
                 gardenHP = MAX_GARDEN_HP;
@@ -3860,7 +3886,7 @@
             }
             // ปุ่มลัดตรวจสอบสถานะสวนสำหรับผู้เล่นตาบอด (ปุ่ม S หรือ H)
             if (e.code === 'KeyS' || e.code === 'KeyH') {
-                announce(`Level ${currentLevel} พลังชีวิตสวน ${gardenHP} จาก 100 โล่ป้องกัน ${shieldCharges} ครั้ง พลังเวท ${magicStarShots > 0 ? '2 หน่วย เหลือ ' + magicStarShots + ' นัด' : '1 หน่วย'}`);
+                announce(`Level ${currentLevel} พลังชีวิตสวน ${gardenHP} จาก 100 โล่ป้องกัน ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง พลังเวท ${magicStarShots > 0 ? '2 หน่วย เหลือ ' + magicStarShots + ' นัด' : '1 หน่วย'}`);
             }
         });
 
