@@ -1117,11 +1117,11 @@
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permOrient = await DeviceOrientationEvent.requestPermission();
-                    if (permOrient === 'granted') {
-                        motionEnabled = true;
-                    } else {
-                        motionEnabled = false;
+                    let permMotion = 'granted';
+                    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                        permMotion = await DeviceMotionEvent.requestPermission();
                     }
+                    motionEnabled = (permOrient === 'granted' && permMotion === 'granted');
                 } catch (e) {
                     console.error('Motion Request Error:', e);
                     motionEnabled = false;
@@ -3729,6 +3729,13 @@
             activeProjectiles = [];
             clearTimeout(spawnTimer);
 
+            const gameUI = document.getElementById('gameUI');
+            if (currentLevel === 1) {
+                gameUI.setAttribute('aria-label', `Magical Garden Level 1 ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงเวทมนตร์ กด H เพื่อฟังสถานะสวน`);
+            } else {
+                gameUI.setAttribute('aria-label', `Magical Garden Level ${currentLevel}`);
+            }
+
             const levelData = LEVELS[currentLevel - 1];
             introQueue = levelData.newEnemy ? [levelData.newEnemy] : [];
 
@@ -3995,14 +4002,17 @@
             if (isStartingGame) return;
             isStartingGame = true;
 
+            // เรียกขอสิทธิ์ Motion ทันทีในจังหวะ User Gesture ก่อนคำสั่ง await อื่นๆ เพื่อให้ iOS แสดง Dialog
+            const motionPromise = requestMotion();
+
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
             if (audioCtx.state === 'suspended') {
-                await audioCtx.resume();
+                audioCtx.resume();
             }
 
-            await Promise.all([loadAudio(), requestMotion()]);
+            await Promise.all([loadAudio(), motionPromise]);
 
             document.getElementById('startScreen').style.display = 'none';
             document.getElementById('gameOverScreen').style.display = 'none';
@@ -4038,10 +4048,8 @@
 
             gameUI.style.display = 'flex';
             gameUI.setAttribute('role', 'application');
-            gameUI.setAttribute('aria-label', `Magical Garden Level ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงเวทมนตร์ กด H เพื่อฟังสถานะสวน`);
-            gameUI.focus();
-
             startLevel();
+            gameUI.focus();
         }
 
         document.getElementById('btnContinue').addEventListener('click', async () => {
