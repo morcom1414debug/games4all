@@ -768,6 +768,10 @@
         let isAtBoundaryEdge = false;
         let lastBoundarySoundTime = 0;
         let edgeHitPulse = 0;
+        let lastAngleSector = 0;
+        let lastTickTime = 0;
+        let wasTargetLocked = false;
+        let lastLockCueTime = 0;
 
         let gardenHP = MAX_GARDEN_HP;
         let lastGardenStatusTier = 'perfect'; // perfect | damaged | heavy | critical
@@ -811,9 +815,72 @@
             return angle;
         }
 
-        function setPlayerAngle(newAngle) {
+        function playOrientationTick(isCenter) {
+            if (!audioCtx || isGameOver || isLevelTransition) return;
+            const nowPerf = performance.now();
+            if (nowPerf - lastTickTime < 75) return;
+            lastTickTime = nowPerf;
+
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = isCenter ? 'triangle' : 'sine';
+                osc.frequency.setValueAtTime(isCenter ? 980 : 520, now);
+                osc.frequency.exponentialRampToValueAtTime(isCenter ? 1320 : 420, now + 0.035);
+
+                gain.gain.setValueAtTime(isCenter ? 0.16 : 0.09, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.045);
+            } catch (e) {}
+        }
+
+        function playTargetLockCue() {
+            if (!audioCtx || isGameOver || isLevelTransition) return;
+            const nowPerf = performance.now();
+            if (nowPerf - lastLockCueTime < 350) return;
+            lastLockCueTime = nowPerf;
+
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1180, now);
+                osc.frequency.exponentialRampToValueAtTime(1580, now + 0.07);
+
+                gain.gain.setValueAtTime(0.11, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.085);
+            } catch (e) {}
+        }
+
+        function setPlayerAngle(newAngle, silent = false) {
+            const prevAngle = playerAngle;
             const clamped = clampPlayerAngle(newAngle);
             playerAngle = clamped;
+
+            // เสียงติ๊กบอกจังหวะเมื่อหมุนผ่านจุดตรงกลาง 0° และทุกๆ ช่วง 30°
+            if (!silent && audioCtx && !isGameOver && !isLevelTransition) {
+                const crossedCenter = (prevAngle < 0 && clamped >= 0) || (prevAngle > 0 && clamped <= 0) || (prevAngle !== 0 && clamped === 0);
+                const currentSector = Math.round(clamped / 30);
+                if (crossedCenter) {
+                    playOrientationTick(true);
+                } else if (currentSector !== lastAngleSector && Math.abs(currentSector) <= 2) {
+                    playOrientationTick(false);
+                }
+                lastAngleSector = currentSector;
+            } else {
+                lastAngleSector = Math.round(clamped / 30);
+            }
 
             const atLeftEdge = (clamped <= MIN_PLAYER_ANGLE + BOUNDARY_EPSILON);
             const atRightEdge = (clamped >= MAX_PLAYER_ANGLE - BOUNDARY_EPSILON);
@@ -823,7 +890,7 @@
                 isAtBoundaryEdge = true;
                 edgeHitPulse = 1.0;
                 const now = performance.now();
-                if (!isGameOver && !isLevelTransition && audioCtx && (now - lastBoundarySoundTime > 600)) {
+                if (!silent && !isGameOver && !isLevelTransition && audioCtx && (now - lastBoundarySoundTime > 600)) {
                     playCenterSound('edge90', 0.85);
                     lastBoundarySoundTime = now;
                 }
@@ -837,9 +904,11 @@
             isAtBoundaryEdge = false;
             lastBoundarySoundTime = 0;
             edgeHitPulse = 0;
+            lastAngleSector = 0;
+            wasTargetLocked = false;
             lastAlpha = null;
             keys = { ArrowLeft: false, ArrowRight: false };
-            setPlayerAngle(0);
+            setPlayerAngle(0, true);
         }
 
         function clampWorldEntityAngle(angle) {
@@ -916,7 +985,16 @@
             source.buffer = audioBuffers[bufferName];
 
             const gainNode = audioCtx.createGain();
-            gainNode.gain.value = volume;
+            // ปรับความดังตามระยะ 50% (ไกลสุด >= 100) ถึง 100% (ใกล้สุด <= 5)
+            let distRatio;
+            if (distance >= 100) {
+                distRatio = 0.50;
+            } else if (distance <= 5) {
+                distRatio = 1.00;
+            } else {
+                distRatio = 0.50 + ((100 - distance) / 95) * 0.50;
+            }
+            gainNode.gain.value = volume * distRatio;
 
             const panner = audioCtx.createPanner();
             panner.panningModel = 'HRTF';
@@ -928,6 +1006,11 @@
             const relDeg = worldAngle - playerAngle;
             const clampedAudioDeg = Math.max(-90, Math.min(90, relDeg));
             const relativeRad = clampedAudioDeg * (Math.PI / 180);
+
+            const stereoPanner = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+            if (stereoPanner) {
+                stereoPanner.pan.value = Math.max(-1, Math.min(1, Math.sin(relativeRad) * 1.35));
+            }
 
             const radius = Math.max(0.5, distance / 10);
             const x = Math.sin(relativeRad) * radius;
@@ -943,11 +1026,19 @@
 
             source.connect(gainNode);
             gainNode.connect(panner);
-            panner.connect(audioCtx.destination);
+            if (stereoPanner) {
+                panner.connect(stereoPanner);
+                stereoPanner.connect(audioCtx.destination);
+            } else {
+                panner.connect(audioCtx.destination);
+            }
             source.onended = () => {
                 try { source.disconnect(); } catch (e) {}
                 try { gainNode.disconnect(); } catch (e) {}
                 try { panner.disconnect(); } catch (e) {}
+                if (stereoPanner) {
+                    try { stereoPanner.disconnect(); } catch (e) {}
+                }
             };
             source.start(0);
         }
@@ -2003,7 +2094,7 @@
                     meta.flinch = Math.max(0, meta.flinch - dt * 4.5);
 
                     const relAngle = getRelativeAngle(e.angle, playerAngle);
-                    if (Math.abs(relAngle) <= 12) {
+                    if (Math.abs(relAngle) <= 10) {
                         hasTargetInSight = true;
                     }
 
@@ -2020,6 +2111,11 @@
                         });
                     }
                 }
+
+                if (hasTargetInSight && !wasTargetLocked && !isGameOver && !isLevelTransition) {
+                    playTargetLockCue();
+                }
+                wasTargetLocked = hasTargetInSight;
 
                 for (let i = deathAnimations.length - 1; i >= 0; i--) {
                     const d = deathAnimations[i];
@@ -2177,7 +2273,7 @@
                 this.atGarden = false;
                 this.attackCooldown = 0;
 
-                // Spatial Audio Chain (HRTF Forward Hemisphere)
+                // Spatial Audio Chain (HRTF + StereoPanner Forward Hemisphere)
                 this.source = audioCtx.createBufferSource();
                 this.source.buffer = audioBuffers[type] || null;
                 this.source.loop = true;
@@ -2197,7 +2293,7 @@
                 this.aimGain.gain.value = 1.0;
 
                 this.distanceGain = audioCtx.createGain();
-                this.distanceGain.gain.value = 0.70;
+                this.distanceGain.gain.value = 0.50;
 
                 this.panner = audioCtx.createPanner();
                 this.panner.panningModel = 'HRTF';
@@ -2206,12 +2302,19 @@
                 this.panner.maxDistance = 100;
                 this.panner.rolloffFactor = 1;
 
+                this.stereoPanner = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+
                 this.source.connect(this.toneFilter);
                 this.toneFilter.connect(this.presenceFilter);
                 this.presenceFilter.connect(this.aimGain);
                 this.aimGain.connect(this.distanceGain);
                 this.distanceGain.connect(this.panner);
-                this.panner.connect(audioCtx.destination);
+                if (this.stereoPanner) {
+                    this.panner.connect(this.stereoPanner);
+                    this.stereoPanner.connect(audioCtx.destination);
+                } else {
+                    this.panner.connect(audioCtx.destination);
+                }
 
                 if (this.source.buffer) {
                     this.source.start(0);
@@ -2285,26 +2388,32 @@
                     this.panner.setPosition(x, this.audioY, z);
                 }
 
+                // เสริม StereoPanner ให้แยกซ้าย-ขวาชัดเจนขึ้น (มุมจริง ±45° แพนออกเกือบสุดหูฟัง)
+                if (this.stereoPanner) {
+                    const widePan = Math.max(-1, Math.min(1, Math.sin(relativeRad) * 1.35));
+                    this.setAudioParamSmooth(this.stereoPanner.pan, widePan, 0.03);
+                }
+
                 const diff = Math.abs(relDeg);
                 const frontFactor = Math.max(0, Math.cos(relativeRad));
-                const targetCutoff = 4500 + (frontFactor * 15500);
-                const targetPresence = frontFactor * 2.2;
+                const targetCutoff = 3200 + (frontFactor * 16800);
+                const targetPresence = frontFactor * 2.5;
 
                 this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
                 this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
 
-                // เพิ่มความเด่นเมื่อเป้าหมายอยู่ในแนวยิง ±10 องศา
-                const targetAimGain = (diff <= 10) ? 1.45 : 1.0;
+                // ปรับสมดุล aimGain เหลือ 1.15 เพื่อไม่ให้เสียงศัตรูที่อยู่ไกลถูกเร่งจนดังเท่าตัวที่อยู่ใกล้
+                const targetAimGain = (diff <= 10) ? 1.15 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
 
-                // สูตรความดังตามระยะ 70% (ไกล >=100) ถึง 100% (ใกล้ <=5)
+                // สูตรความดังตามระยะ 50% (ไกล >=100) ถึง 100% (ใกล้ <=5)
                 let volumePercent;
                 if (this.distance >= 100) {
-                    volumePercent = 70;
+                    volumePercent = 50;
                 } else if (this.distance <= 5) {
                     volumePercent = 100;
                 } else {
-                    volumePercent = 70 + ((100 - this.distance) / 95) * 30;
+                    volumePercent = 50 + ((100 - this.distance) / 95) * 50;
                 }
                 this.setAudioParamSmooth(this.distanceGain.gain, volumePercent / 100, 0.04);
             }
@@ -2335,6 +2444,7 @@
                     this.aimGain.disconnect();
                     this.distanceGain.disconnect();
                     this.panner.disconnect();
+                    if (this.stereoPanner) this.stereoPanner.disconnect();
                 } catch (e) {}
             }
         }
@@ -2745,8 +2855,8 @@
 
             if (!isLevelTransition) {
                 // อัปเดตการหมุนของผู้เล่น (-90 ถึง +90 องศา)
-                if (keys.ArrowLeft) setPlayerAngle(playerAngle - 115 * dt);
-                if (keys.ArrowRight) setPlayerAngle(playerAngle + 115 * dt);
+                if (keys.ArrowLeft) setPlayerAngle(playerAngle - 80 * dt);
+                if (keys.ArrowRight) setPlayerAngle(playerAngle + 80 * dt);
                 setPlayerAngle(playerAngle);
 
                 // อัปเดตระยะเวลาเกสรนางฟ้า
@@ -2824,17 +2934,20 @@
         btnShoot.addEventListener('mousedown', (e) => { if (e.button === 0) shootMagic(); });
         btnShoot.addEventListener('click', (e) => { if (e.detail === 0) shootMagic(); });
 
-        // Swipe Area
+        // Swipe Area (แบบ B: ลากต่อเนื่องแบบมีแรงต้านตรงกลาง + แตะ 2 ครั้งกลับตรงกลาง 0°)
         const swipeArea = document.getElementById('swipeArea');
         let swipeStartX = null;
         let swipeLastX = null;
         let swipeActive = false;
+        let swipeMoved = false;
+        let lastSwipeTapTime = 0;
 
         swipeArea.addEventListener('pointerdown', (e) => {
             if (!e.isPrimary) return;
             swipeStartX = e.clientX;
             swipeLastX = e.clientX;
             swipeActive = true;
+            swipeMoved = false;
             try { swipeArea.setPointerCapture(e.pointerId); } catch (err) {}
         });
 
@@ -2842,18 +2955,37 @@
             if (isGameOver || isLevelTransition || !swipeActive || swipeStartX === null) return;
             const currentX = e.clientX;
             const deltaX = currentX - swipeLastX;
-            if (Math.abs(currentX - swipeStartX) > 12) {
-                let rotation = deltaX * 0.38;
-                rotation = Math.max(-12, Math.min(12, rotation));
+            if (Math.abs(currentX - swipeStartX) > 10) {
+                swipeMoved = true;
+                // ลดความไวลงให้คุมง่ายขึ้น และเพิ่มแรงหน่วงช่วงใกล้จุดตรงกลาง (-4° ถึง +4°)
+                const centerResistance = Math.abs(playerAngle) <= 4 ? 0.55 : 1.0;
+                let rotation = deltaX * 0.28 * centerResistance;
+                rotation = Math.max(-10, Math.min(10, rotation));
                 setPlayerAngle(playerAngle + rotation);
             }
             swipeLastX = currentX;
         });
 
         swipeArea.addEventListener('pointerup', (e) => {
+            if (!isGameOver && !isLevelTransition && swipeActive) {
+                if (!swipeMoved) {
+                    // แตะ 2 ครั้ง (Double Tap) เพื่อหันกลับตรงกลาง 0° ทันที
+                    const now = performance.now();
+                    if (now - lastSwipeTapTime < 320) {
+                        setPlayerAngle(0);
+                        lastSwipeTapTime = 0;
+                    } else {
+                        lastSwipeTapTime = now;
+                    }
+                } else if (Math.abs(playerAngle) <= 3.5) {
+                    // แม่เหล็กดูดเข้าจุดตรงกลาง 0° พอดีเมื่อปล่อยนิ้วใกล้จุดกึ่งกลาง
+                    setPlayerAngle(0);
+                }
+            }
             swipeActive = false;
             swipeStartX = null;
             swipeLastX = null;
+            swipeMoved = false;
             try { swipeArea.releasePointerCapture(e.pointerId); } catch (err) {}
         });
 
@@ -2861,6 +2993,7 @@
             swipeActive = false;
             swipeStartX = null;
             swipeLastX = null;
+            swipeMoved = false;
         });
 
         // =========================================================================
