@@ -1180,6 +1180,12 @@
             let bannerTimeout = null;
             let overlayTimeout = null;
             let lastFireworkTime = 0;
+            let sceneAnim = {
+                type: null,
+                timer: 0,
+                duration: 2.5,
+                lastEmit: 0
+            };
 
             const enemyVisualMeta = new WeakMap();
             const deathAnimations = [];
@@ -1421,7 +1427,79 @@
                 spawnSparkles(width * 0.5, height * 0.55, ['#6ee7b7', '#fef08a', '#f9a8d4'], 26, 1.25, -0.06);
             }
 
+            function clearSceneAnim() {
+                sceneAnim.type = null;
+                sceneAnim.timer = 0;
+                sceneAnim.lastEmit = 0;
+            }
+
+            function startIntroAnimation(durationSec = 2.6) {
+                const dur = Math.max(1.2, durationSec || 2.6);
+                sceneAnim.type = 'start';
+                sceneAnim.timer = 0;
+                sceneAnim.duration = dur;
+                sceneAnim.lastEmit = 0;
+                triggerBanner('MAGICAL GARDEN', 'สวนเวทมนตร์พิทักษ์ดอกไม้', Math.max(1800, Math.round(dur * 1000)));
+                spawnSparkles(width * 0.5, height * 0.55, ['#f9a8d4', '#fef08a', '#c084fc', '#ffffff'], 28, 1.25, -0.03);
+            }
+
+            function startLevelCelebrateAnimation(lvl, durationSec = 2.8) {
+                const dur = Math.max(2.8, durationSec || 2.8);
+                sceneAnim.type = 'level_celebrate';
+                sceneAnim.timer = 0;
+                sceneAnim.duration = dur;
+                sceneAnim.lastEmit = 0;
+                triggerBanner('ผ่านด่านสำเร็จ ✨', `สวนเวทมนตร์ปลอดภัยใน Level ${lvl}`, Math.round(dur * 1000));
+                spawnSparkles(width * 0.5, height * 0.34, ['#fef08a', '#f472b6', '#c084fc', '#6ee7b7'], 34, 1.4, 0.04);
+            }
+
+            function startLevelGiftDropAnimation(lvl, durationSec = 2.0) {
+                const dur = Math.max(1.8, durationSec || 2.0);
+                sceneAnim.type = 'level_gift_drop';
+                sceneAnim.timer = 0;
+                sceneAnim.duration = dur;
+                sceneAnim.lastEmit = 0;
+                triggerBanner('ผ่านด่านสำเร็จ ✨', `เตรียมรับของขวัญแห่งเวทมนตร์ (Level ${lvl})`, Math.round(dur * 1000));
+                spawnSparkles(width * 0.5, height * 0.38, ['#fef08a', '#f472b6', '#e879f9'], 28, 1.25, 0.03);
+            }
+
+            function startGiftAnimation(giftId, durationSec = 2.0) {
+                const dur = Math.max(1.8, durationSec || 2.0);
+                sceneAnim.type = 'gift_' + giftId;
+                sceneAnim.timer = 0;
+                sceneAnim.duration = dur;
+                sceneAnim.lastEmit = 0;
+                const ms = Math.round(dur * 1000);
+
+                if (giftId === 'fertilizer') {
+                    flashOverlay(healOverlay, 500);
+                    triggerBanner('ปุ๋ยวิเศษ ✨', 'ฟื้นฟูพลังชีวิตสวน +20 HP', ms);
+                    spawnSparkles(width * 0.5, height * 0.62, ['#6ee7b7', '#34d399', '#fef08a'], 32, 1.2, 0.06);
+                } else if (giftId === 'lifedew') {
+                    flashOverlay(healOverlay, 520);
+                    triggerBanner('น้ำค้างแห่งชีวิต 💧', 'ฟื้นฟูพลังชีวิตสวน +35 HP', ms);
+                    spawnSparkles(width * 0.5, height * 0.52, ['#38bdf8', '#6ee7b7', '#a7f3d0', '#ffffff'], 34, 1.3, 0.04);
+                } else if (giftId === 'heartshield') {
+                    flashOverlay(shieldOverlay, 520);
+                    triggerBanner('โล่หัวใจ 💖', 'กางโดมบาเรียป้องกันความเสียหาย 2 ครั้ง', ms);
+                    spawnSparkles(width * 0.5, height * 0.58, ['#f472b6', '#fbcfe8', '#fef08a'], 32, 1.15, -0.04);
+                } else if (giftId === 'magicstar') {
+                    triggerBanner('ดาวเวทมนตร์ ⭐', 'เพิ่มพลังเวทเป็น 2 หน่วย (10 นัดถัดไป)', ms);
+                    spawnSparkles(width * 0.5, height * 0.56, ['#fde047', '#fef08a', '#ffffff', '#f472b6'], 36, 1.35, -0.03);
+                } else if (giftId === 'fairypollen') {
+                    triggerBanner('เกสรนางฟ้า 🦋', 'ลดความเร็วศัตรูลง 30% นาน 15 วินาที', ms);
+                    spawnSparkles(width * 0.5, height * 0.45, ['#fef08a', '#e9d5ff', '#c084fc'], 32, 0.9, 0.01);
+                } else if (giftId === 'sunshine') {
+                    flashOverlay(healOverlay, 480);
+                    triggerBanner('แสงตะวัน ☀️', 'ฟื้นฟู +10 HP และเพิ่มโล่ป้องกัน 1 ครั้ง', ms);
+                    spawnSparkles(width * 0.5, height * 0.44, ['#fef08a', '#fde047', '#fbbf24', '#ffffff'], 34, 1.2, -0.02);
+                } else {
+                    onGiftApplied();
+                }
+            }
+
             function onLevelStart(lvl, isElite) {
+                clearSceneAnim();
                 deathAnimations.length = 0;
                 activeProjectiles.length = 0;
                 triggerBanner(
@@ -1437,6 +1515,7 @@
             }
 
             function onEndCinematicStart(isWin) {
+                clearSceneAnim();
                 if (isWin) {
                     triggerBanner('ชัยชนะแห่งสวนเวทมนตร์ ✨', 'ดอกไม้ทุกต้นเบ่งบานและเต้นรำอย่างมีความสุข!', 5500);
                     spawnSparkles(width * 0.5, height * 0.32, ['#fef08a', '#f472b6', '#38bdf8', '#6ee7b7', '#c084fc'], 42, 1.5, 0.04);
@@ -1452,6 +1531,7 @@
                 cameraShake = 0;
                 hitMarkerTimer = 0;
                 lastFireworkTime = 0;
+                clearSceneAnim();
                 deathAnimations.length = 0;
                 activeProjectiles.length = 0;
                 particles.length = 0;
@@ -1682,24 +1762,48 @@
                         ctx.arc(bx, by, petalR * 0.68, 0, Math.PI * 2);
                         ctx.fill();
                     } else {
-                        const droop = (1 - hpRatio) * 8 * s;
-                        const sway = Math.sin(nowSec * 2.5 + fl.swayOffset) * 3 * s * hpRatio;
+                        const isCelebrate = (sceneAnim.type === 'level_celebrate');
+                        const isFert = (sceneAnim.type === 'gift_fertilizer');
+                        const isSun = (sceneAnim.type === 'gift_sunshine');
+                        const animBoost = (isCelebrate || isFert || isSun)
+                            ? Math.min(1, sceneAnim.timer / 0.45)
+                            : 0;
+                        const bounceUp = isCelebrate
+                            ? Math.abs(Math.sin(nowSec * 8.0 + fl.swayOffset)) * 9 * s
+                            : (isFert ? Math.abs(Math.sin(nowSec * 6.0 + fl.swayOffset)) * 7 * s * animBoost : (isSun ? 6 * s * animBoost : 0));
+                        const droop = (1 - hpRatio) * 8 * s * (1 - animBoost * 0.75);
+                        const sway = Math.sin(nowSec * (isCelebrate ? 6.0 : 2.5) + fl.swayOffset) * (isCelebrate ? 6 : 3) * s * Math.max(0.35, hpRatio);
 
-                        ctx.strokeStyle = hpRatio > 0.3 ? '#15803d' : '#713f12';
+                        ctx.strokeStyle = (hpRatio > 0.3 || isFert || isSun) ? '#15803d' : '#713f12';
                         ctx.lineWidth = Math.max(1.5, 2.5 * s);
                         ctx.beginPath();
                         ctx.moveTo(fx, footY);
-                        ctx.quadraticCurveTo(fx + sway, footY - 10 * s, fx + sway + droop * 0.5, footY - 18 * s + droop);
+                        ctx.quadraticCurveTo(fx + sway, footY - 10 * s - bounceUp * 0.4, fx + sway + droop * 0.5, footY - 18 * s - bounceUp + droop);
                         ctx.stroke();
 
                         if (gardenHP > 0) {
                             const bx = fx + sway + droop * 0.5;
-                            const by = footY - 18 * s + droop;
-                            ctx.globalAlpha = 0.45 + 0.55 * hpRatio;
+                            const by = footY - 18 * s - bounceUp + droop;
+
+                            // แสงฟื้นฟูสีเขียวมรกต (ปุ๋ยวิเศษ) หรือแสงทองอุ่น (แสงตะวัน) รอบช่อดอกไม้
+                            if (isFert || isSun) {
+                                const glowCol = isFert ? 'rgba(52, 211, 153, 0.55)' : 'rgba(253, 224, 71, 0.55)';
+                                const gRad = 18 * s * (0.7 + 0.3 * Math.sin(nowSec * 7 + fl.swayOffset));
+                                const flGlow = ctx.createRadialGradient(bx, by, 1, bx, by, gRad);
+                                flGlow.addColorStop(0, glowCol);
+                                flGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                                ctx.fillStyle = flGlow;
+                                ctx.beginPath();
+                                ctx.arc(bx, by, gRad, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+
+                            ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * hpRatio + animBoost * 0.35);
                             ctx.fillStyle = fl.color;
-                            const petalR = (4.5 + 2 * hpRatio) * s;
+                            const sizeGrow = isFert ? (1 + 0.32 * animBoost) : (isCelebrate || isSun ? (1 + 0.2 * animBoost) : 1);
+                            const petalR = (4.5 + 2 * hpRatio) * s * sizeGrow;
                             for (let p = 0; p < 5; p++) {
-                                const pa = (p * Math.PI * 2) / 5 + nowSec * 0.4;
+                                const pa = (p * Math.PI * 2) / 5 + nowSec * (isCelebrate ? 2.2 : 0.4);
                                 ctx.beginPath();
                                 ctx.arc(bx + Math.cos(pa) * petalR, by + Math.sin(pa) * petalR, petalR * 0.72, 0, Math.PI * 2);
                                 ctx.fill();
@@ -2032,9 +2136,14 @@
                 const isWinCine = (endCinematic === 'win');
                 const isLoseCine = (endCinematic === 'lose');
 
+                const isStartAnim = (sceneAnim.type === 'start');
+                const isLevelCelebrate = (sceneAnim.type === 'level_celebrate');
+                const isMagicStarGift = (sceneAnim.type === 'gift_magicstar');
+
                 let animOffsetY = Math.sin(nowSec * 3.2) * 3;
                 let recoilOffset = wandCastRecoil * 10;
                 let bodyTilt = 0;
+                let spinScaleX = 1;
 
                 if (isWinCine) {
                     // กระโดดดีใจและโยกตัวเต้นรำ
@@ -2045,10 +2154,28 @@
                     const kneelT = Math.min(1, endCinematicTimer / 1.4);
                     animOffsetY = kneelT * 24;
                     bodyTilt = kneelT * 0.16;
+                } else if (isStartAnim) {
+                    // หมุนตัวเปิดม่านเวทมนตร์อย่างสง่างาม
+                    const spinT = Math.min(1, sceneAnim.timer / Math.min(1.4, sceneAnim.duration * 0.65));
+                    const cosVal = Math.cos(spinT * Math.PI * 2);
+                    spinScaleX = (cosVal >= 0 ? 1 : -1) * Math.max(0.22, Math.abs(cosVal));
+                    animOffsetY = -Math.sin(spinT * Math.PI) * 20;
+                    bodyTilt = Math.sin(sceneAnim.timer * 5.0) * 0.08;
+                } else if (isLevelCelebrate) {
+                    // กระโดดหมุนตัวชูไม้เท้าเฉลิมฉลองผ่านด่าน
+                    animOffsetY = -Math.abs(Math.sin(sceneAnim.timer * 5.5)) * 28;
+                    const spinPhase = sceneAnim.timer * Math.PI * 2.2;
+                    const cosVal = Math.cos(spinPhase);
+                    spinScaleX = (cosVal >= 0 ? 1 : -1) * Math.max(0.25, Math.abs(cosVal));
+                    bodyTilt = Math.sin(sceneAnim.timer * 5.5) * 0.1;
+                } else if (isMagicStarGift) {
+                    // โยกตัวรับพลังดาวเวทมนตร์
+                    animOffsetY = -Math.abs(Math.sin(sceneAnim.timer * 4.5)) * 12;
+                    bodyTilt = Math.sin(sceneAnim.timer * 7.0) * 0.07;
                 }
 
                 ctx.translate(girlX, girlY + animOffsetY + recoilOffset);
-                ctx.scale(scale, scale);
+                ctx.scale(scale * spinScaleX, scale);
                 ctx.rotate(bodyTilt);
 
                 // Shield Aura around Magical Girl when shieldCharges > 0
@@ -2129,8 +2256,8 @@
                 ctx.closePath();
                 ctx.fill();
 
-                // Left Arm (ชูขึ้นดีใจในฉากชนะ)
-                if (isWinCine) {
+                // Left Arm (ชูขึ้นดีใจในฉากชนะและฉากเฉลิมฉลองผ่านด่าน)
+                if (isWinCine || isLevelCelebrate) {
                     ctx.save();
                     ctx.translate(-22, -82);
                     ctx.rotate(-0.4 + Math.sin(nowSec * 9) * 0.25);
@@ -2147,8 +2274,14 @@
                 // Right Arm Holding Star Magic Wand
                 ctx.save();
                 ctx.translate(22, -78);
-                if (isWinCine) {
+                if (isWinCine || isLevelCelebrate) {
                     ctx.rotate(0.15 + Math.sin(nowSec * 9) * 0.25);
+                } else if (isStartAnim) {
+                    // โบกไม้เท้าปล่อยวงแหวนเวทมนตร์
+                    ctx.rotate(-0.35 + Math.sin(sceneAnim.timer * 7.5) * 0.55);
+                } else if (isMagicStarGift) {
+                    // ควงไม้เท้าปล่อยลำแสงดาว 5 แฉก
+                    ctx.rotate(sceneAnim.timer * 8.5);
                 } else if (isLoseCine) {
                     ctx.rotate(1.15); // วางไม้เท้าตกข้างตัว
                 } else {
@@ -2163,14 +2296,15 @@
                 ctx.lineTo(14, -44);
                 ctx.stroke();
 
-                // Glowing Star Tip (ดับแสงในฉากแพ้ / เปล่งประกายจัดในฉากชนะ)
+                // Glowing Star Tip (ดับแสงในฉากแพ้ / เปล่งประกายจัดในฉากชนะและแอนิเมชันพิเศษ)
                 if (!isLoseCine) {
                     const starX = 14;
                     const starY = -48;
-                    const glowRadius = isWinCine ? 34 : (wandSparkTimer > 0 ? 30 : 18);
+                    const isBrightWand = isWinCine || isStartAnim || isLevelCelebrate || isMagicStarGift;
+                    const glowRadius = isMagicStarGift ? 42 : (isBrightWand ? 34 : (wandSparkTimer > 0 ? 30 : 18));
                     const tipGlow = ctx.createRadialGradient(starX, starY, 2, starX, starY, glowRadius);
                     tipGlow.addColorStop(0, '#ffffff');
-                    tipGlow.addColorStop(0.4, (magicStarShots > 0 || isWinCine) ? 'rgba(250, 204, 21, 0.95)' : 'rgba(244, 114, 182, 0.85)');
+                    tipGlow.addColorStop(0.4, (magicStarShots > 0 || isWinCine || isMagicStarGift || isLevelCelebrate) ? 'rgba(250, 204, 21, 0.95)' : 'rgba(244, 114, 182, 0.85)');
                     tipGlow.addColorStop(1, 'rgba(244, 114, 182, 0)');
                     ctx.fillStyle = tipGlow;
                     ctx.beginPath();
@@ -2186,7 +2320,7 @@
             // HUD COMPASS & AIM RETICLE
             // =====================================================================
             function drawHUDVisuals(horizonY, hasTargetInSight, nowSec) {
-                if (endCinematic) return;
+                if (endCinematic || sceneAnim.type) return;
 
                 const cx = width * 0.5;
                 const cy = horizonY + (height - horizonY) * 0.14;
@@ -2257,6 +2391,565 @@
             }
 
             // =====================================================================
+            // SCENE ANIMATIONS: START INTRO, LEVEL CLEAR (2 MODES), & 6 GIFTS
+            // =====================================================================
+            function drawStarPath(x, y, spikes, outerR, innerR, rot = -Math.PI / 2) {
+                ctx.beginPath();
+                for (let i = 0; i < spikes * 2; i++) {
+                    const r = (i % 2 === 0) ? outerR : innerR;
+                    const a = rot + (i * Math.PI) / spikes;
+                    const px = x + Math.cos(a) * r;
+                    const py = y + Math.sin(a) * r;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+            }
+
+            function drawHeartPath(x, y, size) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + size * 0.35);
+                ctx.bezierCurveTo(x - size * 0.9, y - size * 0.35, x - size * 0.55, y - size * 1.05, x, y - size * 0.45);
+                ctx.bezierCurveTo(x + size * 0.55, y - size * 1.05, x + size * 0.9, y - size * 0.35, x, y + size * 0.35);
+                ctx.closePath();
+            }
+
+            function drawSceneAnimations(nowSec, horizonY) {
+                const type = sceneAnim.type;
+                if (!type) return;
+
+                const t = sceneAnim.timer;
+                const dur = Math.max(0.5, sceneAnim.duration);
+                const p = Math.min(1, t / dur);
+                const cx = width * 0.5;
+                const shootReserve = height < 520 ? 62 : Math.max(82, height * 0.115);
+                const girlBaseY = height - shootReserve + 12;
+                const gardenCenterY = horizonY + (height - horizonY) * 0.42;
+
+                ctx.save();
+
+                // -----------------------------------------------------------------
+                // 1. START INTRO ANIMATION (start.mp3)
+                // -----------------------------------------------------------------
+                if (type === 'start') {
+                    // วงแหวนเวทมนตร์ขยายรอบสาวน้อย
+                    for (let r = 0; r < 3; r++) {
+                        const ringP = ((t * 0.9 + r * 0.33) % 1);
+                        const rx = 45 + ringP * Math.min(width * 0.48, 280);
+                        const ry = rx * 0.32;
+                        ctx.strokeStyle = r % 2 === 0
+                            ? `rgba(254, 240, 138, ${(1 - ringP) * 0.85})`
+                            : `rgba(244, 114, 182, ${(1 - ringP) * 0.85})`;
+                        ctx.lineWidth = 3 * (1 - ringP * 0.5);
+                        ctx.beginPath();
+                        ctx.ellipse(cx, girlBaseY - 18, rx, ry, 0, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    // ปล่อยกลีบดอกไม้ปลิวกระจายทั่วสวนเป็นระยะ
+                    if (t - sceneAnim.lastEmit > 0.22) {
+                        sceneAnim.lastEmit = t;
+                        spawnSparkles(
+                            cx + (Math.random() - 0.5) * width * 0.55,
+                            horizonY + (Math.random() - 0.2) * (height - horizonY) * 0.5,
+                            ['#f9a8d4', '#fbcfe8', '#fef08a', '#c084fc'],
+                            10,
+                            0.95,
+                            0.02
+                        );
+                    }
+
+                    // Portal Iris Reveal: ม่านแสงเวทมนตร์เปิดวงกลมจากจุดศูนย์กลาง
+                    const irisP = Math.min(1, t / Math.min(1.15, dur * 0.52));
+                    const easedIris = 1 - Math.pow(1 - irisP, 3);
+                    const maxRadius = Math.hypot(width, height) * 0.65;
+                    const irisR = Math.max(8, easedIris * maxRadius);
+
+                    if (irisP < 0.99) {
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.rect(0, 0, width, height);
+                        ctx.arc(cx, height * 0.5, irisR, 0, Math.PI * 2, true);
+                        ctx.fillStyle = `rgba(38, 12, 74, ${1 - easedIris * 0.85})`;
+                        ctx.fill('evenodd');
+
+                        // ขอบวงแหวนแสงเวทมนตร์ของม่านเปิด
+                        ctx.strokeStyle = `rgba(254, 240, 138, ${(1 - irisP) * 0.95})`;
+                        ctx.lineWidth = 8 * (1 - irisP * 0.5);
+                        ctx.shadowColor = 'rgba(236, 72, 153, 0.95)';
+                        ctx.shadowBlur = 24;
+                        ctx.beginPath();
+                        ctx.arc(cx, height * 0.5, irisR, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 2A. LEVEL CLEAR CELEBRATION (Level 1-3: No Gift)
+                // -----------------------------------------------------------------
+                else if (type === 'level_celebrate') {
+                    // เสาแสงสีทอง-ชมพูพุ่งขึ้นฟ้าจากสาวน้อย
+                    const pillarAlpha = Math.sin(Math.min(1, p * 1.15) * Math.PI);
+                    const pillarW = 70 + Math.sin(t * 9) * 14;
+                    const pillarGrad = ctx.createLinearGradient(cx - pillarW, 0, cx + pillarW, 0);
+                    pillarGrad.addColorStop(0, 'rgba(244, 114, 182, 0)');
+                    pillarGrad.addColorStop(0.28, `rgba(244, 114, 182, ${0.42 * pillarAlpha})`);
+                    pillarGrad.addColorStop(0.5, `rgba(254, 240, 138, ${0.72 * pillarAlpha})`);
+                    pillarGrad.addColorStop(0.72, `rgba(244, 114, 182, ${0.42 * pillarAlpha})`);
+                    pillarGrad.addColorStop(1, 'rgba(244, 114, 182, 0)');
+                    ctx.fillStyle = pillarGrad;
+                    ctx.fillRect(cx - pillarW, 0, pillarW * 2, girlBaseY);
+
+                    // วงแหวนเวทมนตร์ขยายรอบสวน
+                    for (let r = 0; r < 3; r++) {
+                        const ringP = ((t * 0.85 + r * 0.33) % 1);
+                        const rx = 50 + ringP * Math.min(width * 0.52, 340);
+                        const ry = rx * 0.28;
+                        ctx.strokeStyle = r % 2 === 0
+                            ? `rgba(254, 240, 138, ${(1 - ringP) * 0.9})`
+                            : `rgba(244, 114, 182, ${(1 - ringP) * 0.85})`;
+                        ctx.lineWidth = 3.5 * (1 - ringP * 0.4);
+                        ctx.beginPath();
+                        ctx.ellipse(cx, gardenCenterY + 30, rx, ry, 0, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    // พลุละอองดาวเฉลิมฉลองต่อเนื่อง
+                    if (t - sceneAnim.lastEmit > 0.38) {
+                        sceneAnim.lastEmit = t;
+                        const fx = width * (0.18 + Math.random() * 0.64);
+                        const fy = height * (0.14 + Math.random() * 0.26);
+                        spawnSparkles(fx, fy, ['#fef08a', '#f472b6', '#38bdf8', '#6ee7b7', '#c084fc'], 20, 1.35, 0.04);
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 2B. LEVEL CLEAR GIFT DROP (Level 4-19: Before Gift Modal)
+                // -----------------------------------------------------------------
+                else if (type === 'level_gift_drop') {
+                    // วงแหวนเวทมนตร์เรืองแสงกลางสวน
+                    for (let r = 0; r < 2; r++) {
+                        const ringP = ((t * 1.0 + r * 0.5) % 1);
+                        const rx = 38 + ringP * Math.min(width * 0.4, 240);
+                        const ry = rx * 0.3;
+                        ctx.strokeStyle = `rgba(254, 240, 138, ${(1 - ringP) * 0.85})`;
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.ellipse(cx, gardenCenterY + 25, rx, ry, 0, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    // กล่องของขวัญเวทมนตร์ลอยส่องแสงลงมากลางสวน
+                    const dropP = Math.min(1, t / 0.95);
+                    const easeDrop = 1 - Math.pow(1 - dropP, 3);
+                    const boxY = (horizonY - 90) + easeDrop * (gardenCenterY - (horizonY - 90)) + Math.sin(t * 6) * 7;
+                    const boxScale = 0.65 + easeDrop * 0.55;
+
+                    // ลำแสงส่องลงบนกล่องของขวัญ
+                    const rayGrad = ctx.createRadialGradient(cx, boxY, 8, cx, boxY, 95 * boxScale);
+                    rayGrad.addColorStop(0, 'rgba(254, 240, 138, 0.92)');
+                    rayGrad.addColorStop(0.5, 'rgba(244, 114, 182, 0.42)');
+                    rayGrad.addColorStop(1, 'rgba(244, 114, 182, 0)');
+                    ctx.fillStyle = rayGrad;
+                    ctx.beginPath();
+                    ctx.arc(cx, boxY, 95 * boxScale, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.save();
+                    ctx.translate(cx, boxY);
+                    ctx.scale(boxScale, boxScale);
+                    ctx.rotate(Math.sin(t * 5) * 0.08);
+
+                    // ตัวกล่องของขวัญ
+                    ctx.fillStyle = '#db2777';
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.roundRect(-34, -26, 68, 56, 8);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // ฝากล่อง
+                    ctx.fillStyle = '#ec4899';
+                    ctx.beginPath();
+                    ctx.roundRect(-39, -38, 78, 16, 6);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // ริบบิ้นสีทอง
+                    ctx.fillStyle = '#fef08a';
+                    ctx.fillRect(-7, -38, 14, 68);
+                    ctx.fillRect(-34, -4, 68, 11);
+
+                    // โบว์ด้านบน
+                    ctx.beginPath();
+                    ctx.ellipse(-13, -44, 13, 8, -0.35, 0, Math.PI * 2);
+                    ctx.ellipse(13, -44, 13, 8, 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+
+                    if (t - sceneAnim.lastEmit > 0.28) {
+                        sceneAnim.lastEmit = t;
+                        spawnSparkles(cx, boxY, ['#fef08a', '#f9a8d4', '#ffffff'], 12, 1.0, -0.02);
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 3.1 GIFT: ปุ๋ยวิเศษ (fertilizer)
+                // -----------------------------------------------------------------
+                else if (type === 'gift_fertilizer') {
+                    // เม็ดปุ๋ยคริสตัลสีทอง-เขียวโปรยปรายลงบนแปลงดอกไม้ทั้ง 3 แปลง (-42°, 0°, +42°)
+                    const patchAngles = [-42, 0, 42];
+                    for (let pIdx = 0; pIdx < 3; pIdx++) {
+                        const rel = getRelativeAngle(patchAngles[pIdx], playerAngle);
+                        const px = angleToScreenX(rel);
+                        const { footY } = distanceToScreenYAndScale(14, horizonY);
+
+                        // แสงฟื้นฟูสีเขียวมรกตเหนือแปลงดอกไม้
+                        const bedGlow = ctx.createRadialGradient(px, footY - 12, 6, px, footY - 12, 85);
+                        bedGlow.addColorStop(0, `rgba(52, 211, 153, ${0.5 * (1 - p * 0.35)})`);
+                        bedGlow.addColorStop(1, 'rgba(52, 211, 153, 0)');
+                        ctx.fillStyle = bedGlow;
+                        ctx.beginPath();
+                        ctx.ellipse(px, footY - 10, 85, 34, 0, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // เม็ดคริสตัลโปรยลงมาบนแต่ละแปลง
+                        for (let g = 0; g < 8; g++) {
+                            const fallP = ((t * 1.25 + g * 0.14 + pIdx * 0.11) % 1);
+                            const gx = px + Math.sin(g * 2.7 + pIdx) * 52;
+                            const gy = (horizonY - 30) + fallP * (footY - (horizonY - 30));
+                            ctx.save();
+                            ctx.translate(gx, gy);
+                            ctx.rotate(t * 4 + g);
+                            ctx.fillStyle = (g % 2 === 0) ? '#fde047' : '#34d399';
+                            ctx.globalAlpha = Math.sin(fallP * Math.PI);
+                            ctx.beginPath();
+                            ctx.moveTo(0, -7);
+                            ctx.lineTo(5, 0);
+                            ctx.lineTo(0, 7);
+                            ctx.lineTo(-5, 0);
+                            ctx.closePath();
+                            ctx.fill();
+                            ctx.restore();
+                        }
+                    }
+
+                    if (t - sceneAnim.lastEmit > 0.25) {
+                        sceneAnim.lastEmit = t;
+                        spawnSparkles(cx + (Math.random() - 0.5) * width * 0.65, gardenCenterY + 40, ['#34d399', '#6ee7b7', '#fef08a'], 10, 0.85, -0.04);
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 3.2 GIFT: น้ำค้างแห่งชีวิต (lifedew)
+                // -----------------------------------------------------------------
+                else if (type === 'gift_lifedew') {
+                    const dropDuration = 0.55;
+                    const impactY = gardenCenterY + 35;
+
+                    if (t < dropDuration) {
+                        // หยดน้ำค้างเรืองแสงขนาดใหญ่ลอยตกลงมากลางสวน
+                        const dp = t / dropDuration;
+                        const easeIn = dp * dp;
+                        const dy = (horizonY - 80) + easeIn * (impactY - (horizonY - 80));
+                        const dScale = 0.9 + dp * 0.4;
+
+                        const dewGlow = ctx.createRadialGradient(cx, dy, 4, cx, dy, 52 * dScale);
+                        dewGlow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+                        dewGlow.addColorStop(0.45, 'rgba(56, 189, 248, 0.75)');
+                        dewGlow.addColorStop(1, 'rgba(52, 211, 153, 0)');
+                        ctx.fillStyle = dewGlow;
+                        ctx.beginPath();
+                        ctx.arc(cx, dy, 52 * dScale, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // รูปหยดน้ำ
+                        ctx.fillStyle = '#7dd3fc';
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        ctx.moveTo(cx, dy - 30 * dScale);
+                        ctx.bezierCurveTo(cx + 22 * dScale, dy - 2 * dScale, cx + 22 * dScale, dy + 22 * dScale, cx, dy + 22 * dScale);
+                        ctx.bezierCurveTo(cx - 22 * dScale, dy + 22 * dScale, cx - 22 * dScale, dy - 2 * dScale, cx, dy - 30 * dScale);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                    } else {
+                        // แตกกระจายเป็นระลอกคลื่นน้ำสีฟ้า-เขียวมรกตชุ่มฉ่ำทั่วพื้นหญ้า
+                        const rippleT = t - dropDuration;
+                        for (let r = 0; r < 4; r++) {
+                            const rp = Math.max(0, Math.min(1, (rippleT - r * 0.22) / 1.15));
+                            if (rp <= 0 || rp >= 1) continue;
+                            const rx = 24 + rp * width * 0.62;
+                            const ry = rx * 0.30;
+                            ctx.strokeStyle = r % 2 === 0
+                                ? `rgba(56, 189, 248, ${(1 - rp) * 0.95})`
+                                : `rgba(52, 211, 153, ${(1 - rp) * 0.9})`;
+                            ctx.lineWidth = 5 * (1 - rp * 0.6);
+                            ctx.beginPath();
+                            ctx.ellipse(cx, impactY, rx, ry, 0, 0, Math.PI * 2);
+                            ctx.stroke();
+                        }
+
+                        // แสงชุ่มฉ่ำบนพื้นหญ้า
+                        const splashAlpha = Math.max(0, 1 - rippleT / 1.4);
+                        const splashGlow = ctx.createRadialGradient(cx, impactY, 10, cx, impactY, width * 0.45);
+                        splashGlow.addColorStop(0, `rgba(110, 231, 183, ${0.42 * splashAlpha})`);
+                        splashGlow.addColorStop(0.55, `rgba(56, 189, 248, ${0.25 * splashAlpha})`);
+                        splashGlow.addColorStop(1, 'rgba(56, 189, 248, 0)');
+                        ctx.fillStyle = splashGlow;
+                        ctx.beginPath();
+                        ctx.ellipse(cx, impactY, width * 0.45, height * 0.22, 0, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        if (t - sceneAnim.lastEmit > 0.22) {
+                            sceneAnim.lastEmit = t;
+                            spawnSparkles(cx + (Math.random() - 0.5) * width * 0.45, impactY - 10, ['#38bdf8', '#6ee7b7', '#ffffff'], 12, 1.1, 0.05);
+                        }
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 3.3 GIFT: โล่หัวใจ (heartshield)
+                // -----------------------------------------------------------------
+                else if (type === 'gift_heartshield') {
+                    // ไอคอนหัวใจคริสตัลสีชมพูเรืองแสงลอยขึ้นเหนือตัวละคร
+                    const riseP = Math.min(1, t / 0.6);
+                    const easeRise = 1 - Math.pow(1 - riseP, 3);
+                    const heartY = (girlBaseY - 95) - easeRise * 90 + Math.sin(t * 6) * 5;
+                    const heartSize = 26 + easeRise * 16;
+
+                    const hGlow = ctx.createRadialGradient(cx, heartY, 4, cx, heartY, heartSize * 2.2);
+                    hGlow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+                    hGlow.addColorStop(0.4, 'rgba(244, 114, 182, 0.8)');
+                    hGlow.addColorStop(1, 'rgba(244, 114, 182, 0)');
+                    ctx.fillStyle = hGlow;
+                    ctx.beginPath();
+                    ctx.arc(cx, heartY, heartSize * 2.2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#f472b6';
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = 3;
+                    drawHeartPath(cx, heartY, heartSize);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // กางโดมบาเรียรูปหัวใจซ้อน 2 ชั้นโอบล้อมสาวน้อยและแปลงดอกไม้
+                    const domeP = Math.max(0, Math.min(1, (t - 0.35) / 0.75));
+                    if (domeP > 0) {
+                        const easeDome = 1 - Math.pow(1 - domeP, 3);
+                        const pulse = 1 + Math.sin(t * 7) * 0.03;
+
+                        // ชั้นในโอบสาวน้อย
+                        const innerR = 95 * easeDome * pulse;
+                        ctx.strokeStyle = `rgba(251, 207, 232, ${0.88 * (1 - p * 0.25)})`;
+                        ctx.fillStyle = `rgba(244, 114, 182, ${0.14 * easeDome})`;
+                        ctx.lineWidth = 3.5;
+                        ctx.beginPath();
+                        ctx.arc(cx, girlBaseY - 72, innerR, Math.PI, 0);
+                        ctx.stroke();
+                        ctx.fill();
+
+                        // ชั้นนอกโอบแปลงดอกไม้ทั้งหมด
+                        const outerRx = Math.min(width * 0.46, 300) * easeDome * pulse;
+                        const outerRy = (height - horizonY) * 0.56 * easeDome * pulse;
+                        ctx.strokeStyle = `rgba(244, 114, 182, ${0.82 * (1 - p * 0.25)})`;
+                        ctx.fillStyle = `rgba(251, 207, 232, ${0.1 * easeDome})`;
+                        ctx.lineWidth = 4;
+                        ctx.beginPath();
+                        ctx.ellipse(cx, girlBaseY - 12, outerRx, outerRy, 0, Math.PI, 0);
+                        ctx.stroke();
+                        ctx.fill();
+                    }
+
+                    if (t - sceneAnim.lastEmit > 0.28) {
+                        sceneAnim.lastEmit = t;
+                        spawnSparkles(cx, heartY, ['#f472b6', '#fbcfe8', '#fef08a'], 10, 0.95, -0.04);
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 3.4 GIFT: ดาวเวทมนตร์ (magicstar)
+                // -----------------------------------------------------------------
+                else if (type === 'gift_magicstar') {
+                    const wandTargetX = cx + 28;
+                    const wandTargetY = girlBaseY - 118;
+                    const fallP = Math.min(1, t / 0.55);
+                    const easeFall = 1 - Math.pow(1 - fallP, 2);
+
+                    if (t < 0.65) {
+                        // ดวงดาวสีทองขนาดใหญ่พุ่งลงมาประทับที่ปลายไม้เท้า
+                        const sx = cx + (wandTargetX - cx) * easeFall;
+                        const sy = (horizonY - 95) + easeFall * (wandTargetY - (horizonY - 95));
+                        const sRad = 44 * (1 - easeFall * 0.35);
+
+                        ctx.save();
+                        ctx.shadowColor = '#facc15';
+                        ctx.shadowBlur = 24;
+                        ctx.fillStyle = '#fde047';
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 3;
+                        drawStarPath(sx, sy, 5, sRad, sRad * 0.45, t * 5);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    // ออร่าสีทองอร่ามและลำแสงดาว 5 แฉกหมุนวนรอบตัวสาวน้อย
+                    const orbitP = Math.max(0, Math.min(1, (t - 0.38) / 0.45));
+                    if (orbitP > 0) {
+                        const aura = ctx.createRadialGradient(cx, girlBaseY - 82, 12, cx, girlBaseY - 82, 130 * orbitP);
+                        aura.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+                        aura.addColorStop(0.45, 'rgba(250, 204, 21, 0.38)');
+                        aura.addColorStop(1, 'rgba(250, 204, 21, 0)');
+                        ctx.fillStyle = aura;
+                        ctx.beginPath();
+                        ctx.arc(cx, girlBaseY - 82, 130 * orbitP, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        for (let s = 0; s < 5; s++) {
+                            const ang = t * 4.5 + (s * Math.PI * 2) / 5;
+                            const ox = cx + Math.cos(ang) * 95 * orbitP;
+                            const oy = (girlBaseY - 85) + Math.sin(ang) * 38 * orbitP;
+                            ctx.fillStyle = s % 2 === 0 ? '#fde047' : '#ffffff';
+                            drawStarPath(ox, oy, 5, 16 * orbitP, 7 * orbitP, ang * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    if (t - sceneAnim.lastEmit > 0.22) {
+                        sceneAnim.lastEmit = t;
+                        spawnSparkles(wandTargetX, wandTargetY, ['#fde047', '#fef08a', '#ffffff'], 12, 1.15, -0.02);
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 3.5 GIFT: เกสรนางฟ้า (fairypollen)
+                // -----------------------------------------------------------------
+                else if (type === 'gift_fairypollen') {
+                    // เอฟเฟกต์คลื่นชะลอเวลา (Slow-motion Aura) สีทอง-ม่วงอ่อน
+                    ctx.fillStyle = `rgba(192, 132, 252, ${0.14 * Math.sin(p * Math.PI)})`;
+                    ctx.fillRect(0, 0, width, height);
+
+                    for (let r = 0; r < 3; r++) {
+                        const waveP = ((t * 0.55 + r * 0.33) % 1);
+                        const rad = 35 + waveP * Math.min(width, height) * 0.58;
+                        ctx.strokeStyle = r % 2 === 0
+                            ? `rgba(233, 213, 255, ${(1 - waveP) * 0.78})`
+                            : `rgba(254, 240, 138, ${(1 - waveP) * 0.72})`;
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([10, 10]);
+                        ctx.beginPath();
+                        ctx.arc(cx, height * 0.48, rad, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                    ctx.setLineDash([]);
+
+                    // กลุ่มผีเสื้อนางฟ้าบินโฉบผ่านหน้าจอพร้อมโปรยละอองเกสร
+                    for (let b = 0; b < 7; b++) {
+                        const bp = (t * 0.72 + b * 0.13) % 1.25;
+                        const bx = -40 + bp * (width + 80);
+                        const by = horizonY * 0.65 + (b % 3) * (height * 0.14) + Math.sin(t * 4.5 + b * 1.4) * 28;
+                        const flap = Math.abs(Math.sin(t * 16 + b));
+
+                        ctx.save();
+                        ctx.translate(bx, by);
+                        ctx.fillStyle = (b % 2 === 0) ? '#fef08a' : '#e9d5ff';
+                        ctx.shadowColor = '#c084fc';
+                        ctx.shadowBlur = 10;
+                        ctx.beginPath();
+                        ctx.ellipse(-9 * flap, -3, 12 * flap, 7, -0.35, 0, Math.PI * 2);
+                        ctx.ellipse(9 * flap, -3, 12 * flap, 7, 0.35, 0, Math.PI * 2);
+                        ctx.ellipse(-6 * flap, 6, 7 * flap, 5, 0.3, 0, Math.PI * 2);
+                        ctx.ellipse(6 * flap, 6, 7 * flap, 5, -0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+
+                    // ละอองเกสรฟุ้งกระจายช้าๆ ทั่วสวน
+                    if (t - sceneAnim.lastEmit > 0.16) {
+                        sceneAnim.lastEmit = t;
+                        spawnSparkles(
+                            Math.random() * width,
+                            horizonY * 0.5 + Math.random() * height * 0.45,
+                            ['#fef08a', '#e9d5ff', '#d8b4fe', '#fde047'],
+                            7,
+                            0.45,
+                            0.008
+                        );
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 3.6 GIFT: แสงตะวัน (sunshine)
+                // -----------------------------------------------------------------
+                else if (type === 'gift_sunshine') {
+                    // ดวงอาทิตย์บนท้องฟ้าส่องลำแสงสีทองอุ่น (God Rays) พุ่งลงมาอาบทั้งสวน
+                    const sunRel = getRelativeAngle(18, playerAngle);
+                    const sunX = Math.abs(sunRel) < HALF_FOV + 25 ? angleToScreenX(sunRel) : width * 0.65;
+                    const sunY = horizonY * 0.28;
+                    const rayAlpha = Math.sin(Math.min(1, p * 1.15) * Math.PI) * 0.42;
+
+                    const bigSun = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 190);
+                    bigSun.addColorStop(0, `rgba(255, 255, 240, ${Math.min(0.95, rayAlpha * 2.2)})`);
+                    bigSun.addColorStop(0.45, `rgba(253, 224, 71, ${rayAlpha * 1.3})`);
+                    bigSun.addColorStop(1, 'rgba(253, 224, 71, 0)');
+                    ctx.fillStyle = bigSun;
+                    ctx.beginPath();
+                    ctx.arc(sunX, sunY, 190, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    for (let r = 0; r < 6; r++) {
+                        const targetX = width * (0.08 + r * 0.17) + Math.sin(t * 1.6 + r) * 18;
+                        const rayGrad = ctx.createLinearGradient(sunX, sunY, targetX, height);
+                        rayGrad.addColorStop(0, `rgba(254, 240, 138, ${rayAlpha * 1.2})`);
+                        rayGrad.addColorStop(0.65, `rgba(251, 191, 36, ${rayAlpha * 0.55})`);
+                        rayGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
+                        ctx.fillStyle = rayGrad;
+                        ctx.beginPath();
+                        ctx.moveTo(sunX - 10, sunY);
+                        ctx.lineTo(sunX + 10, sunY);
+                        ctx.lineTo(targetX + 55, height);
+                        ctx.lineTo(targetX - 55, height);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+
+                    // วงแหวนโล่ป้องกันสีทองรอบตัวละคร
+                    const shieldP = Math.min(1, t / 0.65);
+                    const easeShield = 1 - Math.pow(1 - shieldP, 3);
+                    ctx.save();
+                    ctx.translate(cx, girlBaseY - 76);
+                    ctx.strokeStyle = `rgba(253, 224, 71, ${0.9 * (1 - p * 0.2)})`;
+                    ctx.lineWidth = 4;
+                    ctx.shadowColor = '#f59e0b';
+                    ctx.shadowBlur = 16;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 74 * easeShield, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.rotate(t * 2.4);
+                    ctx.setLineDash([12, 10]);
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 86 * easeShield, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.restore();
+
+                    if (t - sceneAnim.lastEmit > 0.25) {
+                        sceneAnim.lastEmit = t;
+                        spawnSparkles(cx + (Math.random() - 0.5) * width * 0.6, gardenCenterY, ['#fef08a', '#fde047', '#ffffff'], 10, 0.9, -0.03);
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            // =====================================================================
             // MAIN VISUAL FRAME RENDERER
             // =====================================================================
             function renderFrame(dt) {
@@ -2268,6 +2961,10 @@
                 cameraShake = Math.max(0, cameraShake - dt * 36);
                 hitMarkerTimer = Math.max(0, hitMarkerTimer - dt);
                 edgeHitPulse = Math.max(0, edgeHitPulse - dt * 2.8);
+
+                if (sceneAnim.type) {
+                    sceneAnim.timer += dt;
+                }
 
                 // เอฟเฟกต์พลุและกลีบดอกไม้ต่อเนื่องในฉากจบ Cinematic
                 if (endCinematic === 'win' && nowSec - lastFireworkTime > 0.55) {
@@ -2283,6 +2980,15 @@
                 }
 
                 ctx.save();
+                if (sceneAnim.type === 'start') {
+                    // กล้องค่อยๆ ซูมเปิดฉากเข้าสู่สวนอย่างนุ่มนวล
+                    const zoomP = Math.min(1, sceneAnim.timer / Math.max(0.8, sceneAnim.duration * 0.85));
+                    const easeZoom = 1 - Math.pow(1 - zoomP, 3);
+                    const camScale = 1.14 - easeZoom * 0.14;
+                    ctx.translate(width * 0.5, height * 0.5);
+                    ctx.scale(camScale, camScale);
+                    ctx.translate(-width * 0.5, -height * 0.5);
+                }
                 if (cameraShake > 0.1) {
                     ctx.translate((Math.random() - 0.5) * cameraShake, (Math.random() - 0.5) * cameraShake);
                 }
@@ -2436,6 +3142,7 @@
 
                 drawHUDVisuals(horizonY, hasTargetInSight, nowSec);
                 drawMagicalGirl(nowSec);
+                drawSceneAnimations(nowSec, horizonY);
 
                 ctx.restore();
             }
@@ -2456,6 +3163,11 @@
                 onGiftApplied,
                 onLevelStart,
                 onLevelClearVisual,
+                startIntroAnimation,
+                startLevelCelebrateAnimation,
+                startLevelGiftDropAnimation,
+                startGiftAnimation,
+                clearSceneAnim,
                 onEndCinematicStart,
                 resetVisuals,
                 resize
@@ -2839,7 +3551,7 @@
             }
         }
 
-        function checkLevelClear() {
+        async function checkLevelClear() {
             activeEnemies = activeEnemies.filter(e => e.active);
             const levelData = LEVELS[currentLevel - 1];
 
@@ -2853,21 +3565,36 @@
                     clearProgress();
                     gameOver(true);
                 } else {
-                    playCenterSound('level', 1.0);
-                    VisualEngine.onLevelClearVisual(currentLevel);
-                    announce(`ผ่าน Level ${currentLevel} สำเร็จ`);
+                    const clearedLevel = currentLevel;
+                    announce(`ผ่าน Level ${clearedLevel} สำเร็จ`);
+                    setPlayerAngle(0, true);
 
-                    // หลังผ่าน Level 4 ถึง Level 19 เปิดหน้าเลือก Gift 3 ชนิด
-                    if (currentLevel >= 4) {
-                        setTimeout(() => {
-                            if (!isGameOver && !endCinematic) showGiftSelectionScreen();
-                        }, 1800);
+                    // หลังผ่าน Level 4 ถึง Level 19: แอนิเมชันกล่องของขวัญกระชับ (~2.0 วินาที) แล้วเปิดหน้าเลือก Gift
+                    if (clearedLevel >= 4) {
+                        playCenterSound('level', 1.0);
+                        VisualEngine.startLevelGiftDropAnimation(clearedLevel, 2.0);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        if (!isGameOver && !endCinematic) {
+                            VisualEngine.clearSceneAnim();
+                            showGiftSelectionScreen();
+                        }
                     } else {
-                        currentLevel++;
-                        saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
-                        setTimeout(() => {
-                            if (!isGameOver && !endCinematic) startLevel();
-                        }, 2400);
+                        // ด่านที่ไม่มีเลือก Gift (ผ่าน Level 1-3): รอเสียง level.mp3 จบจริง (อย่างน้อย 2.8 วินาที)
+                        const levelDur = (audioBuffers['level'] && audioBuffers['level'].duration)
+                            ? Math.max(2.8, audioBuffers['level'].duration)
+                            : 2.8;
+                        VisualEngine.startLevelCelebrateAnimation(clearedLevel, levelDur);
+
+                        const soundPromise = playCenterSoundAsync('level', 1.0);
+                        const minDelay = new Promise(resolve => setTimeout(resolve, 2800));
+                        await Promise.all([soundPromise, minDelay]);
+
+                        if (!isGameOver && !endCinematic) {
+                            VisualEngine.clearSceneAnim();
+                            currentLevel++;
+                            saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
+                            startLevel();
+                        }
                     }
                 }
             } else if (introQueue.length > 0 && activeEnemies.length === 0 && enemiesSpawned < levelData.total) {
@@ -2906,13 +3633,10 @@
             }
         }
 
-        function selectGift(gift) {
+        async function selectGift(gift) {
             const giftScreen = document.getElementById('giftScreen');
+            if (giftScreen.style.display === 'none') return;
             giftScreen.style.display = 'none';
-
-            // เล่นเสียงประจำ Gift ที่เลือก 1 ครั้ง
-            playCenterSound(gift.sound, 1.0);
-            VisualEngine.onGiftApplied();
 
             let resultText = '';
             switch (gift.id) {
@@ -2950,13 +3674,23 @@
             currentLevel++;
             saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
 
-            setTimeout(() => {
-                if (!isGameOver && !endCinematic) {
-                    const gameUI = document.getElementById('gameUI');
-                    gameUI.focus();
-                    startLevel();
-                }
-            }, 1400);
+            // หันกล้องตรงกลาง 0° และเล่นแอนิเมชันเฉพาะทางของ Gift คู่กับเสียง g_*.mp3 จนจบ
+            setPlayerAngle(0, true);
+            const giftDur = (audioBuffers[gift.sound] && audioBuffers[gift.sound].duration)
+                ? Math.max(1.8, audioBuffers[gift.sound].duration)
+                : 1.8;
+            VisualEngine.startGiftAnimation(gift.id, giftDur);
+
+            const soundPromise = playCenterSoundAsync(gift.sound, 1.0);
+            const minAnimDelay = new Promise(resolve => setTimeout(resolve, 1800));
+            await Promise.all([soundPromise, minAnimDelay]);
+
+            if (!isGameOver && !endCinematic) {
+                VisualEngine.clearSceneAnim();
+                const gameUI = document.getElementById('gameUI');
+                gameUI.focus();
+                startLevel();
+            }
         }
 
         function startLevel() {
@@ -3250,36 +3984,38 @@
             document.getElementById('btn-home-main').style.display = 'none';
 
             const gameUI = document.getElementById('gameUI');
-            gameUI.style.display = 'flex';
+            // ซ่อนปุ่มบังคับและแถบสถานะชั่วคราวเพื่อให้เห็นฉากเปิดเกมเต็มตา
+            gameUI.style.display = 'none';
             VisualEngine.resize();
 
-            // เล่น start.mp3 จนจบจริงก่อน แล้วจึงเริ่ม bgm.mp3 แบบวนซ้ำ (ไม่ซ้อนกัน)
-            await new Promise((resolve) => {
-                if (!audioBuffers['start']) {
-                    resolve();
-                    return;
-                }
-                const source = audioCtx.createBufferSource();
-                source.buffer = audioBuffers['start'];
-                source.connect(audioCtx.destination);
-                source.onended = resolve;
-                source.start(0);
-            });
-
-            isStartingGame = false;
-            playBGM();
-
-            gameUI.setAttribute('role', 'application');
-            gameUI.setAttribute('aria-label', `Magical Garden Level ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงเวทมนตร์ กด H เพื่อฟังสถานะสวน`);
-            gameUI.focus();
-
+            // เตรียมสถานะสวนและเปิดลูปแอนิเมชันทันทีที่ start.mp3 เริ่มเล่น
             resetGame(savedState);
-            startLevel();
+            isLevelTransition = true;
+            setPlayerAngle(0, true);
+
+            const startDur = (audioBuffers['start'] && audioBuffers['start'].duration)
+                ? audioBuffers['start'].duration
+                : 2.2;
+            VisualEngine.startIntroAnimation(startDur);
 
             lastFrameTime = 0;
             if (!gameLoopTimer) {
                 gameLoopTimer = requestAnimationFrame(update);
             }
+
+            // เล่น start.mp3 จนจบจริง (ผูกกับ onended) แล้วจึงเปิด UI และเริ่ม bgm.mp3
+            await playCenterSoundAsync('start', 1.0);
+
+            VisualEngine.clearSceneAnim();
+            isStartingGame = false;
+            playBGM();
+
+            gameUI.style.display = 'flex';
+            gameUI.setAttribute('role', 'application');
+            gameUI.setAttribute('aria-label', `Magical Garden Level ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงเวทมนตร์ กด H เพื่อฟังสถานะสวน`);
+            gameUI.focus();
+
+            startLevel();
         }
 
         document.getElementById('btnContinue').addEventListener('click', async () => {
