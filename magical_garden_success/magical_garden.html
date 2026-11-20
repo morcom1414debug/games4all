@@ -508,8 +508,8 @@
     <!-- หน้าเริ่มต้นเกม -->
     <div id="startScreen">
         <h1>Magical Garden : Games4all</h1>
-        <div class="subtitle">สวนเวทมนตร์พิทักษ์ดอกไม้</div>
-        <p>ใส่หูฟังเพื่อรับฟังเสียงรอบทิศทาง 180 องศาด้านหน้า</p>
+        <div id="startSubtitle" class="subtitle">สวนเวทมนตร์พิทักษ์ดอกไม้</div>
+        <p id="startDesc">ใส่หูฟังเพื่อรับฟังเสียงรอบทิศทาง 180 องศาด้านหน้า</p>
         <button id="btnContinue" style="display: none; background: linear-gradient(180deg, #a855f7 0%, #7e22ce 100%); margin-bottom: 12px;">เล่นต่อ (Level ...)</button>
         <button id="btnNewGame">เริ่มเกมใหม่</button>
     </div>
@@ -561,6 +561,295 @@
 
     <script>
         // =========================================================================
+        // 0. BILINGUAL (TH / EN) SYSTEM & LANGUAGE SYNC
+        // =========================================================================
+        const LANG_STORAGE_KEY = 'mg_lang';
+
+        function detectCurrentLanguage() {
+            try {
+                const saved = localStorage.getItem(LANG_STORAGE_KEY);
+                if (saved === 'th' || saved === 'en') return saved;
+            } catch (e) {}
+            const sysLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+            return sysLang.startsWith('th') ? 'th' : 'en';
+        }
+
+        const currentLang = detectCurrentLanguage();
+
+        const I18N_GAME = {
+            th: {
+                htmlLang: 'th',
+                pageTitle: 'Magical Garden',
+                homeAria: 'กลับสู่ชุมชน',
+                bannerDefaultSub: 'พิทักษ์สวนเวทมนตร์',
+                startSubtitle: 'สวนเวทมนตร์พิทักษ์ดอกไม้',
+                startDesc: 'ใส่หูฟังเพื่อรับฟังเสียงรอบทิศทาง 180 องศาด้านหน้า',
+                btnContinue: (lvl) => `เล่นต่อ (Level ${lvl})`,
+                btnNewGame: 'เริ่มเกมใหม่',
+                giftTitle: 'ของขวัญแห่งเวทมนตร์',
+                giftSub: 'เลือก Gift 1 ชนิดเพื่อเสริมพลังให้สวนดอกไม้',
+                cheatTitle: 'เลือกด่านสำหรับทดสอบ',
+                cheatSub: 'เลือก Level ที่ต้องการข้ามไปเล่นทดสอบทันที',
+                gameOverLoseTitle: 'สวนดอกไม้เหี่ยวเฉา',
+                gameOverLoseMsg: (lvl, maxLvl) => `พลังชีวิตสวนเหลือ 0 หยุดอยู่ที่ Level ${lvl} จาก ${maxLvl}`,
+                gameOverLoseAnnounce: (lvl) => `จบเกม พลังชีวิตสวนเหลือ 0 คุณแพ้ที่ Level ${lvl}`,
+                gameOverWinTitle: 'ชัยชนะแห่งสวนเวทมนตร์ ✨',
+                gameOverWinMsg: (maxLvl, hp, maxHp) => `ยินดีด้วย! คุณปกป้องสวนดอกไม้ครบทั้ง ${maxLvl} Level สำเร็จ (พลังสวนเหลือ ${hp}/${maxHp})`,
+                gameOverWinAnnounce: (maxLvl, hp) => `ยินดีด้วย คุณชนะเกม Magical Garden ผ่านครบทั้ง ${maxLvl} Level สำเร็จ พลังชีวิตสวนเหลือ ${hp}`,
+                btnRetry: 'เล่นอีกครั้ง (ด่านเดิม)',
+                btnRestartGame: 'เริ่มต้นใหม่ (Level 1)',
+                btnPauseExit: 'พักการเล่นไว้ก่อน',
+                btnLeftAria: 'หมุนซ้าย',
+                btnRightAria: 'หมุนขวา',
+                btnShootAria: 'ยิงเวทมนตร์',
+                btnShootText: 'ยิงเวทมนตร์ ✨',
+                statusLevel: (lvl, max) => `Level: ${lvl}/${max}`,
+                statusGardenHP: (hp, max) => `พลังสวน: ${hp}/${max}`,
+                statusShield: (cur, max) => `โล่: ${cur}/${max}`,
+                statusPowerEmpowered: (shots) => `พลังเวท: 2 (${shots})`,
+                statusPowerNormal: 'พลังเวท: 1',
+                compassLeft: 'ซ้าย',
+                compassRight: 'ขวา',
+                introBannerTitle: 'MAGICAL GARDEN',
+                introBannerSub: 'สวนเวทมนตร์พิทักษ์ดอกไม้',
+                levelClearBannerTitle: 'ผ่านด่านสำเร็จ ✨',
+                levelClearBannerSub: (lvl) => `สวนเวทมนตร์ปลอดภัยใน Level ${lvl}`,
+                levelGiftDropSub: (lvl) => `เตรียมรับของขวัญแห่งเวทมนตร์ (Level ${lvl})`,
+                levelStartSubElite: 'บททดสอบสุดท้าย: เฉพาะศัตรูพิเศษ!',
+                levelStartSubNormal: 'ปกป้องสวนดอกไม้เวทมนตร์',
+                endWinBannerTitle: 'ชัยชนะแห่งสวนเวทมนตร์ ✨',
+                endWinBannerSub: 'ดอกไม้ทุกต้นเบ่งบานและเต้นรำอย่างมีความสุข!',
+                endLoseBannerTitle: 'สวนเวทมนตร์ถูกทำลาย...',
+                endLoseBannerSub: 'ดอกไม้ทั้งหมดเหี่ยวเฉาลงแล้ว',
+                gardenStatusPerfect: 'สวนสมบูรณ์ พลังชีวิต 100',
+                gardenStatusDead: 'พลังชีวิตสวนหมดแล้ว',
+                gardenStatusCritical: (hp) => `สวนอยู่ในสถานะวิกฤต พลังชีวิตเหลือ ${hp}`,
+                gardenStatusHeavy: (hp) => `สวนเสียหายมาก พลังชีวิตเหลือ ${hp}`,
+                gardenStatusDamaged: (hp) => `สวนเสียหาย พลังชีวิตเหลือ ${hp}`,
+                shieldBlockedAnnounce: (cur) => `โล่หัวใจป้องกันการโจมตีสำเร็จ เหลือโล่ ${cur} ครั้ง`,
+                levelClearedAnnounce: (lvl) => `ผ่าน Level ${lvl} สำเร็จ`,
+                giftPromptAnnounce: (names) => `เลือกของขวัญเวทมนตร์ 1 ชนิดจาก 3 ตัวเลือก: ${names}`,
+                giftResultFertilizer: (hp) => `ใช้ปุ๋ยวิเศษ ฟื้นฟูพลังสวน +20 เป็น ${hp}`,
+                giftResultLifeDew: (hp) => `ใช้น้ำค้างแห่งชีวิต ฟื้นฟูพลังสวน +35 เป็น ${hp}`,
+                giftResultShieldFull: (max) => `ใช้โล่หัวใจ โล่ป้องกันเต็มสูงสุด ${max} ครั้งแล้ว`,
+                giftResultShieldAddedFull: (added, max) => `ใช้โล่หัวใจ เพิ่มการป้องกัน ${added} ครั้ง โล่ป้องกันเต็มสูงสุด ${max} ครั้งแล้ว`,
+                giftResultShieldAdded: (added, cur, max) => `ใช้โล่หัวใจ เพิ่มการป้องกัน ${added} ครั้ง รวมโล่ ${cur} จาก ${max} ครั้ง`,
+                giftResultMagicStar: (shots) => `ใช้ดาวเวทมนตร์ พลังยิงเพิ่มเป็น 2 หน่วยสำหรับ ${shots} นัดถัดไป`,
+                giftResultFairyPollen: 'ใช้เกสรนางฟ้า ลดความเร็วศัตรู 30% ในช่วง 15 วินาทีแรกของด่านถัดไป',
+                giftResultSunshineFull: (hp, max) => `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${hp} โล่ป้องกันเต็มสูงสุด ${max} ครั้งแล้ว`,
+                giftResultSunshineAddedFull: (hp, max) => `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${hp} โล่ป้องกันเต็มสูงสุด ${max} ครั้งแล้ว`,
+                giftResultSunshineAdded: (hp, cur, max) => `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${hp} และเพิ่มโล่ป้องกันรวม ${cur} จาก ${max} ครั้ง`,
+                cheatJumpDesc: (lvl) => `ข้ามไปเริ่มเล่นทดสอบที่ Level ${lvl} ทันที`,
+                cheatPromptAnnounce: 'สูตรพิเศษทำงาน เลือกด่านที่ต้องการทดสอบจาก 4 ตัวเลือก: Level 19, Level 29, Level 39, Level 48',
+                cheatShieldAnnounce: (cur, max) => `สูตรพิเศษทำงาน เพิ่มโล่ป้องกันเต็มพิกัด ${cur} จาก ${max} ครั้ง`,
+                gameUIAriaLevel1: 'Magical Garden Level 1 ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงเวทมนตร์ กด H เพื่อฟังสถานะสวน',
+                gameUIAriaLevelN: (lvl) => `Magical Garden Level ${lvl}`,
+                levelStartAnnounce: (lvl, maxLvl, total) => `เริ่ม Level ${lvl} จาก ${maxLvl} ศัตรูทั้งหมด ${total} ตัว`,
+                statusKeyAnnounce: (lvl, hp, shield, maxShield, shots) => `Level ${lvl} พลังชีวิตสวน ${hp} จาก 100 โล่ป้องกัน ${shield} จาก ${maxShield} ครั้ง พลังเวท ${shots > 0 ? '2 หน่วย เหลือ ' + shots + ' นัด' : '1 หน่วย'}`,
+                enemyIntros: {
+                    'สไลม์จอมตะกละ': 'พบศัตรูใหม่: สไลม์จอมตะกละ ศัตรูพื้นฐาน 1 HP',
+                    'หนอนจอมมุด': 'พบศัตรูใหม่: หนอนจอมมุด เคลื่อนที่รวดเร็ว 1 HP',
+                    'ลูกหนามกลิ้ง': 'พบศัตรูใหม่: ลูกหนามกลิ้ง เกราะแข็งต้องยิง 3 ครั้ง',
+                    'เห็ดปีศาจตัวใหญ่': 'พบศัตรูใหม่: เห็ดปีศาจตัวใหญ่ พลังชีวิตสูงต้องยิง 5 ครั้ง',
+                    'ค้างคาวป่วนสวน': 'พบศัตรูใหม่: ค้างคาวป่วนสวน บินโฉบเร็วและโจมตีถี่',
+                    'ดอกไม้ปีศาจ': 'พบศัตรูพิเศษ: ดอกไม้ปีศาจ ต้องยิง 2 ครั้ง และสร้างความเสียหายสูง'
+                },
+                gifts: {
+                    fertilizer: {
+                        name: 'ปุ๋ยวิเศษ',
+                        desc: 'ฟื้นฟูพลังชีวิตสวน +20 HP ทันที (สูงสุด 100)',
+                        bannerTitle: 'ปุ๋ยวิเศษ ✨',
+                        bannerSub: 'ฟื้นฟูพลังชีวิตสวน +20 HP'
+                    },
+                    lifedew: {
+                        name: 'น้ำค้างแห่งชีวิต',
+                        desc: 'ฟื้นฟูพลังชีวิตสวน +35 HP ทันที (สูงสุด 100)',
+                        bannerTitle: 'น้ำค้างแห่งชีวิต 💧',
+                        bannerSub: 'ฟื้นฟูพลังชีวิตสวน +35 HP'
+                    },
+                    heartshield: {
+                        name: 'โล่หัวใจ',
+                        desc: 'ป้องกันความเสียหายที่ถึงสวนได้ 2 ครั้ง',
+                        bannerTitle: 'โล่หัวใจ 💖',
+                        bannerSub: 'กางโดมบาเรียป้องกันความเสียหาย 2 ครั้ง'
+                    },
+                    magicstar: {
+                        name: 'ดาวเวทมนตร์',
+                        desc: 'เพิ่มพลังยิงเป็น 2 หน่วยต่อครั้ง สำหรับ 10 นัดถัดไป',
+                        bannerTitle: 'ดาวเวทมนตร์ ⭐',
+                        bannerSub: 'เพิ่มพลังเวทเป็น 2 หน่วย (10 นัดถัดไป)'
+                    },
+                    fairypollen: {
+                        name: 'เกสรนางฟ้า',
+                        desc: 'ลดความเร็วศัตรูลง 30% ในช่วง 15 วินาทีแรกของด่านถัดไป',
+                        bannerTitle: 'เกสรนางฟ้า 🦋',
+                        bannerSub: 'ลดความเร็วศัตรูลง 30% นาน 15 วินาที'
+                    },
+                    sunshine: {
+                        name: 'แสงตะวัน',
+                        desc: 'ฟื้นฟูพลังชีวิตสวน +10 HP และเพิ่มโล่ป้องกัน 1 ครั้ง',
+                        bannerTitle: 'แสงตะวัน ☀️',
+                        bannerSub: 'ฟื้นฟู +10 HP และเพิ่มโล่ป้องกัน 1 ครั้ง'
+                    }
+                }
+            },
+            en: {
+                htmlLang: 'en',
+                pageTitle: 'Magical Garden',
+                homeAria: 'Back to Community Hub',
+                bannerDefaultSub: 'Defend the Enchanted Garden',
+                startSubtitle: 'Enchanted Flower Defense',
+                startDesc: 'Wear headphones for 180-degree directional spatial audio',
+                btnContinue: (lvl) => `Continue (Level ${lvl})`,
+                btnNewGame: 'Start New Game',
+                giftTitle: 'Magical Gifts',
+                giftSub: 'Choose 1 Gift to empower your flower garden',
+                cheatTitle: 'Select Test Stage',
+                cheatSub: 'Choose a Level to jump into immediately for testing',
+                gameOverLoseTitle: 'The Garden Withered',
+                gameOverLoseMsg: (lvl, maxLvl) => `Garden HP reached 0. Stopped at Level ${lvl} of ${maxLvl}`,
+                gameOverLoseAnnounce: (lvl) => `Game Over. Garden HP reached 0. You were defeated on Level ${lvl}`,
+                gameOverWinTitle: 'Magical Garden Victory! ✨',
+                gameOverWinMsg: (maxLvl, hp, maxHp) => `Congratulations! You protected the garden through all ${maxLvl} Levels (Remaining Garden HP: ${hp}/${maxHp})`,
+                gameOverWinAnnounce: (maxLvl, hp) => `Congratulations! You won Magical Garden and cleared all ${maxLvl} Levels with ${hp} Garden HP remaining`,
+                btnRetry: 'Retry (Current Stage)',
+                btnRestartGame: 'Restart (Level 1)',
+                btnPauseExit: 'Pause & Exit to Menu',
+                btnLeftAria: 'Turn Left',
+                btnRightAria: 'Turn Right',
+                btnShootAria: 'Cast Magic Spell',
+                btnShootText: 'Cast Magic ✨',
+                statusLevel: (lvl, max) => `Level: ${lvl}/${max}`,
+                statusGardenHP: (hp, max) => `Garden HP: ${hp}/${max}`,
+                statusShield: (cur, max) => `Shield: ${cur}/${max}`,
+                statusPowerEmpowered: (shots) => `Spell Power: 2 (${shots})`,
+                statusPowerNormal: 'Spell Power: 1',
+                compassLeft: 'Left',
+                compassRight: 'Right',
+                introBannerTitle: 'MAGICAL GARDEN',
+                introBannerSub: 'Enchanted Flower Defense',
+                levelClearBannerTitle: 'Stage Cleared ✨',
+                levelClearBannerSub: (lvl) => `The enchanted garden is safe in Level ${lvl}`,
+                levelGiftDropSub: (lvl) => `Prepare to receive a Magical Gift (Level ${lvl})`,
+                levelStartSubElite: 'Final Trial: Elite Monsters Only!',
+                levelStartSubNormal: 'Protect the Enchanted Flower Garden',
+                endWinBannerTitle: 'Magical Garden Victory! ✨',
+                endWinBannerSub: 'Every flower blooms and dances in joy!',
+                endLoseBannerTitle: 'The Garden Was Overrun...',
+                endLoseBannerSub: 'All the flowers have withered away',
+                gardenStatusPerfect: 'Garden in full bloom, 100 HP',
+                gardenStatusDead: 'Garden HP depleted',
+                gardenStatusCritical: (hp) => `Garden in critical condition! ${hp} HP remaining`,
+                gardenStatusHeavy: (hp) => `Garden heavily damaged, ${hp} HP remaining`,
+                gardenStatusDamaged: (hp) => `Garden damaged, ${hp} HP remaining`,
+                shieldBlockedAnnounce: (cur) => `Heart Shield blocked the attack! ${cur} shield charges remaining`,
+                levelClearedAnnounce: (lvl) => `Level ${lvl} cleared!`,
+                giftPromptAnnounce: (names) => `Choose 1 Magical Gift from 3 options: ${names}`,
+                giftResultFertilizer: (hp) => `Used Magic Fertilizer. Restored +20 Garden HP to ${hp}`,
+                giftResultLifeDew: (hp) => `Used Dew of Life. Restored +35 Garden HP to ${hp}`,
+                giftResultShieldFull: (max) => `Used Heart Shield. Shield charges are already at maximum ${max}`,
+                giftResultShieldAddedFull: (added, max) => `Used Heart Shield. Added ${added} shield charges, reaching maximum ${max}`,
+                giftResultShieldAdded: (added, cur, max) => `Used Heart Shield. Added ${added} shield charges, total ${cur} of ${max}`,
+                giftResultMagicStar: (shots) => `Used Magic Star. Spell power increased to 2 for the next ${shots} shots`,
+                giftResultFairyPollen: 'Used Fairy Pollen. Enemy speed reduced by 30% for the first 15 seconds of the next stage',
+                giftResultSunshineFull: (hp, max) => `Used Warm Sunshine. Restored +10 Garden HP to ${hp}. Shields already at maximum ${max}`,
+                giftResultSunshineAddedFull: (hp, max) => `Used Warm Sunshine. Restored +10 Garden HP to ${hp} and reached maximum ${max} shields`,
+                giftResultSunshineAdded: (hp, cur, max) => `Used Warm Sunshine. Restored +10 Garden HP to ${hp} and added 1 shield, total ${cur} of ${max}`,
+                cheatJumpDesc: (lvl) => `Jump straight to Level ${lvl} for testing`,
+                cheatPromptAnnounce: 'Secret code activated. Select a test stage from 4 options: Level 19, Level 29, Level 39, Level 48',
+                cheatShieldAnnounce: (cur, max) => `Secret code activated. Shields restored to maximum ${cur} of ${max}`,
+                gameUIAriaLevel1: 'Magical Garden Level 1. Use Left and Right arrows to turn, Spacebar to cast magic, and press H to hear garden status.',
+                gameUIAriaLevelN: (lvl) => `Magical Garden Level ${lvl}`,
+                levelStartAnnounce: (lvl, maxLvl, total) => `Starting Level ${lvl} of ${maxLvl}. Total enemies: ${total}`,
+                statusKeyAnnounce: (lvl, hp, shield, maxShield, shots) => `Level ${lvl}. Garden HP ${hp} of 100. Shield ${shield} of ${maxShield} charges. Spell power ${shots > 0 ? '2, ' + shots + ' shots left' : '1'}`,
+                enemyIntros: {
+                    'สไลม์จอมตะกละ': 'New enemy spotted: Gluttonous Slime, basic 1 HP enemy',
+                    'หนอนจอมมุด': 'New enemy spotted: Burrowing Worm, fast-moving 1 HP enemy',
+                    'ลูกหนามกลิ้ง': 'New enemy spotted: Rolling Spikeball, heavy armor requires 3 hits',
+                    'เห็ดปีศาจตัวใหญ่': 'New enemy spotted: Giant Demon Mushroom, high HP requires 5 hits',
+                    'ค้างคาวป่วนสวน': 'New enemy spotted: Garden Bat, swoops quickly and attacks frequently',
+                    'ดอกไม้ปีศาจ': 'Special enemy spotted: Demon Flower, requires 2 hits and deals heavy damage'
+                },
+                gifts: {
+                    fertilizer: {
+                        name: 'Magic Fertilizer',
+                        desc: 'Instantly restores +20 Garden HP (up to 100)',
+                        bannerTitle: 'Magic Fertilizer ✨',
+                        bannerSub: 'Restored +20 Garden HP'
+                    },
+                    lifedew: {
+                        name: 'Dew of Life',
+                        desc: 'Instantly restores +35 Garden HP (up to 100)',
+                        bannerTitle: 'Dew of Life 💧',
+                        bannerSub: 'Restored +35 Garden HP'
+                    },
+                    heartshield: {
+                        name: 'Heart Shield',
+                        desc: 'Blocks damage reaching the garden up to 2 times',
+                        bannerTitle: 'Heart Shield 💖',
+                        bannerSub: 'Raised barrier dome blocking 2 hits'
+                    },
+                    magicstar: {
+                        name: 'Magic Star',
+                        desc: 'Increases spell power to 2 for the next 10 shots',
+                        bannerTitle: 'Magic Star ⭐',
+                        bannerSub: 'Spell power boosted to 2 (next 10 shots)'
+                    },
+                    fairypollen: {
+                        name: 'Fairy Pollen',
+                        desc: 'Slows enemy speed by 30% for the first 15 seconds of the next stage',
+                        bannerTitle: 'Fairy Pollen 🦋',
+                        bannerSub: 'Slowed enemies by 30% for 15 seconds'
+                    },
+                    sunshine: {
+                        name: 'Warm Sunshine',
+                        desc: 'Restores +10 Garden HP and adds 1 Shield charge',
+                        bannerTitle: 'Warm Sunshine ☀️',
+                        bannerSub: 'Restored +10 HP & added 1 Shield'
+                    }
+                }
+            }
+        };
+
+        const T = I18N_GAME[currentLang];
+
+        function applyStaticGameLanguage() {
+            document.documentElement.lang = T.htmlLang;
+            document.title = T.pageTitle;
+
+            document.getElementById('btn-home-main').setAttribute('aria-label', T.homeAria);
+            document.getElementById('bannerSub').textContent = T.bannerDefaultSub;
+
+            document.getElementById('startSubtitle').textContent = T.startSubtitle;
+            document.getElementById('startDesc').textContent = T.startDesc;
+            document.getElementById('btnNewGame').textContent = T.btnNewGame;
+
+            document.getElementById('giftTitle').textContent = T.giftTitle;
+            document.getElementById('giftSub').textContent = T.giftSub;
+
+            document.getElementById('cheatTitle').textContent = T.cheatTitle;
+            document.getElementById('cheatSub').textContent = T.cheatSub;
+
+            document.getElementById('gameOverTitle').textContent = T.gameOverLoseTitle;
+            document.getElementById('btnRetry').textContent = T.btnRetry;
+            document.getElementById('btnRestartGame').textContent = T.btnRestartGame;
+            document.getElementById('btnPauseExit').textContent = T.btnPauseExit;
+
+            document.getElementById('btnLeft').setAttribute('aria-label', T.btnLeftAria);
+            document.getElementById('btnRight').setAttribute('aria-label', T.btnRightAria);
+            const btnShootEl = document.getElementById('btnShoot');
+            btnShootEl.setAttribute('aria-label', T.btnShootAria);
+            btnShootEl.textContent = T.btnShootText;
+
+            document.getElementById('txtLevel').innerText = T.statusLevel(1, 50);
+            document.getElementById('txtGardenHP').innerText = T.statusGardenHP(100, 100);
+            document.getElementById('txtShield').innerText = T.statusShield(0, 5);
+            document.getElementById('txtPower').innerText = T.statusPowerNormal;
+        }
+
+        applyStaticGameLanguage();
+
+        // =========================================================================
         // 1. GAME CONFIGURATION & CONSTANTS (MAGICAL GARDEN SPEC - 50 LEVELS)
         // =========================================================================
         const MAX_GARDEN_HP = 100;
@@ -593,7 +882,7 @@
                 attackInterval: 3.0,
                 audioY: -1.65,
                 hitSound: 'hit1',
-                introText: 'พบศัตรูใหม่: สไลม์จอมตะกละ ศัตรูพื้นฐาน 1 HP'
+                introText: T.enemyIntros[ENEMY_TYPES.SLIME]
             },
             [ENEMY_TYPES.WORM]: {
                 hp: 1,
@@ -602,7 +891,7 @@
                 attackInterval: 2.5,
                 audioY: -1.85,
                 hitSound: 'hit3',
-                introText: 'พบศัตรูใหม่: หนอนจอมมุด เคลื่อนที่รวดเร็ว 1 HP'
+                introText: T.enemyIntros[ENEMY_TYPES.WORM]
             },
             [ENEMY_TYPES.SPIKE]: {
                 hp: 3,
@@ -611,7 +900,7 @@
                 attackInterval: 3.5,
                 audioY: -1.55,
                 hitSound: 'hit4',
-                introText: 'พบศัตรูใหม่: ลูกหนามกลิ้ง เกราะแข็งต้องยิง 3 ครั้ง'
+                introText: T.enemyIntros[ENEMY_TYPES.SPIKE]
             },
             [ENEMY_TYPES.MUSHROOM]: {
                 hp: 5,
@@ -620,7 +909,7 @@
                 attackInterval: 4.0,
                 audioY: -1.30,
                 hitSound: 'hit5',
-                introText: 'พบศัตรูใหม่: เห็ดปีศาจตัวใหญ่ พลังชีวิตสูงต้องยิง 5 ครั้ง'
+                introText: T.enemyIntros[ENEMY_TYPES.MUSHROOM]
             },
             [ENEMY_TYPES.BAT]: {
                 hp: 1,
@@ -629,7 +918,7 @@
                 attackInterval: 2.0,
                 audioY: -0.75,
                 hitSound: 'hit2',
-                introText: 'พบศัตรูใหม่: ค้างคาวป่วนสวน บินโฉบเร็วและโจมตีถี่'
+                introText: T.enemyIntros[ENEMY_TYPES.BAT]
             },
             [ENEMY_TYPES.FLOWER]: {
                 hp: 2,
@@ -638,7 +927,7 @@
                 attackInterval: 3.0,
                 audioY: -1.45,
                 hitSound: 'hit6',
-                introText: 'พบศัตรูพิเศษ: ดอกไม้ปีศาจ ต้องยิง 2 ครั้ง และสร้างความเสียหายสูง'
+                introText: T.enemyIntros[ENEMY_TYPES.FLOWER]
             }
         };
 
@@ -755,38 +1044,38 @@
         const GIFTS = [
             {
                 id: 'fertilizer',
-                name: 'ปุ๋ยวิเศษ',
-                desc: 'ฟื้นฟูพลังชีวิตสวน +20 HP ทันที (สูงสุด 100)',
+                name: T.gifts.fertilizer.name,
+                desc: T.gifts.fertilizer.desc,
                 sound: 'g_fertilizer'
             },
             {
                 id: 'lifedew',
-                name: 'น้ำค้างแห่งชีวิต',
-                desc: 'ฟื้นฟูพลังชีวิตสวน +35 HP ทันที (สูงสุด 100)',
+                name: T.gifts.lifedew.name,
+                desc: T.gifts.lifedew.desc,
                 sound: 'g_lifedew'
             },
             {
                 id: 'heartshield',
-                name: 'โล่หัวใจ',
-                desc: 'ป้องกันความเสียหายที่ถึงสวนได้ 2 ครั้ง',
+                name: T.gifts.heartshield.name,
+                desc: T.gifts.heartshield.desc,
                 sound: 'g_heartshield'
             },
             {
                 id: 'magicstar',
-                name: 'ดาวเวทมนตร์',
-                desc: 'เพิ่มพลังยิงเป็น 2 หน่วยต่อครั้ง สำหรับ 10 นัดถัดไป',
+                name: T.gifts.magicstar.name,
+                desc: T.gifts.magicstar.desc,
                 sound: 'g_magicstar'
             },
             {
                 id: 'fairypollen',
-                name: 'เกสรนางฟ้า',
-                desc: 'ลดความเร็วศัตรูลง 30% ในช่วง 15 วินาทีแรกของด่านถัดไป',
+                name: T.gifts.fairypollen.name,
+                desc: T.gifts.fairypollen.desc,
                 sound: 'g_fairypollen'
             },
             {
                 id: 'sunshine',
-                name: 'แสงตะวัน',
-                desc: 'ฟื้นฟูพลังชีวิตสวน +10 HP และเพิ่มโล่ป้องกัน 1 ครั้ง',
+                name: T.gifts.sunshine.name,
+                desc: T.gifts.sunshine.desc,
                 sound: 'g_sunshine'
             }
         ];
@@ -871,7 +1160,7 @@
             const btnContinue = document.getElementById('btnContinue');
             if (saved && saved.level > 1 && saved.level <= MAX_LEVEL) {
                 btnContinue.style.display = 'inline-block';
-                btnContinue.innerText = `เล่นต่อ (Level ${saved.level})`;
+                btnContinue.innerText = T.btnContinue(saved.level);
             } else {
                 btnContinue.style.display = 'none';
             }
@@ -1575,7 +1864,7 @@
                 sceneAnim.timer = 0;
                 sceneAnim.duration = dur;
                 sceneAnim.lastEmit = 0;
-                triggerBanner('MAGICAL GARDEN', 'สวนเวทมนตร์พิทักษ์ดอกไม้', Math.max(1800, Math.round(dur * 1000)));
+                triggerBanner(T.introBannerTitle, T.introBannerSub, Math.max(1800, Math.round(dur * 1000)));
                 spawnSparkles(width * 0.5, height * 0.55, ['#f9a8d4', '#fef08a', '#c084fc', '#ffffff'], 28, 1.25, -0.03);
             }
 
@@ -1585,7 +1874,7 @@
                 sceneAnim.timer = 0;
                 sceneAnim.duration = dur;
                 sceneAnim.lastEmit = 0;
-                triggerBanner('ผ่านด่านสำเร็จ ✨', `สวนเวทมนตร์ปลอดภัยใน Level ${lvl}`, Math.round(dur * 1000));
+                triggerBanner(T.levelClearBannerTitle, T.levelClearBannerSub(lvl), Math.round(dur * 1000));
                 spawnSparkles(width * 0.5, height * 0.34, ['#fef08a', '#f472b6', '#c084fc', '#6ee7b7'], 34, 1.4, 0.04);
             }
 
@@ -1595,7 +1884,7 @@
                 sceneAnim.timer = 0;
                 sceneAnim.duration = dur;
                 sceneAnim.lastEmit = 0;
-                triggerBanner('ผ่านด่านสำเร็จ ✨', `เตรียมรับของขวัญแห่งเวทมนตร์ (Level ${lvl})`, Math.round(dur * 1000));
+                triggerBanner(T.levelClearBannerTitle, T.levelGiftDropSub(lvl), Math.round(dur * 1000));
                 spawnSparkles(width * 0.5, height * 0.38, ['#fef08a', '#f472b6', '#e879f9'], 28, 1.25, 0.03);
             }
 
@@ -1606,28 +1895,29 @@
                 sceneAnim.duration = dur;
                 sceneAnim.lastEmit = 0;
                 const ms = Math.round(dur * 1000);
+                const gText = T.gifts[giftId];
 
                 if (giftId === 'fertilizer') {
                     flashOverlay(healOverlay, 500);
-                    triggerBanner('ปุ๋ยวิเศษ ✨', 'ฟื้นฟูพลังชีวิตสวน +20 HP', ms);
+                    triggerBanner(gText.bannerTitle, gText.bannerSub, ms);
                     spawnSparkles(width * 0.5, height * 0.62, ['#6ee7b7', '#34d399', '#fef08a'], 32, 1.2, 0.06);
                 } else if (giftId === 'lifedew') {
                     flashOverlay(healOverlay, 520);
-                    triggerBanner('น้ำค้างแห่งชีวิต 💧', 'ฟื้นฟูพลังชีวิตสวน +35 HP', ms);
+                    triggerBanner(gText.bannerTitle, gText.bannerSub, ms);
                     spawnSparkles(width * 0.5, height * 0.52, ['#38bdf8', '#6ee7b7', '#a7f3d0', '#ffffff'], 34, 1.3, 0.04);
                 } else if (giftId === 'heartshield') {
                     flashOverlay(shieldOverlay, 520);
-                    triggerBanner('โล่หัวใจ 💖', 'กางโดมบาเรียป้องกันความเสียหาย 2 ครั้ง', ms);
+                    triggerBanner(gText.bannerTitle, gText.bannerSub, ms);
                     spawnSparkles(width * 0.5, height * 0.58, ['#f472b6', '#fbcfe8', '#fef08a'], 32, 1.15, -0.04);
                 } else if (giftId === 'magicstar') {
-                    triggerBanner('ดาวเวทมนตร์ ⭐', 'เพิ่มพลังเวทเป็น 2 หน่วย (10 นัดถัดไป)', ms);
+                    triggerBanner(gText.bannerTitle, gText.bannerSub, ms);
                     spawnSparkles(width * 0.5, height * 0.56, ['#fde047', '#fef08a', '#ffffff', '#f472b6'], 36, 1.35, -0.03);
                 } else if (giftId === 'fairypollen') {
-                    triggerBanner('เกสรนางฟ้า 🦋', 'ลดความเร็วศัตรูลง 30% นาน 15 วินาที', ms);
+                    triggerBanner(gText.bannerTitle, gText.bannerSub, ms);
                     spawnSparkles(width * 0.5, height * 0.45, ['#fef08a', '#e9d5ff', '#c084fc'], 32, 0.9, 0.01);
                 } else if (giftId === 'sunshine') {
                     flashOverlay(healOverlay, 480);
-                    triggerBanner('แสงตะวัน ☀️', 'ฟื้นฟู +10 HP และเพิ่มโล่ป้องกัน 1 ครั้ง', ms);
+                    triggerBanner(gText.bannerTitle, gText.bannerSub, ms);
                     spawnSparkles(width * 0.5, height * 0.44, ['#fef08a', '#fde047', '#fbbf24', '#ffffff'], 34, 1.2, -0.02);
                 } else {
                     onGiftApplied();
@@ -1640,23 +1930,23 @@
                 activeProjectiles.length = 0;
                 triggerBanner(
                     `LEVEL ${lvl} / ${MAX_LEVEL}`,
-                    isElite ? 'บททดสอบสุดท้าย: เฉพาะศัตรูพิเศษ!' : 'ปกป้องสวนดอกไม้เวทมนตร์',
+                    isElite ? T.levelStartSubElite : T.levelStartSubNormal,
                     2100
                 );
             }
 
             function onLevelClearVisual(lvl) {
-                triggerBanner('ผ่านด่านสำเร็จ ✨', `สวนเวทมนตร์ปลอดภัยใน Level ${lvl}`, 2300);
+                triggerBanner(T.levelClearBannerTitle, T.levelClearBannerSub(lvl), 2300);
                 spawnSparkles(width * 0.5, height * 0.36, ['#fef08a', '#f472b6', '#c084fc'], 28, 1.3, 0.04);
             }
 
             function onEndCinematicStart(isWin) {
                 clearSceneAnim();
                 if (isWin) {
-                    triggerBanner('ชัยชนะแห่งสวนเวทมนตร์ ✨', 'ดอกไม้ทุกต้นเบ่งบานและเต้นรำอย่างมีความสุข!', 5500);
+                    triggerBanner(T.endWinBannerTitle, T.endWinBannerSub, 5500);
                     spawnSparkles(width * 0.5, height * 0.32, ['#fef08a', '#f472b6', '#38bdf8', '#6ee7b7', '#c084fc'], 42, 1.5, 0.04);
                 } else {
-                    triggerBanner('สวนเวทมนตร์ถูกทำลาย...', 'ดอกไม้ทั้งหมดเหี่ยวเฉาลงแล้ว', 5500);
+                    triggerBanner(T.endLoseBannerTitle, T.endLoseBannerSub, 5500);
                     spawnSparkles(width * 0.5, height * 0.58, ['#9f1239', '#78350f', '#a855f7'], 28, 0.8, 0.09);
                 }
             }
@@ -2472,9 +2762,9 @@
 
                 const dirs = [
                     { deg: MIN_ENTITY_ANGLE, label: '-85°' },
-                    { deg: -42.5, label: 'ซ้าย' },
+                    { deg: -42.5, label: T.compassLeft },
                     { deg: 0, label: '0°' },
-                    { deg: 42.5, label: 'ขวา' },
+                    { deg: 42.5, label: T.compassRight },
                     { deg: MAX_ENTITY_ANGLE, label: '+85°' }
                 ];
                 ctx.font = 'bold 11px sans-serif';
@@ -3527,27 +3817,27 @@
         // 9. COMBAT, GARDEN HP, SHIELD & GIFT LOGIC
         // =========================================================================
         function updateUI() {
-            ui.level.innerText = `Level: ${currentLevel}/${MAX_LEVEL}`;
-            ui.gardenHP.innerText = `พลังสวน: ${gardenHP}/${MAX_GARDEN_HP}`;
-            ui.shield.innerText = `โล่: ${shieldCharges}/${MAX_SHIELD}`;
-            ui.power.innerText = magicStarShots > 0 ? `พลังเวท: 2 (${magicStarShots})` : `พลังเวท: 1`;
+            ui.level.innerText = T.statusLevel(currentLevel, MAX_LEVEL);
+            ui.gardenHP.innerText = T.statusGardenHP(gardenHP, MAX_GARDEN_HP);
+            ui.shield.innerText = T.statusShield(shieldCharges, MAX_SHIELD);
+            ui.power.innerText = magicStarShots > 0 ? T.statusPowerEmpowered(magicStarShots) : T.statusPowerNormal;
         }
 
         function evaluateGardenStatusAnnouncement(forceAnnounce = false) {
             let tier = 'perfect';
-            let msg = 'สวนสมบูรณ์ พลังชีวิต 100';
+            let msg = T.gardenStatusPerfect;
             if (gardenHP <= 0) {
                 tier = 'dead';
-                msg = 'พลังชีวิตสวนหมดแล้ว';
+                msg = T.gardenStatusDead;
             } else if (gardenHP <= 25) {
                 tier = 'critical';
-                msg = `สวนอยู่ในสถานะวิกฤต พลังชีวิตเหลือ ${gardenHP}`;
+                msg = T.gardenStatusCritical(gardenHP);
             } else if (gardenHP <= 55) {
                 tier = 'heavy';
-                msg = `สวนเสียหายมาก พลังชีวิตเหลือ ${gardenHP}`;
+                msg = T.gardenStatusHeavy(gardenHP);
             } else if (gardenHP < 100) {
                 tier = 'damaged';
-                msg = `สวนเสียหาย พลังชีวิตเหลือ ${gardenHP}`;
+                msg = T.gardenStatusDamaged(gardenHP);
             }
 
             if (forceAnnounce || tier !== lastGardenStatusTier) {
@@ -3567,7 +3857,7 @@
                 updateUI();
                 playCenterSound('g_heartshield', 1.0);
                 VisualEngine.onShieldBlocked(enemy.angle, enemy.distance);
-                announce(`โล่หัวใจป้องกันการโจมตีสำเร็จ เหลือโล่ ${shieldCharges} ครั้ง`);
+                announce(T.shieldBlockedAnnounce(shieldCharges));
                 return;
             }
 
@@ -3723,7 +4013,7 @@
                     gameOver(true);
                 } else {
                     const clearedLevel = currentLevel;
-                    announce(`ผ่าน Level ${clearedLevel} สำเร็จ`);
+                    announce(T.levelClearedAnnounce(clearedLevel));
                     setPlayerAngle(0, true);
 
                     const specialLevelSounds = {
@@ -3790,7 +4080,7 @@
             });
 
             giftScreen.style.display = 'flex';
-            announce(`เลือกของขวัญเวทมนตร์ 1 ชนิดจาก 3 ตัวเลือก: ${choices.map(g => g.name).join(', ')}`);
+            announce(T.giftPromptAnnounce(choices.map(g => g.name).join(', ')));
 
             const firstBtn = container.querySelector('button');
             if (firstBtn) {
@@ -3807,42 +4097,42 @@
             switch (gift.id) {
                 case 'fertilizer':
                     gardenHP = Math.min(MAX_GARDEN_HP, gardenHP + 20);
-                    resultText = `ใช้ปุ๋ยวิเศษ ฟื้นฟูพลังสวน +20 เป็น ${gardenHP}`;
+                    resultText = T.giftResultFertilizer(gardenHP);
                     break;
                 case 'lifedew':
                     gardenHP = Math.min(MAX_GARDEN_HP, gardenHP + 35);
-                    resultText = `ใช้น้ำค้างแห่งชีวิต ฟื้นฟูพลังสวน +35 เป็น ${gardenHP}`;
+                    resultText = T.giftResultLifeDew(gardenHP);
                     break;
                 case 'heartshield': {
                     if (shieldCharges >= MAX_SHIELD) {
-                        resultText = `ใช้โล่หัวใจ โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`;
+                        resultText = T.giftResultShieldFull(MAX_SHIELD);
                     } else {
                         const prevShield = shieldCharges;
                         shieldCharges = Math.min(MAX_SHIELD, shieldCharges + 2);
                         const added = shieldCharges - prevShield;
                         resultText = shieldCharges >= MAX_SHIELD
-                            ? `ใช้โล่หัวใจ เพิ่มการป้องกัน ${added} ครั้ง โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`
-                            : `ใช้โล่หัวใจ เพิ่มการป้องกัน ${added} ครั้ง รวมโล่ ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง`;
+                            ? T.giftResultShieldAddedFull(added, MAX_SHIELD)
+                            : T.giftResultShieldAdded(added, shieldCharges, MAX_SHIELD);
                     }
                     break;
                 }
                 case 'magicstar':
                     magicStarShots += 10;
-                    resultText = `ใช้ดาวเวทมนตร์ พลังยิงเพิ่มเป็น 2 หน่วยสำหรับ ${magicStarShots} นัดถัดไป`;
+                    resultText = T.giftResultMagicStar(magicStarShots);
                     break;
                 case 'fairypollen':
                     fairyPollenTimer = 15;
-                    resultText = `ใช้เกสรนางฟ้า ลดความเร็วศัตรู 30% ในช่วง 15 วินาทีแรกของด่านถัดไป`;
+                    resultText = T.giftResultFairyPollen;
                     break;
                 case 'sunshine': {
                     gardenHP = Math.min(MAX_GARDEN_HP, gardenHP + 10);
                     if (shieldCharges >= MAX_SHIELD) {
-                        resultText = `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${gardenHP} โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`;
+                        resultText = T.giftResultSunshineFull(gardenHP, MAX_SHIELD);
                     } else {
                         shieldCharges = Math.min(MAX_SHIELD, shieldCharges + 1);
                         resultText = shieldCharges >= MAX_SHIELD
-                            ? `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${gardenHP} โล่ป้องกันเต็มสูงสุด ${MAX_SHIELD} ครั้งแล้ว`
-                            : `ใช้แสงตะวัน ฟื้นฟูพลังสวน +10 เป็น ${gardenHP} และเพิ่มโล่ป้องกันรวม ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง`;
+                            ? T.giftResultSunshineAddedFull(gardenHP, MAX_SHIELD)
+                            : T.giftResultSunshineAdded(gardenHP, shieldCharges, MAX_SHIELD);
                     }
                     break;
                 }
@@ -3889,10 +4179,10 @@
             container.innerHTML = '';
 
             const cheatLevels = [
-                { level: 19, label: 'Level 19', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 19 ทันที' },
-                { level: 29, label: 'Level 29', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 29 ทันที' },
-                { level: 39, label: 'Level 39', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 39 ทันที' },
-                { level: 48, label: 'Level 48', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 48 ทันที' }
+                { level: 19, label: 'Level 19', desc: T.cheatJumpDesc(19) },
+                { level: 29, label: 'Level 29', desc: T.cheatJumpDesc(29) },
+                { level: 39, label: 'Level 39', desc: T.cheatJumpDesc(39) },
+                { level: 48, label: 'Level 48', desc: T.cheatJumpDesc(48) }
             ];
 
             cheatLevels.forEach((item, idx) => {
@@ -3908,7 +4198,7 @@
             });
 
             cheatScreen.style.display = 'flex';
-            announce('สูตรพิเศษทำงาน เลือกด่านที่ต้องการทดสอบจาก 4 ตัวเลือก: Level 19, Level 29, Level 39, Level 48');
+            announce(T.cheatPromptAnnounce);
 
             const firstBtn = container.querySelector('button');
             if (firstBtn) {
@@ -3947,15 +4237,15 @@
 
             const gameUI = document.getElementById('gameUI');
             if (currentLevel === 1) {
-                gameUI.setAttribute('aria-label', `Magical Garden Level 1 ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงเวทมนตร์ กด H เพื่อฟังสถานะสวน`);
+                gameUI.setAttribute('aria-label', T.gameUIAriaLevel1);
             } else {
-                gameUI.setAttribute('aria-label', `Magical Garden Level ${currentLevel}`);
+                gameUI.setAttribute('aria-label', T.gameUIAriaLevelN(currentLevel));
             }
 
             const levelData = LEVELS[currentLevel - 1];
             introQueue = levelData.newEnemy ? [levelData.newEnemy] : [];
 
-            announce(`เริ่ม Level ${currentLevel} จาก ${MAX_LEVEL} ศัตรูทั้งหมด ${levelData.total} ตัว`);
+            announce(T.levelStartAnnounce(currentLevel, MAX_LEVEL, levelData.total));
             VisualEngine.onLevelStart(currentLevel, !!levelData.eliteOnly);
 
             spawnTimer = setTimeout(() => spawnNextEnemy(levelData), 1600);
@@ -4043,15 +4333,15 @@
 
             if (!isWin) {
                 gameOverScreen.classList.remove('victory-theme');
-                title.innerText = 'สวนดอกไม้เหี่ยวเฉา';
-                msg.innerText = `พลังชีวิตสวนเหลือ 0 หยุดอยู่ที่ Level ${currentLevel} จาก ${MAX_LEVEL}`;
-                announce(`จบเกม พลังชีวิตสวนเหลือ 0 คุณแพ้ที่ Level ${currentLevel}`);
+                title.innerText = T.gameOverLoseTitle;
+                msg.innerText = T.gameOverLoseMsg(currentLevel, MAX_LEVEL);
+                announce(T.gameOverLoseAnnounce(currentLevel));
                 btnRetry.style.display = 'block';
             } else {
                 gameOverScreen.classList.add('victory-theme');
-                title.innerText = 'ชัยชนะแห่งสวนเวทมนตร์ ✨';
-                msg.innerText = `ยินดีด้วย! คุณปกป้องสวนดอกไม้ครบทั้ง ${MAX_LEVEL} Level สำเร็จ (พลังสวนเหลือ ${gardenHP}/${MAX_GARDEN_HP})`;
-                announce(`ยินดีด้วย คุณชนะเกม Magical Garden ผ่านครบทั้ง ${MAX_LEVEL} Level สำเร็จ พลังชีวิตสวนเหลือ ${gardenHP}`);
+                title.innerText = T.gameOverWinTitle;
+                msg.innerText = T.gameOverWinMsg(MAX_LEVEL, gardenHP, MAX_GARDEN_HP);
+                announce(T.gameOverWinAnnounce(MAX_LEVEL, gardenHP));
                 btnRetry.style.display = 'none';
             }
 
@@ -4131,7 +4421,7 @@
                             saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
                             playCenterSound('g_heartshield', 1.0);
                             VisualEngine.onShieldBlocked(playerAngle, 15);
-                            announce(`สูตรพิเศษทำงาน เพิ่มโล่ป้องกันเต็มพิกัด ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง`);
+                            announce(T.cheatShieldAnnounce(shieldCharges, MAX_SHIELD));
                         }
                         e.preventDefault();
                         return;
@@ -4158,7 +4448,7 @@
             }
             // ปุ่มลัดตรวจสอบสถานะสวนสำหรับผู้เล่นตาบอด (ปุ่ม S หรือ H)
             if (e.code === 'KeyS' || e.code === 'KeyH') {
-                announce(`Level ${currentLevel} พลังชีวิตสวน ${gardenHP} จาก 100 โล่ป้องกัน ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง พลังเวท ${magicStarShots > 0 ? '2 หน่วย เหลือ ' + magicStarShots + ' นัด' : '1 หน่วย'}`);
+                announce(T.statusKeyAnnounce(currentLevel, gardenHP, shieldCharges, MAX_SHIELD, magicStarShots));
             }
         });
 

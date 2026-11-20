@@ -385,8 +385,8 @@
     <!-- หน้าเริ่มต้นโหมดฝึกฝน -->
     <div id="startScreen">
         <h1>Magical Garden : Games4all</h1>
-        <div class="subtitle">โหมดฝึกฝนพิทักษ์สวนเวทมนตร์</div>
-        <p>ใส่หูฟังเพื่อฝึกฟังเสียงทิศทาง 180 องศาด้านหน้า และลองยิงศัตรูทั้ง 3 ชนิดโดยไม่มีวันแพ้</p>
+        <div id="startSubtitle" class="subtitle">โหมดฝึกฝนพิทักษ์สวนเวทมนตร์</div>
+        <p id="startDesc">ใส่หูฟังเพื่อฝึกฟังเสียงทิศทาง 180 องศาด้านหน้า และลองยิงศัตรูทั้ง 3 ชนิดโดยไม่มีวันแพ้</p>
         <button id="btnStartPractice">เริ่มฝึกฝน</button>
     </div>
 
@@ -421,6 +421,139 @@
 
     <script>
         // =========================================================================
+        // 0. BILINGUAL (TH / EN) SYSTEM & LANGUAGE SYNC
+        // =========================================================================
+        const LANG_STORAGE_KEY = 'mg_lang';
+
+        function detectCurrentLanguage() {
+            try {
+                const saved = localStorage.getItem(LANG_STORAGE_KEY);
+                if (saved === 'th' || saved === 'en') return saved;
+            } catch (e) {}
+            const sysLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+            return sysLang.startsWith('th') ? 'th' : 'en';
+        }
+
+        const currentLang = detectCurrentLanguage();
+
+        const I18N_PRACTICE = {
+            th: {
+                htmlLang: 'th',
+                pageTitle: 'Magical Garden โหมดฝึกฝน',
+                homeAria: 'กลับหน้าแรกเกม',
+                bannerDefaultTitle: 'โหมดฝึกฝน',
+                bannerDefaultSub: 'พิทักษ์สวนเวทมนตร์',
+                startSubtitle: 'โหมดฝึกฝนพิทักษ์สวนเวทมนตร์',
+                startDesc: 'ใส่หูฟังเพื่อฝึกฟังเสียงทิศทาง 180 องศาด้านหน้า และลองยิงศัตรูทั้ง 3 ชนิดโดยไม่มีวันแพ้',
+                btnStartPractice: 'เริ่มฝึกฝน',
+                completeTitle: 'ผ่านการฝึกฝนพิทักษ์สวนเวทมนตร์สำเร็จ! ✨',
+                completeMessage: 'ยอดเยี่ยมมาก! คุณเรียนรู้การฟังเสียงทิศทางและการร่ายเวทมนตร์กำจัดศัตรูทั้ง 3 ชนิดเรียบร้อยแล้ว ตอนนี้สวนดอกไม้พร้อมให้คุณไปปกป้องในโหมดการเล่นจริง ขอให้สนุกกับการผจญภัย!',
+                btnPracticeAgain: 'ฝึกฝนใหม่อีกครั้ง',
+                btnBackToHome: 'กลับหน้าแรกเกม',
+                btnLeftAria: 'หมุนซ้าย',
+                btnRightAria: 'หมุนขวา',
+                btnShootAria: 'ยิงเวทมนตร์',
+                btnShootText: 'ยิงเวทมนตร์ ✨',
+                statusMode: 'โหมดฝึกฝน (Level 1)',
+                statusGardenHP: (max) => `พลังสวน: ${max}/${max} (อมตะ)`,
+                statusStep: (cur, total) => `ศัตรู: ${cur}/${total}`,
+                compassLeft: 'ซ้าย',
+                compassRight: 'ขวา',
+                introBannerTitle: 'โหมดฝึกฝน',
+                introBannerSub: 'พิทักษ์สวนเวทมนตร์ (ไม่มีวันแพ้)',
+                celebrateBannerTitle: 'ผ่านการฝึกฝนสำเร็จ ✨',
+                celebrateBannerSub: 'กำจัดศัตรูครบทั้ง 3 ชนิดเรียบร้อยแล้ว',
+                stepBannerTitle: (stepNum) => `เป้าหมายที่ ${stepNum} / 3`,
+                announceStart: 'เริ่มโหมดฝึกฝน',
+                announceComplete: 'ผ่านการฝึกฝนพิทักษ์สวนเวทมนตร์สำเร็จ',
+                gameUIAria: 'โหมดฝึกฝน Magical Garden ใช้ลูกศรซ้ายขวาหรือปัดหน้าจอเพื่อหันหาเสียง และยิงเวทมนตร์',
+                enemyDisplayNames: {
+                    'สไลม์จอมตะกละ': 'สไลม์จอมตะกละ',
+                    'หนอนจอมมุด': 'หนอนจอมมุด',
+                    'ลูกหนามกลิ้ง': 'ลูกหนามกลิ้ง'
+                },
+                enemyPracticeAnnounce: {
+                    'สไลม์จอมตะกละ': 'ศัตรูที่ 1 สไลม์จอมตะกละ ยิง 1 ครั้ง',
+                    'หนอนจอมมุด': 'ศัตรูที่ 2 หนอนจอมมุด เคลื่อนที่เร็ว ยิง 1 ครั้ง',
+                    'ลูกหนามกลิ้ง': 'ศัตรูที่ 3 ลูกหนามกลิ้ง เกราะแข็งต้องยิง 3 ครั้ง'
+                }
+            },
+            en: {
+                htmlLang: 'en',
+                pageTitle: 'Magical Garden - Practice Mode',
+                homeAria: 'Back to Game Home',
+                bannerDefaultTitle: 'Practice Mode',
+                bannerDefaultSub: 'Defend the Enchanted Garden',
+                startSubtitle: 'Enchanted Garden Practice Mode',
+                startDesc: 'Wear headphones to practice 180-degree directional audio aiming and cast spells at all 3 enemy types with an invincible garden.',
+                btnStartPractice: 'Start Practice',
+                completeTitle: 'Practice Mode Completed! ✨',
+                completeMessage: 'Awesome job! You have mastered directional audio aiming and defeated all 3 enemy types. The flower garden is now ready for you to protect in the main game. Enjoy your adventure!',
+                btnPracticeAgain: 'Practice Again',
+                btnBackToHome: 'Back to Game Home',
+                btnLeftAria: 'Turn Left',
+                btnRightAria: 'Turn Right',
+                btnShootAria: 'Cast Magic Spell',
+                btnShootText: 'Cast Magic ✨',
+                statusMode: 'Practice Mode (Level 1)',
+                statusGardenHP: (max) => `Garden HP: ${max}/${max} (Invincible)`,
+                statusStep: (cur, total) => `Enemy: ${cur}/${total}`,
+                compassLeft: 'Left',
+                compassRight: 'Right',
+                introBannerTitle: 'Practice Mode',
+                introBannerSub: 'Defend the Enchanted Garden (Invincible)',
+                celebrateBannerTitle: 'Practice Complete ✨',
+                celebrateBannerSub: 'All 3 enemy types defeated!',
+                stepBannerTitle: (stepNum) => `Target ${stepNum} / 3`,
+                announceStart: 'Starting Practice Mode',
+                announceComplete: 'Enchanted Garden Practice Mode completed successfully',
+                gameUIAria: 'Magical Garden Practice Mode. Use Left and Right arrows or swipe to turn toward sounds, and press Spacebar to cast magic.',
+                enemyDisplayNames: {
+                    'สไลม์จอมตะกละ': 'Gluttonous Slime',
+                    'หนอนจอมมุด': 'Burrowing Worm',
+                    'ลูกหนามกลิ้ง': 'Rolling Spikeball'
+                },
+                enemyPracticeAnnounce: {
+                    'สไลม์จอมตะกละ': 'Enemy 1: Gluttonous Slime. Cast 1 spell to defeat.',
+                    'หนอนจอมมุด': 'Enemy 2: Burrowing Worm. Fast movement, cast 1 spell to defeat.',
+                    'ลูกหนามกลิ้ง': 'Enemy 3: Rolling Spikeball. Heavy armor, cast 3 spells to defeat.'
+                }
+            }
+        };
+
+        const T = I18N_PRACTICE[currentLang];
+
+        function applyPracticeStaticLanguage() {
+            document.documentElement.lang = T.htmlLang;
+            document.title = T.pageTitle;
+
+            document.getElementById('btn-home-main').setAttribute('aria-label', T.homeAria);
+            document.getElementById('bannerTitle').textContent = T.bannerDefaultTitle;
+            document.getElementById('bannerSub').textContent = T.bannerDefaultSub;
+
+            document.getElementById('startSubtitle').textContent = T.startSubtitle;
+            document.getElementById('startDesc').textContent = T.startDesc;
+            document.getElementById('btnStartPractice').textContent = T.btnStartPractice;
+
+            document.getElementById('practiceCompleteTitle').textContent = T.completeTitle;
+            document.getElementById('practiceCompleteMessage').textContent = T.completeMessage;
+            document.getElementById('btnPracticeAgain').textContent = T.btnPracticeAgain;
+            document.getElementById('btnBackToHome').textContent = T.btnBackToHome;
+
+            document.getElementById('btnLeft').setAttribute('aria-label', T.btnLeftAria);
+            document.getElementById('btnRight').setAttribute('aria-label', T.btnRightAria);
+            const btnShootEl = document.getElementById('btnShoot');
+            btnShootEl.setAttribute('aria-label', T.btnShootAria);
+            btnShootEl.textContent = T.btnShootText;
+
+            document.getElementById('txtMode').innerText = T.statusMode;
+            document.getElementById('txtGardenHP').innerText = T.statusGardenHP(100);
+            document.getElementById('txtStep').innerText = T.statusStep(1, 3);
+        }
+
+        applyPracticeStaticLanguage();
+
+        // =========================================================================
         // 1. CONFIGURATION & PRACTICE SEQUENCE (SLIME -> WORM -> SPIKE)
         // =========================================================================
         const MAX_GARDEN_HP = 100;
@@ -448,7 +581,7 @@
                 attackInterval: 3.0,
                 audioY: -1.65,
                 hitSound: 'hit1',
-                practiceAnnounce: 'ศัตรูที่ 1 สไลม์จอมตะกละ ยิง 1 ครั้ง'
+                practiceAnnounce: T.enemyPracticeAnnounce[ENEMY_TYPES.SLIME]
             },
             [ENEMY_TYPES.WORM]: {
                 hp: 1,
@@ -457,7 +590,7 @@
                 attackInterval: 2.5,
                 audioY: -1.85,
                 hitSound: 'hit3',
-                practiceAnnounce: 'ศัตรูที่ 2 หนอนจอมมุด เคลื่อนที่เร็ว ยิง 1 ครั้ง'
+                practiceAnnounce: T.enemyPracticeAnnounce[ENEMY_TYPES.WORM]
             },
             [ENEMY_TYPES.SPIKE]: {
                 hp: 3,
@@ -466,7 +599,7 @@
                 attackInterval: 3.5,
                 audioY: -1.55,
                 hitSound: 'hit4',
-                practiceAnnounce: 'ศัตรูที่ 3 ลูกหนามกลิ้ง เกราะแข็งต้องยิง 3 ครั้ง'
+                practiceAnnounce: T.enemyPracticeAnnounce[ENEMY_TYPES.SPIKE]
             }
         };
 
@@ -1172,7 +1305,7 @@
                 sceneAnim.timer = 0;
                 sceneAnim.duration = dur;
                 sceneAnim.lastEmit = 0;
-                triggerBanner('โหมดฝึกฝน', 'พิทักษ์สวนเวทมนตร์ (ไม่มีวันแพ้)', Math.max(1800, Math.round(dur * 1000)));
+                triggerBanner(T.introBannerTitle, T.introBannerSub, Math.max(1800, Math.round(dur * 1000)));
                 spawnSparkles(width * 0.5, height * 0.55, ['#f9a8d4', '#fef08a', '#c084fc', '#ffffff'], 28, 1.25, -0.03);
             }
 
@@ -1182,15 +1315,16 @@
                 sceneAnim.timer = 0;
                 sceneAnim.duration = dur;
                 sceneAnim.lastEmit = 0;
-                triggerBanner('ผ่านการฝึกฝนสำเร็จ ✨', 'กำจัดศัตรูครบทั้ง 3 ชนิดเรียบร้อยแล้ว', Math.round(dur * 1000));
+                triggerBanner(T.celebrateBannerTitle, T.celebrateBannerSub, Math.round(dur * 1000));
                 spawnSparkles(width * 0.5, height * 0.34, ['#fef08a', '#f472b6', '#c084fc', '#6ee7b7'], 34, 1.4, 0.04);
             }
 
-            function onPracticeStepStart(stepNum, enemyName) {
+            function onPracticeStepStart(stepNum, enemyTypeKey) {
                 clearSceneAnim();
                 deathAnimations.length = 0;
                 activeProjectiles.length = 0;
-                triggerBanner(`เป้าหมายที่ ${stepNum} / 3`, enemyName, 2000);
+                const displayEnemyName = T.enemyDisplayNames[enemyTypeKey] || enemyTypeKey;
+                triggerBanner(T.stepBannerTitle(stepNum), displayEnemyName, 2000);
             }
 
             function resetVisuals() {
@@ -1719,9 +1853,9 @@
 
                 const dirs = [
                     { deg: MIN_ENTITY_ANGLE, label: '-85°' },
-                    { deg: -42.5, label: 'ซ้าย' },
+                    { deg: -42.5, label: T.compassLeft },
                     { deg: 0, label: '0°' },
-                    { deg: 42.5, label: 'ขวา' },
+                    { deg: 42.5, label: T.compassRight },
                     { deg: MAX_ENTITY_ANGLE, label: '+85°' }
                 ];
                 ctx.font = 'bold 11px sans-serif';
@@ -2257,10 +2391,10 @@
         // 8. PRACTICE COMBAT & IMMORTAL GARDEN LOGIC
         // =========================================================================
         function updateUI() {
-            ui.mode.innerText = `โหมดฝึกฝน (Level 1)`;
-            ui.gardenHP.innerText = `พลังสวน: ${MAX_GARDEN_HP}/${MAX_GARDEN_HP} (อมตะ)`;
+            ui.mode.innerText = T.statusMode;
+            ui.gardenHP.innerText = T.statusGardenHP(MAX_GARDEN_HP);
             const displayStep = Math.min(practiceStepIndex + 1, PRACTICE_SEQUENCE.length);
-            ui.step.innerText = `ศัตรู: ${displayStep}/${PRACTICE_SEQUENCE.length}`;
+            ui.step.innerText = T.statusStep(displayStep, PRACTICE_SEQUENCE.length);
         }
 
         // โหมดอมตะ: ศัตรูทำร้ายสวนไม่ได้ HP สวนไม่ลด และไม่ประกาศ aria-live ซ้ำให้รำคาญ
@@ -2390,7 +2524,7 @@
             completeScreen.style.display = 'flex';
             document.getElementById('btn-home-main').style.display = 'block';
 
-            announce('ผ่านการฝึกฝนพิทักษ์สวนเวทมนตร์สำเร็จ');
+            announce(T.announceComplete);
 
             setTimeout(() => {
                 document.getElementById('btnPracticeAgain').focus();
@@ -2593,7 +2727,7 @@
                 gameLoopTimer = requestAnimationFrame(update);
             }
 
-            announce('เริ่มโหมดฝึกฝน');
+            announce(T.announceStart);
             await playCenterSoundAsync('start', 1.0);
 
             VisualEngine.clearSceneAnim();
@@ -2603,7 +2737,7 @@
 
             gameUI.style.display = 'flex';
             gameUI.setAttribute('role', 'application');
-            gameUI.setAttribute('aria-label', 'โหมดฝึกฝน Magical Garden ใช้ลูกศรซ้ายขวาหรือปัดหน้าจอเพื่อหันหาเสียง และยิงเวทมนตร์');
+            gameUI.setAttribute('aria-label', T.gameUIAria);
             gameUI.focus();
 
             spawnTimer = setTimeout(() => {
