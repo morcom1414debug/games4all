@@ -250,6 +250,34 @@
             line-height: 1.35;
         }
 
+        /* ================= CHEAT LEVEL SELECTION MODAL ================= */
+        #cheatScreen {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 35;
+            width: 100%;
+            height: 100%;
+            padding: 20px 16px;
+            background: radial-gradient(circle at 50% 35%, rgba(112, 26, 117, 0.88), rgba(30, 10, 60, 0.94));
+            backdrop-filter: blur(8px);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto;
+        }
+        #cheatTitle {
+            font-size: clamp(24px, 6vw, 38px);
+            margin: 0 0 6px 0;
+            color: #fef08a;
+            text-shadow: 0 0 18px rgba(250, 204, 21, 0.75), 0 3px 10px rgba(0, 0, 0, 0.8);
+        }
+        #cheatSub {
+            font-size: clamp(14px, 3.6vw, 18px);
+            color: #fbcfe8;
+            margin: 0 0 20px 0;
+        }
+
         /* ================= GAME OVER / VICTORY SCREEN ================= */
         #gameOverScreen {
             display: none;
@@ -491,6 +519,13 @@
         <h2 id="giftTitle">ของขวัญแห่งเวทมนตร์</h2>
         <p id="giftSub">เลือก Gift 1 ชนิดเพื่อเสริมพลังให้สวนดอกไม้</p>
         <div class="gift-choices" id="giftChoicesContainer"></div>
+    </div>
+
+    <!-- หน้าจอสูตรเลือก Level ทดสอบ (กดสูตร long1414 ภายใน 2 วินาที) -->
+    <div id="cheatScreen" role="dialog" aria-modal="true" aria-labelledby="cheatTitle" aria-describedby="cheatSub">
+        <h2 id="cheatTitle">เลือกด่านสำหรับทดสอบ</h2>
+        <p id="cheatSub">เลือก Level ที่ต้องการข้ามไปเล่นทดสอบทันที</p>
+        <div class="gift-choices" id="cheatChoicesContainer"></div>
     </div>
 
     <!-- หน้าจอจบเกม (ชนะ / แพ้) -->
@@ -887,6 +922,9 @@
         let motionEnabled = false;
         let motionListenersAttached = false;
         let lastAlpha = null;
+
+        let cheatBuffer = '';
+        let cheatStartTime = 0;
 
         const ui = {
             level: document.getElementById('txtLevel'),
@@ -3836,6 +3874,67 @@
             }
         }
 
+        function showCheatLevelScreen() {
+            const cheatScreen = document.getElementById('cheatScreen');
+            if (cheatScreen.style.display === 'flex') return;
+
+            isLevelTransition = true;
+            clearTimeout(spawnTimer);
+            activeEnemies.forEach(e => e.die());
+            activeEnemies = [];
+            activeProjectiles = [];
+            keys = { ArrowLeft: false, ArrowRight: false };
+
+            const container = document.getElementById('cheatChoicesContainer');
+            container.innerHTML = '';
+
+            const cheatLevels = [
+                { level: 19, label: 'Level 19', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 19 ทันที' },
+                { level: 29, label: 'Level 29', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 29 ทันที' },
+                { level: 39, label: 'Level 39', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 39 ทันที' },
+                { level: 48, label: 'Level 48', desc: 'ข้ามไปเริ่มเล่นทดสอบที่ Level 48 ทันที' }
+            ];
+
+            cheatLevels.forEach((item, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'gift-card-btn';
+                btn.type = 'button';
+                btn.innerHTML = `
+                    <span class="gift-card-title">${idx + 1}. ${item.label}</span>
+                    <span class="gift-card-desc">${item.desc}</span>
+                `;
+                btn.addEventListener('click', () => selectCheatLevel(item.level));
+                container.appendChild(btn);
+            });
+
+            cheatScreen.style.display = 'flex';
+            announce('สูตรพิเศษทำงาน เลือกด่านที่ต้องการทดสอบจาก 4 ตัวเลือก: Level 19, Level 29, Level 39, Level 48');
+
+            const firstBtn = container.querySelector('button');
+            if (firstBtn) {
+                setTimeout(() => firstBtn.focus(), 150);
+            }
+        }
+
+        function selectCheatLevel(targetLevel) {
+            const cheatScreen = document.getElementById('cheatScreen');
+            if (cheatScreen.style.display === 'none') return;
+            cheatScreen.style.display = 'none';
+
+            playCenterSound('edge90', 1.0);
+
+            currentLevel = targetLevel;
+            gardenHP = MAX_GARDEN_HP;
+            lastGardenStatusTier = 'perfect';
+            fairyPollenTimer = 0;
+
+            saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
+
+            const gameUI = document.getElementById('gameUI');
+            gameUI.focus();
+            startLevel();
+        }
+
         function startLevel() {
             isLevelTransition = false;
             resetPlayerOrientation();
@@ -3889,6 +3988,9 @@
             clearTimeout(spawnTimer);
 
             document.getElementById('giftScreen').style.display = 'none';
+            document.getElementById('cheatScreen').style.display = 'none';
+            cheatBuffer = '';
+            cheatStartTime = 0;
             VisualEngine.resetVisuals();
             updateUI();
         }
@@ -3910,6 +4012,7 @@
             gameUI.blur();
 
             document.getElementById('giftScreen').style.display = 'none';
+            document.getElementById('cheatScreen').style.display = 'none';
             gameUI.style.display = 'none';
 
             // หันกล้องกลับตรงกลาง 0° เพื่อรับชมฉากแอนิเมชันตัวละครและสวนเต็มจอ
@@ -3999,6 +4102,41 @@
         // =========================================================================
         window.addEventListener('keydown', (e) => {
             if (isGameOver || isLevelTransition || endCinematic) return;
+
+            // ตรวจจับสูตรลับ "long1414" ต้องพิมพ์ให้ครบและถูกต้องภายใน 2 วินาที
+            if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const now = performance.now();
+                const ch = e.key.toLowerCase();
+                if (cheatBuffer.length === 0 || (now - cheatStartTime) > 2000) {
+                    if (ch === 'l') {
+                        cheatBuffer = 'l';
+                        cheatStartTime = now;
+                    } else {
+                        cheatBuffer = '';
+                        cheatStartTime = 0;
+                    }
+                } else {
+                    const targetCode = 'long1414';
+                    const expectedChar = targetCode[cheatBuffer.length];
+                    if (ch === expectedChar) {
+                        cheatBuffer += ch;
+                        if (cheatBuffer === targetCode) {
+                            cheatBuffer = '';
+                            cheatStartTime = 0;
+                            showCheatLevelScreen();
+                            e.preventDefault();
+                            return;
+                        }
+                    } else if (ch === 'l') {
+                        cheatBuffer = 'l';
+                        cheatStartTime = now;
+                    } else {
+                        cheatBuffer = '';
+                        cheatStartTime = 0;
+                    }
+                }
+            }
+
             if (e.code === 'ArrowLeft') { keys.ArrowLeft = true; e.preventDefault(); }
             if (e.code === 'ArrowRight') { keys.ArrowRight = true; e.preventDefault(); }
             if (e.code === 'Space' || e.code === 'Enter') {
@@ -4136,6 +4274,7 @@
             document.getElementById('startScreen').style.display = 'none';
             document.getElementById('gameOverScreen').style.display = 'none';
             document.getElementById('giftScreen').style.display = 'none';
+            document.getElementById('cheatScreen').style.display = 'none';
             document.getElementById('btn-home-main').style.display = 'none';
 
             const gameUI = document.getElementById('gameUI');
