@@ -4103,32 +4103,42 @@
         window.addEventListener('keydown', (e) => {
             if (isGameOver || isLevelTransition || endCinematic) return;
 
-            // ตรวจจับสูตรลับ "long1414" ต้องพิมพ์ให้ครบและถูกต้องภายใน 2 วินาที
+            // ตรวจจับสูตรลับ "long1414" และ "shield5" ต้องพิมพ์ให้ครบและถูกต้องภายใน 2 วินาที
             if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
                 const now = performance.now();
                 const ch = e.key.toLowerCase();
+                const cheatCodes = ['long1414', 'shield5'];
+
                 if (cheatBuffer.length === 0 || (now - cheatStartTime) > 2000) {
-                    if (ch === 'l') {
-                        cheatBuffer = 'l';
+                    if (cheatCodes.some(code => code.startsWith(ch))) {
+                        cheatBuffer = ch;
                         cheatStartTime = now;
                     } else {
                         cheatBuffer = '';
                         cheatStartTime = 0;
                     }
                 } else {
-                    const targetCode = 'long1414';
-                    const expectedChar = targetCode[cheatBuffer.length];
-                    if (ch === expectedChar) {
-                        cheatBuffer += ch;
-                        if (cheatBuffer === targetCode) {
-                            cheatBuffer = '';
-                            cheatStartTime = 0;
+                    const candidate = cheatBuffer + ch;
+                    const exactMatch = cheatCodes.find(code => code === candidate);
+                    if (exactMatch) {
+                        cheatBuffer = '';
+                        cheatStartTime = 0;
+                        if (exactMatch === 'long1414') {
                             showCheatLevelScreen();
-                            e.preventDefault();
-                            return;
+                        } else if (exactMatch === 'shield5') {
+                            shieldCharges = MAX_SHIELD;
+                            updateUI();
+                            saveProgress({ level: currentLevel, gardenHP, shieldCharges, magicStarShots });
+                            playCenterSound('g_heartshield', 1.0);
+                            VisualEngine.onShieldBlocked(playerAngle, 15);
+                            announce(`สูตรพิเศษทำงาน เพิ่มโล่ป้องกันเต็มพิกัด ${shieldCharges} จาก ${MAX_SHIELD} ครั้ง`);
                         }
-                    } else if (ch === 'l') {
-                        cheatBuffer = 'l';
+                        e.preventDefault();
+                        return;
+                    } else if (cheatCodes.some(code => code.startsWith(candidate))) {
+                        cheatBuffer = candidate;
+                    } else if (cheatCodes.some(code => code.startsWith(ch))) {
+                        cheatBuffer = ch;
                         cheatStartTime = now;
                     } else {
                         cheatBuffer = '';
