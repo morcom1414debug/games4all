@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Zombie Defense Audio Game</title>
+    <title>Zombie Defense 360</title>
     <style>
         * {
             box-sizing: border-box;
@@ -433,8 +433,8 @@
 
     <!-- ปรับปรุงหน้าแรก -->
     <div id="startScreen">
-        <h1>Zombie Defense</h1>
-        <p>ใส่หูฟังเพื่อประสบการณ์ 360 องศา</p>
+        <h1 id="startTitle">Zombie Defense 360 : Games4all</h1>
+        <p id="startSubtitle">ใส่หูฟังเพื่อประสบการณ์ 360 องศา</p>
         <!-- ซ่อนปุ่มเล่นต่อไว้ก่อน จะแสดงเมื่อมี Save -->
         <button id="btnContinue" style="display: none; background: linear-gradient(180deg, #28a745 0%, #196f2d 100%); margin-bottom: 12px;">เล่นต่อ (Level ...)</button>
         <button id="btnNewGame">เริ่มเกมใหม่</button>
@@ -472,6 +472,96 @@
     </div>
 
     <script>
+        // ระบบจัดการภาษา (อ้างอิงค่าที่เลือกจากหน้า zombie_home.html)
+        const LANG_KEY = 'zombieDefenseLang';
+        const TEXT = {
+            th: {
+                pageTitle: 'Zombie Defense 360',
+                homeAria: 'กลับสู่ชุมชน',
+                startTitle: 'Zombie Defense 360 : Games4all',
+                startSubtitle: 'ใส่หูฟังเพื่อประสบการณ์ 360 องศา',
+                continueBtn: (lvl) => `เล่นต่อ (Level ${lvl})`,
+                newGameBtn: 'เริ่มเกมใหม่',
+                btnRetry: 'เล่นอีกครั้ง (ด่านเดิม)',
+                btnRestartGame: 'เริ่มต้นใหม่ (Level 1)',
+                btnPauseExit: 'พักการเล่นไว้ก่อน',
+                btnLeftAria: 'หมุนซ้าย',
+                btnShootText: 'ยิง / Reload',
+                btnShootAria: 'ยิง หรือ รีโหลด',
+                btnRightAria: 'หมุนขวา',
+                statusLevel: (lvl) => `Level: ${lvl}`,
+                statusHP: (val) => `HP: ${val}`,
+                statusReloading: 'Reloading...',
+                statusAmmo: (val) => `Ammo: ${val}`,
+                annReloading: 'กำลังรีโหลด',
+                annReloaded: 'รีโหลดเสร็จสิ้น',
+                annGiftCollected: (val) => `เก็บ Life Gift สำเร็จ! พลังชีวิตเป็น ${val}`,
+                annLevelClear: (lvl) => `ผ่านเลเวล ${lvl}`,
+                gameOverLoseTitle: 'Game Over!',
+                gameOverLoseMsg: (lvl) => `คุณไม่รอด หยุดอยู่ที่ Level ${lvl}`,
+                annGameOverLose: (lvl) => `คุณไม่รอด หยุดอยู่ที่ Level ${lvl}`,
+                gameOverWinTitle: 'Victory!',
+                gameOverWinMsg: 'ยินดีด้วย คุณรอดชีวิตจากซอมบี้ทั้งหมด!',
+                annGameOverWin: 'ยินดีด้วย คุณเอาชนะฝูงซอมบี้ทั้งหมด 18 เลเวลได้สำเร็จ!',
+                annStartLevel: (lvl) => `เริ่มเลเวล ${lvl}`,
+                annDamaged: (val) => `ถูกโจมตี! พลังชีวิตเหลือ ${val}`,
+                gameUIAria: (lvl) => `เริ่มเลเวล ${lvl} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด`
+            },
+            en: {
+                pageTitle: 'Zombie Defense 360',
+                homeAria: 'Back to Community Hub',
+                startTitle: 'Zombie Defense 360 : Games4all',
+                startSubtitle: 'Put on headphones for a 360-degree audio experience',
+                continueBtn: (lvl) => `Continue (Level ${lvl})`,
+                newGameBtn: 'New Game',
+                btnRetry: 'Try Again (Current Level)',
+                btnRestartGame: 'Restart (Level 1)',
+                btnPauseExit: 'Pause & Exit to Menu',
+                btnLeftAria: 'Turn Left',
+                btnShootText: 'Shoot / Reload',
+                btnShootAria: 'Shoot or Reload',
+                btnRightAria: 'Turn Right',
+                statusLevel: (lvl) => `Level: ${lvl}`,
+                statusHP: (val) => `HP: ${val}`,
+                statusReloading: 'Reloading...',
+                statusAmmo: (val) => `Ammo: ${val}`,
+                annReloading: 'Reloading',
+                annReloaded: 'Reload complete',
+                annGiftCollected: (val) => `Life Gift collected! Health is now ${val}`,
+                annLevelClear: (lvl) => `Level ${lvl} cleared`,
+                gameOverLoseTitle: 'Game Over!',
+                gameOverLoseMsg: (lvl) => `You did not survive. Stopped at Level ${lvl}`,
+                annGameOverLose: (lvl) => `You did not survive. Stopped at Level ${lvl}`,
+                gameOverWinTitle: 'Victory!',
+                gameOverWinMsg: 'Congratulations! You survived the entire zombie horde!',
+                annGameOverWin: 'Congratulations! You defeated all 18 levels of the zombie horde!',
+                annStartLevel: (lvl) => `Starting Level ${lvl}`,
+                annDamaged: (val) => `Attacked! Health remaining: ${val}`,
+                gameUIAria: (lvl) => `Starting Level ${lvl}. Use Left and Right arrows to turn, Spacebar to shoot and reload.`
+            }
+        };
+
+        const currentLang = localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'th';
+        const t = TEXT[currentLang];
+
+        function applyStaticLanguage() {
+            document.documentElement.lang = currentLang;
+            document.title = t.pageTitle;
+            document.getElementById('btn-home-main').setAttribute('aria-label', t.homeAria);
+            document.getElementById('startTitle').innerText = t.startTitle;
+            document.getElementById('startSubtitle').innerText = t.startSubtitle;
+            document.getElementById('btnNewGame').innerText = t.newGameBtn;
+            document.getElementById('btnRetry').innerText = t.btnRetry;
+            document.getElementById('btnRestartGame').innerText = t.btnRestartGame;
+            document.getElementById('btnPauseExit').innerText = t.btnPauseExit;
+            document.getElementById('btnLeft').setAttribute('aria-label', t.btnLeftAria);
+            const btnShootEl = document.getElementById('btnShoot');
+            btnShootEl.innerText = t.btnShootText;
+            btnShootEl.setAttribute('aria-label', t.btnShootAria);
+            document.getElementById('btnRight').setAttribute('aria-label', t.btnRightAria);
+        }
+        applyStaticLanguage();
+
         // Game Configuration
         const LEVELS = [
             // --- โหมดแนะนำตัวละคร (Level 1-6) ---
@@ -498,12 +588,12 @@
         ];
 
         const ZOMBIE_STATS = {
-            'ธรรมดา': { hp: 1, speed: 2.0, audioY: -0.60 },
-            'วิ่งเร็ว': { hp: 1, speed: 3.5, audioY: -0.80 },
-            'เกราะหนา': { hp: 3, speed: 1.5, audioY: -0.40 },
-            'ยักษ์': { hp: 5, speed: 1.0, audioY: -0.25 },
-            'ระเบิด': { hp: 1, speed: 2.5, audioY: -0.55 },
-            'พิเศษ': { hp: 2, speed: 3.0, audioY: -0.45 }
+            'ธรรมดา': { hp: 1, speed: 2.0, audioY: -1.15 },
+            'วิ่งเร็ว': { hp: 1, speed: 3.5, audioY: -1.35 },
+            'เกราะหนา': { hp: 3, speed: 1.5, audioY: -0.95 },
+            'ยักษ์': { hp: 5, speed: 1.0, audioY: -0.80 },
+            'ระเบิด': { hp: 1, speed: 2.5, audioY: -1.10 },
+            'พิเศษ': { hp: 2, speed: 3.0, audioY: -1.00 }
         };
 
         const AUDIO_FILES = {
@@ -547,7 +637,7 @@
 
             if (savedLevel > 1 && savedLevel <= LEVELS.length) {
                 btnContinue.style.display = "inline-block";
-                btnContinue.innerText = `เล่นต่อ (Level ${savedLevel})`;
+                btnContinue.innerText = t.continueBtn(savedLevel);
             } else {
                 btnContinue.style.display = "none";
             }
@@ -2256,7 +2346,8 @@
                 this.audioY = ZOMBIE_STATS[type].audioY;
                 this.distance = 100; // เริ่มต้นห่างออกไป
                 this.baseAngle = Math.random() * 360; // องศาตั้งต้นที่ซอมบี้เกิด
-                this.swayAmplitude = (6 + Math.random() * 5) * 0.6; // ลดระยะการโยกซ้าย-ขวาลง 40% จากค่าเดิม (±3.6 ถึง ±6.6 องศา)
+                // ซอมบี้ประเภท 'ธรรมดา' เดินตรงอย่างเดียวไม่ส่ายซ้าย-ขวาในทุกเลเวล ส่วนประเภทอื่นส่ายตามปกติ
+                this.swayAmplitude = (type === 'ธรรมดา') ? 0 : (6 + Math.random() * 5) * 0.6;
                 this.swayPhase = Math.random() * Math.PI * 2; // สุ่มเฟสเริ่มต้นเพื่อให้แต่ละตัวโยกไม่พร้อมกัน
                 this.swaySpeed = ((0.012 + Math.random() * 0.008) * (0.75 + this.speed * 0.1)) * 0.75; // ลดความเร็วในการโยกลง 25% จากค่าเดิม
                 this.angle = (this.baseAngle + Math.sin(this.swayPhase) * this.swayAmplitude + 360) % 360;
@@ -2295,6 +2386,10 @@
                 this.aimGain = audioCtx.createGain();
                 this.aimGain.gain.value = 1.0;
 
+                // 3.5 Distance Gain สำหรับควบคุมความดังตามระยะ 55% ถึง 100% แบบเส้นตรง
+                this.distanceGain = audioCtx.createGain();
+                this.distanceGain.gain.value = 0.55;
+
                 // 4. PannerNode แบบ HRTF เดิม
                 this.panner = audioCtx.createPanner();
                 this.panner.panningModel = 'HRTF';
@@ -2304,7 +2399,7 @@
                 this.panner.rolloffFactor = 1;
 
                 // เชื่อมต่อ Audio Graph สำหรับซอมบี้ตัวนี้
-                // สายสัญญาณหลัก: source -> toneFilter -> presenceFilter -> aimGain -> panner -> destination
+                // สายสัญญาณหลัก: source -> toneFilter -> presenceFilter -> aimGain -> distanceGain -> panner -> destination
                 this.source.connect(this.toneFilter);
                 this.toneFilter.connect(this.presenceFilter);
                 this.presenceFilter.connect(this.aimGain);
@@ -2315,7 +2410,8 @@
                 this.rearFilter.connect(this.rearReflectGain);
                 this.rearReflectGain.connect(this.aimGain);
 
-                this.aimGain.connect(this.panner);
+                this.aimGain.connect(this.distanceGain);
+                this.distanceGain.connect(this.panner);
                 this.panner.connect(audioCtx.destination);
                 this.source.start(0);
 
@@ -2328,8 +2424,8 @@
                 // เดินเข้าหา (ระยะลดลงเรื่อยๆ) * อิงเฟรมเรต 60fps คงเดิม 100%
                 this.distance -= this.speed * 0.02;
 
-                // ระบบการเดินโยกซ้าย-ขวาแบบสุ่ม (Swaying)
-                if (this.distance > 25) {
+                // ระบบการเดินโยกซ้าย-ขวาแบบสุ่ม (Swaying) - เฉพาะตัวที่มี swayAmplitude > 0
+                if (this.swayAmplitude > 0 && this.distance > 25) {
                     this.swayPhase += this.swaySpeed;
                     // ค่อยๆ ลดระยะการส่ายลงอย่างนุ่มนวลตั้งแต่ระยะ 45 ถึง 25 เพื่อให้ยิงสกัดในระยะประชิดได้แม่นยำขึ้น
                     let swayFactor = 1.0;
@@ -2339,7 +2435,7 @@
                     let offset = Math.sin(this.swayPhase) * this.swayAmplitude * swayFactor;
                     this.angle = (this.baseAngle + offset + 360) % 360;
                 } else {
-                    // เมื่ออยู่ในระยะประชิด (distance <= 25) ให้หยุดโยกและเดินพุ่งตรงเข้ามาหาผู้เล่นตามองศาตั้งต้น
+                    // ซอมบี้ธรรมดา หรือเมื่ออยู่ในระยะประชิด (distance <= 25) ให้เดินพุ่งตรงเข้ามาหาผู้เล่นตามองศาตั้งต้น
                     this.angle = this.baseAngle;
                 }
             }
@@ -2403,6 +2499,18 @@
                 // 2) เพิ่มความเด่นของเสียงเมื่ออยู่ในแนวยิง (diff <= 10 องศา อ้างอิงเงื่อนไขเดียวกับระบบยิง)
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
+
+                // 3) คำนวณระดับความดังตามระยะแบบเส้นตรง (55% ที่ระยะ >= 100 ถึง 100% ที่ระยะ <= 5)
+                let volumePercent;
+                if (this.distance > 100) {
+                    volumePercent = 55;
+                } else if (this.distance < 5) {
+                    volumePercent = 100;
+                } else {
+                    volumePercent = 55 + ((100 - this.distance) / 95) * 45;
+                }
+                let targetDistanceGain = volumePercent / 100;
+                this.setAudioParamSmooth(this.distanceGain.gain, targetDistanceGain, 0.04);
             }
 
             takeDamage() {
@@ -2431,6 +2539,7 @@
                     this.rearFilter.disconnect();
                     this.rearReflectGain.disconnect();
                     this.aimGain.disconnect();
+                    this.distanceGain.disconnect();
                     this.panner.disconnect();
                 } catch (e) {}
             }
@@ -2440,7 +2549,7 @@
             constructor() {
                 this.distance = Math.random() * 60 + 20; // สุ่มระยะใกล้ไกล 20 ถึง 80
                 this.angle = Math.random() * 360; // สุ่มทิศทางรอบตัว 360 องศา
-                this.audioY = -0.70; // ระดับลิ้นปี่/เอว แยกจากเสียงซอมบี้ได้ชัดเจน
+                this.audioY = -1.25; // ระดับลิ้นปี่ แยกจากเสียงซอมบี้ได้ชัดเจน
                 this.active = true;
 
                 this.source = audioCtx.createBufferSource();
@@ -2472,6 +2581,9 @@
                 this.aimGain = audioCtx.createGain();
                 this.aimGain.gain.value = 1.0;
 
+                this.distanceGain = audioCtx.createGain();
+                this.distanceGain.gain.value = 0.70;
+
                 this.panner = audioCtx.createPanner();
                 this.panner.panningModel = 'HRTF';
                 this.panner.distanceModel = 'linear';
@@ -2488,7 +2600,8 @@
                 this.rearFilter.connect(this.rearReflectGain);
                 this.rearReflectGain.connect(this.aimGain);
 
-                this.aimGain.connect(this.panner);
+                this.aimGain.connect(this.distanceGain);
+                this.distanceGain.connect(this.panner);
                 this.panner.connect(audioCtx.destination);
                 this.source.start(0);
 
@@ -2542,6 +2655,17 @@
 
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
+
+                let volumePercent;
+                if (this.distance > 100) {
+                    volumePercent = 70;
+                } else if (this.distance < 5) {
+                    volumePercent = 100;
+                } else {
+                    volumePercent = 70 + ((100 - this.distance) / (100 - 5)) * 30;
+                }
+                let targetDistanceGain = volumePercent / 100;
+                this.setAudioParamSmooth(this.distanceGain.gain, targetDistanceGain, 0.04);
             }
 
             cleanUp() {
@@ -2556,6 +2680,7 @@
                     this.rearFilter.disconnect();
                     this.rearReflectGain.disconnect();
                     this.aimGain.disconnect();
+                    this.distanceGain.disconnect();
                     this.panner.disconnect();
                 } catch (e) {}
             }
@@ -2585,12 +2710,12 @@
         }
 
         function updateUI() {
-            ui.level.innerText = `Level: ${currentLevel}`;
-            ui.hp.innerText = `HP: ${hp}`;
+            ui.level.innerText = t.statusLevel(currentLevel);
+            ui.hp.innerText = t.statusHP(hp);
             if (isReloading) {
-                ui.ammo.innerText = `Reloading...`;
+                ui.ammo.innerText = t.statusReloading;
             } else {
-                ui.ammo.innerText = `Ammo: ${ammo}`;
+                ui.ammo.innerText = t.statusAmmo(ammo);
             }
         }
 
@@ -2604,12 +2729,12 @@
                     isReloading = true;
                     playSound('reload'); // เล่นเสียง reload เมื่อกดกระสุนหมด
                     updateUI();
-                    announce("กำลังรีโหลด");
+                    announce(t.annReloading);
                     setTimeout(() => {
                         ammo = 10;
                         isReloading = false;
                         updateUI();
-                        announce("รีโหลดเสร็จสิ้น");
+                        announce(t.annReloaded);
                     }, 2500);
                 }
                 VisualEngine.onShootAttempt(false, null, false);
@@ -2664,7 +2789,7 @@
                     playSound('giftup');
                     hp = Math.min(3, hp + 1); // เพิ่มพลังสูงสุดไม่เกิน 3
                     updateUI();
-                    announce(`เก็บ Life Gift สำเร็จ! พลังชีวิตเป็น ${hp}`);
+                    announce(t.annGiftCollected(hp));
                     VisualEngine.onPlayerHealed();
                     hitTarget.cleanUp();
                     if (currentGift === hitTarget) {
@@ -2722,7 +2847,7 @@
                     gameOver(true);
                 } else {
                     playSound('levelup');
-                    announce(`ผ่านเลเวล ${currentLevel}`);
+                    announce(t.annLevelClear(currentLevel));
                     VisualEngine.onLevelClearVisual(currentLevel);
                     currentLevel++;
                     saveProgress(currentLevel); // <--- บันทึกด่านใหม่ลงเครื่องทันที
@@ -2770,15 +2895,15 @@
             if (!isWin) {
                 gameOverScreen.classList.remove('victory-theme');
                 playSound('lose3');
-                title.innerText = "Game Over!";
-                msg.innerText = `คุณไม่รอด หยุดอยู่ที่ Level ${currentLevel}`;
-                announce(`คุณไม่รอด หยุดอยู่ที่ Level ${currentLevel}`);
+                title.innerText = t.gameOverLoseTitle;
+                msg.innerText = t.gameOverLoseMsg(currentLevel);
+                announce(t.annGameOverLose(currentLevel));
             } else {
                 gameOverScreen.classList.add('victory-theme');
                 playSound('end');
-                title.innerText = "Victory!";
-                msg.innerText = "ยินดีด้วย คุณรอดชีวิตจากซอมบี้ทั้งหมด!";
-                announce("ยินดีด้วย คุณเอาชนะฝูงซอมบี้ทั้งหมด 18 เลเวลได้สำเร็จ!");
+                title.innerText = t.gameOverWinTitle;
+                msg.innerText = t.gameOverWinMsg;
+                announce(t.annGameOverWin);
             }
 
             // ย้าย Focus ไปที่ปุ่มแรกให้ Screen Reader อ่านอัตโนมัติ
@@ -2797,7 +2922,7 @@
                 currentGift = null;
             }
 
-            announce(`เริ่มเลเวล ${currentLevel}`);
+            announce(t.annStartLevel(currentLevel));
             VisualEngine.onLevelStart(currentLevel);
             
             let levelData = LEVELS[currentLevel - 1];
@@ -2852,7 +2977,7 @@
                         return;
                     } else {
                         playSound('lose', 0.5);
-                        announce(`ถูกโจมตี! พลังชีวิตเหลือ ${hp}`);
+                        announce(t.annDamaged(hp));
                         // ตัด checkLevelClear() ออก เพราะซอมบี้ยังไม่ตาย
                     }
                 }
@@ -3007,7 +3132,7 @@
             playBGM();
 
             gameUI.setAttribute('role', 'application');
-            gameUI.setAttribute('aria-label', `เริ่มเลเวล ${currentLevel} ใช้ลูกศรซ้ายขวาเพื่อหมุน สเปซบาร์เพื่อยิงและรีโหลด`);
+            gameUI.setAttribute('aria-label', t.gameUIAria(currentLevel));
             gameUI.focus();
             
             resetGame();
