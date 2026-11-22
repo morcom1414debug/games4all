@@ -174,6 +174,19 @@ const BOT_NAME_EN_MAP = {
 	'บอทดราก้อนบอล': 'Bot DragonBall'
 };
 
+const WIN_REASON_EN_MAP = {
+	'ชนะด้วยจำนวนตัวในมือน้อยกว่า': 'Won with fewer tiles remaining in hand',
+	'ชนะด้วยสิทธิ์ผู้เล่นล่าสุดก่อนเกมตัน': 'Won as the last active player before the game blocked'
+};
+
+function getLocalizedWinReason(reasonTh) {
+	if (!reasonTh) return '';
+	if (currentLang === 'en') {
+		return WIN_REASON_EN_MAP[reasonTh] || reasonTh;
+	}
+	return reasonTh;
+}
+
 function formatPlayerDisplayName(rawName) {
 	if (!rawName) return '';
 	if (currentLang !== 'en') return rawName;
@@ -303,6 +316,10 @@ function translateAnnouncementToEn(rawMsg) {
 	}
 	if (s.startsWith('การแข่งขันจบแล้ว ')) {
 		let resStr = s.replace('การแข่งขันจบแล้ว ', 'Match over! ');
+		resStr = resStr.replace(
+			/(.+?)เป็นผู้ชนะ เหลือ (\d+) แต้ม \((.+?)\)\./g,
+			(_, wName, pts, reason) => `${wName} wins with ${pts} points left (${getLocalizedWinReason(reason)}).`
+		);
 		resStr = resStr.replace(/(.+?)เป็นผู้ชนะ เหลือ (\d+) แต้ม\./g, '$1 wins with $2 points left.');
 		resStr = resStr.replace(/(.+?)ได้ (\d+) แต้ม แพ้\./g, '$1 has $2 points (Lost).');
 		return resStr.trim();
@@ -318,6 +335,7 @@ function getLocalizedMessage(msg) {
 
 let lastDisplayedStats = null;
 let lastDisplayedWinner = '';
+let lastDisplayedWinReason = '';
 let lastRenderedGameState = null;
 let lastRenderedRooms = null;
 
@@ -371,7 +389,7 @@ function toggleLanguage() {
 		renderGame(lastRenderedGameState);
 	}
 	if (lastDisplayedStats && document.getElementById('screen-result').classList.contains('active')) {
-		showResult(lastDisplayedWinner, lastDisplayedStats);
+		showResult(lastDisplayedWinner, lastDisplayedStats, lastDisplayedWinReason);
 	}
 	announce(currentLang === 'en' ? 'Language switched to English' : 'เปลี่ยนภาษาเป็นภาษาไทยแล้ว');
 }
@@ -643,7 +661,8 @@ let game = {
 	matchOver: false,
 	pendingSkips: 0,
 	drawCountThisTurn: 0,
-	doubleChainSide: null
+	doubleChainSide: null,
+	lastActorId: null
 };
 
 function initPeer() {
@@ -1011,14 +1030,24 @@ function generateDeck() {
 	return deck.sort(() => Math.random() - 0.5);
 }
 
-// คะแนนตอนจบเกม: ตัวปกติ = ซ้าย + ขวา | ตัวพิเศษ = 20 + ตัวเลขอีกฝั่ง (left)
+// คะแนนตัวโดมิโน่:
+// - ตัวปกติ: ซ้าย + ขวา (0 - 18 แต้ม)
+// - ตัวพิเศษ: ฐานคะแนนตามชนิด (ย้อนศร=5, หลับ=8, 2+=10, 3+=13) + ตัวเลขอีกฝั่ง (left)
 function getTileScore(tile) {
 	if (tile.type === 'regular') return tile.left + tile.right;
-	return 20 + (typeof tile.left === 'number' ? tile.left : 0);
+	const numSide = typeof tile.left === 'number' ? tile.left : 0;
+	const specialBaseMap = {
+		reverse: 5,
+		sleep: 8,
+		draw2: 10,
+		draw3: 13
+	};
+	const base = specialBaseMap[tile.type] !== undefined ? specialBaseMap[tile.type] : 10;
+	return base + numSide;
 }
 
 // จัดเรียงตัวโดมิโน่ในมือ:
-// 1. จัดเป็น 2 กลุ่มหลัก: กลุ่มปกติ (เรียงแต้มน้อย -> มาก) ตามด้วย กลุ่มพิเศษ (เรียง 20+เลข น้อย -> มาก)
+// 1. จัดเป็น 2 กลุ่มหลัก: กลุ่มปกติ (เรียงแต้มน้อย -> มาก) ตามด้วย กลุ่มพิเศษ (เรียงแต้มน้อย -> มาก: ย้อนศร -> หลับ -> 2+ -> 3+)
 // 2. หากเป็นเทิร์นของผู้เล่นคนนั้น (prioritizePlayable = true):
 //    ดึงตัวที่ลงได้ขึ้นมาไว้หน้าสุดตามลำดับ:
 //    [Double ที่ลงได้] -> [ปกติที่ลงได้] -> [พิเศษที่ลงได้] -> [ปกติที่ลงไม่ได้] -> [พิเศษที่ลงไม่ได้]
@@ -1057,6 +1086,52 @@ function sortPlayerHand(hand, prioritizePlayable = false, lockedSide = null) {
 
 		return (a.id || 0) - (b.id || 0);
 	});
+}
+
+// ตัดสินผู้ชนะเมื่อจบเกมแบบไม่หมดมือ (กองจั่วหมดหรือเกมตัน) ด้วยเกณฑ์ Tie-Breaker 3 ชั้น:
+// ชั้นที่ 1: แต้มรวมในมือน้อยที่สุด
+// ชั้นที่ 2: จำนวนตัวโดมิโน่ในมือน้อยที่สุด (กรณีแต้มรวมเท่ากัน)
+// ชั้นที่ 3: ผู้เล่นที่วางตัวล่าสุดก่อนเกมตัน หรืออยู่ใกล้ในลำดับการเล่นย้อนกลับมากที่สุด (กรณีแต้มและจำนวนตัวเท่ากัน)
+function determineWinner() {
+	const lastActorIdx = players.findIndex(p => p.id === game.lastActorId);
+
+	const getRecencyRank = (playerIdx) => {
+		if (lastActorIdx === -1) return playerIdx;
+		// นับระยะห่างย้อนทวนทิศทางการเล่นจากผู้เล่นที่วางตัวล่าสุด (0 = เพิ่งวางล่าสุด)
+		return (lastActorIdx - playerIdx * game.direction + players.length * 10) % players.length;
+	};
+
+	const candidates = players.map((p, idx) => {
+		const hand = game.playerStates[p.id].hand;
+		const points = hand.reduce((sum, t) => sum + getTileScore(t), 0);
+		return {
+			id: p.id,
+			name: p.name,
+			points,
+			tileCount: hand.length,
+			recencyRank: getRecencyRank(idx)
+		};
+	});
+
+	candidates.sort((a, b) => {
+		if (a.points !== b.points) return a.points - b.points;
+		if (a.tileCount !== b.tileCount) return a.tileCount - b.tileCount;
+		return a.recencyRank - b.recencyRank;
+	});
+
+	const winner = candidates[0];
+	const runnerUp = candidates[1];
+	let winReason = '';
+
+	if (runnerUp && winner.points === runnerUp.points) {
+		if (winner.tileCount < runnerUp.tileCount) {
+			winReason = 'ชนะด้วยจำนวนตัวในมือน้อยกว่า';
+		} else {
+			winReason = 'ชนะด้วยสิทธิ์ผู้เล่นล่าสุดก่อนเกมตัน';
+		}
+	}
+
+	return { winnerId: winner.id, winReason };
 }
 
 function getTileAria(tile) {
@@ -1181,6 +1256,7 @@ function initGame() {
 	game.pendingSkips = 0;
 	game.drawCountThisTurn = 0;
 	game.doubleChainSide = null;
+	game.lastActorId = null;
 	
 	let highestDoubleVal = -1;
 	let starterIdx = 0;
@@ -1266,7 +1342,7 @@ function handleClientData(data) {
 		logEvent(localMsg);
 	}
 	else if (data.type === 'animDomino') { showAnimOverlay('DOMINO!', true); }
-	else if (data.type === 'endGame') { showResult(data.winnerName, data.resultStats); }
+	else if (data.type === 'endGame') { showResult(data.winnerName, data.resultStats, data.winReason || ''); }
 	else if (data.type === 'playSound') { playSound(data.soundName); }
 	else if (data.type === 'startAnim') { doStartAnimation(() => {}); }
 	else if (data.type === 'playAbc') { playSound('abc'); }
@@ -1574,6 +1650,7 @@ function handlePlayerAction(peerId, action, payload) {
 	broadcastAnnounce(actionStr);
 	broadcastSound('select');
 
+	game.lastActorId = peerId;
 	game.consecutivePasses = 0;
 	broadcastGameState();
 
@@ -1778,12 +1855,8 @@ function processTurnLogic() {
 
 	if (game.deck.length === 0 && !canPlayAny(state.hand, game.doubleChainSide)) {
 		broadcastAnnounce('กองจั่วหมดและไม่มีผู้เล่นสามารถดำเนินเกมต่อได้', true);
-		let minScore = Infinity; let winnerId = null;
-		players.forEach(p => {
-			let s = 0; game.playerStates[p.id].hand.forEach(t => s += getTileScore(t));
-			if(s < minScore) { minScore = s; winnerId = p.id; }
-		});
-		setTimeout(() => handleWin(winnerId), 2000);
+		const { winnerId, winReason } = determineWinner();
+		setTimeout(() => handleWin(winnerId, winReason), 2000);
 		return;
 	}
 	
@@ -1846,15 +1919,11 @@ function processTurnLogic() {
 
 function handleStuckGame() {
 	broadcastAnnounce('เกมตัน! ทำการรวมแต้มเพื่อหาผู้ชนะ', true);
-	let minScore = Infinity; let winnerId = null;
-	players.forEach(p => {
-		let s = 0; game.playerStates[p.id].hand.forEach(t => s += getTileScore(t));
-		if(s < minScore) { minScore = s; winnerId = p.id; }
-	});
-	setTimeout(() => handleWin(winnerId), 2000);
+	const { winnerId, winReason } = determineWinner();
+	setTimeout(() => handleWin(winnerId, winReason), 2000);
 }
 
-function handleWin(winnerId) {
+function handleWin(winnerId, winReason = '') {
 	game.status = 'ended';
 	const winner = players.find(p => p.id === winnerId);
 	
@@ -1862,13 +1931,20 @@ function handleWin(winnerId) {
 	players.forEach(p => {
 		let pts = 0;
 		game.playerStates[p.id].hand.forEach(t => pts += getTileScore(t));
-		resultStats.push({ id: p.id, name: p.name, points: pts, isWinner: p.id === winnerId });
+		resultStats.push({
+			id: p.id,
+			name: p.name,
+			points: pts,
+			tileCount: game.playerStates[p.id].hand.length,
+			isWinner: p.id === winnerId
+		});
 	});
 
 	broadcastGameState();
 	
 	let winnerStat = resultStats.find(r => r.id === winnerId);
-	let announceMsg = `การแข่งขันจบแล้ว ${winner.name}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม. `;
+	const reasonSuffix = winReason ? ` (${winReason})` : '';
+	let announceMsg = `การแข่งขันจบแล้ว ${winner.name}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม${reasonSuffix}. `;
 	let losers = resultStats.filter(r => r.id !== winnerId);
 	losers.forEach(l => {
 		announceMsg += `${l.name}ได้ ${l.points} แต้ม แพ้. `;
@@ -1880,16 +1956,17 @@ function handleWin(winnerId) {
 
 	connections.forEach(c => {
 		if(c.open) {
-			c.send({ type: 'endGame', winnerName: winner.name, resultStats: resultStats });
+			c.send({ type: 'endGame', winnerName: winner.name, resultStats: resultStats, winReason: winReason });
 			c.send({ type: 'fxCelebrate' });
 		}
 	});
-	showResult(winner.name, resultStats);
+	showResult(winner.name, resultStats, winReason);
 }
 
-function showResult(winnerName, resultStats) {
+function showResult(winnerName, resultStats, winReason = '') {
 	lastDisplayedWinner = winnerName;
 	lastDisplayedStats = resultStats;
+	lastDisplayedWinReason = winReason;
 	switchScreen('screen-result', 'title-result');
 	stopBGM();
 	const isEn = currentLang === 'en';
@@ -1897,10 +1974,14 @@ function showResult(winnerName, resultStats) {
 	let winnerStat = resultStats.find(r => r.isWinner) || resultStats[0];
 	let losers = resultStats.filter(r => !r.isWinner);
 	const dispWinnerName = formatPlayerDisplayName(winnerName);
+	const localReason = getLocalizedWinReason(winReason);
+	const reasonBadge = localReason
+		? `<div style="font-size: 0.78em; color: #a7f3d0; margin-top: 4px;">(${localReason})</div>`
+		: '';
 	
 	let html = isEn
-		? `<div style="color: var(--focus-ring); margin-bottom: 10px;">👑 ${dispWinnerName} wins with ${winnerStat.points} points left</div>`
-		: `<div style="color: var(--focus-ring); margin-bottom: 10px;">👑 ${dispWinnerName}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม</div>`;
+		? `<div style="color: var(--focus-ring); margin-bottom: 12px;">👑 ${dispWinnerName} wins with ${winnerStat.points} points left${reasonBadge}</div>`
+		: `<div style="color: var(--focus-ring); margin-bottom: 12px;">👑 ${dispWinnerName}เป็นผู้ชนะ เหลือ ${winnerStat.points} แต้ม${reasonBadge}</div>`;
 	losers.forEach(l => {
 		const dispLoserName = formatPlayerDisplayName(l.name);
 		html += isEn
