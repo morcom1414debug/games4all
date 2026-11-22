@@ -195,7 +195,11 @@ function replaceAllBotNamesToEn(text) {
 function translateSpecialWordsToEn(text) {
 	return String(text)
 		.replace(/หลับ/g, 'Sleep')
-		.replace(/ย้อนศร/g, 'Reverse');
+		.replace(/ย้อนศร/g, 'Reverse')
+		.replace(/\bsleep\b/gi, 'Sleep')
+		.replace(/\breverse\b/gi, 'Reverse')
+		.replace(/\bdraw2\b/gi, '2+')
+		.replace(/\bdraw3\b/gi, '3+');
 }
 
 function translateAnnouncementToEn(rawMsg) {
@@ -486,6 +490,14 @@ function translateTile(val) {
 	if(val === 'draw2') return '2+';
 	if(val === 'draw3') return '3+';
 	if(val === 'reverse') return isEn ? 'Reverse' : 'ย้อนศร';
+	return val;
+}
+
+function getThaiTileLabel(val) {
+	if (val === 'sleep') return 'หลับ';
+	if (val === 'draw2') return '2+';
+	if (val === 'draw3') return '3+';
+	if (val === 'reverse') return 'ย้อนศร';
 	return val;
 }
 
@@ -1088,7 +1100,7 @@ function broadcastTurnStart() {
 	if (game.leftEnd === null) {
 		baseMsg += `กระดานยังว่าง คุณสามารถเริ่มวางได้`;
 	} else {
-		baseMsg += `ปลายซ้ายคือ ${game.leftEnd} ปลายขวาคือ ${game.rightEnd}`;
+		baseMsg += `ปลายซ้ายคือ ${getThaiTileLabel(game.leftEnd)} ปลายขวาคือ ${getThaiTileLabel(game.rightEnd)}`;
 	}
 	if (game.doubleChainSide) {
 		baseMsg += ` (มีการล็อกฝั่งเล่นต่อที่ปลาย${game.doubleChainSide === 'left' ? 'ซ้าย' : 'ขวา'})`;
@@ -1398,7 +1410,7 @@ function handlePlayerAction(peerId, action, payload) {
 
 		players.forEach(p => {
 			if (p.id === peerId) {
-				const msg = `คุณจั่วได้ ${tile.left} กับ ${tile.right}${playStatusText}`;
+				const msg = `คุณจั่วได้ ${getThaiTileLabel(tile.left)} กับ ${getThaiTileLabel(tile.right)}${playStatusText}`;
 				if (p.connection && p.connection.open) p.connection.send({ type: 'announce', message: msg });
 				else if (p.id === myPeerId) announce(getLocalizedMessage(msg));
 			} else {
@@ -1494,7 +1506,7 @@ function handlePlayerAction(peerId, action, payload) {
 	if (tile.type === 'regular') {
 		actionStr = `${currentPlayer.name} วาง ${tile.left} กับ ${tile.right} ${playedSideStr}`;
 	} else {
-		actionStr = `${currentPlayer.name} วาง ${tile.type} ${playedSideStr}`;
+		actionStr = `${currentPlayer.name} วาง ${getThaiTileLabel(tile.type)} ${playedSideStr}`;
 	}
 	
 	broadcastAnnounce(actionStr);
