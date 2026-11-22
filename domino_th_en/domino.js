@@ -1011,9 +1011,52 @@ function generateDeck() {
 	return deck.sort(() => Math.random() - 0.5);
 }
 
+// คะแนนตอนจบเกม: ตัวปกติ = ซ้าย + ขวา | ตัวพิเศษ = 20 + ตัวเลขอีกฝั่ง (left)
 function getTileScore(tile) {
-	if(tile.type === 'regular') return tile.left + tile.right;
-	return 20; 
+	if (tile.type === 'regular') return tile.left + tile.right;
+	return 20 + (typeof tile.left === 'number' ? tile.left : 0);
+}
+
+// จัดเรียงตัวโดมิโน่ในมือ:
+// 1. จัดเป็น 2 กลุ่มหลัก: กลุ่มปกติ (เรียงแต้มน้อย -> มาก) ตามด้วย กลุ่มพิเศษ (เรียง 20+เลข น้อย -> มาก)
+// 2. หากเป็นเทิร์นของผู้เล่นคนนั้น (prioritizePlayable = true):
+//    ดึงตัวที่ลงได้ขึ้นมาไว้หน้าสุดตามลำดับ:
+//    [Double ที่ลงได้] -> [ปกติที่ลงได้] -> [พิเศษที่ลงได้] -> [ปกติที่ลงไม่ได้] -> [พิเศษที่ลงไม่ได้]
+function sortPlayerHand(hand, prioritizePlayable = false, lockedSide = null) {
+	if (!Array.isArray(hand) || hand.length <= 1) return;
+
+	const getSortPriority = (tile) => {
+		const isSpecial = tile.type !== 'regular';
+		const isDouble = !isSpecial && tile.left === tile.right;
+
+		if (prioritizePlayable) {
+			const playable = isTilePlayable(tile, lockedSide);
+			if (playable) {
+				if (isDouble) return 0;      // 1. Double ที่ลงได้ (เอาขึ้นหน้าสุดเพื่อทำคอมโบต่อเนื่อง)
+				if (!isSpecial) return 1;    // 2. ตัวปกติที่ลงได้ (เรียงแต้มน้อยไปมาก)
+				return 2;                    // 3. ตัวพิเศษที่ลงได้ (เรียงแต้มน้อยไปมาก)
+			}
+		}
+		// กลุ่มลงไม่ได้ (หรือนอกเทิร์นของตัวเอง): แยกเป็น 2 กลุ่มตามกติกา
+		return isSpecial ? 4 : 3;            // 4. ตัวปกติ (น้อยไปมาก) -> 5. ตัวพิเศษ (น้อยไปมาก)
+	};
+
+	hand.sort((a, b) => {
+		const prioA = getSortPriority(a);
+		const prioB = getSortPriority(b);
+		if (prioA !== prioB) return prioA - prioB;
+
+		const scoreA = getTileScore(a);
+		const scoreB = getTileScore(b);
+		if (scoreA !== scoreB) return scoreA - scoreB;
+
+		// กรณีแต้มเท่ากัน ให้เรียงตามเลขด้านซ้ายและ id เพื่อความเสถียรไม่สลับตำแหน่งไปมา
+		const leftA = typeof a.left === 'number' ? a.left : 99;
+		const leftB = typeof b.left === 'number' ? b.left : 99;
+		if (leftA !== leftB) return leftA - leftB;
+
+		return (a.id || 0) - (b.id || 0);
+	});
 }
 
 function getTileAria(tile) {
@@ -1142,18 +1185,26 @@ function initGame() {
 	let highestDoubleVal = -1;
 	let starterIdx = 0;
 
+	// แจกเริ่มต้นคนละ 5 ตัว และเรียงมือเป็น 2 กลุ่มทันที
 	players.forEach((p, i) => {
 		game.playerStates[p.id] = { hand: [], declaredDomino: false };
-		for(let k=0; k<7; k++) game.playerStates[p.id].hand.push(game.deck.pop());
+		for(let k=0; k<5; k++) game.playerStates[p.id].hand.push(game.deck.pop());
 		
 		game.playerStates[p.id].hand.forEach(t => {
 			if(t.type === 'regular' && t.left === t.right && t.left > highestDoubleVal) {
 				highestDoubleVal = t.left; starterIdx = i;
 			}
 		});
+		sortPlayerHand(game.playerStates[p.id].hand, false);
 	});
 
 	game.turnIndex = starterIdx;
+	// จัดเรียงมือของผู้เล่นคนแรกโดยดึงตัวที่ลงได้ขึ้นมาไว้หน้าสุด
+	const firstStarter = players[game.turnIndex];
+	if (firstStarter && game.playerStates[firstStarter.id]) {
+		sortPlayerHand(game.playerStates[firstStarter.id].hand, true, game.doubleChainSide);
+	}
+
 	switchScreen('screen-game', 'top-status-bar');
 	broadcastGameState();
 	
@@ -1325,6 +1376,7 @@ function renderGame(gState) {
 	myContainer.innerHTML = '';
 	
 	const isMyTurn = (turnPlayer && turnPlayer.id === myPeerId && gState.status === 'playing');
+	const activeChainSide = gState.doubleChainSide;
 	
 	let canPlayAtLeastOne = false;
 	gState.myHand.forEach((tile, idx) => {
@@ -1332,10 +1384,10 @@ function renderGame(gState) {
 		if (isMyTurn) {
 			if (gState.leftEnd === null) { playableL = true; playableR = true; }
 			else {
-				if (!gState.doubleChainSide || game.doubleChainSide === 'left') {
+				if (!activeChainSide || activeChainSide === 'left') {
 					if (tile.left === gState.leftEnd || tile.right === gState.leftEnd) playableL = true;
 				}
-				if (!gState.doubleChainSide || game.doubleChainSide === 'right') {
+				if (!activeChainSide || activeChainSide === 'right') {
 					if (tile.left === gState.rightEnd || tile.right === gState.rightEnd) playableR = true;
 				}
 			}
@@ -1401,6 +1453,9 @@ function handlePlayerAction(peerId, action, payload) {
 		game.playerStates[peerId].declaredDomino = false;
 		game.drawCountThisTurn++;
 		
+		// แทรกตัวที่จั่วได้และจัดเรียงใหม่ทันที โดยดึงตัวที่ลงได้ขึ้นมาไว้หน้าสุด
+		sortPlayerHand(game.playerStates[peerId].hand, true, game.doubleChainSide);
+
 		broadcastSound('jua');
 		fxDrawTile(peerId);
 		connections.forEach(c => { if(c.open) c.send({ type: 'fxDraw', peerId: peerId }); });
@@ -1469,14 +1524,17 @@ function handlePlayerAction(peerId, action, payload) {
 	}
 
 	// Penalty Check
-	if (state.hand.length === 2 && !state.declaredDomino) {
+	const forgotDomino = (state.hand.length === 2 && !state.declaredDomino);
+
+	state.hand.splice(payload.index, 1);
+
+	if (forgotDomino) {
 		broadcastAnnounce(`${currentPlayer.name} ลืมกด DOMINO! ถูกลงโทษ จั่ว 2 ตัว`);
 		broadcastSound('wl');
 		drawTiles(peerId, 2);
 		state.declaredDomino = false;
 	}
 
-	state.hand.splice(payload.index, 1);
 	let newEnd = null;
 	let playedSideStr = '';
 	let playedSide = null;
@@ -1501,6 +1559,10 @@ function handlePlayerAction(peerId, action, payload) {
 	if (isDouble && playedSide) {
 		game.doubleChainSide = playedSide;
 	}
+
+	// จัดเรียงมือหลังวาง: หากวาง Double และมีตัวเล่นต่อได้ให้ดึงตัวที่เล่นต่อได้ขึ้นหน้าสุด มิฉะนั้นเรียง 2 กลุ่มปกติ
+	const willChainDouble = (isDouble && state.hand.length > 0 && canPlayAny(state.hand, game.doubleChainSide));
+	sortPlayerHand(state.hand, willChainDouble, game.doubleChainSide);
 
 	let actionStr = '';
 	if (tile.type === 'regular') {
@@ -1533,6 +1595,8 @@ function handlePlayerAction(peerId, action, payload) {
 		
 		const st = game.playerStates[peerId];
 		if (isDouble && st && st.hand.length > 0 && canPlayAny(st.hand, game.doubleChainSide)) {
+			// จัดเรียงอีกครั้งเผื่อมีตัวจั่วลงโทษเพิ่มเข้ามาตอนวาง Double
+			sortPlayerHand(st.hand, true, game.doubleChainSide);
 			const baseDoubleMsg = `${currentPlayer.name} วาง Double สามารถเล่นต่อเนื่องได้ที่ฝั่งเดิม`;
 			let activeDoubleMsg = baseDoubleMsg;
 			if (!currentPlayer.isBot) {
@@ -1603,6 +1667,8 @@ function drawTiles(playerId, count) {
 	const st = game.playerStates[playerId];
 	for(let i=0; i<count; i++) { if(game.deck.length > 0) st.hand.push(game.deck.pop()); }
 	st.declaredDomino = false;
+	const isCurrentTurn = (players[game.turnIndex] && players[game.turnIndex].id === playerId);
+	sortPlayerHand(st.hand, isCurrentTurn, game.doubleChainSide);
 }
 
 function isTilePlayable(tile, lockedSide = null) {
@@ -1629,6 +1695,17 @@ function advanceTurn() {
 	game.turnIndex = (game.turnIndex + (game.direction * steps) + (players.length * 10)) % players.length;
 	
 	const nextPlayer = players[game.turnIndex];
+
+	// จัดเรียงมือผู้เล่นทั้งหมด:
+	// - ผู้เล่นที่กำลังจะถึงตา: ดึงตัวที่ลงได้ขึ้นมาไว้หน้าสุด (Double -> ปกติ -> พิเศษ) แล้วตามด้วยตัวที่ลงไม่ได้
+	// - ผู้เล่นคนอื่น: จัดเรียงเป็น 2 กลุ่ม (ปกติ -> พิเศษ) จากน้อยไปมาก
+	players.forEach(p => {
+		const st = game.playerStates[p.id];
+		if (st && st.hand) {
+			sortPlayerHand(st.hand, p.id === nextPlayer.id, null);
+		}
+	});
+
 	broadcastSound('turn');
 	if (nextPlayer.id === myPeerId && !nextPlayer.isBot) {
 		playSound('abc');
@@ -1652,6 +1729,7 @@ async function runBotTurn(botPlayer, state) {
 		state.hand.push(tile);
 		state.declaredDomino = false;
 		game.drawCountThisTurn++;
+		sortPlayerHand(state.hand, true, game.doubleChainSide);
 		broadcastSound('jua');
 		fxDrawTile(botPlayer.id);
 		connections.forEach(c => { if(c.open) c.send({ type: 'fxDraw', peerId: botPlayer.id }); });
