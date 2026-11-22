@@ -1474,11 +1474,20 @@ function renderGame(gState) {
 
 	// Draw Button
 	const btnDraw = document.getElementById('btn-draw');
-	if (isMyTurn && gState.drawCountThisTurn < 3 && !canPlayAtLeastOne && gState.deckCount > 0) {
+	const wasDrawEnabled = !btnDraw.disabled;
+	const canDrawNow = (isMyTurn && gState.drawCountThisTurn < 3 && !canPlayAtLeastOne && gState.deckCount > 0);
+	if (canDrawNow) {
 		btnDraw.disabled = false;
-		btnDraw.onclick = () => { btnDraw.disabled = true; sendAction('draw'); };
+		btnDraw.onclick = () => { sendAction('draw'); };
+		if (isMyTurn && document.activeElement === btnDraw) {
+			btnDraw.focus();
+		}
 	} else {
 		btnDraw.disabled = true;
+		if (isMyTurn && wasDrawEnabled) {
+			const firstCardBtn = myContainer.querySelector('button');
+			if (firstCardBtn) firstCardBtn.focus();
+		}
 	}
 
 	// DOMINO Button
