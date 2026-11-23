@@ -19,6 +19,10 @@ const db = getDatabase(app);
 // BILINGUAL SUPPORT LAYER (TH Default 100% Preserved / EN)
 // ==================================================
 function detectBrowserLanguage() {
+    try {
+        const saved = localStorage.getItem('adventure80_lang');
+        if (saved === 'th' || saved === 'en') return saved;
+    } catch (e) {}
     const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
     return lang.startsWith('th') ? 'th' : 'en';
 }
@@ -203,6 +207,9 @@ function applyLanguageUI() {
 window.toggleLanguage = function() {
     playAudio('select.mp3');
     currentLang = (currentLang === 'th') ? 'en' : 'th';
+    try {
+        localStorage.setItem('adventure80_lang', currentLang);
+    } catch (e) {}
     applyLanguageUI();
     if (currentLang === 'en') {
         announceSR('Language switched to English', 'polite');
