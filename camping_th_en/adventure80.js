@@ -18,7 +18,11 @@ const db = getDatabase(app);
 // ==================================================
 // BILINGUAL SUPPORT LAYER (TH Default 100% Preserved / EN)
 // ==================================================
-let currentLang = 'th';
+function detectBrowserLanguage() {
+    const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return lang.startsWith('th') ? 'th' : 'en';
+}
+let currentLang = detectBrowserLanguage();
 
 const I18N_UI = {
     th: {
@@ -2098,6 +2102,7 @@ const VisualController = {
 
 // Initialize Application on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
+    applyLanguageUI();
     initRoomListListener();
     VisualController.init(); // Initialize Visual Layer
 
