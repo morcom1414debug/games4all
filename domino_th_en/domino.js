@@ -14,7 +14,11 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // ==================== Bilingual Support (TH / EN) ====================
-let currentLang = localStorage.getItem('domino_lang') === 'en' ? 'en' : 'th';
+function detectBrowserLanguage() {
+	const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+	return lang.startsWith('th') ? 'th' : 'en';
+}
+let currentLang = detectBrowserLanguage();
 
 const DOMINO_I18N = {
 	th: {
