@@ -15,6 +15,237 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
+// ==================================================
+// BILINGUAL DICTIONARY (TH / EN) & SYNC HELPER
+// ==================================================
+const LANG_STORAGE_KEY = 'adv80_lang';
+
+function getCurrentLang() {
+    if (window.ADV80_LANG === 'th' || window.ADV80_LANG === 'en') {
+        return window.ADV80_LANG;
+    }
+    try {
+        const saved = localStorage.getItem(LANG_STORAGE_KEY);
+        if (saved === 'th' || saved === 'en') return saved;
+    } catch (e) {}
+    const sysLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return sysLang.startsWith('th') ? 'th' : 'en';
+}
+
+const I18N_JS = {
+    th: {
+        defaultPlayerName: 'ผู้เล่นใหม่',
+        defaultHostName: 'ผู้เล่น 1',
+        defaultJoinName: 'ผู้เล่นเข้าใหม่',
+        botPrefix: 'บอท',
+        botTag: '(บอท)',
+        botNames: ['บอทจอมทัพ', 'บอทน้ำพุ', 'บอทสายรุ้ง', 'บอทวายุ', 'บอทปัญญา'],
+        welcomeLobbyAnnounce: (name) => `ยินดีต้อนรับ ${name} เข้าสู่ล็อบบี้การผจญภัย`,
+        manualOpened: 'เปิดคู่มือการเล่นแล้ว',
+        manualClosed: 'ปิดคู่มือการเล่นแล้ว',
+        roomItemLabel: (rId, pCount) => `<span><strong>ห้อง ${rId}</strong> (${pCount}/6 คน)</span>`,
+        noRoomsWaiting: 'ไม่มีห้องที่กำลังรอผู้เล่นอยู่...',
+        roomCreatedAnnounce: (rId) => `สร้างห้องสำเร็จ รหัสห้องคือ ${rId}`,
+        roomJoinedAnnounce: (rId) => `เข้าร่วมห้อง ${rId} เรียบร้อยแล้ว`,
+        hostLeftAnnounce: 'เจ้าของห้องออกจากเกม ห้องถูกปิด',
+        playerDisconnectedBot: (name) => `${name} หลุดจากห้อง แปลงเป็นบอท`,
+        startGameAnnounce: 'การผจญภัยเริ่มต้นขึ้นแล้ว เตรียมตัวให้พร้อม!',
+        lobbyRoomTitle: (rId) => `ห้องเกม: ${rId}`,
+        cellPrefix: (num) => `ช่อง ${num}`,
+        cellStart: ' จุดเริ่มต้น',
+        cellFinish: ' เส้นชัยปราสาท',
+        cellRest: ' จุดพักผ่อน ไม่มีเหตุการณ์',
+        cellTreasure: ' หีบสมบัติ',
+        cellForward: ' วาร์ป',
+        cellTrap: ' หลุมพราง',
+        cellWater: ' น้ำเชี่ยว',
+        cellGhost: ' ผีหลอก',
+        cellWarp: ' ไซโคลน',
+        cellKey: ' กล่องลึกลับ',
+        cellDoor: (dest) => ` ประตูทางลัด ไปช่อง ${dest}`,
+        cellBonus: ' ลาภลอย',
+        cellSecret: ' เหตุการณ์ลับ',
+        turnStatusBar: (icon, name) => `ถึงเทิร์นของ: ${icon} ${name}`,
+        turnAnnounce: (name) => `ถึงเทิร์นของ ${name}`,
+        allPlayersStatusHeader: 'สถานะผู้เล่นทั้งหมด: ',
+        playerStatusItem: (p) => `${p.name} ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}`,
+        playerCardStats: (p) => `ช่อง ${p.pos} 🔑 ${p.keys} 🛡️ ${p.armor}`,
+        spaceTypes: {
+            special: 'พิเศษ',
+            rest: 'จุดพักผ่อน',
+            treasure: 'หีบสมบัติ',
+            forward: 'วาร์ป',
+            trap: 'หลุมพราง',
+            water: 'น้ำเชี่ยว',
+            ghost: 'ผีหลอก',
+            warp: 'ไซโคลน',
+            key: 'กล่องลึกลับ',
+            door: 'ประตูทางลัด',
+            bonus: 'ลาภลอย',
+            secret: 'เหตุการณ์ลับ'
+        },
+        restNames: ['แคมป์ไฟอบอุ่น', 'โอเอซิสสงบเงียบ', 'กระท่อมร้างกลางป่า', 'ใต้ต้นไม้ใหญ่', 'ศาลาพักใจ'],
+        doorNames: ['ประตูมิติ', 'ประตูกาลเวลา', 'ประตูศิลาโบราณ', 'ประตูเวทมนตร์', 'ประตูลับ'],
+        secretNames: ['วิญญาณศักดิ์สิทธิ์', 'สัตว์เวทย์นำทาง', 'ภูตแห่งแสง'],
+        modalDoorTitle: (dName) => `พบ${dName}!`,
+        modalDoorDesc: 'คุณมีกุญแจ ต้องการใช้กุญแจเปิดประตูไปข้างหน้าหรือไม่?',
+        modalDoorConfirm: 'ใช้กุญแจ',
+        modalDoorCancel: 'ไม่ใช้',
+        modalDangerTitle: 'พบอันตราย!',
+        modalDangerDesc: (pos) => `ช่อง ${pos} มีเหตุการณ์ร้าย ใช้เกราะศักดิ์สิทธิ์ป้องกันหรือไม่?`,
+        modalDangerConfirm: 'ใช้เกราะป้องกัน',
+        modalDangerCancel: 'ไม่ใช้',
+        resultWinnerText: (icon, name) => `🎉 ${icon} ${name} เข้าสู่ช่อง 80 เป็นคนแรก!`,
+        resultWinnerAnnounce: (name) => `การผจญภัยสิ้นสุดลง ผู้ชนะคือ ${name} !`,
+        resultRankingsHeader: '<h3>อันดับการเดินทาง:</h3>',
+        resultRankingRow: (name, pos) => `<p>${name} ช่อง ${pos}</p>`,
+        events: {
+            roll_dice: (p) => `${p.name} ทอยลูกเต๋าได้ ${p.dice}`,
+            walk_space: (p) => `${p.name} เดินจากช่อง ${p.from} ไปยังช่อง ${p.to}`,
+            land_space: (p) => `${p.name}ตกช่อง ${p.pos} เป็นช่อง${I18N_JS.th.spaceTypes[p.spaceType] || p.spaceType}`,
+            rest_arrive: (p) => `${p.name} มาถึงจุดพักผ่อน ${I18N_JS.th.restNames[p.restIdx] || ''} ช่อง ${p.pos} ไม่มีเหตุการณ์พิเศษ จบการเดินทาง`,
+            treasure_get: () => 'พบหีบสมบัติ เปิดหีบ พบเกราะศักดิ์สิทธิ์ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น',
+            treasure_empty: () => 'พบหีบสมบัติ แต่หีบถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย',
+            key_get: () => 'พบกล่องลึกลับ เปิดกล่อง พบกุญแจโบราณ ได้รับกุญแจโบราณ 1 ดอก',
+            key_empty: () => 'พบกล่องลึกลับ แต่กล่องถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย',
+            door_open: (p) => `ใช้กุญแจเปิด${I18N_JS.th.doorNames[p.doorIdx] || 'ประตู'}สำเร็จ วาร์ปไปยังช่อง ${p.dest}`,
+            door_skip: () => 'เลือกที่จะไม่ใช้กุญแจ ประตูยังคงปิดอยู่',
+            door_nokey: (p) => `พบ${I18N_JS.th.doorNames[p.doorIdx] || 'ประตู'} แต่ไม่มีกุญแจ ไม่สามารถเปิดได้`,
+            armor_block: () => 'ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ ปลอดภัยแล้ว!',
+            armor_skip_back: (p) => `เลือกไม่ใช้เกราะศักดิ์สิทธิ์ รับผลร้าย ถอยหลัง ${p.steps} ช่อง`,
+            bad_back: (p) => `เกิดเหตุการณ์ร้าย ถอยหลัง ${p.steps} ช่อง`,
+            good_forward: (p) => `โชคดี เดินหน้าเพิ่ม ${p.steps} ช่อง`,
+            warp_forward: (p) => `พลังพิเศษ เดินหน้า ${p.steps} ช่อง`,
+            bonus_key: () => 'ลาภลอย! ได้รับกุญแจ 1 ชิ้น',
+            bonus_armor: () => 'ลาภลอย! ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น',
+            bonus_warp: (p) => `ลาภลอย! เกิดการวาร์ป เดินหน้า ${p.steps} ช่อง`,
+            secret_forward: (p) => `พบเหตุการณ์ลับ: ${I18N_JS.th.secretNames[p.secretIdx] || ''} พาเดินหน้า ${p.steps} ช่อง`,
+            back_to_start: () => 'กลับมายังจุดเริ่มต้น',
+            chain_loop_stop: (p) => `ตรวจสอบช่องใหม่: กลับมาช่อง ${p.pos} ที่เคยผ่านมาแล้ว หยุดการเดินทางเพื่อป้องกันการวนลูป`,
+            chain_limit_stop: () => 'ตรวจสอบช่องใหม่: ครบขีดจำกัดเหตุการณ์ 3 ครั้งแล้ว จบการเคลื่อนที่สำหรับเทิร์นนี้ทันที',
+            chain_continue: (p) => `ตรวจสอบช่องใหม่: ไปยังช่อง ${p.pos}`
+        }
+    },
+    en: {
+        defaultPlayerName: 'New Player',
+        defaultHostName: 'Player 1',
+        defaultJoinName: 'Joining Player',
+        botPrefix: 'Bot ',
+        botTag: '(Bot)',
+        botNames: ['Bot Commander', 'Bot Spring', 'Bot Rainbow', 'Bot Zephyr', 'Bot Sage'],
+        welcomeLobbyAnnounce: (name) => `Welcome ${name} to the Adventure Lobby`,
+        manualOpened: 'Game guide opened',
+        manualClosed: 'Game guide closed',
+        roomItemLabel: (rId, pCount) => `<span><strong>Room ${rId}</strong> (${pCount}/6 players)</span>`,
+        noRoomsWaiting: 'No rooms waiting for players...',
+        roomCreatedAnnounce: (rId) => `Room created successfully. Room ID is ${rId}`,
+        roomJoinedAnnounce: (rId) => `Joined room ${rId} successfully`,
+        hostLeftAnnounce: 'The host left the game. Room closed.',
+        playerDisconnectedBot: (name) => `${name} disconnected and was converted to a bot`,
+        startGameAnnounce: 'The adventure has begun! Get ready!',
+        lobbyRoomTitle: (rId) => `Game Room: ${rId}`,
+        cellPrefix: (num) => `Space ${num}`,
+        cellStart: ' Start Camp',
+        cellFinish: ' Castle Finish',
+        cellRest: ' Rest Camp, no event',
+        cellTreasure: ' Treasure Chest',
+        cellForward: ' Warp Boost',
+        cellTrap: ' Pitfall Trap',
+        cellWater: ' Rapids',
+        cellGhost: ' Ghost Haunt',
+        cellWarp: ' Cyclone',
+        cellKey: ' Mystery Box',
+        cellDoor: (dest) => ` Shortcut Door to Space ${dest}`,
+        cellBonus: ' Windfall Bonus',
+        cellSecret: ' Secret Event',
+        turnStatusBar: (icon, name) => `Current Turn: ${icon} ${name}`,
+        turnAnnounce: (name) => `It is ${name}'s turn`,
+        allPlayersStatusHeader: 'All Players Status: ',
+        playerStatusItem: (p) => `${p.name} Space ${p.pos} Keys ${p.keys} Armor ${p.armor}`,
+        playerCardStats: (p) => `Space ${p.pos} 🔑 ${p.keys} 🛡️ ${p.armor}`,
+        spaceTypes: {
+            special: 'Special',
+            rest: 'Rest Camp',
+            treasure: 'Treasure Chest',
+            forward: 'Warp Boost',
+            trap: 'Pitfall Trap',
+            water: 'Rapids',
+            ghost: 'Ghost Haunt',
+            warp: 'Cyclone',
+            key: 'Mystery Box',
+            door: 'Shortcut Door',
+            bonus: 'Windfall Bonus',
+            secret: 'Secret Event'
+        },
+        restNames: ['Warm Campfire', 'Peaceful Oasis', 'Forest Cabin', 'Giant Oak Tree', 'Traveler Pavilion'],
+        doorNames: ['Dimensional Door', 'Time Gate', 'Ancient Stone Door', 'Magic Portal', 'Secret Door'],
+        secretNames: ['Sacred Spirit', 'Mystic Guide Beast', 'Fairy of Light'],
+        modalDoorTitle: (dName) => `Found ${dName}!`,
+        modalDoorDesc: 'You have an Ancient Key. Use a key to open the shortcut door?',
+        modalDoorConfirm: 'Use Key',
+        modalDoorCancel: 'Skip',
+        modalDangerTitle: 'Danger Ahead!',
+        modalDangerDesc: (pos) => `Space ${pos} has a hazard! Use Sacred Armor to block it?`,
+        modalDangerConfirm: 'Use Armor',
+        modalDangerCancel: 'Skip',
+        resultWinnerText: (icon, name) => `🎉 ${icon} ${name} reached Space 80 first!`,
+        resultWinnerAnnounce: (name) => `The adventure has ended! The winner is ${name}!`,
+        resultRankingsHeader: '<h3>Final Standings:</h3>',
+        resultRankingRow: (name, pos) => `<p>${name} — Space ${pos}</p>`,
+        events: {
+            roll_dice: (p) => `${p.name} rolled a ${p.dice}`,
+            walk_space: (p) => `${p.name} moved from Space ${p.from} to Space ${p.to}`,
+            land_space: (p) => `${p.name} landed on Space ${p.pos}: ${I18N_JS.en.spaceTypes[p.spaceType] || p.spaceType}`,
+            rest_arrive: (p) => `${p.name} arrived at Rest Camp (${I18N_JS.en.restNames[p.restIdx] || ''}) on Space ${p.pos}. Safe space, turn ends`,
+            treasure_get: () => 'Found a Treasure Chest! Opened it and gained 1 Sacred Armor',
+            treasure_empty: () => 'Found a Treasure Chest, but it was already opened—only dust inside',
+            key_get: () => 'Found a Mystery Box! Opened it and gained 1 Ancient Key',
+            key_empty: () => 'Found a Mystery Box, but it was already opened—only dust inside',
+            door_open: (p) => `Used a key to unlock ${I18N_JS.en.doorNames[p.doorIdx] || 'the door'} and warped to Space ${p.dest}`,
+            door_skip: () => 'Chose not to use a key. The door remains closed',
+            door_nokey: (p) => `Found ${I18N_JS.en.doorNames[p.doorIdx] || 'a door'}, but have no keys to unlock it`,
+            armor_block: () => 'Used Sacred Armor to block the hazard! Safe and sound!',
+            armor_skip_back: (p) => `Chose not to use Sacred Armor and suffered the hazard, moving back ${p.steps} spaces`,
+            bad_back: (p) => `Hazard triggered! Moved back ${p.steps} spaces`,
+            good_forward: (p) => `Lucky break! Moved forward ${p.steps} spaces`,
+            warp_forward: (p) => `Warp boost! Moved forward ${p.steps} spaces`,
+            bonus_key: () => 'Windfall bonus! Received 1 Ancient Key',
+            bonus_armor: () => 'Windfall bonus! Received 1 Sacred Armor',
+            bonus_warp: (p) => `Windfall bonus! Warped forward ${p.steps} spaces`,
+            secret_forward: (p) => `Secret Event: ${I18N_JS.en.secretNames[p.secretIdx] || ''} guided you forward ${p.steps} spaces`,
+            back_to_start: () => 'Returned to the Start Camp',
+            chain_loop_stop: (p) => `Checking new space: returned to previously visited Space ${p.pos}. Stopping movement to prevent a loop`,
+            chain_limit_stop: () => 'Checking new space: reached the 3-event chain limit. Ending movement for this turn',
+            chain_continue: (p) => `Checking new space: continuing to Space ${p.pos}`
+        }
+    }
+};
+
+function t() {
+    return I18N_JS[getCurrentLang()] || I18N_JS.en;
+}
+
+function formatSyncedActionMessage(lastAction) {
+    if (!lastAction) return '';
+    const dict = t();
+    if (lastAction.key && dict.events && typeof dict.events[lastAction.key] === 'function') {
+        return dict.events[lastAction.key](lastAction.params || {});
+    }
+    return lastAction.msg || '';
+}
+
+window.onAdventureLanguageChanged = function() {
+    if (gameState) {
+        updateLobbyUI();
+        if (gameState.status === 'playing') {
+            renderBoardGrid();
+            updateGameUI();
+        } else if (gameState.status === 'ended' && document.getElementById('screen-result').classList.contains('active-screen')) {
+            showResultScreen();
+        }
+    }
+};
+
 // Animal Avatars Pool (16 Cute Animals)
 const ANIMAL_POOL = [
     { icon: '🦊', name: 'จิ้งจอก' }, { icon: '🐼', name: 'แพนด้า' },
@@ -45,59 +276,318 @@ let isStartingGame = false;
 
 // Audio System States
 let bgmSource = null;
+let isBgmActive = false;
 let audioBuffers = {};
+let audioLoadingPromises = {};
 let previousHumanCount = null;
 let previousBotCount = null;
 let isShowingWinnerScene = false;
+let audioUnlocked = false;
+let unlockPromise = null;
+let hasPreloadedAudio = false;
+let isConfirmingName = false;
 
-// Audio Context Web API (Web Audio API)
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// All Audio Files Used in Game (Preserving exact file names)
+const AUDIO_FILES_LIST = [
+    'select.mp3', '1.mp3', 'start.mp3', 'bgm.mp3', 'win.mp3',
+    'turn.mp3', 'abc.mp3', 'dice.mp3', 'walk.mp3', 'sabuy.mp3',
+    'box1.mp3', 'forward.mp3', 'hole.mp3', 'water.mp3', 'ghost.mp3',
+    'cyclone.mp3', 'box2.mp3', 'door1.mp3', 'box4.mp3', 'box3.mp3',
+    'akey3.mp3', 'akey2.mp3', 'akey1.mp3', 'door2.mp3', 'shieldno.mp3',
+    'shield.mp3'
+];
 
-// Auto-resume AudioContext for iOS/Android/Desktop User Interaction Requirement
-const unlockAudio = () => {
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+// Audio Context Web API (Web Audio API) - Single Instance Management
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+let audioCtx = AudioContextClass ? new AudioContextClass() : null;
+
+function getAudioContext() {
+    if (!audioCtx && AudioContextClass) {
+        try {
+            audioCtx = new AudioContextClass();
+        } catch (e) {
+            console.error('AudioContext creation error:', e);
+        }
+    }
+    return audioCtx;
+}
+
+// Play 1-frame silent buffer inside User Gesture to unlock iOS/Safari WebKit audio pipeline
+function playSilentUnlockBuffer(ctx) {
+    if (!ctx) return;
+    try {
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        if (typeof source.start === 'function') {
+            source.start(0);
+        } else if (typeof source.noteOn === 'function') {
+            source.noteOn(0);
+        }
+    } catch (e) {
+        // Ignore silent buffer errors on strict states
+    }
+}
+
+// Unlock & Resume AudioContext safely with Promise deduplication
+function unlockAudioContext() {
+    const ctx = getAudioContext();
+    if (!ctx) return Promise.resolve(false);
+
+    // If already running and unlocked, return immediately without redundant calls
+    if (ctx.state === 'running' && audioUnlocked) {
+        return Promise.resolve(true);
+    }
+
+    // Prevent concurrent unlock calls
+    if (unlockPromise) {
+        return unlockPromise;
+    }
+
+    // Trigger silent buffer synchronously within the user gesture stack frame
+    playSilentUnlockBuffer(ctx);
+
+    unlockPromise = (async () => {
+        try {
+            if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+                await ctx.resume();
+            }
+            if (ctx.state === 'running') {
+                playSilentUnlockBuffer(ctx);
+                audioUnlocked = true;
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.warn('AudioContext resume warning:', err);
+            return ctx.state === 'running';
+        } finally {
+            unlockPromise = null;
+        }
+    })();
+
+    return unlockPromise;
+}
+
+// Handler for User Gesture Audio Recovery (Initial Unlock & Background/Lock Recovery)
+const handleUserGestureAudio = () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (!audioUnlocked || ctx.state === 'suspended' || ctx.state === 'interrupted') {
+        unlockAudioContext().then((ready) => {
+            if (ready && isBgmActive && !bgmSource) {
+                const gameScreen = document.getElementById('screen-game');
+                if (gameScreen && gameScreen.classList.contains('active-screen') && gameState && gameState.status === 'playing') {
+                    playAudio('bgm.mp3', true);
+                }
+            }
+        });
     }
 };
-document.addEventListener('click', unlockAudio, { capture: true });
-document.addEventListener('touchstart', unlockAudio, { capture: true });
-document.addEventListener('keydown', unlockAudio, { capture: true });
+
+document.addEventListener('click', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('touchstart', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('touchend', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('pointerdown', handleUserGestureAudio, { capture: true, passive: true });
+document.addEventListener('keydown', handleUserGestureAudio, { capture: true, passive: true });
+
+// Monitor AudioContext state changes and Page Visibility for Safari/iOS app switching & screen lock
+if (audioCtx && typeof audioCtx.addEventListener === 'function') {
+    audioCtx.addEventListener('statechange', () => {
+        if (audioCtx.state === 'running') {
+            audioUnlocked = true;
+        }
+    });
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        const ctx = getAudioContext();
+        if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+            ctx.resume().catch(() => {});
+        }
+    }
+});
+
+window.addEventListener('pageshow', () => {
+    const ctx = getAudioContext();
+    if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+        ctx.resume().catch(() => {});
+    }
+});
+
+window.addEventListener('focus', () => {
+    const ctx = getAudioContext();
+    if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+        ctx.resume().catch(() => {});
+    }
+});
+
+// Cross-browser & Legacy Safari compatible decodeAudioData wrapper
+function decodeAudioDataSafe(ctx, arrayBuffer) {
+    return new Promise((resolve, reject) => {
+        try {
+            const bufferCopy = arrayBuffer.slice(0);
+            const decodeResult = ctx.decodeAudioData(
+                bufferCopy,
+                (decodedBuffer) => resolve(decodedBuffer),
+                (err) => reject(err)
+            );
+            if (decodeResult && typeof decodeResult.then === 'function') {
+                decodeResult.then(resolve).catch(reject);
+            }
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
 
 async function loadAudio(name) {
+    if (!name) return null;
     if (audioBuffers[name]) return audioBuffers[name];
-    try {
-        const response = await fetch(`audio/${name}`);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        audioBuffers[name] = audioBuffer;
-        return audioBuffer;
-    } catch (e) {
-        console.error('Audio load error:', e);
-        return null;
+    if (audioLoadingPromises[name]) return audioLoadingPromises[name];
+
+    const ctx = getAudioContext();
+    if (!ctx) return null;
+
+    audioLoadingPromises[name] = (async () => {
+        try {
+            const response = await fetch(`audio/${name}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} while loading audio/${name}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await decodeAudioDataSafe(ctx, arrayBuffer);
+            if (audioBuffer) {
+                audioBuffers[name] = audioBuffer;
+            }
+            return audioBuffer;
+        } catch (e) {
+            console.error('Audio load error:', name, e);
+            return null;
+        } finally {
+            delete audioLoadingPromises[name];
+        }
+    })();
+
+    return audioLoadingPromises[name];
+}
+
+// Non-blocking background audio preloader triggered after player confirms name
+function preloadAllAudio() {
+    if (hasPreloadedAudio) return;
+    hasPreloadedAudio = true;
+
+    const priorityFiles = ['select.mp3', '1.mp3', 'start.mp3', 'turn.mp3', 'abc.mp3', 'dice.mp3', 'walk.mp3'];
+    priorityFiles.forEach((file) => {
+        loadAudio(file);
+    });
+
+    setTimeout(() => {
+        AUDIO_FILES_LIST.forEach((file) => {
+            if (!audioBuffers[file] && !audioLoadingPromises[file]) {
+                loadAudio(file);
+            }
+        });
+    }, 300);
+}
+
+// Ensure AudioContext is ready before playing without hanging non-gesture callbacks (Firebase/Timers)
+async function ensureAudioContextReady() {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    if (ctx.state === 'running') return true;
+
+    if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+        try {
+            await Promise.race([
+                unlockAudioContext(),
+                new Promise((resolve) => setTimeout(resolve, 250))
+            ]);
+        } catch (e) {
+            // Ignore resume rejections outside of user gesture
+        }
     }
+    return ctx.state === 'running';
 }
 
 function playAudio(name, loop = false) {
     return new Promise(async (resolve) => {
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        const buffer = await loadAudio(name);
-        if (!buffer) {
-            resolve();
-            return;
-        }
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioCtx.destination);
-        source.loop = loop;
-        
-        source.onended = () => resolve(source);
-        source.start(0);
-
-        if (loop && name === 'bgm.mp3') {
-            if (bgmSource) {
-                try { bgmSource.stop(); } catch(e){}
+        try {
+            const ctx = getAudioContext();
+            if (!ctx) {
+                resolve();
+                return;
             }
-            bgmSource = source;
+
+            if (loop && name === 'bgm.mp3') {
+                isBgmActive = true;
+            }
+
+            const [buffer] = await Promise.all([
+                loadAudio(name),
+                ensureAudioContextReady()
+            ]);
+
+            if (!buffer) {
+                resolve();
+                return;
+            }
+
+            if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+                try {
+                    await Promise.race([
+                        ctx.resume(),
+                        new Promise((r) => setTimeout(r, 100))
+                    ]);
+                } catch (e) {}
+            }
+
+            if (ctx.state !== 'running') {
+                resolve();
+                return;
+            }
+
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            source.loop = loop;
+
+            let settled = false;
+            const finish = () => {
+                if (!settled) {
+                    settled = true;
+                    resolve(source);
+                }
+            };
+
+            source.onended = () => {
+                if (loop && name === 'bgm.mp3' && bgmSource === source) {
+                    bgmSource = null;
+                }
+                finish();
+            };
+
+            if (loop && name === 'bgm.mp3') {
+                if (bgmSource) {
+                    try {
+                        bgmSource.onended = null;
+                        bgmSource.stop();
+                        bgmSource.disconnect();
+                    } catch (e) {}
+                }
+                bgmSource = source;
+            }
+
+            source.start(0);
+
+            if (loop) {
+                finish();
+            }
+        } catch (err) {
+            console.warn('Audio playback error:', name, err);
+            resolve();
         }
     });
 }
@@ -109,8 +599,13 @@ async function playAudioSequence(list) {
 }
 
 function stopBGM() {
+    isBgmActive = false;
     if (bgmSource) {
-        try { bgmSource.stop(); } catch(e){}
+        try {
+            bgmSource.onended = null;
+            bgmSource.stop();
+            bgmSource.disconnect();
+        } catch (e) {}
         bgmSource = null;
     }
 }
@@ -181,13 +676,26 @@ function switchScreen(screenId, focusHeadingId = null) {
     });
 }
 
-// Name and Navigation
+// Name and Navigation (Primary Audio Unlock & Preload Entry Point)
 window.confirmNameAndEnterLobby = function() {
+    if (isConfirmingName) return;
+    const welcomeScreen = document.getElementById('screen-welcome');
+    if (welcomeScreen && !welcomeScreen.classList.contains('active-screen')) return;
+
+    isConfirmingName = true;
+    setTimeout(() => {
+        isConfirmingName = false;
+    }, 400);
+
+    // Unlock AudioContext immediately inside direct User Gesture (Button click / Virtual Enter / Physical Enter)
+    unlockAudioContext();
+    preloadAllAudio();
+
     playAudio('select.mp3');
     const nameInput = document.getElementById('player-name-input');
-    myPlayerName = nameInput.value.trim() || 'ผู้เล่นใหม่';
+    myPlayerName = nameInput.value.trim() || t().defaultPlayerName;
     switchScreen('screen-lobby', 'lobby-heading');
-    announceSR(`ยินดีต้อนรับ ${myPlayerName} เข้าสู่ล็อบบี้การผจญภัย`);
+    announceSR(t().welcomeLobbyAnnounce(myPlayerName));
 };
 
 window.leaveRoomAndGoHome = function() {
@@ -201,10 +709,10 @@ window.toggleManual = function() {
     if (m.style.display === 'none') {
         m.style.display = 'block';
         m.focus();
-        announceSR("เปิดคู่มือการเล่นแล้ว");
+        announceSR(t().manualOpened);
     } else {
         m.style.display = 'none';
-        announceSR("ปิดคู่มือการเล่นแล้ว");
+        announceSR(t().manualClosed);
     }
 };
 
@@ -216,6 +724,7 @@ function initRoomListListener() {
         const container = document.getElementById('room-list');
         if (!container || myPlayerId) return;
 
+        const dict = t();
         container.innerHTML = '';
         let count = 0;
         for (const [rId, rData] of Object.entries(rooms)) {
@@ -224,13 +733,13 @@ function initRoomListListener() {
                 const item = document.createElement('div');
                 item.className = 'room-item';
                 const pCount = rData.players ? Object.keys(rData.players).length : 0;
-                item.innerHTML = `<span><strong>ห้อง ${rId}</strong> (${pCount}/6 คน)</span>`;
+                item.innerHTML = dict.roomItemLabel(rId, pCount);
                 item.onclick = () => window.joinAdventureRoom(rId);
                 container.appendChild(item);
             }
         }
         if (count === 0) {
-            container.innerHTML = '<div style="color:#a0a5b5; padding:10px;">ไม่มีห้องที่กำลังรอผู้เล่นอยู่...</div>';
+            container.innerHTML = `<div style="color:#a0a5b5; padding:10px;">${dict.noRoomsWaiting}</div>`;
         }
     });
 }
@@ -318,7 +827,7 @@ function generateBoardConfiguration() {
 
 // Create Room Handler
 window.createAdventureRoom = function() {
-    if (!myPlayerName) myPlayerName = 'ผู้เล่น 1';
+    if (!myPlayerName) myPlayerName = t().defaultHostName;
 
     playAudio('1.mp3');
     isStartingGame = false;
@@ -352,14 +861,14 @@ window.createAdventureRoom = function() {
             document.getElementById('lobby-menu-section').style.display = 'none';
             document.getElementById('lobby-room-section').style.display = 'block';
             setupRoomListener();
-            announceSR(`สร้างห้องสำเร็จ รหัสห้องคือ ${currentRoomId}`);
+            announceSR(t().roomCreatedAnnounce(currentRoomId));
         }
     });
 };
 
 // Join Room Handler
 window.joinAdventureRoom = function(rId) {
-    if (!myPlayerName) myPlayerName = 'ผู้เล่นเข้าใหม่';
+    if (!myPlayerName) myPlayerName = t().defaultJoinName;
 
     currentRoomId = rId;
     isHost = false;
@@ -400,14 +909,14 @@ window.joinAdventureRoom = function(rId) {
             // Client disconnecting turns them into a bot
             onDisconnect(ref(db, `games/Adventure80/rooms/${currentRoomId}/players/${myPlayerId}`)).update({
                 isBot: true,
-                name: "บอท" + myPlayerName
+                name: t().botPrefix + myPlayerName
             });
             
             document.getElementById('lobby-menu-section').style.display = 'none';
             document.getElementById('lobby-room-section').style.display = 'block';
             
             setupRoomListener();
-            announceSR(`เข้าร่วมห้อง ${currentRoomId} เรียบร้อยแล้ว`);
+            announceSR(t().roomJoinedAnnounce(currentRoomId));
             document.getElementById('lobby-room-title').focus();
         }
     });
@@ -427,12 +936,12 @@ window.adjustBot = function(delta) {
 
     if (delta > 0) {
         const botSlot = 'p' + (humanCount + newBots);
-        const botNames = ['บอทจอมทัพ', 'บอทน้ำพุ', 'บอทสายรุ้ง', 'บอทวายุ', 'บอทปัญญา'];
+        const botNames = t().botNames;
         const usedAnimals = Object.values(updatedPlayers).map(p => p.animal.icon);
         const availAnimals = ANIMAL_POOL.filter(a => !usedAnimals.includes(a.icon));
 
         updatedPlayers[botSlot] = {
-            name: botNames[newBots - 1] || `บอท ${newBots}`,
+            name: botNames[newBots - 1] || `${t().botPrefix}${newBots}`,
             animal: availAnimals[0] || ANIMAL_POOL[1],
             isBot: true,
             pos: 1,
@@ -458,7 +967,7 @@ function setupRoomListener() {
     roomListener = onValue(roomRef, (snapshot) => {
         gameState = snapshot.val();
         if (!gameState) {
-            announceSR("เจ้าของห้องออกจากเกม ห้องถูกปิด", 'assertive');
+            announceSR(t().hostLeftAnnounce, 'assertive');
             setTimeout(() => {
                 window.location.href = '../index.html';
             }, 3000);
@@ -485,7 +994,7 @@ function setupRoomListener() {
         if (gameState.players) {
             for (const pId in gameState.players) {
                 if (previousPlayersState[pId] && !previousPlayersState[pId].isBot && gameState.players[pId].isBot) {
-                    announceSR(`${previousPlayersState[pId].name} หลุดจากห้อง แปลงเป็นบอท`, 'polite');
+                    announceSR(t().playerDisconnectedBot(previousPlayersState[pId].name), 'polite');
                 }
             }
             previousPlayersState = JSON.parse(JSON.stringify(gameState.players));
@@ -496,13 +1005,19 @@ function setupRoomListener() {
         // Synced Actions Announcements Listener & Audio sync
         if (gameState.lastAction && gameState.lastAction.ts > localLastActionTs) {
             localLastActionTs = gameState.lastAction.ts;
-            announceSR(gameState.lastAction.msg, 'polite');
+            const localizedMsg = formatSyncedActionMessage(gameState.lastAction);
+            announceSR(localizedMsg, 'polite');
             if (gameState.lastAction.audioKeys && gameState.lastAction.audioKeys.length > 0) {
                 playAudioSequence(gameState.lastAction.audioKeys);
             }
             
             // --- SYNC DICE VISUAL: อัปเดตตัวเลขผลลูกเต๋าให้ทุกอุปกรณ์เห็นตรงกันจากการทอยจริง ---
-            if (gameState.lastAction.msg.includes('ทอยลูกเต๋าได้')) {
+            if (gameState.lastAction.key === 'roll_dice' && gameState.lastAction.params && gameState.lastAction.params.dice) {
+                const diceEl = document.getElementById('dice-visual');
+                if (diceEl) {
+                    diceEl.textContent = gameState.lastAction.params.dice;
+                }
+            } else if (gameState.lastAction.msg && gameState.lastAction.msg.includes('ทอยลูกเต๋าได้')) {
                 const diceMatch = gameState.lastAction.msg.match(/ทอยลูกเต๋าได้\s*(\d+)/);
                 if (diceMatch) {
                     const diceEl = document.getElementById('dice-visual');
@@ -516,7 +1031,7 @@ function setupRoomListener() {
             // --- VISUAL LAYER: Trigger Event Effect ---
             const currentTurnKey = gameState.playerOrder ? gameState.playerOrder[gameState.turnIndex] : null;
             const pData = (currentTurnKey && gameState.players) ? gameState.players[currentTurnKey] : null;
-            VisualController.triggerFromMessage(gameState.lastAction.msg, pData);
+            VisualController.triggerFromAction(gameState.lastAction, pData);
             // ------------------------------------------
         }
 
@@ -538,7 +1053,7 @@ function showStartGameAnimation() {
     stopBGM();
     const overlay = document.getElementById('anim-start-overlay');
     overlay.style.display = 'flex';
-    announceSR('การผจญภัยเริ่มต้นขึ้นแล้ว เตรียมตัวให้พร้อม!', 'assertive');
+    announceSR(t().startGameAnnounce, 'assertive');
     
     // --- VISUAL LAYER: START EFFECTS ---
     VisualController.playStartEffects(overlay);
@@ -593,7 +1108,8 @@ function showWinnerAnimationAndResult() {
 // Update Lobby Interface
 function updateLobbyUI() {
     if (!gameState) return;
-    document.getElementById('lobby-room-title').textContent = `ห้องเกม: ${currentRoomId}`;
+    const dict = t();
+    document.getElementById('lobby-room-title').textContent = dict.lobbyRoomTitle(currentRoomId);
     
     const pList = Object.values(gameState.players || {});
     document.getElementById('participant-count').textContent = `${pList.length}/6`;
@@ -603,7 +1119,7 @@ function updateLobbyUI() {
     pList.forEach(p => {
         const card = document.createElement('div');
         card.className = 'participant-card';
-        card.innerHTML = `<span class="participant-avatar">${p.animal.icon}</span> <span>${p.name} ${p.isBot ? '(บอท)' : ''}</span>`;
+        card.innerHTML = `<span class="participant-avatar">${p.animal.icon}</span> <span>${p.name} ${p.isBot ? dict.botTag : ''}</span>`;
         listContainer.appendChild(card);
     });
 
@@ -683,6 +1199,7 @@ function renderBoardGrid() {
     grid.setAttribute('aria-hidden', 'true');
     grid.innerHTML = '';
     const config = gameState.boardConfig || {};
+    const dict = t();
 
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 10; col++) {
@@ -699,31 +1216,31 @@ function renderBoardGrid() {
             cell.setAttribute('role', 'gridcell');
 
             let iconHtml = '';
-            let accessibleName = `ช่อง ${num}`;
+            let accessibleName = dict.cellPrefix(num);
 
             if (num === 1) {
                 cell.classList.add('cell-start');
                 iconHtml = '🏕️';
-                accessibleName += ' จุดเริ่มต้น';
+                accessibleName += dict.cellStart;
             } else if (num === 80) {
                 cell.classList.add('cell-finish');
                 iconHtml = '🏰';
-                accessibleName += ' เส้นชัยปราสาท';
+                accessibleName += dict.cellFinish;
             } else if (config[num]) {
                 const sp = config[num];
                 cell.classList.add(`cell-${sp.type}`);
                 
-                if (sp.type === 'rest') { iconHtml = '⛺'; accessibleName += ' จุดพักผ่อน ไม่มีเหตุการณ์'; }
-                else if (sp.type === 'treasure') { iconHtml = '📦'; accessibleName += ' หีบสมบัติ'; }
-                else if (sp.type === 'forward') { iconHtml = '🚀'; accessibleName += ' วาร์ป'; }
-                else if (sp.type === 'trap') { iconHtml = '🕳️'; accessibleName += ' หลุมพราง'; }
-                else if (sp.type === 'water') { iconHtml = '🌊'; accessibleName += ' น้ำเชี่ยว'; }
-                else if (sp.type === 'ghost') { iconHtml = '👻'; accessibleName += ' ผีหลอก'; }
-                else if (sp.type === 'warp') { iconHtml = '🌀'; accessibleName += ' ไซโคลน'; }
-                else if (sp.type === 'key') { iconHtml = '🔑'; accessibleName += ' กล่องลึกลับ'; }
-                else if (sp.type === 'door') { iconHtml = '🚪'; accessibleName += ` ประตูทางลัด ไปช่อง ${sp.dest}`; }
-                else if (sp.type === 'bonus') { iconHtml = '🎁'; accessibleName += ' ลาภลอย'; }
-                else if (sp.type === 'secret') { iconHtml = '🔮'; accessibleName += ' เหตุการณ์ลับ'; }
+                if (sp.type === 'rest') { iconHtml = '⛺'; accessibleName += dict.cellRest; }
+                else if (sp.type === 'treasure') { iconHtml = '📦'; accessibleName += dict.cellTreasure; }
+                else if (sp.type === 'forward') { iconHtml = '🚀'; accessibleName += dict.cellForward; }
+                else if (sp.type === 'trap') { iconHtml = '🕳️'; accessibleName += dict.cellTrap; }
+                else if (sp.type === 'water') { iconHtml = '🌊'; accessibleName += dict.cellWater; }
+                else if (sp.type === 'ghost') { iconHtml = '👻'; accessibleName += dict.cellGhost; }
+                else if (sp.type === 'warp') { iconHtml = '🌀'; accessibleName += dict.cellWarp; }
+                else if (sp.type === 'key') { iconHtml = '🔑'; accessibleName += dict.cellKey; }
+                else if (sp.type === 'door') { iconHtml = '🚪'; accessibleName += dict.cellDoor(sp.dest); }
+                else if (sp.type === 'bonus') { iconHtml = '🎁'; accessibleName += dict.cellBonus; }
+                else if (sp.type === 'secret') { iconHtml = '🔮'; accessibleName += dict.cellSecret; }
             }
 
             cell.setAttribute('aria-label', accessibleName);
@@ -736,13 +1253,14 @@ function renderBoardGrid() {
 // Update Gameplay UI & Render Pawns
 function updateGameUI() {
     if (!gameState) return;
+    const dict = t();
 
     const pOrder = gameState.playerOrder || Object.keys(gameState.players);
     const playersArr = pOrder.map(pId => [pId, gameState.players[pId]]);
     const currentTurnKey = playersArr[gameState.turnIndex][0];
     const currentTurnPlayer = playersArr[gameState.turnIndex][1];
 
-    document.getElementById('game-status-bar').textContent = `ถึงเทิร์นของ: ${currentTurnPlayer.animal.icon} ${currentTurnPlayer.name}`;
+    document.getElementById('game-status-bar').textContent = dict.turnStatusBar(currentTurnPlayer.animal.icon, currentTurnPlayer.name);
 
     const rollBtn = document.getElementById('btn-roll-dice');
     if (currentTurnKey === myPlayerId && !currentTurnPlayer.isBot && !gameState.turnExecuting) {
@@ -770,7 +1288,7 @@ function updateGameUI() {
         const turnUniqueId = `${currentRoomId}_${gameState.turnIndex}_${currentTurnKey}`;
         if (lastAnnouncedTurnKey !== turnUniqueId) {
             lastAnnouncedTurnKey = turnUniqueId;
-            const turnMsg = `ถึงเทิร์นของ ${currentTurnPlayer.name}`;
+            const turnMsg = dict.turnAnnounce(currentTurnPlayer.name);
             announceSR(turnMsg);
             
             // Audio System: Sync Turn & ABC Rule
@@ -797,9 +1315,9 @@ function updateGameUI() {
     cardsContainer.innerHTML = '';
     
     // Group all statuses into a single readable object for Screen Readers
-    let allStatusText = "สถานะผู้เล่นทั้งหมด: ";
+    let allStatusText = dict.allPlayersStatusHeader;
     playersArr.forEach(([pId, p], index) => {
-        allStatusText += `${p.name} ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}`;
+        allStatusText += dict.playerStatusItem(p);
         if (index < playersArr.length - 1) allStatusText += ", ";
     });
     
@@ -814,7 +1332,7 @@ function updateGameUI() {
         card.setAttribute('aria-hidden', 'true');
         card.innerHTML = `
             <div><strong>${p.animal.icon} ${p.name}</strong></div>
-            <div>ช่อง ${p.pos} 🔑 ${p.keys} 🛡️ ${p.armor}</div>
+            <div>${dict.playerCardStats(p)}</div>
         `;
         cardsContainer.appendChild(card);
     });
@@ -844,10 +1362,19 @@ function updateGameUI() {
     }
 }
 
-// Emits an action and pauses briefly so all clients process audio sequentially
-async function syncActionEmit(msg, audioKeys = []) {
+// Emits an action with structured i18n key + params so all clients render in their own language
+async function syncActionEmit(key, params = {}, audioKeys = []) {
     const ts = Date.now() + Math.random();
-    await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/lastAction`]: { msg, ts, audioKeys } });
+    const fallbackMsg = (I18N_JS.th.events[key] ? I18N_JS.th.events[key](params) : key);
+    await update(ref(db), {
+        [`games/Adventure80/rooms/${currentRoomId}/lastAction`]: {
+            key,
+            params,
+            msg: fallbackMsg,
+            ts,
+            audioKeys
+        }
+    });
     await delayAsync(2200); // Wait long enough for Screen Readers and Web Audio to play the sequence
 }
 
@@ -878,13 +1405,13 @@ async function executeTurnAsync(pId, isAuto = false) {
     const diceRoll = Math.floor(Math.random() * 6) + 1;
     document.getElementById('dice-visual').textContent = diceRoll;
     
-    await syncActionEmit(`${pData.name} ทอยลูกเต๋าได้ ${diceRoll}`, ['dice.mp3']);
+    await syncActionEmit('roll_dice', { name: pData.name, dice: diceRoll, pos: pData.pos }, ['dice.mp3']);
     
     let currentPos = pData.pos;
     let targetPos = currentPos + diceRoll;
     if (targetPos > 80) targetPos = 80 - (targetPos - 80); // Bounce back rule
 
-    await syncActionEmit(`${pData.name} เดินจากช่อง ${currentPos} ไปยังช่อง ${targetPos}`, ['walk.mp3']);
+    await syncActionEmit('walk_space', { name: pData.name, from: currentPos, to: targetPos, pos: targetPos }, ['walk.mp3']);
     
     currentPos = targetPos;
     await syncStateDB(pId, { pos: currentPos });
@@ -906,27 +1433,25 @@ async function executeTurnAsync(pId, isAuto = false) {
             break;
         }
 
-        let typeNameTH = 'พิเศษ';
         let landingAudio = null;
-        if (sp.type === 'rest') { typeNameTH = 'จุดพักผ่อน'; landingAudio = 'sabuy.mp3'; }
-        else if (sp.type === 'treasure') { typeNameTH = 'หีบสมบัติ'; landingAudio = 'box1.mp3'; }
-        else if (sp.type === 'forward') { typeNameTH = 'วาร์ป'; landingAudio = 'forward.mp3'; }
-        else if (sp.type === 'trap') { typeNameTH = 'หลุมพราง'; landingAudio = 'hole.mp3'; }
-        else if (sp.type === 'water') { typeNameTH = 'น้ำเชี่ยว'; landingAudio = 'water.mp3'; }
-        else if (sp.type === 'ghost') { typeNameTH = 'ผีหลอก'; landingAudio = 'ghost.mp3'; }
-        else if (sp.type === 'warp') { typeNameTH = 'ไซโคลน'; landingAudio = 'cyclone.mp3'; }
-        else if (sp.type === 'key') { typeNameTH = 'กล่องลึกลับ'; landingAudio = 'box2.mp3'; }
-        else if (sp.type === 'door') { typeNameTH = 'ประตูทางลัด'; landingAudio = 'door1.mp3'; }
-        else if (sp.type === 'bonus') { typeNameTH = 'ลาภลอย'; landingAudio = 'box4.mp3'; }
-        else if (sp.type === 'secret') { typeNameTH = 'เหตุการณ์ลับ'; landingAudio = 'box3.mp3'; }
+        if (sp.type === 'rest') { landingAudio = 'sabuy.mp3'; }
+        else if (sp.type === 'treasure') { landingAudio = 'box1.mp3'; }
+        else if (sp.type === 'forward') { landingAudio = 'forward.mp3'; }
+        else if (sp.type === 'trap') { landingAudio = 'hole.mp3'; }
+        else if (sp.type === 'water') { landingAudio = 'water.mp3'; }
+        else if (sp.type === 'ghost') { landingAudio = 'ghost.mp3'; }
+        else if (sp.type === 'warp') { landingAudio = 'cyclone.mp3'; }
+        else if (sp.type === 'key') { landingAudio = 'box2.mp3'; }
+        else if (sp.type === 'door') { landingAudio = 'door1.mp3'; }
+        else if (sp.type === 'bonus') { landingAudio = 'box4.mp3'; }
+        else if (sp.type === 'secret') { landingAudio = 'box3.mp3'; }
 
-        await syncActionEmit(`${pData.name}ตกช่อง ${currentPos} เป็นช่อง${typeNameTH}`, landingAudio ? [landingAudio] : []);
+        await syncActionEmit('land_space', { name: pData.name, pos: currentPos, spaceType: sp.type }, landingAudio ? [landingAudio] : []);
 
         // Handle Effect
         if (sp.type === 'rest') {
-            const restNames = ["แคมป์ไฟอบอุ่น", "โอเอซิสสงบเงียบ", "กระท่อมร้างกลางป่า", "ใต้ต้นไม้ใหญ่", "ศาลาพักใจ"];
-            const rName = restNames[Math.floor(Math.random() * restNames.length)];
-            await syncActionEmit(`${pData.name} มาถึงจุดพักผ่อน ${rName} ช่อง ${currentPos} ไม่มีเหตุการณ์พิเศษ จบการเดินทาง`);
+            const restIdx = Math.floor(Math.random() * t().restNames.length);
+            await syncActionEmit('rest_arrive', { name: pData.name, restIdx, pos: currentPos });
             break; // Rule 5: Ends event chain immediately
         }
         
@@ -938,9 +1463,9 @@ async function executeTurnAsync(pId, isAuto = false) {
                 await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
-                await syncActionEmit(`พบหีบสมบัติ เปิดหีบ พบเกราะศักดิ์สิทธิ์ ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`, ['akey3.mp3']);
+                await syncActionEmit('treasure_get', { pos: currentPos }, ['akey3.mp3']);
             } else {
-                await syncActionEmit(`พบหีบสมบัติ แต่หีบถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`, ['akey2.mp3']);
+                await syncActionEmit('treasure_empty', { pos: currentPos }, ['akey2.mp3']);
             }
             break; // Event chain ends as player did not change location
         } else if (sp.type === 'key') {
@@ -949,34 +1474,36 @@ async function executeTurnAsync(pId, isAuto = false) {
                 await update(ref(db), { [`games/Adventure80/rooms/${currentRoomId}/boardConfig/${currentPos}/charges`]: sp.charges });
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
-                await syncActionEmit(`พบกล่องลึกลับ เปิดกล่อง พบกุญแจโบราณ ได้รับกุญแจโบราณ 1 ดอก`, ['akey1.mp3']);
+                await syncActionEmit('key_get', { pos: currentPos }, ['akey1.mp3']);
             } else {
-                await syncActionEmit(`พบกล่องลึกลับ แต่กล่องถูกเปิดไปแล้ว เหลือเพียงเศษฝุ่น ไม่ได้อะไรเลย`, ['akey2.mp3']);
+                await syncActionEmit('key_empty', { pos: currentPos }, ['akey2.mp3']);
             }
             break; // Does not change location
         } else if (sp.type === 'door') {
-            const doorNames = ["ประตูมิติ", "ประตูกาลเวลา", "ประตูศิลาโบราณ", "ประตูเวทมนตร์", "ประตูลับ"];
-            const dName = doorNames[Math.floor(Math.random() * doorNames.length)];
+            const dict = t();
+            const doorIdx = Math.floor(Math.random() * dict.doorNames.length);
+            const dName = dict.doorNames[doorIdx];
             if (pData.keys > 0) {
                 let useKey = true;
                 if (!autoMode && pId === myPlayerId) {
-                    useKey = await showModalAsync(`พบ${dName}!`, 'คุณมีกุญแจ ต้องการใช้กุญแจเปิดประตูไปข้างหน้าหรือไม่?', 'ใช้กุญแจ', 'ไม่ใช้');
+                    useKey = await showModalAsync(dict.modalDoorTitle(dName), dict.modalDoorDesc, dict.modalDoorConfirm, dict.modalDoorCancel);
                 }
                 if (useKey) {
                     pData.keys--;
                     await syncStateDB(pId, { keys: pData.keys });
-                    await syncActionEmit(`ใช้กุญแจเปิด${dName}สำเร็จ วาร์ปไปยังช่อง ${sp.dest}`, ['door2.mp3', 'walk.mp3']);
+                    await syncActionEmit('door_open', { doorIdx, dest: sp.dest, pos: sp.dest }, ['door2.mp3', 'walk.mp3']);
                     currentPos = sp.dest;
                     movedToNewSpace = true;
                 } else {
-                    await syncActionEmit(`เลือกที่จะไม่ใช้กุญแจ ประตูยังคงปิดอยู่`, ['shieldno.mp3']);
+                    await syncActionEmit('door_skip', { pos: currentPos }, ['shieldno.mp3']);
                     break;
                 }
             } else {
-                await syncActionEmit(`พบ${dName} แต่ไม่มีกุญแจ ไม่สามารถเปิดได้`);
+                await syncActionEmit('door_nokey', { doorIdx, pos: currentPos });
                 break;
             }
         } else if (['trap', 'water', 'ghost', 'warp'].includes(sp.type)) {
+            const dict = t();
             let randVal;
             if (sp.type === 'warp' || sp.type === 'water') {
                 randVal = Math.random() > 0.5 ? (Math.floor(Math.random() * 10) + 3) : -(Math.floor(Math.random() * 5) + 2);
@@ -987,34 +1514,36 @@ async function executeTurnAsync(pId, isAuto = false) {
             if (isBad && pData.armor > 0) {
                 let useArmor = true;
                 if (!autoMode && pId === myPlayerId) {
-                    useArmor = await showModalAsync('พบอันตราย!', `ช่อง ${currentPos} มีเหตุการณ์ร้าย ใช้เกราะศักดิ์สิทธิ์ป้องกันหรือไม่?`, 'ใช้เกราะป้องกัน', 'ไม่ใช้');
+                    useArmor = await showModalAsync(dict.modalDangerTitle, dict.modalDangerDesc(currentPos), dict.modalDangerConfirm, dict.modalDangerCancel);
                 }
                 if (useArmor) {
                     pData.armor--;
                     await syncStateDB(pId, { armor: pData.armor });
-                    await syncActionEmit(`ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ ปลอดภัยแล้ว!`, ['shield.mp3']);
+                    await syncActionEmit('armor_block', { pos: currentPos }, ['shield.mp3']);
                     break;
                 } else {
-                    await syncActionEmit(`เลือกไม่ใช้เกราะศักดิ์สิทธิ์ รับผลร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`, ['shieldno.mp3', 'walk.mp3']);
-                    currentPos = Math.max(1, currentPos + randVal);
+                    const nextPos = Math.max(1, currentPos + randVal);
+                    await syncActionEmit('armor_skip_back', { steps: Math.abs(randVal), pos: nextPos }, ['shieldno.mp3', 'walk.mp3']);
+                    currentPos = nextPos;
                     movedToNewSpace = true;
                 }
             } else if (isBad) {
-                await syncActionEmit(`เกิดเหตุการณ์ร้าย ถอยหลัง ${Math.abs(randVal)} ช่อง`, ['walk.mp3']);
-                currentPos = Math.max(1, currentPos + randVal);
+                const nextPos = Math.max(1, currentPos + randVal);
+                await syncActionEmit('bad_back', { steps: Math.abs(randVal), pos: nextPos }, ['walk.mp3']);
+                currentPos = nextPos;
                 movedToNewSpace = true;
             } else {
-                await syncActionEmit(`โชคดี เดินหน้าเพิ่ม ${randVal} ช่อง`, ['forward.mp3', 'walk.mp3']);
                 let targetPos = currentPos + randVal;
                 if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+                await syncActionEmit('good_forward', { steps: randVal, pos: targetPos }, ['forward.mp3', 'walk.mp3']);
                 currentPos = targetPos;
                 movedToNewSpace = true;
             }
         } else if (sp.type === 'forward') {
             let randVal = Math.floor(Math.random() * 10) + 3;
-            await syncActionEmit(`พลังพิเศษ เดินหน้า ${randVal} ช่อง`, ['forward.mp3', 'walk.mp3']);
             let targetPos = currentPos + randVal;
             if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+            await syncActionEmit('warp_forward', { steps: randVal, pos: targetPos }, ['forward.mp3', 'walk.mp3']);
             currentPos = targetPos;
             movedToNewSpace = true;
         } else if (sp.type === 'bonus') {
@@ -1022,30 +1551,27 @@ async function executeTurnAsync(pId, isAuto = false) {
             if (randEffect === 0) {
                 pData.keys++;
                 await syncStateDB(pId, { keys: pData.keys });
-                await syncActionEmit(`ลาภลอย! ได้รับกุญแจ 1 ชิ้น`, ['akey1.mp3']);
+                await syncActionEmit('bonus_key', { pos: currentPos }, ['akey1.mp3']);
                 break;
             } else if (randEffect === 1) {
                 pData.armor++;
                 await syncStateDB(pId, { armor: pData.armor });
-                await syncActionEmit(`ลาภลอย! ได้รับเกราะศักดิ์สิทธิ์ 1 ชิ้น`, ['akey3.mp3']);
+                await syncActionEmit('bonus_armor', { pos: currentPos }, ['akey3.mp3']);
                 break;
             } else {
                 let randVal = Math.floor(Math.random() * 10) + 3;
-                let actionDesc = `เดินหน้า ${randVal} ช่อง`;
-                await syncActionEmit(`ลาภลอย! เกิดการวาร์ป ${actionDesc}`, ['forward.mp3', 'walk.mp3']);
                 let targetPos = currentPos + randVal;
                 if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+                await syncActionEmit('bonus_warp', { steps: randVal, pos: targetPos }, ['forward.mp3', 'walk.mp3']);
                 currentPos = targetPos;
                 movedToNewSpace = true;
             }
         } else if (sp.type === 'secret') {
-            const secretNames = ["วิญญาณศักดิ์สิทธิ์", "สัตว์เวทย์นำทาง", "ภูตแห่งแสง"];
-            const sName = secretNames[Math.floor(Math.random() * secretNames.length)];
+            const secretIdx = Math.floor(Math.random() * t().secretNames.length);
             let randVal = Math.floor(Math.random() * 10) + 3;
-            let actionDesc = `พาเดินหน้า ${randVal} ช่อง`;
-            await syncActionEmit(`พบเหตุการณ์ลับ: ${sName} ${actionDesc}`, ['forward.mp3', 'walk.mp3']);
             let targetPos = currentPos + randVal;
             if (targetPos > 80) targetPos = 80 - (targetPos - 80);
+            await syncActionEmit('secret_forward', { secretIdx, steps: randVal, pos: targetPos }, ['forward.mp3', 'walk.mp3']);
             currentPos = targetPos;
             movedToNewSpace = true;
         }
@@ -1060,11 +1586,11 @@ async function executeTurnAsync(pId, isAuto = false) {
             }
 
             if (currentPos === 1) {
-                await syncActionEmit(`กลับมายังจุดเริ่มต้น`, ['sabuy.mp3']);
+                await syncActionEmit('back_to_start', { pos: 1 }, ['sabuy.mp3']);
             }
 
             if (visited.has(currentPos)) {
-                await syncActionEmit(`ตรวจสอบช่องใหม่: กลับมาช่อง ${currentPos} ที่เคยผ่านมาแล้ว หยุดการเดินทางเพื่อป้องกันการวนลูป`);
+                await syncActionEmit('chain_loop_stop', { pos: currentPos });
                 break;
             }
             
@@ -1072,10 +1598,10 @@ async function executeTurnAsync(pId, isAuto = false) {
             chainCount++;
             
             if (chainCount >= 3) {
-                await syncActionEmit(`ตรวจสอบช่องใหม่: ครบขีดจำกัดเหตุการณ์ 3 ครั้งแล้ว จบการเคลื่อนที่สำหรับเทิร์นนี้ทันที`);
+                await syncActionEmit('chain_limit_stop', { pos: currentPos });
                 break; // Stop Chain
             } else {
-                await syncActionEmit(`ตรวจสอบช่องใหม่: ไปยังช่อง ${currentPos}`);
+                await syncActionEmit('chain_continue', { pos: currentPos });
                 // Loop continues to re-evaluate the new currentPos
             }
         } else {
@@ -1134,6 +1660,7 @@ function showModalAsync(title, desc, confirmText, cancelText) {
 // Show Result Screen
 function showResultScreen() {
     switchScreen('screen-result', 'result-title');
+    const dict = t();
     
     // ล้างข้อความและสถานะ Live Region เพื่อไม่ให้ค้างไปหน้าจบเกม
     speechQueue = [];
@@ -1148,15 +1675,15 @@ function showResultScreen() {
     const winnerId = gameState.winnerId;
     const winner = gameState.players[winnerId];
 
-    document.getElementById('result-winner-text').textContent = `🎉 ${winner.animal.icon} ${winner.name} เข้าสู่ช่อง 80 เป็นคนแรก!`;
-    announceSR(`การผจญภัยสิ้นสุดลง ผู้ชนะคือ ${winner.name} !`, 'assertive');
+    document.getElementById('result-winner-text').textContent = dict.resultWinnerText(winner.animal.icon, winner.name);
+    announceSR(dict.resultWinnerAnnounce(winner.name), 'assertive');
 
     const rankingsBox = document.getElementById('result-rankings');
-    rankingsBox.innerHTML = '<h3>อันดับการเดินทาง:</h3>';
+    rankingsBox.innerHTML = dict.resultRankingsHeader;
 
     const sorted = Object.values(gameState.players).sort((a, b) => b.pos - a.pos);
     sorted.forEach((p) => {
-        rankingsBox.innerHTML += `<p>${p.name} ช่อง ${p.pos}</p>`;
+        rankingsBox.innerHTML += dict.resultRankingRow(p.name, p.pos);
     });
     
     // --- VISUAL LAYER: RESULT EFFECTS ---
@@ -1174,7 +1701,7 @@ window.leaveRoom = function() {
         } else {
             update(ref(db, `games/Adventure80/rooms/${currentRoomId}/players/${myPlayerId}`), {
                 isBot: true,
-                name: "บอท" + myPlayerName
+                name: t().botPrefix + myPlayerName
             });
         }
     }
@@ -1334,12 +1861,17 @@ const VisualController = {
         }
     },
 
-    triggerFromMessage: function(msg, pData) {
-        if (this.isReducedMotion()) return;
-        
-        let targetPos = pData ? pData.pos : 1;
-        const match = msg.match(/ช่อง\s*(\d+)/);
-        if (match) targetPos = parseInt(match[1]);
+    triggerFromAction: function(action, pData) {
+        if (this.isReducedMotion() || !action) return;
+        const params = action.params || {};
+        const key = action.key || '';
+        const msg = action.msg || '';
+
+        let targetPos = params.pos || (pData ? pData.pos : 1);
+        if (!params.pos && msg) {
+            const match = msg.match(/ช่อง\s*(\d+)/);
+            if (match) targetPos = parseInt(match[1]);
+        }
 
         const cell = document.getElementById(`cell-${targetPos}`);
         if (!cell) return;
@@ -1352,13 +1884,16 @@ const VisualController = {
             });
         }
 
-        // Event Matching Visuals
-        if (msg.includes('ทอยลูกเต๋าได้')) {
+        // Event Matching Visuals (supports structured key + legacy msg fallback)
+        if (key === 'roll_dice' || msg.includes('ทอยลูกเต๋าได้')) {
             this.animateDice();
-        } else if (msg.includes('เดินจากช่อง') || msg.includes('ถอยหลัง') || msg.includes('เดินหน้า') || msg.includes('กลับมายังจุดเริ่มต้น')) {
-            if (msg.includes('ถอยหลัง')) {
+        } else if (
+            ['walk_space', 'armor_skip_back', 'bad_back', 'good_forward', 'warp_forward', 'secret_forward', 'back_to_start'].includes(key) ||
+            msg.includes('เดินจากช่อง') || msg.includes('ถอยหลัง') || msg.includes('เดินหน้า') || msg.includes('กลับมายังจุดเริ่มต้น')
+        ) {
+            if (key === 'armor_skip_back' || key === 'bad_back' || msg.includes('ถอยหลัง')) {
                 this.createEffect(cell, '⬅️', 'effect-backward', 1500);
-            } else if (msg.includes('เดินหน้า') || msg.includes('พลังพิเศษ') || msg.includes('พาเดินหน้า')) {
+            } else if (['good_forward', 'warp_forward', 'secret_forward'].includes(key) || msg.includes('เดินหน้า') || msg.includes('พลังพิเศษ') || msg.includes('พาเดินหน้า')) {
                 this.createEffect(cell, '➡️', 'effect-forward', 1500);
             } else {
                 this.createEffect(cell, '👣', 'effect-walk', 1000);
@@ -1367,36 +1902,36 @@ const VisualController = {
                 activePawn.classList.add('visual-bounce');
                 setTimeout(() => activePawn.classList.remove('visual-bounce'), 500);
             }
-        } else if (msg.includes('น้ำเชี่ยว')) {
+        } else if ((key === 'land_space' && params.spaceType === 'water') || msg.includes('น้ำเชี่ยว')) {
             this.createEffect(cell, '🌊', 'effect-water', 2000);
             if (activePawn) { activePawn.classList.add('visual-scale'); setTimeout(() => activePawn.classList.remove('visual-scale'), 1000); }
-        } else if (msg.includes('ไซโคลน')) {
+        } else if ((key === 'land_space' && params.spaceType === 'warp') || msg.includes('ไซโคลน')) {
             this.createEffect(cell, '🌪️', 'effect-cyclone', 2000);
             if (activePawn) { activePawn.classList.add('visual-rotate'); setTimeout(() => activePawn.classList.remove('visual-rotate'), 1000); }
-        } else if (msg.includes('หลุมพราง') || msg.includes('เหตุการณ์ร้าย')) {
+        } else if ((key === 'land_space' && params.spaceType === 'trap') || msg.includes('หลุมพราง') || msg.includes('เหตุการณ์ร้าย')) {
             this.createEffect(cell, '🕳️', 'effect-trap', 2000);
             if (activePawn) { activePawn.classList.add('visual-drop'); setTimeout(() => activePawn.classList.remove('visual-drop'), 1000); }
-        } else if (msg.includes('ผีหลอก')) {
+        } else if ((key === 'land_space' && params.spaceType === 'ghost') || msg.includes('ผีหลอก')) {
             this.createEffect(cell, '👻', 'effect-ghost', 2000);
             if (activePawn) { activePawn.classList.add('visual-shake'); setTimeout(() => activePawn.classList.remove('visual-shake'), 1000); }
-        } else if (msg.includes('วาร์ปไปยังช่อง')) {
+        } else if (key === 'bonus_warp' || msg.includes('วาร์ปไปยังช่อง')) {
             this.createEffect(cell, '🌀', 'effect-warp', 2000);
-        } else if (msg.includes('เหตุการณ์ลับ')) {
+        } else if ((key === 'land_space' && params.spaceType === 'secret') || msg.includes('เหตุการณ์ลับ')) {
             this.createEffect(cell, '✨', 'effect-secret', 2000);
-        } else if (msg.includes('ลาภลอย')) {
+        } else if (['bonus_key', 'bonus_armor'].includes(key) || (key === 'land_space' && params.spaceType === 'bonus') || msg.includes('ลาภลอย')) {
             this.createEffect(cell, '✨✨✨', 'effect-bonus', 2000);
-        } else if (msg.includes('หีบสมบัติ')) {
-            if (msg.includes('เหลือเพียงเศษฝุ่น')) this.createEffect(cell, '💨', 'effect-dust', 1500);
+        } else if (['treasure_get', 'treasure_empty'].includes(key) || msg.includes('หีบสมบัติ')) {
+            if (key === 'treasure_empty' || msg.includes('เหลือเพียงเศษฝุ่น')) this.createEffect(cell, '💨', 'effect-dust', 1500);
             else this.createEffect(cell, '🛡️✨', 'effect-armor-fly', 2000);
-        } else if (msg.includes('กล่องลึกลับ')) {
-             if (msg.includes('เหลือเพียงเศษฝุ่น')) this.createEffect(cell, '💨', 'effect-dust', 1500);
-             else this.createEffect(cell, '🔑✨', 'effect-key-fly', 2000);
-        } else if (msg.includes('ประตู')) {
-            if (msg.includes('ใช้กุญแจเปิด')) this.createEffect(cell, '🔑✨🚪', 'effect-door-open', 2000);
-            else if (msg.includes('ไม่มีกุญแจ') || msg.includes('ประตูยังคงปิด')) this.createEffect(cell, '🚪❌', 'effect-door-closed', 1500);
-        } else if (msg.includes('จุดพักผ่อน')) {
+        } else if (['key_get', 'key_empty'].includes(key) || msg.includes('กล่องลึกลับ')) {
+            if (key === 'key_empty' || msg.includes('เหลือเพียงเศษฝุ่น')) this.createEffect(cell, '💨', 'effect-dust', 1500);
+            else this.createEffect(cell, '🔑✨', 'effect-key-fly', 2000);
+        } else if (['door_open', 'door_skip', 'door_nokey'].includes(key) || msg.includes('ประตู')) {
+            if (key === 'door_open' || msg.includes('ใช้กุญแจเปิด')) this.createEffect(cell, '🔑✨🚪', 'effect-door-open', 2000);
+            else if (['door_skip', 'door_nokey'].includes(key) || msg.includes('ไม่มีกุญแจ') || msg.includes('ประตูยังคงปิด')) this.createEffect(cell, '🚪❌', 'effect-door-closed', 1500);
+        } else if (key === 'rest_arrive' || msg.includes('จุดพักผ่อน')) {
             this.createEffect(cell, '🔥', 'effect-rest', 2500);
-        } else if (msg.includes('ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ')) {
+        } else if (key === 'armor_block' || msg.includes('ใช้เกราะศักดิ์สิทธิ์ป้องกันผลเสียสำเร็จ')) {
             this.createEffect(cell, '🛡️✨', 'effect-holy-shield', 2000);
         }
     },
@@ -1451,14 +1986,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        nameInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
+        const handleEnterConfirm = (e) => {
+            const isEnterKey = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13;
+            if (isEnterKey && !e.isComposing) {
                 e.preventDefault();
-                if (nameInput.value.trim().length > 0) {
+                e.stopPropagation();
+                if (nameInput.value.trim().length > 0 && !confirmBtn.disabled) {
                     window.confirmNameAndEnterLobby();
                 }
             }
-        });
+        };
+
+        nameInput.addEventListener('keydown', handleEnterConfirm);
+
+        // Support form submission if input is wrapped in a form on mobile Safari
+        if (nameInput.form) {
+            nameInput.form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (nameInput.value.trim().length > 0 && !confirmBtn.disabled) {
+                    window.confirmNameAndEnterLobby();
+                }
+            });
+        }
     }
 
     // Keyboard Shortcuts
@@ -1478,11 +2027,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.altKey && e.key.toLowerCase() === 'a') {
             e.preventDefault();
             if (gameState && gameState.players) {
-                let allStatusText = "สถานะผู้เล่นทั้งหมด: ";
+                const dict = t();
+                let allStatusText = dict.allPlayersStatusHeader;
                 const pOrder = gameState.playerOrder || Object.keys(gameState.players);
                 pOrder.forEach((pId, index) => {
                     const p = gameState.players[pId];
-                    allStatusText += `${p.name} ช่อง ${p.pos} กุญแจ ${p.keys} เกราะ ${p.armor}`;
+                    allStatusText += dict.playerStatusItem(p);
                     if (index < pOrder.length - 1) allStatusText += ", ";
                 });
                 announceSR(allStatusText, 'polite');
