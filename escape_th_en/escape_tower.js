@@ -16,7 +16,18 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // ==================== Bilingual Support (TH / EN) ====================
-let currentLang = localStorage.getItem('et_lang') === 'en' ? 'en' : 'th';
+const LANG_STORAGE_KEY = 'et_lang';
+
+function detectInitialLanguage() {
+    try {
+        const saved = localStorage.getItem(LANG_STORAGE_KEY);
+        if (saved === 'th' || saved === 'en') return saved;
+    } catch (e) {}
+    const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return browserLang.startsWith('th') ? 'th' : 'en';
+}
+
+let currentLang = detectInitialLanguage();
 window.currentLang = currentLang;
 
 const I18N = {
@@ -261,6 +272,9 @@ function getLocalizedLogMsg(rawThMsg) {
 function applyLanguageToStaticDOM() {
     const dict = I18N[currentLang] || I18N.th;
     document.documentElement.lang = currentLang;
+    if (dict.welcome_title) {
+        document.title = dict.welcome_title;
+    }
 
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
@@ -340,9 +354,11 @@ function refreshDynamicUIForLanguage() {
 }
 
 window.toggleLanguage = function() {
-    currentLang = currentLang === 'th' ? 'en' : 'th';
+    currentLang = (currentLang === 'th') ? 'en' : 'th';
     window.currentLang = currentLang;
-    localStorage.setItem('et_lang', currentLang);
+    try {
+        localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+    } catch (e) {}
     applyLanguageToStaticDOM();
     refreshDynamicUIForLanguage();
     announceSR(currentLang === 'en' ? 'Language switched to English' : 'เปลี่ยนภาษาเป็นภาษาไทยแล้ว', 'polite');
@@ -708,7 +724,7 @@ function ensureVisualRuntimeStyles() {
         .et-vfx-emoji {
             font-size: 1.35em;
             line-height: 1;
-            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85));
         }
 
         /* กรงเล็บซอมบี้, ลำแสงปืนเลเซอร์, โล่ป้องกัน, ทางลงชั้น */
@@ -2569,7 +2585,7 @@ async function exploreRoom(roomIdx, roomData) {
             break;
         case 'zombie':
             msg += "พบซอมบี้! ";
-            if(p.gun > 0 && p.ammo > 0) {
+            if(p.gun > 0 && p.ammo > 0) { 
                 p.ammo--; msg += "ใช้ปืนยิงป้องกันสำเร็จ เสียกระสุน 1 นัด";
                 sfxList.push('zombi2.mp3');
             } else if (p.armor > 0) {
