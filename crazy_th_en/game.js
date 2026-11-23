@@ -15,7 +15,18 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // ==================== Bilingual Support (TH / EN) ====================
-let currentLang = localStorage.getItem('crazy_lang') === 'en' ? 'en' : 'th';
+const LANG_STORAGE_KEY = 'crazy_lang';
+
+function detectInitialLanguage() {
+	try {
+		const saved = localStorage.getItem(LANG_STORAGE_KEY);
+		if (saved === 'th' || saved === 'en') return saved;
+	} catch (e) {}
+	const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+	return browserLang.startsWith('th') ? 'th' : 'en';
+}
+
+let currentLang = detectInitialLanguage();
 
 const CRAZY_I18N = {
 	th: {
@@ -306,7 +317,9 @@ function applyStaticLanguage() {
 
 function toggleLanguage() {
 	currentLang = currentLang === 'th' ? 'en' : 'th';
-	localStorage.setItem('crazy_lang', currentLang);
+	try {
+		localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+	} catch (e) {}
 	applyStaticLanguage();
 
 	if (lastRenderedRooms !== null && document.getElementById('screen-main').classList.contains('active')) {
