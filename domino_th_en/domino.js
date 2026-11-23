@@ -15,6 +15,10 @@ const db = getDatabase(app);
 
 // ==================== Bilingual Support (TH / EN) ====================
 function detectBrowserLanguage() {
+	try {
+		const saved = localStorage.getItem('domino_lang');
+		if (saved === 'th' || saved === 'en') return saved;
+	} catch (e) {}
 	const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
 	return lang.startsWith('th') ? 'th' : 'en';
 }
@@ -380,7 +384,9 @@ function applyStaticLanguage() {
 
 function toggleLanguage() {
 	currentLang = currentLang === 'th' ? 'en' : 'th';
-	localStorage.setItem('domino_lang', currentLang);
+	try {
+		localStorage.setItem('domino_lang', currentLang);
+	} catch (e) {}
 	applyStaticLanguage();
 
 	if (lastRenderedRooms !== null && document.getElementById('screen-main').classList.contains('active')) {
