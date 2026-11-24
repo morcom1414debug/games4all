@@ -1,6 +1,190 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getDatabase, ref, update, remove, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
+// --- Language System (UNO Only) ---
+const LANG_STORAGE_KEY = 'uno_lang';
+let currentLang = 'th';
+let lastRoomsSnapshot = null;
+
+function detectInitialLanguage() {
+	try {
+		const saved = localStorage.getItem(LANG_STORAGE_KEY);
+		if (saved === 'th' || saved === 'en') return saved;
+	} catch (e) {}
+	const navLang = (navigator.language || navigator.userLanguage || 'th').toLowerCase();
+	return navLang.startsWith('th') ? 'th' : 'en';
+}
+
+function t(thText, enText) {
+	return currentLang === 'en' ? enText : thText;
+}
+
+function getColorName(colorId) {
+	const map = {
+		red: { th: 'สีแดง', en: 'Red' },
+		blue: { th: 'สีน้ำเงิน', en: 'Blue' },
+		green: { th: 'สีเขียว', en: 'Green' },
+		yellow: { th: 'สีเหลือง', en: 'Yellow' },
+		purple: { th: 'สีม่วง', en: 'Purple' },
+		orange: { th: 'สีส้ม', en: 'Orange' }
+	};
+	const entry = map[colorId];
+	if (!entry) return t('ไม่ทราบสี', 'Unknown');
+	return entry[currentLang];
+}
+
+function getWildColorName(colorId) {
+	const map = {
+		red: { th: 'แดง', en: 'Red' },
+		blue: { th: 'น้ำเงิน', en: 'Blue' },
+		green: { th: 'เขียว', en: 'Green' },
+		yellow: { th: 'เหลือง', en: 'Yellow' }
+	};
+	const entry = map[colorId];
+	if (!entry) return '';
+	return entry[currentLang];
+}
+
+function applyLanguageUI() {
+	document.documentElement.lang = currentLang;
+
+	const langBtnText = currentLang === 'th' ? 'EN' : 'TH';
+	const langBtnAria = currentLang === 'th' ? 'Switch language to English' : 'เปลี่ยนภาษาเป็นภาษาไทย';
+
+	['btn-lang-main', 'btn-lang-lobby'].forEach(id => {
+		const btn = document.getElementById(id);
+		if (btn) {
+			btn.textContent = langBtnText;
+			btn.setAttribute('aria-label', langBtnAria);
+		}
+	});
+
+	const setText = (id, th, en) => {
+		const el = document.getElementById(id);
+		if (el) el.textContent = t(th, en);
+	};
+	const setHTML = (id, th, en) => {
+		const el = document.getElementById(id);
+		if (el) el.innerHTML = t(th, en);
+	};
+	const setAria = (id, th, en) => {
+		const el = document.getElementById(id);
+		if (el) el.setAttribute('aria-label', t(th, en));
+	};
+
+	// Main screen
+	setAria('btn-home-main', 'กลับสู่ชุมชน', 'Back to community');
+	setText('subtitle-main-1', 'การ์ดเกมนี้สำหรับการสันทนาการร่วมกัน', 'This card game is for recreation together.');
+	setText('subtitle-main-2', 'เกมนี้ออกแบบให้ผู้ใช้ Screen Reader และผู้เล่นทั่วไป สนุกร่วมกันได้อย่างเท่าเทียม', 'Designed so screen reader users and sighted players can enjoy playing together equally.');
+	setHTML('btn-create-room', '<span aria-hidden="true">➕</span> สร้างห้องใหม่', '<span aria-hidden="true">➕</span> Create Room');
+	setHTML('btn-show-rules', '<span aria-hidden="true">📖</span> วิธีเล่นและกติกา', '<span aria-hidden="true">📖</span> How to Play & Rules');
+	setText('heading-open-rooms', 'ห้องที่เปิดอยู่', 'Open Rooms');
+
+	const emptyMsg = document.getElementById('empty-room-msg');
+	if (emptyMsg && lastRoomsSnapshot === null) {
+		emptyMsg.textContent = t('กำลังโหลดรายการห้อง...', 'Loading rooms...');
+	}
+
+	// Rules screen
+	setText('title-rules', 'วิธีเล่นและกติกา UNO', 'UNO How to Play & Rules');
+	setAria('rules-content-container', 'เนื้อหากติกา', 'Rules content');
+	setHTML(
+		'rules-goal',
+		'<strong>🎯 เป้าหมาย:</strong> ทิ้งไพ่ให้หมดเป็นคนแรก เมื่อเหลือ 2 ใบและมีการ์ดใบหนึ่งใบใดที่วางหรือทิ้งได้ ต้องกด <strong>UNO</strong> (ลืมกดปรับจั่ว 2 ใบ)',
+		'<strong>🎯 Goal:</strong> Be the first player to empty your hand. When you have 2 cards left and at least one playable card, you must press <strong>UNO</strong> (forgetting gives a 2-card penalty).'
+	);
+	setText('rules-heading-play', '🃏 กติกาการลงไพ่', '🃏 Playing Rules');
+	setHTML(
+		'rules-play-1',
+		'ทิ้งไพ่ตาม <strong>สี</strong> หรือ <strong>เลข/ประเภท</strong> ตรงกับใบบนสุดของกองทิ้ง',
+		'Play a card that matches the <strong>color</strong> or <strong>number/type</strong> of the top card on the discard pile.'
+	);
+	setHTML(
+		'rules-play-2',
+		'ไม่มีไพ่ลงให้กด <strong>จั่วการ์ด</strong> หากยังลงไม่ได้กด <strong>จบตา</strong>',
+		'If you have no playable card, press <strong>Draw Card</strong>. If you still cannot play, press <strong>Pass Turn</strong>.'
+	);
+	setText('rules-heading-special', '✨ ไพ่พิเศษ', '✨ Special Cards');
+	setHTML('rules-special-skip', '<strong>Skip:</strong> ข้ามผู้เล่นคนถัดไป', '<strong>Skip:</strong> Skips the next player.');
+	setHTML('rules-special-reverse', '<strong>Reverse:</strong> กลับทิศทางการเล่น', '<strong>Reverse:</strong> Reverses the direction of play.');
+	setHTML('rules-special-draw2', '<strong>Draw Two (+2):</strong> คนถัดไปจั่ว 2 ใบและถูกข้ามตา', '<strong>Draw Two (+2):</strong> Next player draws 2 cards and loses their turn.');
+	setHTML('rules-special-wild', '<strong>Wild:</strong> เลือกเปลี่ยนสีของเกม', '<strong>Wild:</strong> Choose the active color.');
+	setHTML('rules-special-wild4', '<strong>Wild Draw Four (+4):</strong> เปลี่ยนสี + คนถัดไปจั่ว 4 ใบ (ท้าทาย/Challenge ได้)', '<strong>Wild Draw Four (+4):</strong> Choose color + next player draws 4 cards (can be Challenged).');
+	setText('rules-heading-shortcuts', '⌨️ แป้นพิมพ์ลัด (Keyboard Shortcuts)', '⌨️ Keyboard Shortcuts');
+	setHTML('rules-shortcut-p', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + P</kbd> : จั่วการ์ด', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + P</kbd> : Draw Card');
+	setHTML('rules-shortcut-x', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + X</kbd> : จบตา / ข้าม', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + X</kbd> : Pass Turn');
+	setHTML('rules-shortcut-u', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + U</kbd> : ประกาศ UNO', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + U</kbd> : Declare UNO');
+	setHTML('rules-shortcut-c', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + C</kbd> : ฟังการ์ดใบบนสุดกองทิ้ง', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + C</kbd> : Hear top discard card');
+	setHTML('rules-shortcut-t', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + T</kbd> : ฟังเวลาที่เหลือในตาเล่น', '<kbd style="background:#334155; padding:2px 5px; border-radius:4px;">Alt + T</kbd> : Hear remaining turn time');
+	setText('btn-close-rules', 'กลับหน้าหลัก', 'Back to Main');
+
+	// Lobby screen
+	setText('title-lobby-label', 'ล็อบบี้:', 'Lobby:');
+	setText('heading-select-color', 'เลือกสีผู้เล่น', 'Select Player Color');
+	setAria('color-selection', 'เลือกสี', 'Select color');
+	setText('heading-lobby-players-label', 'ผู้เล่นในห้อง', 'Players in Room');
+	setText('heading-bot-manage', 'การจัดการ Bot', 'Bot Management');
+	setAria('btn-remove-bot', 'ลดบอท', 'Remove bot');
+	setAria('btn-add-bot', 'เพิ่มบอท', 'Add bot');
+	setHTML('btn-start-game', '<span aria-hidden="true">🚀</span> เริ่มเกม', '<span aria-hidden="true">🚀</span> Start Game');
+	setText('btn-leave-lobby', 'ออกจากห้อง', 'Leave Room');
+
+	// Game screen
+	setAria('btn-refresh-audio', 'รีเฟรชเสียง', 'Refresh audio');
+	setHTML('btn-refresh-audio', '<span aria-hidden="true">🔊</span> รีเฟรช', '<span aria-hidden="true">🔊</span> Refresh');
+	setText('deck-unit-visual', 'ใบ', 'cards');
+	setText('challenge-prompt-text', 'มีการใช้ Wild Draw Four คุณต้องการ Challenge ไหม?', 'A Wild Draw Four was played. Do you want to Challenge?');
+	setText('btn-challenge-yes', 'ใช่ Challenge!', 'Yes, Challenge!');
+	setText('btn-challenge-no', 'ไม่ยอมรับ (+4)', 'Decline (+4)');
+	setAria('my-cards-container', 'ไพ่ในมือ', 'Cards in hand');
+	setText('btn-draw', 'จั่วการ์ด', 'Draw Card');
+	setText('btn-pass', 'จบตา', 'Pass Turn');
+	setText('color-picker-title', 'เลือกสีสำหรับ Wild', 'Choose a color for Wild');
+	setAria('btn-wild-red', 'เลือกสีแดง', 'Choose Red');
+	setAria('btn-wild-blue', 'เลือกสีน้ำเงิน', 'Choose Blue');
+	setAria('btn-wild-green', 'เลือกสีเขียว', 'Choose Green');
+	setAria('btn-wild-yellow', 'เลือกสีเหลือง', 'Choose Yellow');
+
+	// Result screen
+	setText('title-result', 'จบเกม!', 'Game Over!');
+	setHTML('btn-play-again', '<span aria-hidden="true">🔄</span> เล่นรอบใหม่', '<span aria-hidden="true">🔄</span> Play Again');
+	setAria('btn-home-result', 'กลับสู่ชุมชน', 'Back to community');
+	setHTML('btn-home-result', '<span aria-hidden="true">🏠</span> กลับหน้าหลัก', '<span aria-hidden="true">🏠</span> Back to Home');
+
+	// Re-render dynamic views if currently visible
+	if (document.getElementById('screen-main').classList.contains('active') && lastRoomsSnapshot !== null) {
+		renderRoomList(lastRoomsSnapshot);
+	}
+	if (document.getElementById('screen-lobby').classList.contains('active')) {
+		renderLobby();
+	}
+}
+
+function toggleLanguage() {
+	currentLang = currentLang === 'th' ? 'en' : 'th';
+	try {
+		localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+	} catch (e) {}
+	applyLanguageUI();
+	announce(t('เปลี่ยนเป็นภาษาไทยแล้ว', 'Switched to English'), true);
+}
+
+function initLanguageSystem() {
+	currentLang = detectInitialLanguage();
+	const btnMain = document.getElementById('btn-lang-main');
+	const btnLobby = document.getElementById('btn-lang-lobby');
+	if (btnMain) btnMain.addEventListener('click', toggleLanguage);
+	if (btnLobby) btnLobby.addEventListener('click', toggleLanguage);
+	applyLanguageUI();
+}
+
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', initLanguageSystem);
+} else {
+	initLanguageSystem();
+}
+// ----------------------------------
+
 // --- Web Audio API System ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const soundBuffers = {};
@@ -181,11 +365,10 @@ let myBotDelay = null;
 
 function getPronounName(playerObj) {
 	if (!playerObj) return "";
-	const colorDef = COLORS.find(c => c.id === playerObj.colorId);
-	const colorName = colorDef ? colorDef.name : "ไม่ทราบสี";
-	if (playerObj.id === myPeerId) return `คุณ${colorName}`;
-	if (playerObj.isBot) return `บอท${colorName}`;
-	return `เพื่อน${colorName}`;
+	const colorName = getColorName(playerObj.colorId);
+	if (playerObj.id === myPeerId) return t(`คุณ${colorName}`, `You (${colorName})`);
+	if (playerObj.isBot) return t(`บอท${colorName}`, `Bot (${colorName})`);
+	return t(`เพื่อน${colorName}`, `Friend (${colorName})`);
 }
 
 let politeQueue = [];
@@ -267,21 +450,23 @@ document.getElementById('btn-leave-lobby').onclick = leaveLobby;
 
 const roomsRef = ref(db, 'uno_rooms');
 onValue(roomsRef, (snapshot) => {
+	lastRoomsSnapshot = snapshot.val();
 	if (document.getElementById('screen-main').classList.contains('active')) {
-		renderRoomList(snapshot.val());
+		renderRoomList(lastRoomsSnapshot);
 	}
 });
 
 function renderRoomList(rooms) {
 	const list = document.getElementById('room-list');
+	const emptyText = t('ไม่มีห้องที่เปิดอยู่', 'No open rooms available');
 	if (!rooms) {
-		list.innerHTML = '<li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">ไม่มีห้องที่เปิดอยู่</li>';
+		list.innerHTML = `<li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">${emptyText}</li>`;
 		return;
 	}
 	const activeRooms = Object.entries(rooms).filter(([id, r]) => Date.now() - r.lastActive < 120000 && r.status === 'waiting' && r.currentPlayers < MAX_PLAYERS);
 	
 	if (activeRooms.length === 0) {
-		list.innerHTML = '<li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">ไม่มีห้องที่เปิดอยู่</li>';
+		list.innerHTML = `<li id="empty-room-msg" style="text-align: center; color: var(--text-muted);">${emptyText}</li>`;
 		return;
 	}
 	const emptyMsg = document.getElementById('empty-room-msg');
@@ -293,13 +478,15 @@ function renderRoomList(rooms) {
 		}
 	});
 	activeRooms.forEach(([id, room]) => {
-		const hostCountText = `มีผู้เล่น ${room.currentPlayers} / ${MAX_PLAYERS} คน`;
+		const hostCountText = t(`มีผู้เล่น ${room.currentPlayers} / ${MAX_PLAYERS} คน`, `${room.currentPlayers} / ${MAX_PLAYERS} players`);
+		const roomLabel = t(`ห้อง: ${id}`, `Room: ${id}`);
+		const ariaLabel = t(`เข้าร่วมห้อง ${id} ${hostCountText}`, `Join room ${id}, ${hostCountText}`);
 		let li = list.querySelector(`li[data-room-id="${id}"]`);
 		if (li) {
 			const btn = li.querySelector('button');
 			if (btn) {
-				btn.innerHTML = `<span style="font-weight:bold; font-size:18px;">ห้อง: ${id}</span> <span>${hostCountText}</span>`;
-				btn.setAttribute('aria-label', `เข้าร่วมห้อง ${id} ${hostCountText}`);
+				btn.innerHTML = `<span style="font-weight:bold; font-size:18px;">${roomLabel}</span> <span>${hostCountText}</span>`;
+				btn.setAttribute('aria-label', ariaLabel);
 			}
 		} else {
 			li = document.createElement('li');
@@ -313,8 +500,8 @@ function renderRoomList(rooms) {
 			btn.style.justifyContent = 'space-between';
 			btn.style.alignItems = 'center';
 			btn.style.padding = '15px';
-			btn.innerHTML = `<span style="font-weight:bold; font-size:18px;">ห้อง: ${id}</span> <span>${hostCountText}</span>`;
-			btn.setAttribute('aria-label', `เข้าร่วมห้อง ${id} ${hostCountText}`);
+			btn.innerHTML = `<span style="font-weight:bold; font-size:18px;">${roomLabel}</span> <span>${hostCountText}</span>`;
+			btn.setAttribute('aria-label', ariaLabel);
 			btn.onclick = () => {
 				if (isJoiningRoom) return;
 				isJoiningRoom = true;
@@ -331,7 +518,7 @@ function renderRoomList(rooms) {
 document.getElementById('btn-create-room').onclick = async () => {
 	if (isCreatingRoom) return;
 	if (!myPeerId) {
-		announce('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่');
+		announce(t('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่', 'System is getting ready, please wait.'));
 		return;
 	}
 	
@@ -355,7 +542,7 @@ document.getElementById('btn-create-room').onclick = async () => {
 		
 		isHost = true;
 		myColorId = getAvailableColors()[0];
-		players = [{ id: myPeerId, name: "Host (คุณ)", isBot: false, colorId: myColorId, connection: null }];
+		players = [{ id: myPeerId, name: "Host", isBot: false, colorId: myColorId, connection: null }];
 		
 		await update(ref(db, `uno_rooms/${currentRoomId}`), {
 			hostPeerId: myPeerId, status: 'waiting', currentPlayers: 1, lastActive: Date.now()
@@ -373,24 +560,24 @@ document.getElementById('btn-create-room').onclick = async () => {
 		isCreatingRoom = false;
 		disableBtn('btn-create-room', false);
 		btn.style.opacity = '1';
-		announce('สร้างห้องไม่สำเร็จ กรุณาลองใหม่');
+		announce(t('สร้างห้องไม่สำเร็จ กรุณาลองใหม่', 'Failed to create room, please try again.'));
 	}
 };
 
 function joinRoom(roomId, hostPeerId) {
 	if (!myPeerId) {
-		announce('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่');
+		announce(t('ระบบกำลังเตรียมพร้อม กรุณารอสักครู่', 'System is getting ready, please wait.'));
 		isJoiningRoom = false;
 		return;
 	}
 	
 	isHost = false; currentRoomId = roomId;
-	announce('กำลังเชื่อมต่อไปยัง Host...');
+	announce(t('กำลังเชื่อมต่อไปยัง Host...', 'Connecting to Host...'));
 	hostConnection = peer.connect(hostPeerId, { reliable: true });
 	
 	hostConnection.on('error', (err) => {
 		console.error(err);
-		announce('การเชื่อมต่อล้มเหลว', true);
+		announce(t('การเชื่อมต่อล้มเหลว', 'Connection failed'), true);
 		leaveLobby();
 	});
 	
@@ -423,7 +610,7 @@ function leaveLobby() {
 	}
 	
 	switchScreen('screen-main', 'btn-create-room');
-	announce('ออกจากห้องแล้ว');
+	announce(t('ออกจากห้องแล้ว', 'Left the room'));
 }
 
 function enterLobby() {
@@ -440,7 +627,9 @@ function renderLobby() {
 		const isTaken = players.some(p => p.colorId === c.id && p.id !== myPeerId);
 		const btn = document.createElement('button');
 		btn.className = `lobby-color-btn card-${c.id} ${myColorId === c.id ? 'selected-color' : ''} ${isTaken ? 'disabled' : ''}`;
-		btn.setAttribute('aria-label', c.name + (isTaken ? ' (ถูกเลือกแล้ว)' : ''));
+		const colorLabel = getColorName(c.id);
+		const takenSuffix = isTaken ? t(' (ถูกเลือกแล้ว)', ' (Taken)') : '';
+		btn.setAttribute('aria-label', colorLabel + takenSuffix);
 		btn.innerHTML = `<span aria-hidden="true">${getMascotEmoji(c.id)}</span>`;
 		if (myColorId === c.id) {
 			btn.setAttribute('aria-pressed', 'true');
@@ -540,9 +729,9 @@ document.getElementById('btn-add-bot').onclick = () => {
 	if (players.length < MAX_PLAYERS) {
 		const colorId = getAvailableColors()[0];
 		const botId = 'bot_' + Date.now();
-		const colorDef = COLORS.find(c => c.id === colorId);
+		const colorName = getColorName(colorId);
 		players.push({ id: botId, name: `Bot`, isBot: true, colorId: colorId });
-		announce(`เพิ่มบอท${colorDef.name} 1 ตัวแล้ว`, true);
+		announce(t(`เพิ่มบอท${colorName} 1 ตัวแล้ว`, `Added 1 ${colorName} bot`), true);
 		syncLobby();
 		broadcastSound('select');
 	}
@@ -552,9 +741,9 @@ document.getElementById('btn-remove-bot').onclick = () => {
 	if (botIdx !== -1) {
 		const actualIdx = players.length - 1 - botIdx;
 		const removedBot = players[actualIdx];
-		const colorDef = COLORS.find(c => c.id === removedBot.colorId);
+		const colorName = getColorName(removedBot.colorId);
 		players.splice(actualIdx, 1);
-		announce(`ลดบอท${colorDef.name} 1 ตัวแล้ว`, true);
+		announce(t(`ลดบอท${colorName} 1 ตัวแล้ว`, `Removed 1 ${colorName} bot`), true);
 		syncLobby();
 		broadcastSound('select');
 	}
@@ -932,7 +1121,7 @@ function handleClientData(data) {
 		if (data.game.players) players = data.game.players;
 		if ((game.status === 'waiting' || game.status === 'ended') && data.game.status === 'playing') {
 			switchScreen('screen-game', 'top-status-bar');
-			announce('เริ่มรอบใหม่แล้ว!', true);
+			announce(t('เริ่มรอบใหม่แล้ว!', 'New round started!'), true);
 		}
 		game = { ...game, ...data.game };
 		renderGame(data.game);
@@ -944,8 +1133,10 @@ function handleClientData(data) {
 	} else if (data.type === 'unoEffect') {
 		showUnoEffect();
 	} else if (data.type === 'endGame') {
-		game.status = 'ended'; 
-		doWinAnimation(data.winner, () => {
+		game.status = 'ended';
+		const winnerPlayer = players.find(p => p.id === data.winnerId);
+		const localizedWinner = winnerPlayer ? getPronounName(winnerPlayer) : (data.winner || t('ผู้เล่น', 'Player'));
+		doWinAnimation(localizedWinner, () => {
 			showResult(data.winnerId, data.scores, data.matchOver);
 		});
 	} else if (data.type === 'playSound') {
@@ -955,14 +1146,17 @@ function handleClientData(data) {
 	}
 }
 
-function handleHostDisconnect() { announce('Host หลุดการเชื่อมต่อ', true); leaveLobby(); }
+function handleHostDisconnect() {
+	announce(t('Host หลุดการเชื่อมต่อ', 'Host disconnected'), true);
+	leaveLobby();
+}
+
 function handleClientDisconnect(peerId) {
 	if (!isHost) return;
 	const p = players.find(x => x.id === peerId);
 	if (p && !p.isBot) {
-		const disconnectMsg = `${getPronounName(p)}หลุดการเชื่อมต่อ เปลี่ยนเป็นบอทแล้ว`;
 		p.isBot = true;
-		broadcastAnnounce(disconnectMsg, true);
+		broadcastGameEvent({ type: 'playerDisconnected', playerId: peerId });
 		syncLobby();
 		if (game.status === 'playing') broadcastGameState();
 	}
@@ -1010,8 +1204,8 @@ function doWinAnimation(winner, callback) {
 
 	const steps = [
 		{ time: 200, text: 'Uno' },
-		{ time: 1200, text: 'กำลังทำการสรุปผล' },
-		{ time: 2500, text: 'ได้แก่ ' + winner }
+		{ time: 1200, text: t('กำลังทำการสรุปผล', 'Calculating results...') },
+		{ time: 2500, text: t('ได้แก่ ' + winner, 'The winner is ' + winner) }
 	];
 	
 	steps.forEach(step => {
@@ -1090,7 +1284,7 @@ function initUNOGame() {
 	else if (topCard.type === 'draw2') { drawCardHost(players[game.turnIndex].id, 2); game.turnIndex = (game.turnIndex + 1) % players.length; }
 
 	switchScreen('screen-game', 'top-status-bar');
-	broadcastAnnounce('เกมเริ่มแล้ว!');
+	broadcastGameEvent({ type: 'gameStarted' });
 	game.currentTurnStartTime = Date.now();
 	broadcastGameState();
 }
@@ -1102,7 +1296,7 @@ function drawCardHost(playerId, count = 1) {
 			const top = game.discardPile.pop();
 			game.deck = game.discardPile.sort(() => Math.random() - 0.5);
 			game.discardPile = [top];
-			broadcastAnnounce('สับกองทิ้งใหม่');
+			broadcastGameEvent({ type: 'reshuffleDeck' });
 		}
 		game.playerStates[playerId].hand.push(game.deck.pop());
 		game.playerStates[playerId].declaredUNO = false;
@@ -1138,39 +1332,63 @@ function handleGameEvent(data) {
 	let msg = '';
 	let assertive = false;
 	switch (data.type) {
+		case 'gameStarted': {
+			msg = t('เกมเริ่มแล้ว!', 'Game started!');
+			break;
+		}
+		case 'reshuffleDeck': {
+			msg = t('สับกองทิ้งใหม่', 'Reshuffling discard pile');
+			break;
+		}
+		case 'playerDisconnected': {
+			const p = players.find(x => x.id === data.playerId);
+			if (p) {
+				const colorName = getColorName(p.colorId);
+				msg = t(`เพื่อน${colorName}หลุดการเชื่อมต่อ เปลี่ยนเป็นบอทแล้ว`, `Friend (${colorName}) disconnected and was replaced by a bot`);
+				assertive = true;
+			}
+			break;
+		}
 		case 'forgotUno': {
 			const p = players.find(x => x.id === data.playerId);
-			if (p) { msg = `${getPronounName(p)} ลืมประกาศ UNO โดนปรับจั่ว 2 ใบ`; assertive = true; }
+			if (p) {
+				msg = t(`${getPronounName(p)} ลืมประกาศ UNO โดนปรับจั่ว 2 ใบ`, `${getPronounName(p)} forgot to call UNO and drew 2 penalty cards`);
+				assertive = true;
+			}
 			break;
 		}
 		case 'declareUno': {
 			const p = players.find(x => x.id === data.playerId);
-			if (p) { msg = `${getPronounName(p)} ประกาศ UNO!`; assertive = true; playSound('uno'); }
+			if (p) {
+				msg = t(`${getPronounName(p)} ประกาศ UNO!`, `${getPronounName(p)} called UNO!`);
+				assertive = true;
+				playSound('uno');
+			}
 			triggerUnoCinematicAnimation(data.playerId);
 			break;
 		}
 		case 'challengeSuccess': {
 			const p = players.find(x => x.id === data.playerId);
-			if (p) msg = `Challenge สำเร็จ! ${getPronounName(p)} โดนปรับจั่ว 4 ใบ`;
+			if (p) msg = t(`Challenge สำเร็จ! ${getPronounName(p)} โดนปรับจั่ว 4 ใบ`, `Challenge succeeded! ${getPronounName(p)} drew 4 cards`);
 			playSound('ww');
 			break;
 		}
 		case 'challengeFailed': {
 			const p = players.find(x => x.id === data.playerId);
-			if (p) msg = `Challenge พลาด! ${getPronounName(p)} โดนปรับจั่ว 6 ใบ`;
+			if (p) msg = t(`Challenge พลาด! ${getPronounName(p)} โดนปรับจั่ว 6 ใบ`, `Challenge failed! ${getPronounName(p)} drew 6 cards`);
 			playSound('wl');
 			break;
 		}
 		case 'challengeDeclined': {
 			const p = players.find(x => x.id === data.playerId);
-			if (p) msg = `${getPronounName(p)} ไม่ยอมรับ Challenge โดนจั่ว 4 ใบ`;
+			if (p) msg = t(`${getPronounName(p)} ไม่ยอมรับ Challenge โดนจั่ว 4 ใบ`, `${getPronounName(p)} declined the Challenge and drew 4 cards`);
 			playSound('ll');
 			break;
 		}
 		case 'drawCard': {
 			const p = players.find(x => x.id === data.playerId);
 			if (p) {
-				msg = `${getPronounName(p)} จั่วการ์ด 1 ใบ`;
+				msg = t(`${getPronounName(p)} จั่วการ์ด 1 ใบ`, `${getPronounName(p)} drew 1 card`);
 				playSound('jua');
 			}
 			if (data.playerId === myPeerId) {
@@ -1182,20 +1400,23 @@ function handleGameEvent(data) {
 		}
 		case 'passTurn': {
 			const p = players.find(x => x.id === data.playerId);
-			if (p) msg = `${getPronounName(p)} จบตา`;
+			if (p) msg = t(`${getPronounName(p)} จบตา`, `${getPronounName(p)} passed the turn`);
 			turnAudioEnqueued++;
 			playSound('turn');
 			break;
 		}
 		case 'winGame': {
 			const p = players.find(x => x.id === data.winnerId);
-			if (p) { msg = `จบเกม! ผู้ชนะคือ ${getPronounName(p)}`; assertive = true; }
+			if (p) {
+				msg = t(`จบเกม! ผู้ชนะคือ ${getPronounName(p)}`, `Game over! The winner is ${getPronounName(p)}`);
+				assertive = true;
+			}
 			break;
 		}
 		case 'playCard': {
 			const p = players.find(x => x.id === data.playerId);
 			if (!p) break;
-			msg = `${getPronounName(p)} วางการ์ด ${getCardARIA(data.card)}`;
+			msg = t(`${getPronounName(p)} วางการ์ด ${getCardARIA(data.card)}`, `${getPronounName(p)} played ${getCardARIA(data.card)}`);
 			
 			if (data.playerId === myPeerId) {
 				animateLocalPlay(data.card, data.selectedColor);
@@ -1204,8 +1425,8 @@ function handleGameEvent(data) {
 			}
 
 			if (data.card.color === 'wild' && data.selectedColor) {
-				const colorNames = {red:'แดง', blue:'น้ำเงิน', green:'เขียว', yellow:'เหลือง'};
-				msg += ` เปลี่ยนเป็นสี${colorNames[data.selectedColor]}`;
+				const wildColorName = getWildColorName(data.selectedColor);
+				msg += t(` เปลี่ยนเป็นสี${wildColorName}`, `, changing color to ${wildColorName}`);
 			}
 
 			const sequence = [];
@@ -1214,18 +1435,18 @@ function handleGameEvent(data) {
 			if (data.effect === 'skip') {
 				sequence.push('skip');
 				const target = players.find(x => x.id === data.targetId);
-				if (target) msg += `, ส่งผลให้ ${getPronounName(target)} ถูกใช้การ์ด skip ข้ามตา`;
+				if (target) msg += t(`, ส่งผลให้ ${getPronounName(target)} ถูกใช้การ์ด skip ข้ามตา`, `, skipping ${getPronounName(target)}'s turn`);
 			} else if (data.effect === 'reverse') {
 				sequence.push('reverse');
-				msg += `, ทำการกลับทิศทางการเล่น`;
+				msg += t(`, ทำการกลับทิศทางการเล่น`, `, reversing the direction of play`);
 			} else if (data.effect === 'draw2') {
 				sequence.push('draw2');
 				const target = players.find(x => x.id === data.targetId);
-				if (target) msg += `, ส่งผลให้ ${getPronounName(target)} โดนบังคับจั่ว 2 ใบและถูกข้ามตา`;
+				if (target) msg += t(`, ส่งผลให้ ${getPronounName(target)} โดนบังคับจั่ว 2 ใบและถูกข้ามตา`, `, forcing ${getPronounName(target)} to draw 2 cards and lose their turn`);
 			} else if (data.effect === 'wild4') {
 				sequence.push('draw4');
 				const target = players.find(x => x.id === data.targetId);
-				if (target) msg += `, ส่งผลให้ ${getPronounName(target)} ถูกใช้ Wild Draw Four ต้องเลือกว่าจะ Challenge หรือไม่`;
+				if (target) msg += t(`, ส่งผลให้ ${getPronounName(target)} ถูกใช้ Wild Draw Four ต้องเลือกว่าจะ Challenge หรือไม่`, `, forcing ${getPronounName(target)} to decide whether to Challenge`);
 			}
 			
 			if (!data.isWin) {
@@ -1238,7 +1459,7 @@ function handleGameEvent(data) {
 		}
 		case 'playerJoined': {
 			const p = players.find(x => x.id === data.playerId);
-			if (p) msg = `${getPronounName(p)} เข้าร่วมห้องสำเร็จ`;
+			if (p) msg = t(`${getPronounName(p)} เข้าร่วมห้องสำเร็จ`, `${getPronounName(p)} joined the room`);
 			break;
 		}
 	}
@@ -1443,7 +1664,7 @@ function handleWin(winnerId) {
 	if (isHost) {
 		broadcastGameState(); 
 		const winnerPlayer = players.find(p => p.id === winnerId);
-		const winnerName = winnerPlayer ? getPronounName(winnerPlayer) : 'ผู้เล่น';
+		const winnerName = winnerPlayer ? getPronounName(winnerPlayer) : t('ผู้เล่น', 'Player');
 		connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, winner: winnerName, scores: score, matchOver: game.matchOver }); });
 		game.status = 'ended'; 
 		doWinAnimation(winnerName, () => {
@@ -1537,7 +1758,10 @@ window.turnTimerInterval = setInterval(() => {
 
 function getCardARIA(card) {
 	if (!card) return '';
-	const cName = { red: 'แดง ', blue: 'น้ำเงิน ', green: 'เขียว ', yellow: 'เหลือง ', wild: '' }[card.color];
+	const colorMap = currentLang === 'en'
+		? { red: 'Red ', blue: 'Blue ', green: 'Green ', yellow: 'Yellow ', wild: '' }
+		: { red: 'แดง ', blue: 'น้ำเงิน ', green: 'เขียว ', yellow: 'เหลือง ', wild: '' };
+	const cName = colorMap[card.color] || '';
 	let vName = card.value;
 	if (card.type === 'skip') vName = 'Skip';
 	else if (card.type === 'reverse') vName = 'Reverse';
@@ -1561,7 +1785,8 @@ function renderCardHTML(card, index = -1, isPlayable = false) {
 	btn.innerHTML = inner;
 	
 	if (index >= 0) {
-		btn.setAttribute('aria-label', `${getCardARIA(card)} ${isPlayable ? 'ลงได้' : 'ลงไม่ได้'}`);
+		const playableText = isPlayable ? t('ลงได้', 'playable') : t('ลงไม่ได้', 'not playable');
+		btn.setAttribute('aria-label', `${getCardARIA(card)} ${playableText}`);
 		if (isPlayable) btn.onclick = () => onCardClicked(index, card);
 		else btn.setAttribute('aria-disabled', 'true');
 	}
@@ -1594,7 +1819,7 @@ function renderGame(gameState) {
 	const turnPlayerObj = players[gameState.turnIndex];
 	if (turnPlayerObj) {
 		const headingEl = document.getElementById('current-turn-heading');
-		headingEl.textContent = `ถึงรอบ${getPronounName(turnPlayerObj)}`;
+		headingEl.textContent = t(`ถึงรอบ${getPronounName(turnPlayerObj)}`, `${getPronounName(turnPlayerObj)}'s Turn`);
 		
 		const cDef = COLORS.find(c => c.id === turnPlayerObj.colorId);
 		if (cDef) {
@@ -1626,18 +1851,18 @@ function renderGame(gameState) {
 
 			const pronoun = getPronounName(currentPlayer);
 			if (currentPlayer.id === myPeerId) {
-				let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
+				let announceMsg = t(`ถึงรอบ${pronoun}แล้ว`, `It is ${pronoun}'s turn.`);
 				if (gameState.topDiscard) {
 					const displayCard = {...gameState.topDiscard};
 					if (displayCard.color === 'wild' && gameState.currentColor) {
 						displayCard.color = gameState.currentColor;
 					}
 					let cardName = getCardARIA(displayCard);
-					announceMsg += ` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`;
+					announceMsg += t(` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`, ` Top card is ${cardName}.`);
 				}
 				announce(announceMsg);
 			} else {
-				announce(`ถึงรอบ${pronoun}แล้ว`);
+				announce(t(`ถึงรอบ${pronoun}แล้ว`, `It is ${pronoun}'s turn.`));
 			}
 		}
 		game.lastTurnIndex = gameState.turnIndex;
@@ -1648,7 +1873,7 @@ function renderGame(gameState) {
 		if (myHand.length > window._myPrevHand.length) {
 			const diff = myHand.length - window._myPrevHand.length;
 			const newCards = myHand.slice(-diff);
-			newCards.forEach(c => { announce(`ได้รับการ์ด ${getCardARIA(c)}`); });
+			newCards.forEach(c => { announce(t(`ได้รับการ์ด ${getCardARIA(c)}`, `Received ${getCardARIA(c)}`)); });
 		}
 	}
 	window._myPrevHand = [...myHand];
@@ -1656,7 +1881,8 @@ function renderGame(gameState) {
 	const statusBar = document.getElementById('top-status-bar');
 	statusBar.innerHTML = '';
 	
-	let ariaStatusBarText = `ทิศทางการเล่น ${gameState.direction === 1 ? 'ขวา' : 'ซ้าย'}, `;
+	const dirText = gameState.direction === 1 ? t('ขวา', 'right') : t('ซ้าย', 'left');
+	let ariaStatusBarText = t(`ทิศทางการเล่น ${dirText}, `, `Direction ${dirText}, `);
 	const dirDiv = document.createElement('div');
 	dirDiv.className = 'direction-indicator';
 	dirDiv.setAttribute('aria-hidden', 'true');
@@ -1671,15 +1897,18 @@ function renderGame(gameState) {
 		const pName = getPronounName(p);
 		
 		if (pState) {
-			ariaStatusBarText += `${pName} มีการ์ด ${pState.cardCount} ใบ คะแนน ${pState.score}. `;
+			ariaStatusBarText += t(
+				`${pName} มีการ์ด ${pState.cardCount} ใบ คะแนน ${pState.score}. `,
+				`${pName} has ${pState.cardCount} cards, score ${pState.score}. `
+			);
 			const charDiv = document.createElement('div');
 			charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`;
 			charDiv.setAttribute('data-player-id', p.id);
 			charDiv.setAttribute('aria-hidden', 'true');
 			charDiv.innerHTML = `
-				<div class="char-cards-count">${pState.cardCount} ใบ</div>
+				<div class="char-cards-count">${pState.cardCount} ${t('ใบ', 'cards')}</div>
 				<div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':getMascotEmoji(p.colorId)}</span></div>
-				<div class="char-score">คะแนน: ${pState.score}</div>
+				<div class="char-score">${t('คะแนน:', 'Score:')} ${pState.score}</div>
 			`;
 			statusBar.appendChild(charDiv);
 		}
@@ -1687,7 +1916,10 @@ function renderGame(gameState) {
 	statusBar.setAttribute('aria-label', ariaStatusBarText);
 
 	document.getElementById('deck-count-visual').textContent = gameState.deckCount;
-	document.getElementById('deck-aria-label').textContent = `การ์ดในกองเหลือ ${gameState.deckCount} ใบ`;
+	document.getElementById('deck-aria-label').textContent = t(
+		`การ์ดในกองเหลือ ${gameState.deckCount} ใบ`,
+		`${gameState.deckCount} cards remaining in deck`
+	);
 
 	const discardEl = document.getElementById('discard-pile');
 	discardEl.innerHTML = '';
@@ -1695,7 +1927,10 @@ function renderGame(gameState) {
 		const displayCard = {...gameState.topDiscard};
 		if (displayCard.color === 'wild' && gameState.currentColor) displayCard.color = gameState.currentColor;
 		discardEl.appendChild(renderCardHTML(displayCard));
-		document.getElementById('discard-aria-label').textContent = `การ์ดที่แสดงคือ ${getCardARIA(displayCard)}`;
+		document.getElementById('discard-aria-label').textContent = t(
+			`การ์ดที่แสดงคือ ${getCardARIA(displayCard)}`,
+			`Top discard card is ${getCardARIA(displayCard)}`
+		);
 	}
 
 	const chalArea = document.getElementById('challenge-area');
@@ -1793,12 +2028,20 @@ function showResult(winnerId, score, matchOver = false) {
 	switchScreen('screen-result', 'title-result');
 	const winner = players.find(p => p.id === winnerId);
 	
-	let winnerHtml = `<span aria-hidden="true">🏆</span> ผู้ชนะ: ${getPronounName(winner)} (ได้คะแนนเพิ่ม: ${score})`;
+	let winnerHtml = t(
+		`<span aria-hidden="true">🏆</span> ผู้ชนะ: ${getPronounName(winner)} (ได้คะแนนเพิ่ม: ${score})`,
+		`<span aria-hidden="true">🏆</span> Winner: ${getPronounName(winner)} (+${score} pts)`
+	);
 	
-	if (matchOver) {
-		const colorDef = COLORS.find(c => c.id === winner.colorId);
-		const colorName = colorDef ? colorDef.name : 'ไม่ทราบสี';
-		const kingTexts = [
+	if (matchOver && winner) {
+		const colorName = getColorName(winner.colorId);
+		const kingTexts = currentLang === 'en' ? [
+			`${colorName} is the King of UNO!`,
+			`Congratulations! ${colorName} has become the King of UNO!`,
+			`Match complete! ${colorName} claims the UNO crown!`,
+			`Unstoppable! ${colorName} is the true UNO Champion!`,
+			`Hail the champion! ${colorName} rules this UNO room!`
+		] : [
 			`ตัวละคร${colorName} คือจ้าวแห่ง Uno!`,
 			`ขอแสดงความยินดี! ตัวละคร${colorName} ได้ก้าวขึ้นเป็นจ้าวแห่ง Uno!`,
 			`เกมจบสมบูรณ์! ตัวละคร${colorName} คว้าตำแหน่งจ้าวแห่ง Uno ไปครอง!`,
@@ -1810,13 +2053,12 @@ function showResult(winnerId, score, matchOver = false) {
 	}
 
 	let scoreListHtml = `<div style="margin-top: 25px; font-size: 20px; color: var(--text-main);">
-		<div style="font-weight: bold; margin-bottom: 10px;">คะแนนสะสมปัจจุบันของผู้เล่นทุกคน</div>
+		<div style="font-weight: bold; margin-bottom: 10px;">${t('คะแนนสะสมปัจจุบันของผู้เล่นทุกคน', 'Current Total Scores')}</div>
 		<ul style="list-style: none; padding: 0;">`;
 	players.forEach(p => {
-		const cDef = COLORS.find(c => c.id === p.colorId);
-		const colorName = cDef ? cDef.name : 'ไม่ทราบสี';
+		const colorName = getColorName(p.colorId);
 		const pScore = game.playerStates[p.id] ? game.playerStates[p.id].score : 0;
-		scoreListHtml += `<li style="margin-bottom: 5px;">${colorName}: คะแนนสะสม ${pScore} แต้ม</li>`;
+		scoreListHtml += `<li style="margin-bottom: 5px;">${t(`${colorName}: คะแนนสะสม ${pScore} แต้ม`, `${colorName}: ${pScore} pts`)}</li>`;
 	});
 	scoreListHtml += `</ul></div>`;
 	
@@ -1837,9 +2079,9 @@ function showResult(winnerId, score, matchOver = false) {
 				charDiv.setAttribute('aria-hidden', 'true');
 				const cardCount = pState.cardCount !== undefined ? pState.cardCount : (pState.hand ? pState.hand.length : 0);
 				charDiv.innerHTML = `
-					<div class="char-cards-count">${cardCount} ใบ</div>
+					<div class="char-cards-count">${cardCount} ${t('ใบ', 'cards')}</div>
 					<div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':getMascotEmoji(p.colorId)}</span></div>
-					<div class="char-score">คะแนน: ${pState.score}</div>
+					<div class="char-score">${t('คะแนน:', 'Score:')} ${pState.score}</div>
 				`;
 				resultStatusBar.appendChild(charDiv);
 			}
@@ -1873,7 +2115,7 @@ function showAnimOverlay(text) {
 }
 
 document.getElementById('btn-refresh-audio').onclick = () => {
-	 announce('รีเฟรชระบบเสียงแล้ว');
+	 announce(t('รีเฟรชระบบเสียงแล้ว', 'Audio system refreshed'));
 	 if(audioCtx.state === 'suspended') audioCtx.resume();
 };
 
@@ -1904,7 +2146,7 @@ document.addEventListener('keydown', (e) => {
 			const elapsed = Math.floor((Date.now() - game.currentTurnStartTime) / 1000);
 			let rem = 40 - elapsed;
 			if(rem < 0) rem = 0;
-			announce(`เหลือเวลา ${rem} วินาที`);
+			announce(t(`เหลือเวลา ${rem} วินาที`, `${rem} seconds remaining`));
 		}
 	}
 });
