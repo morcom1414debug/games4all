@@ -703,6 +703,7 @@
         let zombiesSpawned = 0;
         let spawnTimer = null;
         let gameLoopTimer = null;
+        let audioUpdateFrame = 0;
 
         let keys = { ArrowLeft: false, ArrowRight: false };
 
@@ -720,6 +721,7 @@
 
         // Cheat / Test Code Variables
         let isGodMode = false;
+        let godModeCheatUsed = false;
         let hpCheatUsedInLevel = false;
         let cheatKeyHistory = [];
 
@@ -2549,17 +2551,6 @@
                 this.presenceFilter.Q.value = 1.0;
                 this.presenceFilter.gain.value = 0;
 
-                this.rearDelay = audioCtx.createDelay(0.1);
-                this.rearDelay.delayTime.value = 0.028;
-
-                this.rearFilter = audioCtx.createBiquadFilter();
-                this.rearFilter.type = 'bandpass';
-                this.rearFilter.frequency.value = 750;
-                this.rearFilter.Q.value = 0.8;
-
-                this.rearReflectGain = audioCtx.createGain();
-                this.rearReflectGain.gain.value = 0.0;
-
                 this.aimGain = audioCtx.createGain();
                 this.aimGain.gain.value = 1.0;
 
@@ -2577,12 +2568,6 @@
                 this.source.connect(this.toneFilter);
                 this.toneFilter.connect(this.presenceFilter);
                 this.presenceFilter.connect(this.aimGain);
-
-                // สายสัญญาณสะท้อนด้านหลัง (ปิดการทำงาน gain = 0 ในโหมดด้านหน้า)
-                this.toneFilter.connect(this.rearDelay);
-                this.rearDelay.connect(this.rearFilter);
-                this.rearFilter.connect(this.rearReflectGain);
-                this.rearReflectGain.connect(this.aimGain);
 
                 this.aimGain.connect(this.distanceGain);
                 this.distanceGain.connect(this.panner);
@@ -2652,11 +2637,9 @@
                 let frontFactor = Math.max(0, Math.cos(relativeAngle));
                 let targetCutoff = 4500 + (frontFactor * 15500);
                 let targetPresence = frontFactor * 2.2;
-                let targetRearReflect = 0.0;
 
                 this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
                 this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
-                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
 
                 // เพิ่มความเด่นของเสียงเมื่ออยู่ในแนวยิง (diff <= 10 องศา)
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
@@ -2697,9 +2680,6 @@
                     this.source.disconnect();
                     this.toneFilter.disconnect();
                     this.presenceFilter.disconnect();
-                    this.rearDelay.disconnect();
-                    this.rearFilter.disconnect();
-                    this.rearReflectGain.disconnect();
                     this.aimGain.disconnect();
                     this.distanceGain.disconnect();
                     this.panner.disconnect();
@@ -2730,17 +2710,6 @@
                 this.presenceFilter.Q.value = 1.0;
                 this.presenceFilter.gain.value = 0;
 
-                this.rearDelay = audioCtx.createDelay(0.1);
-                this.rearDelay.delayTime.value = 0.028;
-
-                this.rearFilter = audioCtx.createBiquadFilter();
-                this.rearFilter.type = 'bandpass';
-                this.rearFilter.frequency.value = 750;
-                this.rearFilter.Q.value = 0.8;
-
-                this.rearReflectGain = audioCtx.createGain();
-                this.rearReflectGain.gain.value = 0.0;
-
                 this.aimGain = audioCtx.createGain();
                 this.aimGain.gain.value = 1.0;
 
@@ -2757,11 +2726,6 @@
                 this.source.connect(this.toneFilter);
                 this.toneFilter.connect(this.presenceFilter);
                 this.presenceFilter.connect(this.aimGain);
-
-                this.toneFilter.connect(this.rearDelay);
-                this.rearDelay.connect(this.rearFilter);
-                this.rearFilter.connect(this.rearReflectGain);
-                this.rearReflectGain.connect(this.aimGain);
 
                 this.aimGain.connect(this.distanceGain);
                 this.distanceGain.connect(this.panner);
@@ -2804,11 +2768,9 @@
                 let frontFactor = Math.max(0, Math.cos(relativeAngle));
                 let targetCutoff = 4500 + (frontFactor * 15500);
                 let targetPresence = frontFactor * 2.2;
-                let targetRearReflect = 0.0;
 
                 this.setAudioParamSmooth(this.toneFilter.frequency, targetCutoff, 0.05);
                 this.setAudioParamSmooth(this.presenceFilter.gain, targetPresence, 0.05);
-                this.setAudioParamSmooth(this.rearReflectGain.gain, targetRearReflect, 0.05);
 
                 let targetAimGain = (diff <= 10) ? 1.45 : 1.0;
                 this.setAudioParamSmooth(this.aimGain.gain, targetAimGain, 0.04);
@@ -2833,9 +2795,6 @@
                     this.source.disconnect();
                     this.toneFilter.disconnect();
                     this.presenceFilter.disconnect();
-                    this.rearDelay.disconnect();
-                    this.rearFilter.disconnect();
-                    this.rearReflectGain.disconnect();
                     this.aimGain.disconnect();
                     this.distanceGain.disconnect();
                     this.panner.disconnect();
@@ -2859,7 +2818,9 @@
                 currentGift = null;
             }
             clearTimeout(giftSpawnTimer);
+            audioUpdateFrame = 0;
             isGodMode = false;
+            godModeCheatUsed = false;
             hpCheatUsedInLevel = false;
             cheatKeyHistory = [];
 
@@ -3070,6 +3031,7 @@
             resetPlayerOrientation();
             updateUI();
             zombiesSpawned = 0;
+            activeZombies.forEach(z => z.die());
             activeZombies = [];
             clearTimeout(spawnTimer);
             clearTimeout(giftSpawnTimer);
@@ -3103,8 +3065,11 @@
             if (keys.ArrowRight) setPlayerAngle(playerAngle + 1.5);
             setPlayerAngle(playerAngle);
 
+            audioUpdateFrame++;
+            const shouldUpdateAudio = (audioUpdateFrame % 3 === 0);
+
             // อัปเดตตำแหน่งเสียง Life Gift ถ้ามี
-            if (currentGift && currentGift.active) {
+            if (currentGift && currentGift.active && shouldUpdateAudio) {
                 currentGift.updateAudioPosition();
             }
 
@@ -3113,7 +3078,9 @@
                 if (!z.active) continue;
                 
                 z.updateMovement();
-                z.updateAudioPosition();
+                if (shouldUpdateAudio) {
+                    z.updateAudioPosition();
+                }
 
                 // ซอมบี้ถึงระยะประชิดโจมตี (ระยะ 5 เอื้อมมือถึงตัวผู้เล่น)
                 if (z.distance <= 5) {
@@ -3169,14 +3136,17 @@
             // Cheat 1: 'long1414' -> Confirm sound, God Mode (HP never drops), warp to Level 30
             if (typed.endsWith('long1414')) {
                 cheatKeyHistory = [];
-                isGodMode = true;
-                hp = 3;
-                ammo = 10;
-                isReloading = false;
-                currentLevel = LEVELS.length; // Level 30
-                saveProgress(currentLevel);
-                playSound('levelup');
-                startLevel();
+                if (!godModeCheatUsed) {
+                    godModeCheatUsed = true;
+                    isGodMode = true;
+                    hp = 3;
+                    ammo = 10;
+                    isReloading = false;
+                    currentLevel = LEVELS.length; // Level 30
+                    saveProgress(currentLevel);
+                    playSound('levelup');
+                    startLevel();
+                }
                 return;
             }
 
