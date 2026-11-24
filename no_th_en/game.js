@@ -15,10 +15,22 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 // ==================== Bilingual Support (TH / EN) ====================
-let currentLang = localStorage.getItem('nothanks_lang') === 'en' ? 'en' : 'th';
+const LANG_STORAGE_KEY = 'nothanks_lang';
+
+function detectInitialLanguage() {
+    try {
+        const saved = localStorage.getItem(LANG_STORAGE_KEY);
+        if (saved === 'th' || saved === 'en') return saved;
+    } catch (e) {}
+    const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return browserLang.startsWith('th') ? 'th' : 'en';
+}
+
+let currentLang = detectInitialLanguage();
 
 const NOTHANKS_I18N = {
     th: {
+        page_title: "No Thanks! : Games4all",
         back_community_aria: "กลับสู่ชุมชน",
         main_subtitle: "การ์ดเกมนี้สำหรับการสันทนาการร่วมกัน",
         main_a11y_desc: "เกมนี้ออกแบบให้ผู้ใช้ Screen Reader และผู้เล่นทั่วไป สนุกร่วมกันได้อย่างเท่าเทียม",
@@ -87,6 +99,7 @@ const NOTHANKS_I18N = {
         result_title: "สรุปผลคะแนน"
     },
     en: {
+        page_title: "No Thanks! : Games4all",
         back_community_aria: "Back to Community",
         main_subtitle: "Card game for shared recreation and fun",
         main_a11y_desc: "Designed for Screen Reader users and sighted players to enjoy equally together.",
@@ -205,6 +218,7 @@ function translateAnnouncementToEn(msg) {
 function applyStaticLanguage() {
     const dict = NOTHANKS_I18N[currentLang] || NOTHANKS_I18N.th;
     document.documentElement.lang = currentLang;
+    document.title = dict.page_title;
 
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const k = el.getAttribute('data-i18n');
@@ -221,6 +235,14 @@ function applyStaticLanguage() {
         if (dict[k] !== undefined) el.setAttribute('aria-label', dict[k]);
     });
 
+    const deckSpan = document.querySelector('#deck-info-container > span');
+    if (deckSpan) {
+        const currentDeckCount = document.getElementById('deck-count')?.textContent || '24';
+        deckSpan.innerHTML = currentLang === 'en'
+            ? `Cards left in deck: <span id="deck-count">${currentDeckCount}</span> cards`
+            : `ไพ่คงเหลือในกอง: <span id="deck-count">${currentDeckCount}</span> ใบ`;
+    }
+
     const label = currentLang === 'th' ? '🌐 EN' : '🌐 ไทย';
     const aria = currentLang === 'th' ? 'Switch language to English' : 'สลับภาษาเป็นภาษาไทย';
     ['btn-lang-main', 'btn-lang-lobby'].forEach(id => {
@@ -233,8 +255,10 @@ function applyStaticLanguage() {
 }
 
 function toggleLanguage() {
-    currentLang = currentLang === 'th' ? 'en' : 'th';
-    localStorage.setItem('nothanks_lang', currentLang);
+    currentLang = (currentLang === 'th') ? 'en' : 'th';
+    try {
+        localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+    } catch (e) {}
     applyStaticLanguage();
 
     if (document.getElementById('screen-main').classList.contains('active')) {
@@ -1981,3 +2005,4 @@ document.getElementById('btn-refresh-audio').addEventListener('click', (event) =
         console.error("Audio refresh error:", err);
     }
 });
+```[cite: 1]
