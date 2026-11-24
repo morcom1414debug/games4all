@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO Online - กติกาคลาสสิก</title>
+    
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --surface-dark: #1e1e1e;
+            --primary: #4CAF50;
+            --primary-hover: #45a049;
+            --danger: #f44336;
+            --danger-hover: #da190b;
+            --text-main: #ffffff;
+            --text-muted: #aaaaaa;
+            --focus-ring: #ffc107;
+            
+            /* UNO Colors */
+            --uno-red: #f56462;
+            --uno-blue: #00c3e5;
+            --uno-green: #2ecc71;
+            --uno-yellow: #f7e018;
+            --uno-wild: #333333;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 10px;
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            background-size: 400% 400%;
+            animation: bgGradient 15s ease infinite;
+            overflow-x: hidden;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @keyframes bgGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Accessibilty Classes */
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
+        }
+
+        *:focus-visible {
+            outline: 4px solid var(--focus-ring);
+            outline-offset: 4px; border-radius: 4px;
+        }
+
+        .screen {
+            display: none; width: 100%; max-width: 1000px; margin: 0 auto;
+            background-color: rgba(30, 30, 30, 0.85);
+            backdrop-filter: blur(12px); padding: 20px; border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.1);
+            position: relative; z-index: 2; flex: 1;
+        }
+
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+            animation: fadeIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        h1, h2, h3 { color: var(--focus-ring); text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-bottom: 20px; }
+
+        button {
+            background: linear-gradient(180deg, var(--primary), #388e3c);
+            color: white; border: none; border-bottom: 4px solid #1b5e20;
+            padding: 12px 15px; font-size: 16px; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 1px; border-radius: 8px;
+            cursor: pointer; width: 100%; max-width: 300px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: all 0.1s ease;
+        }
+        button:active:not(:disabled) { transform: translateY(4px); border-bottom: 0 solid transparent; box-shadow: none; }
+        button:hover:not(:disabled) { filter: brightness(1.1); }
+        button:disabled { background: #555; border-bottom-color: #333; cursor: not-allowed; opacity: 0.7; transform: none; }
+        button.danger { background: linear-gradient(180deg, var(--danger), #c62828); border-bottom: 4px solid #b71c1c; }
+        button.info { background: linear-gradient(180deg, #2196F3, #1565C0); border-bottom: 4px solid #0D47A1; }
+        
+        .btn-home-main {
+            position: absolute; top: 10px; left: 10px; width: auto; font-size: 20px; padding: 5px 10px;
+        }
+
+        /* UNO Card Styles */
+        .uno-card {
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            width: 80px; height: 120px; border-radius: 10px;
+            border: 4px solid white; text-align: center;
+            font-size: 36px; font-weight: bold; color: white; cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4); user-select: none; transition: transform 0.2s;
+            text-shadow: 2px 2px 0px rgba(0,0,0,0.5); padding: 5px;
+        }
+        .uno-card:hover:not(.disabled) { transform: translateY(-10px) scale(1.05); }
+        .uno-card:focus-visible { transform: translateY(-10px) scale(1.05); outline: 4px solid var(--focus-ring); }
+        .uno-card.disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(80%); }
+        
+        .card-red { background-color: var(--uno-red); }
+        .card-blue { background-color: var(--uno-blue); }
+        .card-green { background-color: var(--uno-green); }
+        .card-yellow { background-color: var(--uno-yellow); }
+        .card-wild { background: conic-gradient(var(--uno-red) 25%, var(--uno-blue) 0 50%, var(--uno-yellow) 0 75%, var(--uno-green) 0); }
+        .card-special-text { font-size: 16px; line-height: 1.2; word-wrap: break-word; }
+        .card-wild-text { background: rgba(0,0,0,0.6); padding: 5px; border-radius: 5px; display: inline-block; line-height: 1.2; font-size: 16px; }
+
+        /* Game Screen Layout */
+        #top-status-bar {
+            display: flex; align-items: center; gap: 15px; padding: 10px;
+            background: rgba(0,0,0,0.4); border-radius: 12px; margin-bottom: 20px;
+            overflow-x: auto; white-space: nowrap; width: 100%; position: relative;
+        }
+
+        .direction-indicator {
+            font-size: 30px; font-weight: bold; color: var(--focus-ring);
+            padding-right: 15px; border-right: 2px solid rgba(255,255,255,0.2);
+        }
+
+        .character-card {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-width: 70px; padding: 5px; border-radius: 10px; border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .character-card.is-turn {
+            border-color: var(--focus-ring); background: rgba(255, 193, 7, 0.2); transform: scale(1.05);
+        }
+        .char-cards-count { font-size: 14px; font-weight: bold; color: white; margin-bottom: 2px; }
+        .char-avatar {
+            width: 40px; height: 40px; border-radius: 50%; border: 2px solid white;
+            display: flex; justify-content: center; align-items: center; font-size: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        .char-score { font-size: 12px; color: var(--focus-ring); margin-top: 2px; }
+
+        .btn-refresh-audio {
+            position: absolute; top: 10px; right: 10px; width: auto;
+            padding: 4px 8px; font-size: 12px; border-radius: 4px; z-index: 10;
+        }
+
+        .middle-area {
+            display: flex; justify-content: center; align-items: center; gap: 30px;
+            margin: 20px 0; flex: 1;
+        }
+
+        /* Deck Styling */
+        .deck-pile {
+            background: #222; border-color: #555; color: white; display: flex;
+            flex-direction: column; justify-content: space-between; padding: 10px 5px;
+        }
+        .deck-pile-top { font-size: 16px; font-weight: bold; letter-spacing: 1px; color: var(--focus-ring); }
+        .deck-pile-mid { font-size: 32px; font-weight: bold; }
+        .deck-pile-bot { font-size: 14px; }
+
+        /* Hand Cards Grid */
+        #my-cards-container {
+            display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px;
+            justify-items: center; width: 100%; margin-bottom: 20px;
+        }
+        
+        /* Compact Mode for Hand > 8 cards */
+        #my-cards-container.compact .uno-card {
+            width: 50px; height: 75px; font-size: 20px; border-width: 2px; padding: 2px;
+        }
+        #my-cards-container.compact .card-special-text { font-size: 10px; }
+        #my-cards-container.compact .card-wild-text { font-size: 10px; padding: 2px; }
+
+        /* Bottom Actions */
+        .bottom-actions {
+            display: flex; justify-content: space-between; gap: 10px; width: 100%; margin-top: auto;
+        }
+        .bottom-actions button { flex: 1; margin: 0; max-width: none; font-size: 14px; padding: 10px 5px; }
+
+        /* Bot Controls Lobby */
+        .bot-controls {
+            display: flex; justify-content: center; align-items: center; gap: 15px; margin-bottom: 15px;
+        }
+        .bot-controls button { width: auto; padding: 10px 15px; font-size: 18px; }
+        .bot-controls span { font-size: 24px; font-weight: bold; width: 40px; text-align: center; color: var(--focus-ring); }
+
+        /* Color Picker Overlay */
+        #color-picker-modal {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8); z-index: 100; display: none;
+            justify-content: center; align-items: center; flex-direction: column; border-radius: 16px;
+        }
+        .color-btn { width: 60px; height: 60px; border-radius: 50%; margin: 10px; cursor: pointer; border: 3px solid white; }
+        .color-btn:focus-visible { outline: 4px solid var(--focus-ring); }
+
+        .anim-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;
+            pointer-events: none; display: flex; justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(5px);
+        }
+        .anim-text { font-size: 3rem; font-weight: bold; color: var(--focus-ring); text-shadow: 0 0 20px #000; animation: popIn 1s forwards; text-align: center; }
+        
+        .anim-uno {
+            font-size: 5rem;
+            font-weight: bold;
+            color: var(--danger);
+            text-shadow: 0 0 20px #fff, 0 0 40px var(--focus-ring);
+            animation: unoPopIn 1.5s ease-in-out forwards;
+            text-align: center;
+        }
+        
+        @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+        
+        @keyframes unoPopIn {
+            0% { transform: scale(0.1) rotate(-10deg); opacity: 0; }
+            50% { transform: scale(1.5) rotate(5deg); opacity: 1; }
+            80% { transform: scale(1.2) rotate(0deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 0; }
+        }
+
+        @media (max-width: 600px) {
+            #my-cards-container { gap: 5px; grid-template-columns: repeat(8, 1fr); }
+            .uno-card { width: 40px; height: 60px; font-size: 18px; border-width: 2px; }
+            .card-special-text { font-size: 10px; }
+            .card-wild-text { font-size: 10px; }
+            
+            #my-cards-container.compact .uno-card { width: 35px; height: 50px; font-size: 14px; }
+            .deck-pile-top { font-size: 12px; }
+            .deck-pile-mid { font-size: 20px; }
+            .deck-pile-bot { font-size: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="aria-polite" aria-live="polite" class="sr-only"></div>
+    <div id="aria-assertive" aria-live="assertive" class="sr-only"></div>
+
+    <div id="anim-overlay" class="anim-overlay" style="display: none;" aria-hidden="true">
+        <div id="anim-text" class="anim-text"></div>
+    </div>
+
+    <!-- Screen: Main -->
+    <main id="screen-main" class="screen active">
+        <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="alert('กลับสู่ชุมชน (จำลอง)')"><span aria-hidden="true">🏠</span></button>
+        <h1 tabindex="-1" id="title-main" style="text-align: center; font-size: 32px; margin-top: 20px;">UNO Online</h1>
+        
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+            <button id="btn-create-room"><span aria-hidden="true">➕</span> สร้างห้องใหม่</button>
+            <button id="btn-show-rules"><span aria-hidden="true">📖</span> วิธีเล่นและกติกา</button>
+        </div>
+
+        <h2 style="margin-top: 30px; font-size: 20px;">ห้องที่เปิดอยู่</h2>
+        <ul id="room-list" class="room-list" role="list" style="list-style: none; padding: 0;">
+            <li style="text-align: center; color: var(--text-muted);">กำลังโหลดรายการห้อง...</li>
+        </ul>
+    </main>
+
+    <!-- Screen: Rules -->
+    <main id="screen-rules" class="screen">
+        <h2 tabindex="-1" id="title-rules">กติกา UNO</h2>
+        <div style="overflow-y: auto; flex: 1; padding-right: 10px; margin-bottom: 20px;" tabindex="0" aria-label="เนื้อหากติกา">
+            <p><strong>เป้าหมาย:</strong> ทิ้งไพ่ในมือให้หมดก่อนผู้เล่นคนอื่น</p>
+            <p><strong>ไพ่พิเศษ:</strong></p>
+            <ul>
+                <li><strong>Skip:</strong> ข้ามผู้เล่นคนถัดไป</li>
+                <li><strong>Reverse:</strong> กลับทิศทางการเล่น</li>
+                <li><strong>Draw Two:</strong> ผู้เล่นคนถัดไปต้องจั่วไพ่ 2 ใบและข้ามตา</li>
+                <li><strong>Wild:</strong> เลือกเปลี่ยนสีของเกมได้</li>
+                <li><strong>Wild Draw Four:</strong> เปลี่ยนสี และคนถัดไปจั่ว 4 ใบ (ลงได้เมื่อไม่มีสีที่ตรงกับกองทิ้งเท่านั้น) สามารถท้าทาย (Challenge) ได้</li>
+            </ul>
+        </div>
+        <button id="btn-close-rules" style="margin: 0 auto;">กลับหน้าหลัก</button>
+    </main>
+
+    <!-- Screen: Lobby -->
+    <main id="screen-lobby" class="screen">
+        <h2 tabindex="-1" id="title-lobby">ล็อบบี้: <span id="lobby-room-id"></span></h2>
+        
+        <h3 style="font-size: 16px;">เลือกสีผู้เล่น</h3>
+        <div id="color-selection" style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center;" role="group" aria-label="เลือกสี"></div>
+
+        <h3 style="font-size: 16px;">ผู้เล่นในห้อง (<span id="lobby-player-count">1</span>/6)</h3>
+        <ul id="lobby-player-list" style="list-style: none; margin-bottom: 20px;" role="list"></ul>
+
+        <div id="host-controls" style="display: none; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;">
+            <h3 style="text-align: center; font-size: 16px; margin-bottom: 10px;">การจัดการ Bot</h3>
+            <div class="bot-controls">
+                <button id="btn-remove-bot" class="danger" aria-label="ลดบอท"><span aria-hidden="true">-</span></button>
+                <span id="bot-count-display" aria-hidden="true">0</span>
+                <button id="btn-add-bot" aria-label="เพิ่มบอท"><span aria-hidden="true">+</span></button>
+            </div>
+            <button id="btn-start-game" style="margin: 0 auto; display: block;"><span aria-hidden="true">🚀</span> เริ่มเกม</button>
+        </div>
+        <button id="btn-leave-lobby" class="danger" style="margin: 20px auto 0 auto;">ออกจากห้อง</button>
+    </main>
+
+    <!-- Screen: Game -->
+    <main id="screen-game" class="screen">
+        <button id="btn-refresh-audio" class="btn-refresh-audio" aria-label="รีเฟรชเสียง"><span aria-hidden="true">🔊</span> รีเฟรช</button>
+        
+        <!-- Top Status Bar (Grouped for ARIA) -->
+        <div id="top-status-bar" tabindex="0">
+            <!-- Rendered via JS -->
+        </div>
+
+        <h2 id="current-turn-heading" tabindex="-1" style="text-align: center; color: var(--focus-ring); font-size: 20px; margin: 0 0 15px 0; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+            <!-- Rendered via JS -->
+        </h2>
+
+        <!-- Middle Area (Deck & Discard) -->
+        <div class="middle-area">
+            <!-- Deck -->
+            <div id="deck-container">
+                <div class="uno-card deck-pile" aria-hidden="true">
+                    <span class="deck-pile-top">UNO</span>
+                    <span class="deck-pile-mid" id="deck-count-visual">108</span>
+                    <span class="deck-pile-bot">ใบ</span>
+                </div>
+                <div class="sr-only" id="deck-aria-label">การ์ดในกองเหลือ 108 ใบ</div>
+            </div>
+
+            <!-- Discard -->
+            <div id="discard-container">
+                <div id="discard-pile" aria-hidden="true"></div>
+                <div class="sr-only" id="discard-aria-label">การ์ดที่แสดงคือ ...</div>
+            </div>
+        </div>
+        
+        <!-- Challenge Area -->
+        <div id="challenge-area" style="display: none; width: 100%; margin-bottom: 15px;">
+            <p style="text-align: center; color: var(--focus-ring); margin-bottom: 10px;">มีการใช้ Wild Draw Four คุณต้องการ Challenge ไหม?</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="btn-challenge-yes">ใช่ Challenge!</button>
+                <button id="btn-challenge-no" class="danger">ไม่ยอมรับ (+4)</button>
+            </div>
+        </div>
+
+        <!-- My Cards -->
+        <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 10px; flex: 1; display: flex; flex-direction: column;">
+            <div id="my-cards-container" role="group" aria-label="ไพ่ในมือ">
+                <!-- Rendered via JS -->
+            </div>
+            
+            <!-- Bottom Actions -->
+            <div class="bottom-actions">
+                <button id="btn-draw" class="info">จั่วการ์ด</button>
+                <button id="btn-pass" style="background: #757575; border-color: #424242;">จบตา</button>
+                <button id="btn-uno" class="danger" disabled>UNO</button>
+            </div>
+        </div>
+
+        <!-- Color Picker -->
+        <div id="color-picker-modal">
+            <h2 style="color: white; margin-bottom: 20px;" tabindex="-1" id="color-picker-title">เลือกสีสำหรับ Wild</h2>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+                <button class="color-btn card-red" onclick="selectWildColor('red')" aria-label="เลือกสีแดง"></button>
+                <button class="color-btn card-blue" onclick="selectWildColor('blue')" aria-label="เลือกสีน้ำเงิน"></button>
+                <button class="color-btn card-green" onclick="selectWildColor('green')" aria-label="เลือกสีเขียว"></button>
+                <button class="color-btn card-yellow" onclick="selectWildColor('yellow')" aria-label="เลือกสีเหลือง"></button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Screen: Result -->
+    <main id="screen-result" class="screen" style="text-align: center; justify-content: center;">
+        <h1 tabindex="-1" id="title-result" style="font-size: 40px; color: var(--primary);">จบเกม!</h1>
+        <h2 id="winner-text" style="font-size: 28px; margin-bottom: 30px;"><span aria-hidden="true">🏆</span> ผู้ชนะ: ...</h2>
+        
+        <div id="result-host-controls" style="display: none; margin-top: 30px; gap: 10px; justify-content: center;">
+            <button id="btn-play-again" style="width: auto;"><span aria-hidden="true">🔄</span> เล่นรอบใหม่</button>
+        </div>
+        <button class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='index.html'" style="position: static; margin: 20px auto; display: block;"><span aria-hidden="true">🏠</span> กลับหน้าหลัก</button>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
+            authDomain: "xo-game-134ec.firebaseapp.com",
+            databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "xo-game-134ec",
+            storageBucket: "xo-game-134ec.firebasestorage.app",
+            messagingSenderId: "318375224157",
+            appId: "1:318375224157:web:2eb3510bf38e153cb77eb4"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        let peer = null;
+        let myPeerId = null;
+        let isHost = false;
+        let connections = [];
+        let hostConnection = null;
+        let currentRoomId = null;
+        
+        const MAX_PLAYERS = 6;
+        const COLORS = [
+            { id: "red", name: "สีแดง", hex: "#f56462" },
+            { id: "blue", name: "สีน้ำเงิน", hex: "#00c3e5" },
+            { id: "green", name: "สีเขียว", hex: "#2ecc71" },
+            { id: "yellow", name: "สีเหลือง", hex: "#f7e018" },
+            { id: "purple", name: "สีม่วง", hex: "#9b59b6" },
+            { id: "orange", name: "สีส้ม", hex: "#e67e22" }
+        ];
+        
+        let players = [];
+        let myColorId = null;
+        
+        let game = {
+            status: 'waiting',
+            deck: [],
+            discardPile: [],
+            turnIndex: 0,
+            lastTurnIndex: -1, 
+            direction: 1,
+            currentColor: null,
+            playerStates: {}, 
+            currentTurnStartTime: 0,
+            challengeData: null
+        };
+
+        let myBotDelay = null;
+
+        // --- Helper: สรรพนาม ---
+        function getPronounName(playerObj) {
+            if (!playerObj) return "";
+            const colorDef = COLORS.find(c => c.id === playerObj.colorId);
+            const colorName = colorDef ? colorDef.name : "ไม่ทราบสี";
+            
+            if (playerObj.id === myPeerId) return `คุณ${colorName}`;
+            if (playerObj.isBot) return `บอท${colorName}`;
+            return `เพื่อน${colorName}`;
+        }
+
+        // --- Accessibility Utils (Queue System & Auto Clear) ---
+        let politeQueue = [];
+        let assertiveQueue = [];
+        let isAnnouncingPolite = false;
+        let isAnnouncingAssertive = false;
+
+        function processQueue(type) {
+            const isAssertive = type === 'assertive';
+            const queue = isAssertive ? assertiveQueue : politeQueue;
+            
+            if (queue.length === 0) {
+                if (isAssertive) isAnnouncingAssertive = false;
+                else isAnnouncingPolite = false;
+                return;
+            }
+            
+            if (isAssertive) isAnnouncingAssertive = true;
+            else isAnnouncingPolite = true;
+
+            const text = queue.shift();
+            const elId = isAssertive ? 'aria-assertive' : 'aria-polite';
+            const el = document.getElementById(elId);
+            
+            el.textContent = ''; // clear before setting text to trigger change
+            
+            setTimeout(() => {
+                el.textContent = text;
+                console.log(`🗣️ Announce (${type}):`, text);
+                
+                // คำนวณเวลาพักจากความยาวข้อความ และบังคับ Clear ทำความสะอาด aria-live ให้ว่างเปล่าเสมอ
+                const waitTime = Math.max(2500, text.length * 100);
+                setTimeout(() => {
+                    el.textContent = ''; // Clear ออกไปให้สะอาด
+                    processQueue(type); // เช็คคิวถัดไปถ้ามี
+                }, waitTime);
+            }, 50);
+        }
+
+        function announce(text, assertive = false) {
+            if (!text) return;
+            if (assertive) {
+                assertiveQueue.push(text);
+                if (!isAnnouncingAssertive) processQueue('assertive');
+            } else {
+                politeQueue.push(text);
+                if (!isAnnouncingPolite) processQueue('polite');
+            }
+        }
+
+        function switchScreen(screenId, focusId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            if (focusId) {
+                setTimeout(() => {
+                    const el = document.getElementById(focusId);
+                    if (el) el.focus();
+                }, 100);
+            }
+        }
+
+        function disableBtn(btnId, disabled = true) {
+            const btn = document.getElementById(btnId);
+            if (btn) btn.disabled = disabled;
+        }
+
+        // --- Init PeerJS ---
+        function initPeer() {
+            peer = new Peer({ debug: 2 });
+            peer.on('open', id => { myPeerId = id; });
+            peer.on('connection', conn => {
+                if (isHost) {
+                    conn.on('open', () => {
+                        connections.push(conn);
+                        setupHostConnection(conn);
+                        syncLobby();
+                    });
+                }
+            });
+        }
+        initPeer();
+
+        document.getElementById('btn-show-rules').onclick = () => switchScreen('screen-rules', 'title-rules');
+        document.getElementById('btn-close-rules').onclick = () => switchScreen('screen-main', 'btn-show-rules');
+        document.getElementById('btn-leave-lobby').onclick = leaveLobby;
+        
+        const roomsRef = ref(db, 'uno_rooms');
+        onValue(roomsRef, (snapshot) => {
+            if (document.getElementById('screen-main').classList.contains('active')) {
+                renderRoomList(snapshot.val());
+            }
+        });
+
+        function renderRoomList(rooms) {
+            const list = document.getElementById('room-list');
+            list.innerHTML = '';
+            if (!rooms) {
+                list.innerHTML = '<li style="text-align: center;">ไม่มีห้องที่เปิดอยู่</li>';
+                return;
+            }
+            const activeRooms = Object.entries(rooms).filter(([id, r]) => Date.now() - r.lastActive < 10000 && r.status === 'waiting' && r.currentPlayers < MAX_PLAYERS);
+            
+            if (activeRooms.length === 0) {
+                list.innerHTML = '<li style="text-align: center;">ไม่มีห้องที่เปิดอยู่</li>';
+                return;
+            }
+            activeRooms.forEach(([id, room]) => {
+                const li = document.createElement('li');
+                li.style.background = 'rgba(255,255,255,0.1)'; li.style.margin = '10px 0'; li.style.padding = '10px'; li.style.borderRadius = '8px';
+                li.innerHTML = `<span style="font-weight:bold;">ห้อง: ${id}</span> <span>(${room.currentPlayers}/${MAX_PLAYERS})</span>`;
+                const btn = document.createElement('button');
+                btn.textContent = 'เข้าร่วม'; btn.style.width = 'auto'; btn.style.padding = '5px 10px'; btn.style.float = 'right'; btn.style.marginTop = '-5px';
+                btn.onclick = () => joinRoom(id, room.hostPeerId);
+                li.appendChild(btn);
+                list.appendChild(li);
+            });
+        }
+
+        document.getElementById('btn-create-room').onclick = async () => {
+            disableBtn('btn-create-room');
+            isHost = true;
+            currentRoomId = "uno" + String(Math.floor(Math.random() * 99999) + 1).padStart(5, '0');
+            myColorId = getAvailableColors()[0];
+            players = [{ id: myPeerId, name: "Host (คุณ)", isBot: false, colorId: myColorId, connection: null }];
+            
+            await update(ref(db, `uno_rooms/${currentRoomId}`), {
+                hostPeerId: myPeerId, status: 'waiting', currentPlayers: 1, lastActive: Date.now()
+            });
+
+            setInterval(() => {
+                if (isHost && currentRoomId && game.status === 'waiting') {
+                    update(ref(db, `uno_rooms/${currentRoomId}`), { lastActive: Date.now() });
+                }
+            }, 3000);
+
+            enterLobby();
+            disableBtn('btn-create-room', false);
+        };
+
+        function joinRoom(roomId, hostPeerId) {
+            isHost = false; currentRoomId = roomId;
+            announce('กำลังเชื่อมต่อไปยัง Host...');
+            hostConnection = peer.connect(hostPeerId, { reliable: true });
+            hostConnection.on('open', () => {
+                hostConnection.send({ type: 'joinReq', peerId: myPeerId });
+                enterLobby();
+                hostConnection.on('data', handleClientData);
+                hostConnection.on('close', handleHostDisconnect);
+            });
+        }
+
+        function leaveLobby() {
+            if (isHost) {
+                remove(ref(db, `uno_rooms/${currentRoomId}`));
+                connections.forEach(c => c.close());
+            } else if (hostConnection) {
+                hostConnection.close();
+            }
+            currentRoomId = null; isHost = false; players = []; game.status = 'waiting';
+            switchScreen('screen-main', 'btn-create-room');
+            announce('ออกจากห้องแล้ว');
+        }
+
+        function enterLobby() {
+            switchScreen('screen-lobby', 'title-lobby');
+            document.getElementById('lobby-room-id').textContent = currentRoomId;
+            document.getElementById('host-controls').style.display = isHost ? 'block' : 'none';
+            renderLobby();
+        }
+
+        function renderLobby() {
+            const colorContainer = document.getElementById('color-selection');
+            colorContainer.innerHTML = '';
+            COLORS.forEach(c => {
+                const isTaken = players.some(p => p.colorId === c.id && p.id !== myPeerId);
+                const btn = document.createElement('button');
+                btn.className = `color-btn card-${c.id} ${isTaken ? 'disabled' : ''}`;
+                btn.setAttribute('aria-label', c.name + (isTaken ? ' (ถูกเลือกแล้ว)' : ''));
+                if (myColorId === c.id) {
+                    btn.style.outline = '4px solid var(--focus-ring)';
+                    btn.setAttribute('aria-pressed', 'true');
+                }
+                btn.onclick = () => {
+                    if (!isTaken) {
+                        myColorId = c.id;
+                        if (isHost) {
+                            players.find(p => p.id === myPeerId).colorId = myColorId;
+                            syncLobby();
+                        } else {
+                            hostConnection.send({ type: 'changeColor', colorId: myColorId });
+                        }
+                    }
+                };
+                colorContainer.appendChild(btn);
+            });
+
+            const list = document.getElementById('lobby-player-list');
+            list.innerHTML = '';
+            document.getElementById('lobby-player-count').textContent = players.length;
+            
+            players.forEach(p => {
+                const li = document.createElement('li');
+                li.style.padding = '10px'; li.style.background = 'rgba(0,0,0,0.3)'; li.style.marginBottom = '8px'; li.style.borderRadius = '5px';
+                li.style.display = 'flex'; li.style.alignItems = 'center'; li.style.gap = '10px';
+                const cDef = COLORS.find(c => c.id === p.colorId);
+                li.innerHTML = `<div style="width:20px; height:20px; border-radius:50%; background: ${cDef?cDef.hex:'#fff'}"></div> ${getPronounName(p)}`;
+                list.appendChild(li);
+            });
+
+            if (isHost) {
+                const botCount = players.filter(p => p.isBot).length;
+                document.getElementById('bot-count-display').textContent = botCount;
+                disableBtn('btn-add-bot', players.length >= MAX_PLAYERS);
+                disableBtn('btn-remove-bot', botCount === 0);
+                disableBtn('btn-start-game', players.length < 2);
+            }
+        }
+
+        function getAvailableColors() {
+            const used = players.map(p => p.colorId);
+            return COLORS.map(c => c.id).filter(id => !used.includes(id));
+        }
+
+        function setupHostConnection(conn) {
+            conn.on('data', data => {
+                if (data.type === 'joinReq') {
+                    if (players.length >= MAX_PLAYERS) return;
+                    players.push({ id: data.peerId, name: `Player`, isBot: false, colorId: getAvailableColors()[0], connection: conn });
+                    syncLobby();
+                    update(ref(db, `uno_rooms/${currentRoomId}`), { currentPlayers: players.length });
+                }
+                else if (data.type === 'changeColor') {
+                    const p = players.find(x => x.id === conn.peer);
+                    if (p && !players.some(x => x.colorId === data.colorId && x.id !== conn.peer)) {
+                        p.colorId = data.colorId; syncLobby();
+                    }
+                }
+                else if (data.type === 'action') handlePlayerAction(conn.peer, data.action, data.payload);
+            });
+            conn.on('close', () => handleClientDisconnect(conn.peer));
+        }
+
+        document.getElementById('btn-add-bot').onclick = () => {
+            if (players.length < MAX_PLAYERS) {
+                const colorId = getAvailableColors()[0];
+                const botId = 'bot_' + Date.now();
+                const colorDef = COLORS.find(c => c.id === colorId);
+                players.push({ id: botId, name: `Bot`, isBot: true, colorId: colorId });
+                announce(`เพิ่มบอท${colorDef.name} 1 ตัวแล้ว`, true);
+                syncLobby();
+            }
+        };
+        document.getElementById('btn-remove-bot').onclick = () => {
+            const botIdx = players.slice().reverse().findIndex(p => p.isBot);
+            if (botIdx !== -1) {
+                const actualIdx = players.length - 1 - botIdx;
+                const removedBot = players[actualIdx];
+                const colorDef = COLORS.find(c => c.id === removedBot.colorId);
+                players.splice(actualIdx, 1);
+                announce(`ลดบอท${colorDef.name} 1 ตัวแล้ว`, true);
+                syncLobby();
+            }
+        };
+
+        function syncLobby() {
+            if (!isHost) return;
+            renderLobby();
+            const safePlayers = players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, colorId: p.colorId }));
+            connections.forEach(c => { if(c.open) c.send({ type: 'lobbySync', players: safePlayers }); });
+        }
+
+        function broadcastGameState() {
+            if (!isHost) return;
+            const safeGame = {
+                status: game.status,
+                deckCount: game.deck.length,
+                topDiscard: game.discardPile[game.discardPile.length - 1],
+                turnIndex: game.turnIndex,
+                direction: game.direction,
+                currentColor: game.currentColor,
+                challengeData: game.challengeData,
+                playerStates: {}
+            };
+            players.forEach(p => {
+                safeGame.playerStates[p.id] = {
+                    cardCount: game.playerStates[p.id].hand.length,
+                    declaredUNO: game.playerStates[p.id].declaredUNO,
+                    score: game.playerStates[p.id].score,
+                    hasDrawn: game.playerStates[p.id].hasDrawn
+                };
+            });
+
+            connections.forEach(c => {
+                if(c.open) {
+                    const pState = { ...safeGame, myHand: game.playerStates[c.peer].hand };
+                    c.send({ type: 'gameSync', game: pState });
+                }
+            });
+            renderGame({ ...safeGame, myHand: game.playerStates[myPeerId].hand });
+            processTurnTimer();
+        }
+
+        function showUnoEffect() {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const overlay = document.getElementById('anim-overlay');
+            const textEl = document.getElementById('anim-text');
+            
+            textEl.textContent = 'UNO!';
+            textEl.className = 'anim-uno'; 
+            overlay.style.display = 'flex';
+            
+            setTimeout(() => { 
+                overlay.style.display = 'none'; 
+                textEl.className = 'anim-text'; // reset back
+            }, 1500);
+        }
+
+        function handleClientData(data) {
+            if (data.type === 'lobbySync') {
+                players = data.players;
+                const me = players.find(p => p.id === myPeerId);
+                if (me) myColorId = me.colorId;
+                renderLobby();
+            } else if (data.type === 'gameSync') {
+                if (game.status === 'waiting' && data.game.status === 'playing') {
+                    switchScreen('screen-game', 'top-status-bar');
+                    announce('เริ่มเกมแล้ว!', true);
+                }
+                game = { ...game, ...data.game };
+                renderGame(data.game);
+            } else if (data.type === 'announce') {
+                announce(data.message, true);
+                showAnimOverlay(data.message);
+            } else if (data.type === 'unoEffect') {
+                showUnoEffect();
+            } else if (data.type === 'endGame') {
+                game.status = 'ended'; showResult(data.winnerId, data.scores);
+            }
+        }
+
+        function handleHostDisconnect() { announce('Host หลุด!', true); leaveLobby(); }
+        function handleClientDisconnect(peerId) {
+            if (!isHost) return;
+            const p = players.find(x => x.id === peerId);
+            if (p) {
+                p.isBot = true;
+                syncLobby();
+                if (game.status === 'playing') broadcastGameState();
+            }
+        }
+
+        document.getElementById('btn-start-game').onclick = () => {
+            disableBtn('btn-start-game');
+            if (isHost && players.length >= 2) {
+                remove(ref(db, `uno_rooms/${currentRoomId}`));
+                initUNOGame();
+            }
+        };
+
+        function generateDeck() {
+            const deck = [];
+            const colors = ['red', 'blue', 'green', 'yellow'];
+            colors.forEach(c => {
+                deck.push({ color: c, type: 'number', value: 0 });
+                for(let i=1; i<=9; i++) {
+                    deck.push({ color: c, type: 'number', value: i });
+                    deck.push({ color: c, type: 'number', value: i });
+                }
+                for(let i=0; i<2; i++) {
+                    deck.push({ color: c, type: 'skip', value: 'Skip' });
+                    deck.push({ color: c, type: 'reverse', value: 'Reverse' });
+                    deck.push({ color: c, type: 'draw2', value: 'Draw Two' });
+                }
+            });
+            for(let i=0; i<4; i++) {
+                deck.push({ color: 'wild', type: 'wild', value: 'Wild' });
+                deck.push({ color: 'wild', type: 'wild4', value: 'Wild Draw Four' });
+            }
+            return deck.sort(() => Math.random() - 0.5);
+        }
+
+        function initUNOGame() {
+            game.status = 'playing';
+            game.deck = generateDeck();
+            game.discardPile = [];
+            game.direction = 1;
+            game.turnIndex = 0;
+            game.lastTurnIndex = -1;
+            game.challengeData = null;
+            
+            players.forEach(p => {
+                game.playerStates[p.id] = { hand: [], declaredUNO: false, score: 0, hasDrawn: false };
+                for(let i=0; i<7; i++) drawCardHost(p.id);
+            });
+
+            let topCard = game.deck.pop();
+            while(topCard.type === 'wild4') { game.deck.unshift(topCard); topCard = game.deck.pop(); }
+            game.discardPile.push(topCard);
+            game.currentColor = topCard.color === 'wild' ? ['red','blue','green','yellow'][Math.floor(Math.random()*4)] : topCard.color;
+
+            if (topCard.type === 'skip') game.turnIndex = (game.turnIndex + 1) % players.length;
+            else if (topCard.type === 'reverse') { game.direction = -1; game.turnIndex = (players.length - 1) % players.length; }
+            else if (topCard.type === 'draw2') { drawCardHost(players[game.turnIndex].id, 2); game.turnIndex = (game.turnIndex + 1) % players.length; }
+
+            switchScreen('screen-game', 'top-status-bar');
+            broadcastAnnounce('เกมเริ่มแล้ว!');
+            game.currentTurnStartTime = Date.now();
+            broadcastGameState();
+        }
+
+        function drawCardHost(playerId, count = 1) {
+            for(let i=0; i<count; i++) {
+                if (game.deck.length === 0) {
+                    if (game.discardPile.length <= 1) break;
+                    const top = game.discardPile.pop();
+                    game.deck = game.discardPile.sort(() => Math.random() - 0.5);
+                    game.discardPile = [top];
+                    broadcastAnnounce('สับกองทิ้งใหม่');
+                }
+                game.playerStates[playerId].hand.push(game.deck.pop());
+                game.playerStates[playerId].declaredUNO = false;
+            }
+        }
+
+        function nextTurn(steps = 1) {
+            game.turnIndex = (game.turnIndex + (steps * game.direction) + players.length * 10) % players.length;
+            game.currentTurnStartTime = Date.now();
+            game.challengeData = null;
+            
+            players.forEach(p => {
+                const s = game.playerStates[p.id];
+                s.hasDrawn = false;
+                if (s.hand.length === 1 && !s.declaredUNO && p.id !== players[game.turnIndex].id) {
+                    broadcastAnnounce(`${getPronounName(p)} ลืมประกาศ UNO โดนปรับจั่ว 2 ใบ`, true);
+                    drawCardHost(p.id, 2);
+                }
+            });
+            broadcastGameState();
+        }
+
+        function isValidPlay(card, hand) {
+            if (card.color === 'wild') return true;
+            const top = game.discardPile[game.discardPile.length - 1];
+            return card.color === game.currentColor || card.value === top.value;
+        }
+
+        function handlePlayerAction(peerId, action, payload) {
+            if (!isHost || game.status !== 'playing') return;
+            const currentPlayer = players[game.turnIndex];
+            
+            if (game.challengeData && game.challengeData.victimId === peerId) {
+                if (action === 'challenge_yes') {
+                    const attackerId = game.challengeData.attackerId;
+                    const hasMatchingColor = game.playerStates[attackerId].hand.some(c => c.color === game.challengeData.prevColor);
+                    if (hasMatchingColor) {
+                        broadcastAnnounce(`Challenge สำเร็จ! ${getPronounName(players.find(p=>p.id===attackerId))} โดนปรับจั่ว 4 ใบ`);
+                        drawCardHost(attackerId, 4);
+                    } else {
+                        broadcastAnnounce(`Challenge พลาด! ${getPronounName(players.find(p=>p.id===peerId))} โดนปรับจั่ว 6 ใบ`);
+                        drawCardHost(peerId, 6);
+                    }
+                    nextTurn();
+                } else if (action === 'challenge_no') {
+                    broadcastAnnounce(`${getPronounName(players.find(p=>p.id===peerId))} ไม่ยอมรับ Challenge โดนจั่ว 4 ใบ`);
+                    drawCardHost(peerId, 4); 
+                    nextTurn();
+                }
+                return;
+            }
+
+            if (currentPlayer.id !== peerId) {
+                if (action === 'announce_uno' && game.playerStates[peerId].hand.length === 2 && !game.playerStates[peerId].declaredUNO) {
+                    game.playerStates[peerId].declaredUNO = true;
+                    const pName = getPronounName(players.find(p=>p.id===peerId));
+                    broadcastAnnounce(`${pName} ประกาศ UNO!`, true);
+                    
+                    if (isHost) connections.forEach(c => { if (c.open) c.send({ type: 'unoEffect' }); });
+                    showUnoEffect();
+                    
+                    broadcastGameState();
+                }
+                return;
+            }
+
+            const state = game.playerStates[peerId];
+
+            if (action === 'announce_uno' && state.hand.length === 2 && !state.declaredUNO) {
+                state.declaredUNO = true;
+                const pName = getPronounName(players.find(p=>p.id===peerId));
+                broadcastAnnounce(`${pName} ประกาศ UNO!`, true);
+                
+                if (isHost) connections.forEach(c => { if (c.open) c.send({ type: 'unoEffect' }); });
+                showUnoEffect();
+                
+                broadcastGameState();
+                return;
+            }
+
+            if (action === 'play') {
+                const card = state.hand[payload.cardIndex];
+                if (isValidPlay(card, state.hand)) {
+                    
+                    // รวบรวมข้อความประกาศเหตุการณ์ใน Turn นี้
+                    const pName = getPronounName(currentPlayer);
+                    const cardARIA = getCardARIA(card);
+                    let playMsg = `${pName} วางการ์ด ${cardARIA}`;
+                    
+                    if (card.color === 'wild' && payload.selectedColor) {
+                        const colorNames = {red:'แดง', blue:'น้ำเงิน', green:'เขียว', yellow:'เหลือง'};
+                        playMsg += ` เปลี่ยนเป็นสี${colorNames[payload.selectedColor]}`;
+                    }
+
+                    state.hand.splice(payload.cardIndex, 1);
+                    game.discardPile.push(card);
+                    game.currentColor = card.color !== 'wild' ? card.color : payload.selectedColor;
+
+                    if (state.hand.length === 0) { 
+                        broadcastAnnounce(playMsg);
+                        handleWin(peerId); 
+                        return; 
+                    }
+
+                    // ต่อข้อความสำหรับผลของการ์ดพิเศษ
+                    if (card.type === 'skip') {
+                        const nextPlayer = players[(game.turnIndex + game.direction + players.length) % players.length];
+                        playMsg += `, ส่งผลให้ ${getPronounName(nextPlayer)} ถูกใช้การ์ด skip ข้ามตา`;
+                        broadcastAnnounce(playMsg);
+                        nextTurn(2);
+                    }
+                    else if (card.type === 'reverse') {
+                        playMsg += `, ทำการกลับทิศทางการเล่น`;
+                        broadcastAnnounce(playMsg);
+                        game.direction = game.direction === 1 ? -1 : 1;
+                        nextTurn(players.length === 2 ? 2 : 1);
+                    }
+                    else if (card.type === 'draw2') { 
+                        const nextPlayer = players[(game.turnIndex + game.direction + players.length) % players.length];
+                        playMsg += `, ส่งผลให้ ${getPronounName(nextPlayer)} โดนบังคับจั่ว 2 ใบและถูกข้ามตา`;
+                        broadcastAnnounce(playMsg);
+                        drawCardHost(players[(game.turnIndex + game.direction + players.length) % players.length].id, 2); 
+                        nextTurn(2); 
+                    }
+                    else if (card.type === 'wild4') {
+                        const nextPlayer = players[(game.turnIndex + game.direction + players.length) % players.length];
+                        playMsg += `, ส่งผลให้ ${getPronounName(nextPlayer)} ถูกใช้ Wild Draw Four ต้องเลือกว่าจะ Challenge หรือไม่`;
+                        broadcastAnnounce(playMsg);
+                        game.challengeData = { victimId: nextPlayer.id, attackerId: peerId, prevColor: game.currentColor };
+                        broadcastGameState();
+                    }
+                    else {
+                        broadcastAnnounce(playMsg);
+                        nextTurn(1);
+                    }
+                }
+            } else if (action === 'draw') {
+                if (!state.hasDrawn) {
+                    const pName = getPronounName(currentPlayer);
+                    broadcastAnnounce(`${pName} จั่วการ์ด 1 ใบ`);
+                    drawCardHost(peerId, 1);
+                    state.hasDrawn = true;
+                    broadcastGameState();
+                }
+            } else if (action === 'pass') {
+                if (state.hasDrawn) {
+                    broadcastAnnounce(`${getPronounName(currentPlayer)} จบตา`);
+                    nextTurn(1);
+                }
+            }
+        }
+
+        function handleWin(winnerId) {
+            const winner = players.find(p => p.id === winnerId);
+            broadcastAnnounce(`จบเกม! ผู้ชนะคือ ${getPronounName(winner)}`, true);
+            let score = 0;
+            players.forEach(p => {
+                if(p.id !== winnerId) {
+                    game.playerStates[p.id].hand.forEach(c => {
+                        if (c.type === 'number') score += c.value;
+                        else if (c.type === 'wild' || c.type === 'wild4') score += 50;
+                        else score += 20;
+                    });
+                }
+            });
+            if (isHost) {
+                connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, scores: score }); });
+                game.status = 'ended'; showResult(winnerId, score);
+            }
+        }
+
+        function broadcastAnnounce(msg, assertive = false) {
+            announce(msg, assertive);
+            if(isHost) connections.forEach(c => { if (c.open) c.send({ type: 'announce', message: msg }); });
+        }
+
+        function processTurnTimer() {
+            if (!isHost || game.status !== 'playing') return;
+            const currentPlayer = players[game.turnIndex];
+            
+            if (game.challengeData) {
+                if (players.find(p => p.id === game.challengeData.victimId).isBot) {
+                    setTimeout(() => handlePlayerAction(game.challengeData.victimId, 'challenge_no'), 2500);
+                }
+                return;
+            }
+
+            if (currentPlayer.isBot) {
+                clearTimeout(myBotDelay);
+                const delay = 3500 + Math.random() * 2000;
+                myBotDelay = setTimeout(() => {
+                    if (game.status !== 'playing' || players[game.turnIndex].id !== currentPlayer.id) return;
+                    
+                    const state = game.playerStates[currentPlayer.id];
+                    const validCards = state.hand.map((c, i) => ({card: c, index: i})).filter(x => isValidPlay(x.card, state.hand));
+                    
+                    if (state.hand.length === 2 && validCards.length > 0 && !state.declaredUNO) {
+                        handlePlayerAction(currentPlayer.id, 'announce_uno');
+                    }
+
+                    if (validCards.length > 0) {
+                        const playChoice = validCards[Math.floor(Math.random() * validCards.length)];
+                        handlePlayerAction(currentPlayer.id, 'play', { cardIndex: playChoice.index, selectedColor: ['red', 'blue', 'green', 'yellow'][Math.floor(Math.random() * 4)] });
+                    } else {
+                        if (!state.hasDrawn) {
+                            handlePlayerAction(currentPlayer.id, 'draw');
+                        } else {
+                            handlePlayerAction(currentPlayer.id, 'pass');
+                        }
+                    }
+                }, delay);
+            }
+        }
+
+        // --- Rendering ---
+        function getCardARIA(card) {
+            if (!card) return '';
+            const cName = { red: 'แดง ', blue: 'น้ำเงิน ', green: 'เขียว ', yellow: 'เหลือง ', wild: '' }[card.color];
+            let vName = card.value;
+            if (card.type === 'skip') vName = 'Skip';
+            else if (card.type === 'reverse') vName = 'Reverse';
+            else if (card.type === 'draw2') vName = 'Draw Two';
+            else if (card.type === 'wild') vName = 'Wild';
+            else if (card.type === 'wild4') vName = 'Wild Draw Four';
+            
+            return `${cName}${vName}`.trim();
+        }
+        
+        function renderCardHTML(card, index = -1, isPlayable = false) {
+            let inner = '';
+            if (card.type === 'number') inner = card.value;
+            else if (card.type === 'skip') inner = '<span class="card-special-text">Skip</span>';
+            else if (card.type === 'reverse') inner = '<span class="card-special-text">Reverse</span>';
+            else if (card.type === 'draw2') inner = '<span class="card-special-text">Draw Two</span>';
+            else if (card.type === 'wild') inner = '<span class="card-wild-text">Wild</span>';
+            else if (card.type === 'wild4') inner = '<span class="card-wild-text">Wild Draw Four</span>';
+
+            const btn = document.createElement(index >= 0 ? 'button' : 'div');
+            btn.className = `uno-card card-${card.color} ${!isPlayable && index >= 0 ? 'disabled' : ''}`;
+            btn.innerHTML = inner;
+            
+            if (index >= 0) {
+                btn.setAttribute('aria-label', `${getCardARIA(card)} ${isPlayable ? 'ลงได้' : 'ลงไม่ได้'}`);
+                if (isPlayable) btn.onclick = () => onCardClicked(index, card);
+                else btn.setAttribute('aria-disabled', 'true');
+            }
+            return btn;
+        }
+
+        function toggleMainGameUI(show) {
+            const topBar = document.getElementById('top-status-bar');
+            const midArea = document.querySelector('.middle-area');
+            const bottomArea = document.getElementById('my-cards-container').parentElement;
+            
+            if (show) {
+                topBar.style.display = 'flex';
+                midArea.style.display = 'flex';
+                bottomArea.style.display = 'flex';
+                topBar.removeAttribute('aria-hidden');
+                midArea.removeAttribute('aria-hidden');
+                bottomArea.removeAttribute('aria-hidden');
+            } else {
+                topBar.style.display = 'none';
+                midArea.style.display = 'none';
+                bottomArea.style.display = 'none';
+                topBar.setAttribute('aria-hidden', 'true');
+                midArea.setAttribute('aria-hidden', 'true');
+                bottomArea.setAttribute('aria-hidden', 'true');
+            }
+        }
+
+        function renderGame(gameState) {
+            // Update current turn heading
+            const turnPlayerObj = players[gameState.turnIndex];
+            if (turnPlayerObj) {
+                document.getElementById('current-turn-heading').textContent = `ถึงรอบ${getPronounName(turnPlayerObj)}`;
+            }
+
+            if (gameState.turnIndex !== game.lastTurnIndex) {
+                const currentPlayer = players[gameState.turnIndex];
+                const pronoun = getPronounName(currentPlayer);
+                
+                if (currentPlayer.id === myPeerId) {
+                    let announceMsg = `ถึงรอบ${pronoun}แล้ว`;
+                    if (gameState.topDiscard) {
+                        const displayCard = {...gameState.topDiscard};
+                        if (displayCard.color === 'wild' && gameState.currentColor) {
+                            displayCard.color = gameState.currentColor;
+                        }
+                        
+                        let cardName = getCardARIA(displayCard);
+                        announceMsg += ` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`;
+                    }
+                    announce(announceMsg);
+                } else {
+                    announce(`ถึงรอบ${pronoun}แล้ว`);
+                }
+                game.lastTurnIndex = gameState.turnIndex;
+            }
+
+            // Track drawn cards and announce for accessibility
+            const myHand = gameState.myHand || [];
+            if (typeof window._myPrevHand !== 'undefined') {
+                if (myHand.length > window._myPrevHand.length) {
+                    const diff = myHand.length - window._myPrevHand.length;
+                    const newCards = myHand.slice(-diff);
+                    newCards.forEach(c => {
+                        announce(`ได้รับการ์ด ${getCardARIA(c)}`);
+                    });
+                }
+            }
+            window._myPrevHand = [...myHand];
+
+            const statusBar = document.getElementById('top-status-bar');
+            statusBar.innerHTML = '';
+            
+            let ariaStatusBarText = `ทิศทางการเล่น ${gameState.direction === 1 ? 'ขวา' : 'ซ้าย'}, `;
+            
+            const dirDiv = document.createElement('div');
+            dirDiv.className = 'direction-indicator';
+            dirDiv.setAttribute('aria-hidden', 'true');
+            dirDiv.textContent = gameState.direction === 1 ? '➡️' : '⬅️';
+            statusBar.appendChild(dirDiv);
+
+            players.forEach((p, idx) => {
+                const pState = gameState.playerStates[p.id];
+                const isTurn = idx === gameState.turnIndex;
+                const cDef = COLORS.find(c => c.id === p.colorId);
+                const pName = getPronounName(p);
+                
+                ariaStatusBarText += `${pName} มีการ์ด ${pState.cardCount} ใบ คะแนน ${pState.score}. `;
+                
+                const charDiv = document.createElement('div');
+                charDiv.className = `character-card ${isTurn ? 'is-turn' : ''}`;
+                charDiv.setAttribute('aria-hidden', 'true');
+                charDiv.innerHTML = `
+                    <div class="char-cards-count">${pState.cardCount} ใบ</div>
+                    <div class="char-avatar" style="background-color: ${cDef?cDef.hex:'#fff'};"><span aria-hidden="true">${p.isBot?'🤖':'😊'}</span></div>
+                    <div class="char-score">คะแนน: ${pState.score}</div>
+                `;
+                statusBar.appendChild(charDiv);
+            });
+            statusBar.setAttribute('aria-label', ariaStatusBarText);
+
+            document.getElementById('deck-count-visual').textContent = gameState.deckCount;
+            document.getElementById('deck-aria-label').textContent = `การ์ดในกองเหลือ ${gameState.deckCount} ใบ`;
+
+            const discardEl = document.getElementById('discard-pile');
+            discardEl.innerHTML = '';
+            if (gameState.topDiscard) {
+                const displayCard = {...gameState.topDiscard};
+                if (displayCard.color === 'wild' && gameState.currentColor) {
+                    displayCard.color = gameState.currentColor;
+                }
+                discardEl.appendChild(renderCardHTML(displayCard));
+                document.getElementById('discard-aria-label').textContent = `การ์ดที่แสดงคือ ${getCardARIA(displayCard)}`;
+            }
+
+            const chalArea = document.getElementById('challenge-area');
+            if (gameState.challengeData && gameState.challengeData.victimId === myPeerId) {
+                chalArea.style.display = 'block';
+                toggleMainGameUI(false);
+                document.getElementById('btn-challenge-yes').onclick = () => sendAction('challenge_yes');
+                document.getElementById('btn-challenge-no').onclick = () => sendAction('challenge_no');
+                setTimeout(() => document.getElementById('btn-challenge-yes').focus(), 100);
+            } else {
+                chalArea.style.display = 'none';
+                if (document.getElementById('color-picker-modal').style.display !== 'flex') {
+                    toggleMainGameUI(true);
+                }
+            }
+
+            const myContainer = document.getElementById('my-cards-container');
+            myContainer.innerHTML = '';
+            
+            if (myHand.length > 8) myContainer.classList.add('compact');
+            else myContainer.classList.remove('compact');
+
+            const isMyTurn = players[gameState.turnIndex].id === myPeerId && !gameState.challengeData;
+            
+            myHand.forEach((card, idx) => {
+                const playable = isMyTurn && isValidPlay(card, myHand);
+                myContainer.appendChild(renderCardHTML(card, idx, playable));
+            });
+
+            const btnDraw = document.getElementById('btn-draw');
+            const btnPass = document.getElementById('btn-pass');
+            const btnUno = document.getElementById('btn-uno');
+            
+            const myState = gameState.playerStates[myPeerId];
+            const playableCardsCount = myHand.filter(card => isValidPlay(card, myHand)).length;
+
+            // Post-UNO and standard flow actions
+            if (isMyTurn) {
+                if (myState && myState.declaredUNO) {
+                    btnDraw.disabled = true;
+                    btnPass.disabled = true;
+                } else if (myState && myState.hasDrawn) {
+                    btnDraw.disabled = true;
+                    btnPass.disabled = false;
+                    btnPass.onclick = () => sendAction('pass');
+                } else {
+                    btnDraw.disabled = false;
+                    btnPass.disabled = true;
+                    btnDraw.onclick = () => sendAction('draw');
+                }
+            } else {
+                btnDraw.disabled = true;
+                btnPass.disabled = true;
+            }
+
+            // UNO Button Condition Logic
+            if (isMyTurn && myHand.length === 2 && !myState.declaredUNO && playableCardsCount > 0) {
+                btnUno.disabled = false;
+                btnUno.onclick = () => {
+                    btnUno.disabled = true;
+                    sendAction('announce_uno');
+                };
+            } else {
+                btnUno.disabled = true;
+            }
+        }
+
+        let pendingPlayCardIndex = -1;
+        window.selectWildColor = function(color) {
+            document.getElementById('color-picker-modal').style.display = 'none';
+            toggleMainGameUI(true);
+            if (pendingPlayCardIndex !== -1) {
+                sendAction('play', { cardIndex: pendingPlayCardIndex, selectedColor: color });
+                pendingPlayCardIndex = -1;
+            }
+        };
+
+        function onCardClicked(index, card) {
+            if (card.color === 'wild') {
+                pendingPlayCardIndex = index;
+                const modal = document.getElementById('color-picker-modal');
+                modal.style.display = 'flex';
+                toggleMainGameUI(false);
+                setTimeout(() => modal.querySelector('.color-btn').focus(), 100);
+            } else {
+                sendAction('play', { cardIndex: index });
+            }
+        }
+
+        function sendAction(action, payload = null) {
+            if (isHost) handlePlayerAction(myPeerId, action, payload);
+            else if (hostConnection && hostConnection.open) hostConnection.send({ type: 'action', action, payload });
+        }
+
+        function showResult(winnerId, score) {
+            switchScreen('screen-result', 'title-result');
+            const winner = players.find(p => p.id === winnerId);
+            document.getElementById('winner-text').innerHTML = `<span aria-hidden="true">🏆</span> ผู้ชนะ: ${getPronounName(winner)} (คะแนน: ${score})`;
+            if (isHost) {
+                document.getElementById('result-host-controls').style.display = 'flex';
+                document.getElementById('btn-play-again').onclick = () => initUNOGame();
+            }
+        }
+
+        function showAnimOverlay(text) {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const overlay = document.getElementById('anim-overlay');
+            const textEl = document.getElementById('anim-text');
+            textEl.textContent = text;
+            overlay.style.display = 'flex';
+            setTimeout(() => { overlay.style.display = 'none'; }, 1500);
+        }
+
+        document.getElementById('btn-refresh-audio').onclick = () => {
+             announce('รีเฟรชระบบเสียงแล้ว');
+        };
+
+    </script>
+</body>
+</html>
