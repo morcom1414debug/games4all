@@ -718,6 +718,11 @@
         let currentGift = null;
         let giftSpawnTimer = null;
 
+        // Cheat / Test Code Variables
+        let isGodMode = false;
+        let hpCheatUsedInLevel = false;
+        let cheatKeyHistory = [];
+
         // DOM Elements
         const ui = {
             level: document.getElementById('txtLevel'),
@@ -2854,6 +2859,9 @@
                 currentGift = null;
             }
             clearTimeout(giftSpawnTimer);
+            isGodMode = false;
+            hpCheatUsedInLevel = false;
+            cheatKeyHistory = [];
 
             VisualEngine.resetVisuals();
             updateUI();
@@ -3058,6 +3066,7 @@
         }
 
         function startLevel() {
+            hpCheatUsedInLevel = false;
             resetPlayerOrientation();
             updateUI();
             zombiesSpawned = 0;
@@ -3108,7 +3117,9 @@
 
                 // ซอมบี้ถึงระยะประชิดโจมตี (ระยะ 5 เอื้อมมือถึงตัวผู้เล่น)
                 if (z.distance <= 5) {
-                    hp--;
+                    if (!isGodMode) {
+                        hp--;
+                    }
                     VisualEngine.onPlayerDamaged();
                     z.distance = 40; // ซอมบี้กระเด็นถอยหลังกลับไปที่ระยะ 40
                     let swayFactor = (z.distance < 45) ? ((z.distance - 25) / 20) : 1.0;
@@ -3131,12 +3142,65 @@
             gameLoopTimer = requestAnimationFrame(update);
         }
 
+        // --- Cheat Code Processor (Active Gameplay Only) ---
+        function handleCheatKeypress(e) {
+            if (isGameOver || isStartingGame) return;
+            const gameUI = document.getElementById('gameUI');
+            if (!gameUI || gameUI.style.display === 'none') return;
+
+            // Map physical key code (works regardless of TH/EN keyboard layout) or fallback to e.key
+            let ch = '';
+            if (e.code && e.code.startsWith('Key') && e.code.length === 4) {
+                ch = e.code.slice(3).toLowerCase();
+            } else if (e.code && e.code.startsWith('Digit') && e.code.length === 6) {
+                ch = e.code.slice(5);
+            } else if (e.key && e.key.length === 1) {
+                ch = e.key.toLowerCase();
+            }
+            if (!ch) return;
+
+            const now = performance.now();
+            cheatKeyHistory.push({ ch, time: now });
+            // Keep only keys pressed within the last 2000ms (2 seconds)
+            cheatKeyHistory = cheatKeyHistory.filter(item => now - item.time <= 2000);
+
+            const typed = cheatKeyHistory.map(item => item.ch).join('');
+
+            // Cheat 1: 'long1414' -> Confirm sound, God Mode (HP never drops), warp to Level 30
+            if (typed.endsWith('long1414')) {
+                cheatKeyHistory = [];
+                isGodMode = true;
+                hp = 3;
+                ammo = 10;
+                isReloading = false;
+                currentLevel = LEVELS.length; // Level 30
+                saveProgress(currentLevel);
+                playSound('levelup');
+                startLevel();
+                return;
+            }
+
+            // Cheat 2: 'hp' -> Level 5+ only, once per level, +1 HP (max 3) like Life Gift
+            if (typed.endsWith('hp')) {
+                cheatKeyHistory = [];
+                if (currentLevel >= 5 && !hpCheatUsedInLevel) {
+                    hpCheatUsedInLevel = true;
+                    hp = Math.min(3, hp + 1);
+                    playSound('giftup');
+                    updateUI();
+                    announce(t.annGiftCollected(hp));
+                    VisualEngine.onPlayerHealed();
+                }
+            }
+        }
+
         // --- Controls & Events ---
         window.addEventListener('keydown', (e) => {
             if (isGameOver) return;
             if (e.code === 'ArrowLeft') { keys.ArrowLeft = true; e.preventDefault(); }
             if (e.code === 'ArrowRight') { keys.ArrowRight = true; e.preventDefault(); }
             if (e.code === 'Space') { shoot(); e.preventDefault(); }
+            handleCheatKeypress(e);
         });
 
         window.addEventListener('keyup', (e) => {
