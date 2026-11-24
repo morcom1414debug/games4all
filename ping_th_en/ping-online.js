@@ -24,10 +24,13 @@ function isEnglishLang() {
     return window.ppLang === 'en';
   }
   try {
-    return localStorage.getItem('pp_lang') === 'en';
-  } catch (e) {
-    return false;
-  }
+    const saved = localStorage.getItem('pp_lang');
+    if (saved === 'th' || saved === 'en') {
+      return saved === 'en';
+    }
+  } catch (e) {}
+  const browserLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+  return !browserLang.startsWith('th');
 }
 
 /**

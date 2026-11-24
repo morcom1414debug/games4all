@@ -819,7 +819,18 @@ import { AuthManager } from './auth.js';
 import { OnlineMatchController } from './ping-online.js';
 
 // ==================== Bilingual Support (TH / EN) ====================
-let currentLang = localStorage.getItem('pp_lang') === 'en' ? 'en' : 'th';
+function detectInitialLanguage() {
+  try {
+    const savedLang = localStorage.getItem('pp_lang');
+    if (savedLang === 'th' || savedLang === 'en') {
+      return savedLang;
+    }
+  } catch (e) {}
+  const browserLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+  return browserLang.startsWith('th') ? 'th' : 'en';
+}
+
+let currentLang = detectInitialLanguage();
 window.ppLang = currentLang;
 
 const PP_I18N = {
@@ -3658,7 +3669,9 @@ async function selectAndStartRound(selectedRoundIdx) {
 addAccessibleClickListener(btnLangToggle, () => {
   currentLang = currentLang === 'th' ? 'en' : 'th';
   window.ppLang = currentLang;
-  localStorage.setItem('pp_lang', currentLang);
+  try {
+    localStorage.setItem('pp_lang', currentLang);
+  } catch (e) {}
   applyStaticLanguage();
 
   if (currentUser) {

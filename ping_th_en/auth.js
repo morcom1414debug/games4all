@@ -26,15 +26,22 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const database = getDatabase(app);
 export const GAME_ID = "PingPong";
 
+function detectInitialLanguage() {
+  try {
+    const saved = localStorage.getItem("pp_lang");
+    if (saved === "th" || saved === "en") {
+      return saved;
+    }
+  } catch (e) {}
+  const browserLang = (navigator.language || navigator.userLanguage || "").toLowerCase();
+  return browserLang.startsWith("th") ? "th" : "en";
+}
+
 function isEnglishLang() {
-  if (typeof window !== "undefined" && window.ppLang) {
+  if (typeof window !== "undefined" && (window.ppLang === "th" || window.ppLang === "en")) {
     return window.ppLang === "en";
   }
-  try {
-    return localStorage.getItem("pp_lang") === "en";
-  } catch (e) {
-    return false;
-  }
+  return detectInitialLanguage() === "en";
 }
 
 export function encodeUserKey(username) {
