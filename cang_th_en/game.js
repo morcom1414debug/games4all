@@ -83,6 +83,32 @@ function getSpecialWinType(hand, player) {
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // =========================================================
+// ระบบเรียงไพ่ในมือ (Sort Hand) - ปลอดภัย 100% เพราะเรียงบน Array hand โดยตรง
+// =========================================================
+const SORT_RANK_ORDER = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const SORT_SUIT_ORDER = ['♠', '♥', '♦', '♣'];
+
+function sortPlayerHand(hand, topDiscard = null, hasDrawn = false, hasDiscarded = false, hasFlowedThisTurn = false) {
+    if (!Array.isArray(hand) || hand.length <= 1) return hand;
+    const shouldPrioritizeFlowable = Boolean(
+        topDiscard && topDiscard.rank && !hasDrawn && !hasDiscarded && !hasFlowedThisTurn
+    );
+
+    hand.sort((a, b) => {
+        if (shouldPrioritizeFlowable) {
+            const aMatch = a.rank === topDiscard.rank ? 0 : 1;
+            const bMatch = b.rank === topDiscard.rank ? 0 : 1;
+            if (aMatch !== bMatch) return aMatch - bMatch;
+        }
+        const rankDiff = SORT_RANK_ORDER.indexOf(a.rank) - SORT_RANK_ORDER.indexOf(b.rank);
+        if (rankDiff !== 0) return rankDiff;
+        return SORT_SUIT_ORDER.indexOf(a.suit) - SORT_SUIT_ORDER.indexOf(b.suit);
+    });
+
+    return hand;
+}
+
+// =========================================================
 // Audio Setup (คงไว้ 100% เพิ่มไฟล์เสียงใหม่ และระบบจัดการคิว/AudioContext ส่วนกลาง)
 // =========================================================
 let audioCtx = null;
@@ -716,6 +742,74 @@ let announcerTimeout = null;
 let hostHeartbeatTimer = null;
 let heartbeatInterval = null;
 
+// Timers for Accessibility Focus & Auto End Turn
+let autoDrawFocusTimeout = null;
+let autoHandFocusTimeout = null;
+let autoEndTurnTimeout = null;
+
+function clearAutoDrawFocusTimer() {
+    if (autoDrawFocusTimeout) {
+        clearTimeout(autoDrawFocusTimeout);
+        autoDrawFocusTimeout = null;
+    }
+}
+
+function clearAutoHandFocusTimer() {
+    if (autoHandFocusTimeout) {
+        clearTimeout(autoHandFocusTimeout);
+        autoHandFocusTimeout = null;
+    }
+}
+
+function clearAutoEndTurnTimer() {
+    if (autoEndTurnTimeout) {
+        clearTimeout(autoEndTurnTimeout);
+        autoEndTurnTimeout = null;
+    }
+}
+
+function scheduleFocusOnDrawButton() {
+    clearAutoDrawFocusTimer();
+    autoDrawFocusTimeout = setTimeout(() => {
+        autoDrawFocusTimeout = null;
+        if (isLocalTempBotModalOpen) return;
+        const pub = window.currentPublicState;
+        if (!pub || pub.status !== 'PLAYING' || pub.turnId !== myPeerId) return;
+        if (localPlayerState.temporaryBot || localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn) return;
+        const btnDraw = document.getElementById('btn-draw');
+        if (btnDraw && !btnDraw.disabled && btnDraw.style.display !== 'none') {
+            btnDraw.focus();
+        }
+    }, 3000);
+}
+
+function scheduleFocusOnFirstHandCard() {
+    clearAutoHandFocusTimer();
+    autoHandFocusTimeout = setTimeout(() => {
+        autoHandFocusTimeout = null;
+        if (isLocalTempBotModalOpen) return;
+        const pub = window.currentPublicState;
+        if (!pub || pub.status !== 'PLAYING' || pub.turnId !== myPeerId) return;
+        if (localPlayerState.temporaryBot || !localPlayerState.hasDrawn || localPlayerState.hasFlowedThisTurn) return;
+        const handUi = document.getElementById('my-hand-ui');
+        if (handUi && handUi.firstElementChild && !handUi.firstElementChild.disabled) {
+            handUi.firstElementChild.focus();
+        }
+    }, 2100);
+}
+
+function scheduleAutoEndTurn(expectedPlayerId) {
+    clearAutoEndTurnTimer();
+    autoEndTurnTimeout = setTimeout(() => {
+        autoEndTurnTimeout = null;
+        if (!isHost || gameState.status !== 'PLAYING' || isEndingTurn) return;
+        let currentCp = gameState.players[gameState.turnIndex];
+        if (!currentCp || currentCp.id !== expectedPlayerId || currentCp.isBot) return;
+        if (!(currentCp.hasDiscardedTurn || currentCp.hasFlowedThisTurn)) return;
+        processPlayerAction(expectedPlayerId, 'END_TURN', 0, true);
+    }, 1100);
+}
+
 // =========================================================
 // Deferred Initialization Management (Firebase & PeerJS)
 // =========================================================
@@ -791,6 +885,9 @@ function randomizeAllBotNames(count) {
 
 function triggerHostDisconnect() {
     clearTimeout(hostHeartbeatTimer);
+    clearAutoDrawFocusTimer();
+    clearAutoHandFocusTimer();
+    clearAutoEndTurnTimer();
     if (localBotModalTimer) {
         clearInterval(localBotModalTimer);
         localBotModalTimer = null;
@@ -1116,6 +1213,9 @@ function handleHostRoomExit() {
 
     clearInterval(turnTimerInterval);
     clearInterval(heartbeatInterval);
+    clearAutoDrawFocusTimer();
+    clearAutoHandFocusTimer();
+    clearAutoEndTurnTimer();
     if (localBotModalTimer) {
         clearInterval(localBotModalTimer);
         localBotModalTimer = null;
@@ -1260,7 +1360,39 @@ function broadcastTransition(msg, duration) {
     guestConnections.forEach(c => c.send({ type: 'SHOW_TRANSITION', msg, duration }));
 }
 
+const PRE_GAME_BASE_ANNOUNCEMENT = "เปิดรอบใหม่! มีใครจะแคง 25 ไหม?";
+
+function buildLocalPreGameAnnouncement(baseMsg) {
+    const hand = (localPlayerState && Array.isArray(localPlayerState.hand)) ? localPlayerState.hand : [];
+    if (hand.length === 0) return baseMsg;
+
+    const handSum = hand.reduce((sum, c) => sum + (c.val || getCardValue(c.rank)), 0);
+    const specialType = getSpecialWinType(hand, localPlayerState);
+    let fullMsg = `${baseMsg} ผลรวม ${handSum} แต้ม`;
+    if (specialType) {
+        fullMsg += ` คุณใช้ ${specialType} ได้`;
+    }
+    return fullMsg;
+}
+
 function announce(rawMsg, showOnBanner = true) {
+    if (rawMsg === PRE_GAME_BASE_ANNOUNCEMENT) {
+        const pub = window.currentPublicState;
+        if (pub && pub.status === 'PRE_GAME' && localPlayerState && Array.isArray(localPlayerState.hand) && localPlayerState.hand.length > 0) {
+            window._pendingPreGameBaseMsg = null;
+            window._announcedPreGameRound = true;
+            rawMsg = buildLocalPreGameAnnouncement(rawMsg);
+        } else {
+            window._pendingPreGameBaseMsg = rawMsg;
+            window._announcedPreGameRound = false;
+            return;
+        }
+    }
+
+    if (typeof rawMsg === 'string' && rawMsg.includes('จั่วได้ไพ่')) {
+        scheduleFocusOnFirstHandCard();
+    }
+
     let formattedMsg = rawMsg.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
     const srOnly = document.getElementById('sr-only-announcer');
     if (srOnly) {
@@ -1698,6 +1830,10 @@ function restorePlayerIfReturnRequested(p) {
 }
 
 function startNewRound() {
+    clearAutoEndTurnTimer();
+    clearAutoDrawFocusTimer();
+    clearAutoHandFocusTimer();
+
     if (window.nextRoundHostId) {
         let idx = gameState.players.findIndex(p => p.id === window.nextRoundHostId);
         if (idx > 0) {
@@ -1714,11 +1850,13 @@ function startNewRound() {
     
     gameState.players.forEach((p) => {
         if(p.points > 0) { 
-            p.hand = deck.splice(0, 5); p.isOut = false; p.hasDrawnTurn = false; p.hasDiscardedTurn = false; p.hasFlowedThisTurn = false; p.discardedRankThisTurn = null; p.turnCount = 0; p.hasFinishedFirstTurn = false;
+            p.hand = deck.splice(0, 5);
+            sortPlayerHand(p.hand, null, false, false, false);
+            p.isOut = false; p.hasDrawnTurn = false; p.hasDiscardedTurn = false; p.hasFlowedThisTurn = false; p.discardedRankThisTurn = null; p.turnCount = 0; p.hasFinishedFirstTurn = false;
         } else { p.isOut = true; } 
     });
     
-    syncStateToAll(); startPreGameTimer(); broadcastAnnounce("เปิดรอบใหม่! มีใครจะแคง 25 ไหม?");
+    syncStateToAll(); startPreGameTimer(); broadcastAnnounce(PRE_GAME_BASE_ANNOUNCEMENT);
 }
 
 function startPreGameTimer() {
@@ -1772,6 +1910,7 @@ function handleTurnTimeout() {
     let cp = gameState.players[gameState.turnIndex];
     if (!cp || cp.isBot || gameState.status !== 'PLAYING') return;
 
+    clearAutoEndTurnTimer();
     isProcessingTurnTimeout = true;
     try {
         cp.consecutiveTimeouts = (cp.consecutiveTimeouts || 0) + 1;
@@ -1823,8 +1962,15 @@ function syncStateToAll() {
     let activePlayers = gameState.players.filter(p => !p.isOut);
     if(activePlayers.length <= 1) return;
 
+    const currentTopDiscard = discardPile[discardPile.length - 1] || null;
+    gameState.players.forEach(p => {
+        if (p.hand && p.hand.length > 0) {
+            sortPlayerHand(p.hand, currentTopDiscard, p.hasDrawnTurn, p.hasDiscardedTurn, p.hasFlowedThisTurn);
+        }
+    });
+
     let publicState = {
-        status: gameState.status, turnId: gameState.players[gameState.turnIndex].id, topDiscard: discardPile[discardPile.length - 1],
+        status: gameState.status, turnId: gameState.players[gameState.turnIndex].id, topDiscard: currentTopDiscard,
         deckCount: deck.length, discardPileCount: discardPile.length, skipVotes: gameState.skipPreVotes || [],
         playersInfo: gameState.players.map(p => ({
             id: p.id,
@@ -1949,6 +2095,7 @@ window.playKangAnimation = (callerId, winType) => {
 };
 
 function broadcastKangAnimation(callerId, winType) {
+    clearAutoEndTurnTimer();
     gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
     let data = { type: 'KANG_ANIMATION', callerId, winType };
     if (myPeerId) window.playKangAnimation(callerId, winType);
@@ -1961,6 +2108,7 @@ function broadcastKangAnimation(callerId, winType) {
 // =========================================================
 
 function nextTurn() {
+    clearAutoEndTurnTimer();
     isEndingTurn = false;
     activeBotSequencePlayerId = null;
 
@@ -2181,6 +2329,7 @@ function processPlayerAction(pId, action, cardIndex, isInternalBotOrSystem = fal
         let topCard = discardPile[discardPile.length - 1]; let card = flowPlayer.hand[cardIndex];
         if (topCard && card && card.rank === topCard.rank) {
             if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(flowPlayer);
+            clearAutoEndTurnTimer();
             triggerSound('follow'); let dropped = flowPlayer.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
             flowPlayer.hasFlowedThisTurn = true; 
 
@@ -2206,13 +2355,20 @@ function processPlayerAction(pId, action, cardIndex, isInternalBotOrSystem = fal
                 setTimeout(() => resolveKang(flowPlayer.id, false, 'FLOW_KNOCK'), 4500); 
             } 
             else {
+                const remainingFlowable = flowPlayer.hand.filter(c => c.rank === topCard.rank).length;
+                const shouldAutoEndAfterFlow = (!flowPlayer.isBot && !isInternalBotOrSystem && remainingFlowable === 0);
+
                 gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval); syncStateToAll();
                 broadcastTransition('ไหลไพ่สำเร็จ! รอสักครู่...', 2500);
                 setTimeout(() => {
                     gameState.status = 'PLAYING';
                     syncStateToAll();
                     startTurnTimer();
-                    if (flowPlayer.isBot) checkBotTurn();
+                    if (flowPlayer.isBot) {
+                        checkBotTurn();
+                    } else if (shouldAutoEndAfterFlow) {
+                        scheduleAutoEndTurn(flowPlayer.id);
+                    }
                 }, 2500);
             }
         }
@@ -2244,6 +2400,7 @@ function processPlayerAction(pId, action, cardIndex, isInternalBotOrSystem = fal
         if (!card) return;
         if (!cp.hasDiscardedTurn && cp.hasDrawnTurn) {
             if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
+            clearAutoEndTurnTimer();
             triggerSound('select'); let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
             
             let isFirstDiscardInTurn = !cp.hasDiscardedTurn;
@@ -2258,21 +2415,39 @@ function processPlayerAction(pId, action, cardIndex, isInternalBotOrSystem = fal
             if(cp.hand.length === 0) {
                 broadcastKangAnimation(cp.id, 'knock');
                 setTimeout(() => resolveKang(cp.id, false, 'DRAW_KNOCK'), 4500);
-            } else syncStateToAll();
+            } else {
+                syncStateToAll();
+                if (!cp.isBot && !isInternalBotOrSystem) {
+                    const remainingSameRank = cp.hand.filter(c => c.rank === dropped.rank).length;
+                    if (remainingSameRank === 0) {
+                        scheduleAutoEndTurn(cp.id);
+                    }
+                }
+            }
         } 
         else if (cp.hasDiscardedTurn && card.rank === cp.discardedRankThisTurn) {
             if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
+            clearAutoEndTurnTimer();
             triggerSound('select'); let dropped = cp.hand.splice(cardIndex, 1)[0]; discardPile.push(dropped);
             broadcastAnnounce(`[PID:${cp.id}] วางไพ่ ${THAI_RANKS[dropped.rank]} ${THAI_SUITS[dropped.suit]} เพิ่มเติม (เลขเดียวกัน)`);
             if(cp.hand.length === 0) {
                 broadcastKangAnimation(cp.id, 'knock');
                 setTimeout(() => resolveKang(cp.id, false, 'DRAW_KNOCK'), 4500);
-            } else syncStateToAll();
+            } else {
+                syncStateToAll();
+                if (!cp.isBot && !isInternalBotOrSystem) {
+                    const remainingSameRank = cp.hand.filter(c => c.rank === dropped.rank).length;
+                    if (remainingSameRank === 0) {
+                        scheduleAutoEndTurn(cp.id);
+                    }
+                }
+            }
         }
     }
     else if(action === 'END_TURN' && (cp.hasDiscardedTurn || cp.hasFlowedThisTurn)) {
         if (isEndingTurn) return;
         isEndingTurn = true;
+        clearAutoEndTurnTimer();
         if (!isInternalBotOrSystem) resetPlayerTimeoutOnValidHumanAction(cp);
         cp.hasFinishedFirstTurn = true;
         cp.turnCount = (cp.turnCount || 0) + 1;
@@ -2288,6 +2463,7 @@ function processPlayerAction(pId, action, cardIndex, isInternalBotOrSystem = fal
 }
 
 function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 = false) {
+    clearAutoEndTurnTimer();
     window.nextRoundHostId = callerId;
     gameState.status = 'TRANSITION'; clearInterval(turnTimerInterval);
     let active = gameState.players.filter(p => !p.isOut);
@@ -2385,6 +2561,28 @@ function renderClientGame(publicState, privateState) {
     updateHomeBtnVisibility();
 
     localPlayerState = privateState;
+    let topC = publicState.topDiscard;
+    if (localPlayerState && Array.isArray(localPlayerState.hand)) {
+        sortPlayerHand(
+            localPlayerState.hand,
+            topC,
+            localPlayerState.hasDrawn,
+            localPlayerState.hasDiscarded,
+            localPlayerState.hasFlowedThisTurn
+        );
+    }
+
+    if (publicState.status === 'PRE_GAME') {
+        if (window._pendingPreGameBaseMsg && !window._announcedPreGameRound && localPlayerState.hand && localPlayerState.hand.length > 0) {
+            const baseMsg = window._pendingPreGameBaseMsg;
+            window._pendingPreGameBaseMsg = null;
+            announce(baseMsg);
+        }
+    } else {
+        window._pendingPreGameBaseMsg = null;
+        window._announcedPreGameRound = false;
+    }
+
     const turnId = publicState.turnId;
     const isFirstPlayer = (myPeerId === publicState.playersInfo[0].id);
     const myPublicInfo = publicState.playersInfo.find(p => p.id === myPeerId);
@@ -2417,10 +2615,19 @@ function renderClientGame(publicState, privateState) {
             let newTurnTxt = (turnId === myPeerId && !isControlledByBot) ? `🔥 ถึงรอบของ ${currPlayerDisp} แล้ว!` : `ถึงรอบของ ${currPlayerDisp} แล้ว`;
             if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
                 turnInd.innerText = newTurnTxt;
-                let topC = publicState.topDiscard;
                 let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
-                if(turnId === myPeerId && !isControlledByBot) announce(`ถึงรอบของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt})`);
-                else announce(`ถึงรอบของ ${currPlayerDisp} แล้ว (ไพ่บนกองคือ ${topTxt})`, false);
+                if (turnId === myPeerId && !isControlledByBot) {
+                    let playableCount = (topC && !localPlayerState.hasDrawn && !localPlayerState.hasFlowedThisTurn)
+                        ? (localPlayerState.hand || []).filter(c => c.rank === topC.rank).length
+                        : 0;
+                    let playHintTxt = playableCount > 0 ? `ลงได้ ${playableCount} ใบ` : `ลงไม่ได้จั่วเลย`;
+                    announce(`ถึงรอบของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt}) ${playHintTxt}`);
+                    if (playableCount === 0 && !localPlayerState.hasDrawn && !localPlayerState.hasFlowedThisTurn) {
+                        scheduleFocusOnDrawButton();
+                    }
+                } else {
+                    announce(`ถึงรอบของ ${currPlayerDisp} แล้ว (ไพ่บนกองคือ ${topTxt})`, false);
+                }
             }
         }
     }
@@ -2457,7 +2664,6 @@ function renderClientGame(publicState, privateState) {
     const btnDraw = document.getElementById('btn-draw'); const btnKang = document.getElementById('btn-kang');
     const btnKang25 = document.getElementById('btn-kang25'); const btnEnd = document.getElementById('btn-end-turn');
     const btnSkip = document.getElementById('btn-skip-pre'); const btnSpecial = document.getElementById('btn-special');
-    let topC = publicState.topDiscard;
 
     if (topC) currentTopCardText = `ไพ่บนกองทิ้งปัจจุบันคือ ${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}`;
     else currentTopCardText = `ยังไม่มีไพ่บนกองทิ้ง`;
@@ -2504,20 +2710,19 @@ function renderClientGame(publicState, privateState) {
         btnSpecial.disabled = true;
     }
 
-const deckCountTxt = document.getElementById('deck-count-text');
+    const deckCountTxt = document.getElementById('deck-count-text');
+    if (deckCountTxt) {
+        deckCountTxt.innerText = publicState.deckCount;
+    }
 
-if (deckCountTxt) {
-    deckCountTxt.innerText = publicState.deckCount;
-}
+    const deckAccessibleObject = document.getElementById('deck-accessible-object');
+    if (deckAccessibleObject) {
+        deckAccessibleObject.setAttribute(
+            'aria-label',
+            `กองไพ่สำหรับจั่ว เหลือ ${publicState.deckCount} ใบ`
+        );
+    }
 
-const deckAccessibleObject = document.getElementById('deck-accessible-object');
-
-if (deckAccessibleObject) {
-    deckAccessibleObject.setAttribute(
-        'aria-label',
-        `กองไพ่สำหรับจั่ว เหลือ ${publicState.deckCount} ใบ`
-    );
-}
     let dp = document.getElementById('discard-pile');
     
     // --- [เพิ่มมิติการแสดงผล] Visual Trigger: อัปเดตกองทิ้ง ---
