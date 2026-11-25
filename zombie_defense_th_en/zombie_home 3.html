@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Zombie Defense</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            width: 100%;
+            height: 100dvh;
+            height: 100svh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #090b0f;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            position: relative;
+            padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        }
+
+        /* ================= VISUAL BACKDROP & ATMOSPHERE ================= */
+        #visualRoot {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 42%, #1b222c 0%, #0d1016 55%, #05070a 100%);
+        }
+        #bgCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            filter: blur(2.6px) brightness(0.76);
+            transform: scale(1.03);
+        }
+        #screenVignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+            background: radial-gradient(circle at center, rgba(5, 7, 10, 0.35) 25%, rgba(0, 0, 0, 0.85) 100%);
+        }
+
+        /* ================= GAME CONTAINER & HOME BUTTON ================= */
+        #gameContainer {
+            position: relative;
+            z-index: 20;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: radial-gradient(circle at 50% 45%, rgba(12, 14, 20, 0.45), rgba(5, 7, 10, 0.78));
+        }
+
+        .btn-home-main {
+            position: absolute;
+            top: max(16px, env(safe-area-inset-top, 16px));
+            left: max(16px, env(safe-area-inset-left, 16px));
+            padding: 10px 15px;
+            font-size: 22px;
+            z-index: 1000;
+            background: rgba(20, 26, 36, 0.88);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(6px);
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: transform 0.08s ease, background-color 0.12s ease;
+        }
+        .btn-home-main:hover {
+            background: rgba(36, 46, 62, 0.94);
+        }
+        .btn-home-main:active {
+            transform: scale(0.95);
+        }
+
+        .btn-lang-toggle {
+            position: absolute;
+            top: max(16px, env(safe-area-inset-top, 16px));
+            right: max(16px, env(safe-area-inset-right, 16px));
+            padding: 10px 14px;
+            font-size: 16px;
+            font-weight: 700;
+            z-index: 1000;
+            background: rgba(20, 26, 36, 0.88);
+            color: #fbbf24;
+            border: 1px solid rgba(251, 191, 36, 0.45);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(6px);
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: transform 0.08s ease, background-color 0.12s ease;
+        }
+        .btn-lang-toggle:hover {
+            background: rgba(36, 46, 62, 0.94);
+        }
+        .btn-lang-toggle:active {
+            transform: scale(0.95);
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+
+        /* ================= MAIN MENU SECTION ================= */
+        #mainMenu {
+            position: relative;
+            z-index: 30;
+            width: 100%;
+            max-width: 440px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #mainMenu h1 {
+            font-size: clamp(32px, 8vw, 54px);
+            margin: 0 0 8px 0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #f8fafc;
+            text-shadow: 0 0 25px rgba(220, 38, 38, 0.9), 0 4px 14px rgba(0, 0, 0, 1);
+        }
+
+        .tagline {
+            font-size: clamp(14px, 3.6vw, 18px);
+            color: #fbbf24;
+            font-weight: 700;
+            margin: 0 0 24px 0;
+            letter-spacing: 0.4px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 1), 0 0 12px rgba(0, 0, 0, 0.9);
+        }
+
+        .menu-buttons {
+            position: relative;
+            z-index: 35;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+            max-width: 340px;
+        }
+
+        .menu-btn {
+            width: 100%;
+            padding: 14px 20px;
+            font-size: clamp(17px, 4.2vw, 20px);
+            font-weight: 700;
+            color: #fff;
+            border-radius: 12px;
+            cursor: pointer;
+            touch-action: manipulation;
+            letter-spacing: 0.5px;
+            transition: transform 0.08s ease, filter 0.12s ease, box-shadow 0.12s ease;
+        }
+        .menu-btn:hover {
+            filter: brightness(1.12);
+        }
+        .menu-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* โทนสีปุ่มแยกตามประเภทโหมด */
+        .btn-train {
+            background: linear-gradient(180deg, rgba(37, 99, 235, 0.96) 0%, rgba(29, 78, 216, 0.98) 100%);
+            border: 1.5px solid rgba(191, 219, 254, 0.72);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), 0 0 14px rgba(37, 99, 235, 0.35);
+        }
+        .btn-play {
+            background: linear-gradient(180deg, rgba(46, 139, 60, 0.96) 0%, rgba(28, 94, 39, 0.98) 100%);
+            border: 1.5px solid rgba(187, 247, 208, 0.8);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85), 0 0 16px rgba(46, 139, 60, 0.45);
+        }
+        .btn-guide {
+            background: linear-gradient(180deg, rgba(51, 65, 85, 0.96) 0%, rgba(30, 41, 59, 0.98) 100%);
+            border: 1.5px solid rgba(255, 255, 255, 0.55);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.8);
+            margin-top: 2px;
+        }
+
+        /* ================= MANUAL / GUIDE SCREEN ================= */
+        #guideScreen {
+            display: none;
+            position: relative;
+            z-index: 40;
+            width: 100%;
+            max-width: 540px;
+            max-height: 88dvh;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(180deg, rgba(15, 20, 28, 0.94) 0%, rgba(10, 14, 20, 0.97) 100%);
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            border-radius: 16px;
+            padding: 24px 22px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.9), 0 0 25px rgba(220, 38, 38, 0.25);
+            backdrop-filter: blur(10px);
+        }
+
+        #guideScreen h1 {
+            font-size: clamp(26px, 6.5vw, 38px);
+            margin: 0 0 14px 0;
+            color: #fbbf24;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+        }
+
+        .guide-content {
+            width: 100%;
+            text-align: left;
+            overflow-y: auto;
+            padding-right: 4px;
+            margin-bottom: 18px;
+            font-size: clamp(14px, 3.6vw, 16px);
+            line-height: 1.6;
+            color: #e2e8f0;
+        }
+
+        .guide-block {
+            background: rgba(255, 255, 255, 0.04);
+            border-left: 3px solid #ef4444;
+            border-radius: 0 8px 8px 0;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+        }
+        .guide-block:last-child {
+            margin-bottom: 0;
+            border-left-color: #38bdf8;
+        }
+
+        .guide-block strong {
+            display: block;
+            color: #f8fafc;
+            font-size: clamp(15px, 3.8vw, 17px);
+            margin-bottom: 4px;
+        }
+
+        .guide-block ul {
+            margin: 4px 0 0 0;
+            padding-left: 20px;
+        }
+        .guide-block li {
+            margin-bottom: 4px;
+        }
+
+        #btnCloseGuide {
+            background: linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%);
+            border: 1.5px solid rgba(255, 220, 220, 0.75);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+            max-width: 240px;
+            padding: 12px 24px;
+        }
+
+        /* Compact / Landscape Screen Adjustments */
+        @media (max-height: 560px) {
+            #mainMenu h1 {
+                font-size: 28px;
+                margin-bottom: 4px;
+            }
+            .tagline {
+                margin-bottom: 12px;
+                font-size: 14px;
+            }
+            .menu-buttons {
+                gap: 8px;
+            }
+            .menu-btn {
+                padding: 10px 16px;
+                font-size: 16px;
+            }
+            #guideScreen {
+                padding: 16px 18px;
+            }
+            #guideScreen h1 {
+                margin-bottom: 8px;
+                font-size: 24px;
+            }
+            .guide-content {
+                margin-bottom: 12px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- บรรยากาศพื้นหลังเดียวกับตัวเกม พร้อมฝูงซอมบี้เคลื่อนไหวแบบเบลอจางๆ -->
+    <div id="visualRoot" aria-hidden="true">
+        <canvas id="bgCanvas"></canvas>
+        <div id="screenVignette"></div>
+    </div>
+
+    <!-- Game Container หลัก -->
+    <main id="gameContainer">
+        <!-- ปุ่มกลับเมนูหลักมุมบนซ้ายสุด -->
+        <button id="btn-home-main" class="btn-home-main" aria-label="กลับสู่ชุมชน" onclick="location.href='../index.html'">
+            <span aria-hidden="true">🏠</span>
+        </button>
+
+        <!-- ปุ่มสลับภาษา (ไทย / อังกฤษ) -->
+        <button id="btnLangToggle" class="btn-lang-toggle" type="button" aria-label="Switch language to English">
+            EN
+        </button>
+
+        <div class="sr-only" aria-live="assertive" id="announcer"></div>
+
+        <!-- หน้าเมนูหลักของเกม -->
+        <section id="mainMenu" aria-labelledby="gameTitle">
+            <h1 id="gameTitle">Zombie Defense : Games4all</h1>
+            <p id="taglineText" class="tagline">สวมหูฟัง ฟังเสียงฝีเท้า แล้วลั่นไกเอาชีวิตรอดจากฝูงซอมบี้รอบทิศทาง!</p>
+
+            <div class="menu-buttons">
+                <button id="btnTrain180" type="button" class="menu-btn btn-train" onclick="location.href='zombie_defense_180_training.html'">
+                    โหมดฝึกฝน 180°
+                </button>
+                <button id="btnTrain360" type="button" class="menu-btn btn-train" onclick="location.href='zombie_defense_360_training.html'">
+                    โหมดฝึกฝน 360°
+                </button>
+                <button id="btnPlay180" type="button" class="menu-btn btn-play" onclick="location.href='zombie_defense_180.html'">
+                    เริ่มเกมแบบ 180°
+                </button>
+                <button id="btnPlay360" type="button" class="menu-btn btn-play" onclick="location.href='zombie_defense_360.html'">
+                    เริ่มเกมแบบ 360°
+                </button>
+                <button type="button" id="btnOpenGuide" class="menu-btn btn-guide">
+                    คู่มือการเล่น
+                </button>
+            </div>
+        </section>
+
+        <!-- หน้าคู่มือการเล่น (ซ่อนส่วนอื่นทั้งหมดเมื่อเปิดใช้งาน) -->
+        <section id="guideScreen" aria-labelledby="guideHeading" tabindex="-1">
+            <h1 id="guideHeading">คู่มือ</h1>
+
+            <div class="guide-content">
+                <div class="guide-block">
+                    <strong id="guideBlock1Title">รูปแบบโหมดและจำนวนด่าน (30 ด่านจบ)</strong>
+                    <ul id="guideBlock1List">
+                        <li><b>โหมด 180°:</b> ป้องกันซอมบี้ที่บุกเข้ามาจากด้านหน้าครึ่งวงกลม ครบทั้งหมด 30 ด่าน</li>
+                        <li><b>โหมด 360°:</b> ระวังภัยรอบตัวเต็มวงกลมทั้งด้านหน้าและด้านหลัง ครบทั้งหมด 30 ด่าน</li>
+                        <li><b>เป้าหมาย:</b> ฟังตำแหน่งเสียงซอมบี้ หันเล็งให้ตรงทิศ แล้วกำจัดให้หมดก่อนเข้าประชิดตัว (ด่าน 1-6 แนะนำซอมบี้ทีละประเภท, ด่าน 7-18 ท้าทายเต็มรูปแบบ)</li>
+                    </ul>
+                </div>
+
+                <div class="guide-block">
+                    <strong id="guideBlock2Title">วิธีการควบคุม</strong>
+                    <ul id="guideBlock2List">
+                        <li><b>บนคอมพิวเตอร์ (แป้นพิมพ์ลัด):</b> กดปุ่ม <b>ลูกศรซ้าย (←) / ลูกศรขวา (→)</b> เพื่อหมุนตัวหันทิศทาง และกด <b>Spacebar</b> เพื่อยิง (กดอีกครั้งเมื่อกระสุนหมดเพื่อรีโหลด)</li>
+                        <li><b>บนมือถือ (Motion &amp; หน้าจอสัมผัส):</b> เปิดใช้งานเซนเซอร์แล้ว<b>หมุนตัวหรือหันโทรศัพท์</b>ตามทิศทางเสียง หรือปัดหน้าจอ/กดปุ่มซ้าย-ขวา และแตะปุ่มยิงด้านล่าง</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button type="button" id="btnCloseGuide" class="menu-btn">
+                ปิดคู่มือ
+            </button>
+        </section>
+    </main>
+
+    <script>
+        // ระบบจัดการภาษา (ไทย / อังกฤษ) บันทึกไว้ใน localStorage
+        const LANG_KEY = 'zombieDefenseLang';
+
+        function detectInitialLanguage() {
+            try {
+                const saved = localStorage.getItem(LANG_KEY);
+                if (saved === 'th' || saved === 'en') return saved;
+            } catch (e) {}
+            const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+            return browserLang.startsWith('th') ? 'th' : 'en';
+        }
+
+        const TEXT = {
+            th: {
+                pageTitle: 'Zombie Defense',
+                homeAria: 'กลับสู่ชุมชน',
+                langBtnText: 'EN',
+                langBtnAria: 'เปลี่ยนภาษาเป็นภาษาอังกฤษ (Switch to English)',
+                langChangedAnnounce: 'เปลี่ยนภาษาเป็นภาษาไทยแล้ว',
+                gameTitle: 'Zombie Defense : Games4all',
+                tagline: 'สวมหูฟัง ฟังเสียงฝีเท้า แล้วลั่นไกเอาชีวิตรอดจากฝูงซอมบี้รอบทิศทาง!',
+                train180: 'โหมดฝึกฝน 180°',
+                train360: 'โหมดฝึกฝน 360°',
+                play180: 'เริ่มเกมแบบ 180°',
+                play360: 'เริ่มเกมแบบ 360°',
+                openGuide: 'คู่มือการเล่น',
+                guideHeading: 'คู่มือ',
+                guideBlock1Title: 'รูปแบบโหมดและจำนวนด่าน (18 ด่านจบ)',
+                guideBlock1Items: [
+                    '<b>โหมด 180°:</b> ป้องกันซอมบี้ที่บุกเข้ามาจากด้านหน้าครึ่งวงกลม ครบทั้งหมด 18 ด่าน',
+                    '<b>โหมด 360°:</b> ระวังภัยรอบตัวเต็มวงกลมทั้งด้านหน้าและด้านหลัง ครบทั้งหมด 18 ด่าน',
+                    '<b>เป้าหมาย:</b> ฟังตำแหน่งเสียงซอมบี้ หันเล็งให้ตรงทิศ แล้วกำจัดให้หมดก่อนเข้าประชิดตัว (ด่าน 1-6 แนะนำซอมบี้ทีละประเภท, ด่าน 7-18 ท้าทายเต็มรูปแบบ)'
+                ],
+                guideBlock2Title: 'วิธีการควบคุม',
+                guideBlock2Items: [
+                    '<b>บนคอมพิวเตอร์ (แป้นพิมพ์ลัด):</b> กดปุ่ม <b>ลูกศรซ้าย (←) / ลูกศรขวา (→)</b> เพื่อหมุนตัวหันทิศทาง และกด <b>Spacebar</b> เพื่อยิง (กดอีกครั้งเมื่อกระสุนหมดเพื่อรีโหลด)',
+                    '<b>บนมือถือ (Motion &amp; หน้าจอสัมผัส):</b> เปิดใช้งานเซนเซอร์แล้ว<b>หมุนตัวหรือหันโทรศัพท์</b>ตามทิศทางเสียง หรือปัดหน้าจอ/กดปุ่มซ้าย-ขวา และแตะปุ่มยิงด้านล่าง'
+                ],
+                closeGuide: 'ปิดคู่มือ'
+            },
+            en: {
+                pageTitle: 'Zombie Defense',
+                homeAria: 'Back to Community Hub',
+                langBtnText: 'ไทย',
+                langBtnAria: 'Switch language to Thai (เปลี่ยนเป็นภาษาไทย)',
+                langChangedAnnounce: 'Language switched to English',
+                gameTitle: 'Zombie Defense : Games4all',
+                tagline: 'Put on headphones, listen to footsteps, and shoot to survive the zombie horde!',
+                train180: '180° Training Mode',
+                train360: '360° Training Mode',
+                play180: 'Start 180° Mode',
+                play360: 'Start 360° Mode',
+                openGuide: 'How to Play',
+                guideHeading: 'Game Guide',
+                guideBlock1Title: 'Game Modes & Stages (18 Levels Total)',
+                guideBlock1Items: [
+                    '<b>180° Mode:</b> Defend against zombies approaching from the 180-degree front sector across all 18 levels.',
+                    '<b>360° Mode:</b> Watch your full 360-degree surroundings, both front and behind, across all 18 levels.',
+                    '<b>Objective:</b> Locate zombies by sound, turn to aim directly at them, and eliminate them before they reach you (Levels 1-6 introduce each zombie type; Levels 7-18 bring the full challenge).'
+                ],
+                guideBlock2Title: 'Controls',
+                guideBlock2Items: [
+                    '<b>PC (Keyboard):</b> Press <b>Left Arrow (←) / Right Arrow (→)</b> to turn, and press <b>Spacebar</b> to shoot (press again when out of ammo to reload).',
+                    '<b>Mobile (Motion &amp; Touch):</b> Enable motion sensors and <b>turn your body or phone</b> toward the sound, or swipe/tap the Left-Right buttons and tap the Shoot button at the bottom.'
+                ],
+                closeGuide: 'Close Guide'
+            }
+        };
+
+        let currentLang = detectInitialLanguage();
+
+        const mainMenu = document.getElementById('mainMenu');
+        const guideScreen = document.getElementById('guideScreen');
+        const btnHomeMain = document.getElementById('btn-home-main');
+        const btnLangToggle = document.getElementById('btnLangToggle');
+        const btnOpenGuide = document.getElementById('btnOpenGuide');
+        const btnCloseGuide = document.getElementById('btnCloseGuide');
+        const announcer = document.getElementById('announcer');
+
+        function announce(text) {
+            if (!announcer) return;
+            announcer.innerText = '';
+            setTimeout(() => {
+                announcer.innerText = text;
+            }, 30);
+        }
+
+        function applyLanguage(lang, shouldAnnounce = false) {
+            currentLang = (lang === 'en') ? 'en' : 'th';
+            try {
+                localStorage.setItem(LANG_KEY, currentLang);
+            } catch (e) {}
+            const t = TEXT[currentLang];
+
+            document.documentElement.lang = currentLang;
+            document.title = t.pageTitle;
+
+            btnHomeMain.setAttribute('aria-label', t.homeAria);
+            btnLangToggle.innerText = t.langBtnText;
+            btnLangToggle.setAttribute('aria-label', t.langBtnAria);
+
+            document.getElementById('gameTitle').innerText = t.gameTitle;
+            document.getElementById('taglineText').innerText = t.tagline;
+            document.getElementById('btnTrain180').innerText = t.train180;
+            document.getElementById('btnTrain360').innerText = t.train360;
+            document.getElementById('btnPlay180').innerText = t.play180;
+            document.getElementById('btnPlay360').innerText = t.play360;
+            btnOpenGuide.innerText = t.openGuide;
+
+            document.getElementById('guideHeading').innerText = t.guideHeading;
+            document.getElementById('guideBlock1Title').innerText = t.guideBlock1Title;
+            document.getElementById('guideBlock1List').innerHTML = t.guideBlock1Items.map(item => `<li>${item}</li>`).join('');
+            document.getElementById('guideBlock2Title').innerText = t.guideBlock2Title;
+            document.getElementById('guideBlock2List').innerHTML = t.guideBlock2Items.map(item => `<li>${item}</li>`).join('');
+            btnCloseGuide.innerText = t.closeGuide;
+
+            if (shouldAnnounce) {
+                announce(t.langChangedAnnounce);
+            }
+        }
+
+        btnLangToggle.addEventListener('click', () => {
+            const nextLang = currentLang === 'th' ? 'en' : 'th';
+            applyLanguage(nextLang, true);
+        });
+
+        applyLanguage(currentLang, false);
+
+        // ระบบสลับหน้าเมนูหลัก <-> หน้าคู่มือ (ซ่อนส่วนอื่นๆ ทั้งหมดตามต้องการ)
+        btnOpenGuide.addEventListener('click', () => {
+            mainMenu.style.display = 'none';
+            btnHomeMain.style.display = 'none';
+            btnLangToggle.style.display = 'none';
+            guideScreen.style.display = 'flex';
+            guideScreen.focus();
+        });
+
+        btnCloseGuide.addEventListener('click', () => {
+            guideScreen.style.display = 'none';
+            mainMenu.style.display = 'flex';
+            btnHomeMain.style.display = 'block';
+            btnLangToggle.style.display = 'block';
+            btnOpenGuide.focus();
+        });
+
+        // ฉากพื้นหลังเมืองร้างยามค่ำคืน + ฝูงซอมบี้ทั้ง 6 ประเภทเดินเคลื่อนไหว
+        (function renderAnimatedBackdrop() {
+            const canvas = document.getElementById('bgCanvas');
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            let w = 0;
+            let h = 0;
+            let dpr = 1;
+
+            const BUILDINGS = [];
+            const STARS = [];
+            const ZOMBIE_TYPES = ['ธรรมดา', 'วิ่งเร็ว', 'เกราะหนา', 'ยักษ์', 'ระเบิด', 'พิเศษ'];
+            const horde = [];
+
+            function initProps() {
+                BUILDINGS.length = 0;
+                STARS.length = 0;
+
+                let seed = 42;
+                const rand = () => {
+                    seed = (seed * 16807) % 2147483647;
+                    return (seed - 1) / 2147483646;
+                };
+
+                // สร้างตึกร้างเส้นขอบฟ้า
+                let bx = -20;
+                while (bx < 2400) {
+                    const bw = 42 + rand() * 58;
+                    const bhFactor = 0.13 + rand() * 0.23;
+                    const shade = Math.floor(13 + rand() * 12);
+                    const ruinedType = Math.floor(rand() * 3);
+                    BUILDINGS.push({ x: bx, w: bw, bhFactor, shade, ruinedType });
+                    bx += bw - 4;
+                }
+
+                // ดวงดาวยามค่ำคืน
+                for (let i = 0; i < 45; i++) {
+                    STARS.push({
+                        rx: rand(),
+                        ry: 0.04 + rand() * 0.35,
+                        size: 1 + rand() * 1.3,
+                        twinkle: rand() * Math.PI * 2
+                    });
+                }
+
+                // สร้างซอมบี้ทั้ง 6 ประเภทเดินโซซัดโซเซในฉากหลัง (คุมระยะให้อยู่ในโซนกลาง-ไกล ไม่ล้ำขึ้นมาบดบังปุ่ม)
+                horde.length = 0;
+                const configs = [
+                    { type: 'ยักษ์',    relX: -0.34, dist: 58, speed: 0.8,  phase: 0.4 },
+                    { type: 'เกราะหนา', relX:  0.35, dist: 52, speed: 1.1,  phase: 2.1 },
+                    { type: 'พิเศษ',    relX: -0.22, dist: 46, speed: 1.5,  phase: 3.7 },
+                    { type: 'ระเบิด',   relX:  0.23, dist: 44, speed: 1.35, phase: 5.0 },
+                    { type: 'วิ่งเร็ว', relX: -0.38, dist: 40, speed: 2.1,  phase: 1.3 },
+                    { type: 'ธรรมดา',   relX:  0.39, dist: 38, speed: 1.25, phase: 4.2 }
+                ];
+
+                configs.forEach(cfg => {
+                    horde.push({
+                        type: cfg.type,
+                        relX: cfg.relX,
+                        dist: cfg.dist,
+                        baseDist: cfg.dist,
+                        speed: cfg.speed,
+                        phase: cfg.phase,
+                        driftOffset: Math.random() * Math.PI * 2
+                    });
+                });
+            }
+
+            function resize() {
+                w = window.innerWidth;
+                h = window.innerHeight;
+                dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+                canvas.width = Math.floor(w * dpr);
+                canvas.height = Math.floor(h * dpr);
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
+            window.addEventListener('resize', resize);
+            initProps();
+            resize();
+
+            // วาดตัวละครซอมบี้สไตล์เดียวกับในเกมโหมด 360
+            function drawZombieCharacter(type, sx, footY, scale, phase, nowSec) {
+                ctx.save();
+                ctx.translate(sx, footY);
+
+                let sizeMult = 1.0;
+                let widthMult = 1.0;
+                let lean = 0;
+                let skinColor = '#7d927b';
+                let darkSkin = '#4b5c4a';
+                let coatColor = '#334155';
+                let pantsColor = '#1e293b';
+                let eyeColor = '#ef4444';
+                let auraColor = null;
+
+                switch (type) {
+                    case 'ธรรมดา':
+                        sizeMult = 1.0;
+                        widthMult = 1.0;
+                        lean = Math.sin(phase) * 0.08;
+                        skinColor = '#849682';
+                        darkSkin = '#526150';
+                        coatColor = '#3b4252';
+                        pantsColor = '#232833';
+                        eyeColor = '#f87171';
+                        break;
+                    case 'วิ่งเร็ว':
+                        sizeMult = 0.96;
+                        widthMult = 0.82;
+                        lean = 0.22 + Math.sin(phase * 2) * 0.06;
+                        skinColor = '#9ca3af';
+                        darkSkin = '#6b7280';
+                        coatColor = '#7f1d1d';
+                        pantsColor = '#18181b';
+                        eyeColor = '#ff2a2a';
+                        break;
+                    case 'เกราะหนา':
+                        sizeMult = 1.12;
+                        widthMult = 1.28;
+                        lean = Math.sin(phase * 0.8) * 0.04;
+                        skinColor = '#64748b';
+                        darkSkin = '#334155';
+                        coatColor = '#475569';
+                        pantsColor = '#1e293b';
+                        eyeColor = '#38bdf8';
+                        break;
+                    case 'ยักษ์':
+                        sizeMult = 1.85;
+                        widthMult = 1.55;
+                        lean = Math.sin(phase * 0.6) * 0.05;
+                        skinColor = '#6b7c65';
+                        darkSkin = '#3f4d3b';
+                        coatColor = '#451a03';
+                        pantsColor = '#292524';
+                        eyeColor = '#f97316';
+                        break;
+                    case 'ระเบิด':
+                        sizeMult = 1.04;
+                        widthMult = 1.18;
+                        lean = Math.sin(phase * 1.1) * 0.07;
+                        skinColor = '#78350f';
+                        darkSkin = '#451a03';
+                        coatColor = '#27272a';
+                        pantsColor = '#18181b';
+                        eyeColor = '#facc15';
+                        auraColor = 'rgba(249, 115, 22, 0.36)';
+                        break;
+                    case 'พิเศษ':
+                        sizeMult = 1.08;
+                        widthMult = 0.92;
+                        lean = -0.1 + Math.sin(phase * 1.6) * 0.14;
+                        skinColor = '#581c87';
+                        darkSkin = '#3b0764';
+                        coatColor = '#1e1b4b';
+                        pantsColor = '#0f172a';
+                        eyeColor = '#c084fc';
+                        auraColor = 'rgba(168, 85, 247, 0.38)';
+                        break;
+                }
+
+                const s = scale * sizeMult;
+                const wScale = s * widthMult;
+
+                // เงาที่พื้น
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 26 * wScale, 7 * s, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // แสงออร่าสำหรับซอมบี้ระเบิดและซอมบี้พิเศษ
+                if (auraColor) {
+                    const pulse = 0.85 + 0.25 * Math.sin(nowSec * (type === 'ระเบิด' ? 10 : 6));
+                    const grad = ctx.createRadialGradient(0, -68 * s, 4 * s, 0, -68 * s, 58 * wScale * pulse);
+                    grad.addColorStop(0, auraColor);
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(0, -68 * s, 58 * wScale * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                const stride = Math.sin(phase);
+                const armSwing = Math.cos(phase);
+                const bobY = Math.abs(Math.sin(phase)) * 4.5 * s;
+
+                ctx.rotate(lean);
+
+                // ขาซ้าย-ขวา
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 10 * wScale;
+                ctx.strokeStyle = pantsColor;
+                ctx.beginPath();
+                ctx.moveTo(-8 * wScale, -46 * s - bobY);
+                ctx.lineTo(-10 * wScale + stride * 5 * wScale, -22 * s - Math.max(0, stride) * 4 * s);
+                ctx.lineTo(-11 * wScale + stride * 7 * wScale, -2 * s);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(8 * wScale, -46 * s - bobY);
+                ctx.lineTo(10 * wScale - stride * 5 * wScale, -22 * s - Math.max(0, -stride) * 4 * s);
+                ctx.lineTo(11 * wScale - stride * 7 * wScale, -2 * s);
+                ctx.stroke();
+
+                // ลำตัว
+                const torsoBottom = -44 * s - bobY;
+                const torsoTop = -92 * s - bobY;
+                ctx.fillStyle = coatColor;
+                ctx.beginPath();
+                ctx.moveTo(-15 * wScale, torsoBottom);
+                ctx.lineTo(-19 * wScale, torsoTop);
+                ctx.lineTo(19 * wScale, torsoTop);
+                ctx.lineTo(15 * wScale, torsoBottom);
+                ctx.closePath();
+                ctx.fill();
+
+                if (type === 'เกราะหนา') {
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.beginPath();
+                    ctx.roundRect(-17 * wScale, torsoTop + 3 * s, 34 * wScale, 34 * s, 4 * s);
+                    ctx.fill();
+                } else if (type === 'ระเบิด') {
+                    const pulse = 0.85 + 0.2 * Math.sin(nowSec * 10);
+                    ctx.fillStyle = '#ea580c';
+                    ctx.beginPath();
+                    ctx.arc(-7 * wScale, torsoTop + 20 * s, 9 * wScale * pulse, 0, Math.PI * 2);
+                    ctx.arc(8 * wScale, torsoTop + 24 * s, 10 * wScale * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fde047';
+                    ctx.beginPath();
+                    ctx.arc(-7 * wScale, torsoTop + 20 * s, 4.5 * wScale * pulse, 0, Math.PI * 2);
+                    ctx.arc(8 * wScale, torsoTop + 24 * s, 5 * wScale * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (type === 'พิเศษ') {
+                    const pulse = 0.8 + 0.25 * Math.sin(nowSec * 7);
+                    ctx.fillStyle = '#a855f7';
+                    ctx.beginPath();
+                    ctx.arc(0, torsoTop + 20 * s, 7 * wScale * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // แขน
+                ctx.strokeStyle = type === 'เกราะหนา' ? '#64748b' : skinColor;
+                ctx.lineWidth = (type === 'ยักษ์' ? 11 : 7.5) * wScale;
+                ctx.beginPath();
+                ctx.moveTo(-18 * wScale, torsoTop + 6 * s);
+                ctx.lineTo(-24 * wScale, torsoTop + 22 * s + armSwing * 5 * s);
+                ctx.lineTo(-16 * wScale, torsoTop + 34 * s + armSwing * 8 * s);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(18 * wScale, torsoTop + 6 * s);
+                ctx.lineTo(24 * wScale, torsoTop + 22 * s - armSwing * 5 * s);
+                ctx.lineTo(16 * wScale, torsoTop + 34 * s - armSwing * 8 * s);
+                ctx.stroke();
+
+                // ศีรษะและดวงตาเรืองแสง
+                const headY = torsoTop - 13 * s;
+                const headR = 12.5 * s * (type === 'ยักษ์' ? 0.88 : 1.0);
+                ctx.fillStyle = skinColor;
+                ctx.beginPath();
+                ctx.arc(0, headY, headR, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (type === 'เกราะหนา') {
+                    ctx.fillStyle = '#334155';
+                    ctx.beginPath();
+                    ctx.arc(0, headY - 2 * s, headR * 1.15, Math.PI, 0);
+                    ctx.lineTo(headR * 1.15, headY + 4 * s);
+                    ctx.lineTo(-headR * 1.15, headY + 4 * s);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = '#0ea5e9';
+                    ctx.fillRect(-headR * 0.85, headY - 3 * s, headR * 1.7, 5 * s);
+                } else {
+                    ctx.fillStyle = eyeColor;
+                    ctx.shadowColor = eyeColor;
+                    ctx.shadowBlur = 10 * s;
+                    ctx.beginPath();
+                    ctx.arc(-4.2 * s, headY - 1.5 * s, 2.1 * s, 0, Math.PI * 2);
+                    ctx.arc(4.2 * s, headY - 1.5 * s, 2.1 * s, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+
+                if (type === 'พิเศษ') {
+                    ctx.strokeStyle = '#c084fc';
+                    ctx.lineWidth = 2 * s;
+                    ctx.beginPath();
+                    ctx.moveTo(-9 * s, headY - 8 * s);
+                    ctx.lineTo(-14 * s, headY - 20 * s);
+                    ctx.moveTo(9 * s, headY - 8 * s);
+                    ctx.lineTo(14 * s, headY - 20 * s);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            let lastTime = performance.now();
+
+            function loop(nowMs) {
+                const dt = Math.min(0.05, (nowMs - lastTime) * 0.001);
+                lastTime = nowMs;
+                const nowSec = nowMs * 0.001;
+                const horizonY = h * 0.45;
+
+                // 1. ท้องฟ้ายามค่ำคืนโทนแดงหม่น
+                const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
+                sky.addColorStop(0, '#06080d');
+                sky.addColorStop(0.55, '#111824');
+                sky.addColorStop(0.88, '#231c24');
+                sky.addColorStop(1, '#362220');
+                ctx.fillStyle = sky;
+                ctx.fillRect(0, 0, w, horizonY + 2);
+
+                // ดวงดาว
+                ctx.fillStyle = '#cbd5e1';
+                for (let i = 0; i < STARS.length; i++) {
+                    const st = STARS[i];
+                    ctx.globalAlpha = 0.25 + 0.35 * Math.sin(nowSec * 2 + st.twinkle);
+                    ctx.fillRect(st.rx * w, st.ry * horizonY, st.size, st.size);
+                }
+                ctx.globalAlpha = 1;
+
+                // แสงจันทร์
+                const moonX = w * 0.76;
+                const moonY = horizonY * 0.3;
+                const moonGlow = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, 95);
+                moonGlow.addColorStop(0, 'rgba(254, 240, 210, 0.9)');
+                moonGlow.addColorStop(0.25, 'rgba(253, 186, 116, 0.3)');
+                moonGlow.addColorStop(1, 'rgba(253, 186, 116, 0)');
+                ctx.fillStyle = moonGlow;
+                ctx.beginPath();
+                ctx.arc(moonX, moonY, 95, 0, Math.PI * 2);
+                ctx.fill();
+
+                // เงาตึกร้างเส้นขอบฟ้า
+                for (let i = 0; i < BUILDINGS.length; i++) {
+                    const b = BUILDINGS[i];
+                    if (b.x > w + 60) break;
+                    const bh = h * b.bhFactor;
+                    const by = horizonY - bh;
+                    ctx.fillStyle = `rgb(${b.shade}, ${b.shade + 3}, ${b.shade + 8})`;
+                    ctx.beginPath();
+                    if (b.ruinedType === 0) {
+                        ctx.rect(b.x, by, b.w, bh);
+                    } else if (b.ruinedType === 1) {
+                        ctx.moveTo(b.x, horizonY);
+                        ctx.lineTo(b.x, by);
+                        ctx.lineTo(b.x + b.w * 0.5, by + bh * 0.2);
+                        ctx.lineTo(b.x + b.w, by + bh * 0.08);
+                        ctx.lineTo(b.x + b.w, horizonY);
+                    } else {
+                        ctx.moveTo(b.x, horizonY);
+                        ctx.lineTo(b.x, by + bh * 0.18);
+                        ctx.lineTo(b.x + b.w * 0.4, by);
+                        ctx.lineTo(b.x + b.w, by + bh * 0.24);
+                        ctx.lineTo(b.x + b.w, horizonY);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                // 2. พื้นถนน
+                const ground = ctx.createLinearGradient(0, horizonY, 0, h);
+                ground.addColorStop(0, '#161920');
+                ground.addColorStop(0.4, '#1d2129');
+                ground.addColorStop(1, '#0e1116');
+                ctx.fillStyle = ground;
+                ctx.fillRect(0, horizonY, w, h - horizonY);
+
+                // 3. อัปเดตและวาดซอมบี้ทั้ง 6 ตัวในฉากหลัง (เรียงจากไกลไปใกล้)
+                const groundSpan = h - horizonY;
+                horde.sort((a, b) => b.dist - a.dist);
+
+                for (let i = 0; i < horde.length; i++) {
+                    const z = horde[i];
+                    z.phase += dt * (2.2 + z.speed * 1.4);
+                    // เดินขยับเข้า-ออกอย่างนุ่มนวลในระยะไกล เพื่อสร้างบรรยากาศมีชีวิตชีวาโดยไม่พุ่งชนหน้าจอ
+                    z.dist = z.baseDist + Math.sin(nowSec * 0.45 + z.driftOffset) * 5;
+
+                    const normDepth = 16 / (z.dist + 10);
+                    const scale = Math.min(1.15, Math.max(0.28, normDepth * 1.25));
+                    const t = Math.pow(Math.max(0, Math.min(1, 1 - z.dist / 108)), 1.55);
+                    const footY = horizonY + groundSpan * (0.08 + t * 0.82);
+
+                    // กระจายตำแหน่งซอมบี้ออกด้านซ้ายและขวาเล็กน้อย เพื่อเปิดพื้นที่ตรงกลางให้ปุ่มเมนูเด่นชัด
+                    const swayX = Math.sin(nowSec * 0.6 + z.driftOffset) * (w * 0.035);
+                    const sx = w * 0.5 + z.relX * w + swayX;
+
+                    drawZombieCharacter(z.type, sx, footY, scale, z.phase, nowSec);
+                }
+
+                // 4. หมอกลอยคลุมช่วงล่างและเส้นขอบฟ้าเพื่อความนุ่มนวล
+                const fog = ctx.createLinearGradient(0, horizonY - 25, 0, horizonY + 60);
+                fog.addColorStop(0, 'rgba(30, 38, 48, 0)');
+                fog.addColorStop(0.45, 'rgba(36, 44, 56, 0.48)');
+                fog.addColorStop(1, 'rgba(22, 27, 34, 0)');
+                ctx.fillStyle = fog;
+                ctx.fillRect(0, horizonY - 25, w, 85);
+
+                requestAnimationFrame(loop);
+            }
+
+            requestAnimationFrame(loop);
+        })();
+    </script>
+</body>
+</html>
