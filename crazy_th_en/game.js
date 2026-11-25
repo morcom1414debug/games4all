@@ -218,11 +218,24 @@ function translateAnnouncementToEn(rawMsg) {
 	if (turnMatch) {
 		const pName = turnMatch[1];
 		let cardDesc = turnMatch[2];
+		let turnSuffixEn = '';
+
+		const playableMatch = cardDesc.match(/\s+ลงได้ (\d+) ใบ$/);
+		const noPlayableMatch = cardDesc.match(/\s+ลงไม่ได้ จั่วเลย$/);
+		if (playableMatch) {
+			const count = parseInt(playableMatch[1], 10);
+			cardDesc = cardDesc.slice(0, playableMatch.index);
+			turnSuffixEn = `  ${count} playable ${count === 1 ? 'card' : 'cards'}`;
+		} else if (noPlayableMatch) {
+			cardDesc = cardDesc.slice(0, noPlayableMatch.index);
+			turnSuffixEn = `  No playable cards. Draw!`;
+		}
+
 		cardDesc = cardDesc.replace(/ เปลี่ยนดอกเป็น (โพแดง|ข้าวหลามตัด|ดอกจิก|โพดำ)$/, (_, suitTh) => {
 			return ` (Suit changed to ${translateCardPhraseToEn(suitTh)})`;
 		});
 		cardDesc = translateCardPhraseToEn(cardDesc);
-		return `${pName}'s turn. Discard pile: ${cardDesc}`;
+		return `${pName}'s turn. Discard pile: ${cardDesc}${turnSuffixEn}`;
 	}
 
 	// 2. ข้อความล็อบบี้และการเชื่อมต่อ
@@ -447,6 +460,55 @@ let isJoiningRoom = false;
 let isCreatingRoom = false;
 let heartbeatInterval = null;
 let previousTurnIndex = -1;
+let drawFocusTimer = null;
+let drawnCardFocusTimer = null;
+
+const RANK_ORDER = { 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13 };
+const SUIT_ORDER = { '♣': 1, '♦': 2, '♥': 3, '♠': 4 };
+
+function clearDrawButtonFocusTimer() {
+	if (drawFocusTimer) {
+		clearTimeout(drawFocusTimer);
+		drawFocusTimer = null;
+	}
+}
+
+function clearDrawnCardFocusTimer() {
+	if (drawnCardFocusTimer) {
+		clearTimeout(drawnCardFocusTimer);
+		drawnCardFocusTimer = null;
+	}
+}
+
+function scheduleDrawButtonFocus() {
+	clearDrawButtonFocusTimer();
+	drawFocusTimer = setTimeout(() => {
+		drawFocusTimer = null;
+		const btnDraw = document.getElementById('btn-draw');
+		const modal = document.getElementById('suit-picker-modal');
+		const isModalOpen = modal && modal.style.display === 'flex';
+		if (btnDraw && !btnDraw.disabled && !isModalOpen && document.getElementById('screen-game').classList.contains('active')) {
+			btnDraw.focus();
+		}
+	}, 2400);
+}
+
+function scheduleDrawnCardFocus(cardId, announcedText = '') {
+	clearDrawnCardFocusTimer();
+	const delay = Math.max(1000, (announcedText.length * 35) + 200);
+	drawnCardFocusTimer = setTimeout(() => {
+		drawnCardFocusTimer = null;
+		const modal = document.getElementById('suit-picker-modal');
+		const isModalOpen = modal && modal.style.display === 'flex';
+		if (isModalOpen || !document.getElementById('screen-game').classList.contains('active')) return;
+		const myContainer = document.getElementById('my-cards-container');
+		if (!myContainer) return;
+		const targetBtn = myContainer.querySelector(`button[data-card-id="${cardId}"]`);
+		if (targetBtn && !targetBtn.disabled && targetBtn.getAttribute('aria-disabled') !== 'true') {
+			targetBtn.focus();
+		}
+	}, delay);
+}
 
 const MAX_PLAYERS = 4;
 const BOT_NAMES = [
@@ -807,6 +869,8 @@ function joinRoom(roomId, hostPeerId) {
 window.leaveLobby = function() {
 	stopBGM();
 	clearInterval(heartbeatInterval);
+	clearDrawButtonFocusTimer();
+	clearDrawnCardFocusTimer();
 	if (isHost && currentRoomId) { remove(ref(db, `crazy_rooms/${currentRoomId}`)); connections.forEach(c => c.close()); }
 	else if (hostConnection) { hostConnection.close(); }
 	currentRoomId = null; isHost = false; players = []; game.status = 'waiting';
@@ -981,6 +1045,7 @@ function renderCardHTML(card, index = -1, playable = false, isTop = false) {
 	
 	if (index >= 0 && !isTop) {
 		const statusStr = isEn ? (playable ? 'Playable' : 'Unplayable') : (playable ? 'ลงได้' : 'ลงไม่ได้');
+		btn.setAttribute('data-card-id', card.id);
 		btn.setAttribute('aria-label', `${dispCardName} ${statusStr}`);
 		if (playable) {
 			btn.onclick = (e) => {
@@ -1107,8 +1172,39 @@ function broadcastTurnStart() {
         cardName = `${topCard.name} เปลี่ยนดอกเป็น ${getSuitNameThai(game.activeSuit)}`;
     }
     
-    let msg = `ถึงรอบของ ${currentPlayer.name} การ์ดกองทิ้งคือ ${cardName}`;
-	broadcastAnnounce(msg);
+    const baseMsg = `ถึงรอบของ ${currentPlayer.name} การ์ดกองทิ้งคือ ${cardName}`;
+    const currentHand = game.playerStates[currentPlayer.id]?.hand || [];
+    const playableCount = topCard
+        ? currentHand.filter(c => canPlayCard(c, game.activeSuit, topCard)).length
+        : 0;
+    const ownerMsg = playableCount > 0
+        ? `${baseMsg}  ลงได้ ${playableCount} ใบ`
+        : `${baseMsg}  ลงไม่ได้ จั่วเลย`;
+
+    const hostMsg = (currentPlayer.id === myPeerId) ? ownerMsg : baseMsg;
+    const localHostMsg = getLocalizedMessage(hostMsg);
+    announce(localHostMsg, false);
+    logEvent(localHostMsg);
+
+    connections.forEach(c => {
+        if (c.open) {
+            const targetId = c.customPeerId || c.peer;
+            const msgToSend = (targetId === currentPlayer.id) ? ownerMsg : baseMsg;
+            c.send({ type: 'announce', message: msgToSend, assertive: false });
+        }
+    });
+
+    if (!currentPlayer.isBot && playableCount === 0 && game.deck.length > 0) {
+        if (currentPlayer.id === myPeerId) {
+            scheduleDrawButtonFocus();
+        } else {
+            connections.forEach(c => {
+                if (c.open && (c.customPeerId || c.peer) === currentPlayer.id) {
+                    c.send({ type: 'focusDraw' });
+                }
+            });
+        }
+    }
 }
 
 function initGame() {
@@ -1194,6 +1290,11 @@ function handleClientData(data) {
 	else if (data.type === 'endGame') { showResult(data.winnerName, data.resultStats); }
 	else if (data.type === 'playSound') { playSound(data.soundName); }
 	else if (data.type === 'startAnim') { doStartAnimation(() => {}); }
+	else if (data.type === 'focusDraw') { scheduleDrawButtonFocus(); }
+	else if (data.type === 'focusDrawnCard') {
+		const localMsg = getLocalizedMessage(data.message || '');
+		scheduleDrawnCardFocus(data.cardId, localMsg);
+	}
 }
 
 function canPlayCard(card, activeSuit, topCard) {
@@ -1370,21 +1471,44 @@ function renderGame(gState) {
 	const isMyTurn = (turnPlayer && turnPlayer.id === myPeerId && gState.status === 'playing');
 	
 	let canPlayAtLeastOne = false;
-	gState.myHand.forEach((card, idx) => {
-		let playable = false;
-		if (isMyTurn) {
-            playable = canPlayCard(card, gState.activeSuit, gState.topCard);
-		}
+	const displayHand = gState.myHand.map((card, origIndex) => {
+		const playable = isMyTurn ? canPlayCard(card, gState.activeSuit, gState.topCard) : false;
 		if (playable) canPlayAtLeastOne = true;
-		myContainer.appendChild(renderCardHTML(card, idx, playable));
+		return { card, origIndex, playable };
+	});
+
+	displayHand.sort((a, b) => {
+		if (isMyTurn) {
+			if (a.playable !== b.playable) return a.playable ? -1 : 1;
+			if (a.playable && b.playable) {
+				const aIsEight = a.card.rank === '8' ? 1 : 0;
+				const bIsEight = b.card.rank === '8' ? 1 : 0;
+				if (aIsEight !== bIsEight) return aIsEight - bIsEight;
+			}
+		}
+		const rankDiff = (RANK_ORDER[a.card.rank] || 0) - (RANK_ORDER[b.card.rank] || 0);
+		if (rankDiff !== 0) return rankDiff;
+		return (SUIT_ORDER[a.card.suit] || 0) - (SUIT_ORDER[b.card.suit] || 0);
+	});
+
+	displayHand.forEach(({ card, origIndex, playable }) => {
+		myContainer.appendChild(renderCardHTML(card, origIndex, playable));
 	});
 
 	const btnDraw = document.getElementById('btn-draw');
 	if (isMyTurn && !canPlayAtLeastOne && gState.deckCount > 0) {
 		btnDraw.disabled = false;
-		btnDraw.onclick = () => { btnDraw.disabled = true; sendAction('draw'); };
+		btnDraw.onclick = () => {
+			clearDrawButtonFocusTimer();
+			btnDraw.disabled = true;
+			sendAction('draw');
+		};
 	} else {
+		clearDrawButtonFocusTimer();
 		btnDraw.disabled = true;
+	}
+	if (!isMyTurn) {
+		clearDrawnCardFocusTimer();
 	}
 }
 
@@ -1457,6 +1581,16 @@ function handlePlayerAction(peerId, action, payload) {
                     }
                     handlePlayerAction(peerId, 'play', playPayload);
                 }, 1500);
+            } else {
+                if (myPeerId === peerId) {
+                    scheduleDrawnCardFocus(card.id, getLocalizedMessage(privateMsg));
+                } else {
+                    connections.forEach(c => {
+                        if (c.open && (c.customPeerId || c.peer) === peerId) {
+                            c.send({ type: 'focusDrawnCard', cardId: card.id, message: privateMsg });
+                        }
+                    });
+                }
             }
         } else {
             setTimeout(() => advanceTurn(), 1500);
@@ -1630,6 +1764,8 @@ function handleWin(winnerId) {
 function showResult(winnerName, resultStats) {
 	lastDisplayedWinner = winnerName;
 	lastDisplayedStats = resultStats;
+	clearDrawButtonFocusTimer();
+	clearDrawnCardFocusTimer();
 	switchScreen('screen-result', 'title-result');
 	stopBGM();
 	const isEn = currentLang === 'en';
