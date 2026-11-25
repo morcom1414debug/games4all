@@ -48,7 +48,7 @@ function getSpecialWinDisplayName(typeKey) {
 
 const I18N = {
     th: {
-        pageTitle: 'แคง1.3',
+        pageTitle: 'แคง1.4',
         homeAria: 'กลับสู่ชุมชน',
         langToggleText: 'EN',
         langToggleAria: 'Switch language to English',
@@ -143,7 +143,7 @@ const I18N = {
         kangAnim2_special: (name) => `กติกาพิเศษโดย ${name}`
     },
     en: {
-        pageTitle: 'Kang 1.3',
+        pageTitle: 'Kang 1.4',
         homeAria: 'Back to Community',
         langToggleText: 'TH',
         langToggleAria: 'เปลี่ยนภาษาเป็นภาษาไทย',
