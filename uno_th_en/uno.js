@@ -303,7 +303,7 @@ function playSoundEvent(soundName, playSelectFirst = false) {
 const firebaseConfig = {
 	apiKey: "AIzaSyDvcdgsyT5sDdYTYKIqetzNL9Be-MFC0l4",
 	authDomain: "xo-game-134ec.firebaseapp.com",
-	databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasedatabase.app",
+	databaseURL: "https://xo-game-134ec-default-rtdb.asia-southeast1.firebasatabase.app",
 	projectId: "xo-game-134ec",
 	storageBucket: "xo-game-134ec.firebasestorage.app",
 	messagingSenderId: "318375224157",
@@ -362,6 +362,8 @@ let game = {
 };
 
 let myBotDelay = null;
+let autoFocusDrawTimer = null;
+let autoFocusDrawnCardTimer = null;
 
 function getPronounName(playerObj) {
 	if (!playerObj) return "";
@@ -591,6 +593,8 @@ function joinRoom(roomId, hostPeerId) {
 
 function leaveLobby() {
 	stopBGM();
+	clearTimeout(autoFocusDrawTimer);
+	clearTimeout(autoFocusDrawnCardTimer);
 	if (isHost) {
 		if (currentRoomId) remove(ref(db, `uno_rooms/${currentRoomId}`));
 		connections.forEach(c => c.close());
@@ -602,6 +606,7 @@ function leaveLobby() {
 	isJoiningRoom = false;
 	isCreatingRoom = false;
 	lastSyncTimestamp = 0;
+	window._myPrevHand = undefined;
 	
 	const btnCreate = document.getElementById('btn-create-room');
 	if (btnCreate) {
@@ -1120,6 +1125,7 @@ function handleClientData(data) {
 		}
 		if (data.game.players) players = data.game.players;
 		if ((game.status === 'waiting' || game.status === 'ended') && data.game.status === 'playing') {
+			window._myPrevHand = undefined;
 			switchScreen('screen-game', 'top-status-bar');
 			announce(t('เริ่มรอบใหม่แล้ว!', 'New round started!'), true);
 		}
@@ -1134,6 +1140,8 @@ function handleClientData(data) {
 		showUnoEffect();
 	} else if (data.type === 'endGame') {
 		game.status = 'ended';
+		clearTimeout(autoFocusDrawTimer);
+		clearTimeout(autoFocusDrawnCardTimer);
 		const winnerPlayer = players.find(p => p.id === data.winnerId);
 		const localizedWinner = winnerPlayer ? getPronounName(winnerPlayer) : (data.winner || t('ผู้เล่น', 'Player'));
 		doWinAnimation(localizedWinner, () => {
@@ -1267,6 +1275,7 @@ function initUNOGame() {
 	game.turnIndex = 0;
 	game.lastTurnIndex = -1;
 	game.challengeData = null;
+	window._myPrevHand = undefined;
 	
 	players.forEach(p => {
 		const existingScore = game.playerStates[p.id] ? game.playerStates[p.id].score : 0;
@@ -1327,6 +1336,55 @@ function isValidPlay(card, hand) {
 	}
 	return card.color === game.currentColor || card.value === top.value;
 }
+
+// --- Hand Sorting Helpers (Presentation Order Only, Preserving Original Host Index) ---
+function getCardSortWeight(card, putWildLast = false) {
+	const isWild = card.color === 'wild' || card.type === 'wild' || card.type === 'wild4';
+	const colorOrder = { red: 1, blue: 2, green: 3, yellow: 4, wild: 5 };
+	const cWeight = colorOrder[card.color] || 9;
+
+	let vWeight = 0;
+	if (card.type === 'number') {
+		vWeight = Number(card.value); // 0 - 9
+	} else if (card.type === 'skip') {
+		vWeight = 10;
+	} else if (card.type === 'reverse') {
+		vWeight = 11;
+	} else if (card.type === 'draw2') {
+		vWeight = 12;
+	} else if (card.type === 'wild') {
+		vWeight = 20;
+	} else if (card.type === 'wild4') {
+		vWeight = 21;
+	}
+
+	// หากอยู่ในกลุ่มลงได้ในรอบตัวเอง ให้เอา Wild / Wild +4 ไว้ท้ายสุดของกลุ่มลงได้เพื่อกันเผลอกดใช้
+	if (putWildLast && isWild) {
+		return 1000 + vWeight;
+	}
+	return cWeight * 100 + vWeight;
+}
+
+function buildSortedHandEntries(hand, isMyTurn) {
+	const entries = hand.map((card, originalIndex) => ({
+		card,
+		originalIndex,
+		playable: isMyTurn && isValidPlay(card, hand)
+	}));
+
+	entries.sort((a, b) => {
+		if (isMyTurn && a.playable !== b.playable) {
+			return a.playable ? -1 : 1;
+		}
+		const weightA = getCardSortWeight(a.card, isMyTurn && a.playable);
+		const weightB = getCardSortWeight(b.card, isMyTurn && b.playable);
+		if (weightA !== weightB) return weightA - weightB;
+		return a.originalIndex - b.originalIndex;
+	});
+
+	return entries;
+}
+// -------------------------------------------------------------------------------------
 
 function handleGameEvent(data) {
 	let msg = '';
@@ -1527,7 +1585,7 @@ function handlePlayerAction(peerId, action, payload = null) {
 
 	if (action === 'play') {
 		const card = state.hand[payload.cardIndex];
-		if (isValidPlay(card, state.hand)) {
+		if (card && isValidPlay(card, state.hand)) {
 			state.hand.splice(payload.cardIndex, 1);
 			game.discardPile.push(card);
 			game.currentColor = card.color !== 'wild' ? card.color : payload.selectedColor;
@@ -1667,6 +1725,8 @@ function handleWin(winnerId) {
 		const winnerName = winnerPlayer ? getPronounName(winnerPlayer) : t('ผู้เล่น', 'Player');
 		connections.forEach(c => { if (c.open) c.send({ type: 'endGame', winnerId, winner: winnerName, scores: score, matchOver: game.matchOver }); });
 		game.status = 'ended'; 
+		clearTimeout(autoFocusDrawTimer);
+		clearTimeout(autoFocusDrawnCardTimer);
 		doWinAnimation(winnerName, () => {
 			showResult(winnerId, score, game.matchOver);
 		});
@@ -1785,6 +1845,7 @@ function renderCardHTML(card, index = -1, isPlayable = false) {
 	btn.innerHTML = inner;
 	
 	if (index >= 0) {
+		btn.dataset.originalIndex = String(index);
 		const playableText = isPlayable ? t('ลงได้', 'playable') : t('ลงไม่ได้', 'not playable');
 		btn.setAttribute('aria-label', `${getCardARIA(card)} ${playableText}`);
 		if (isPlayable) btn.onclick = () => onCardClicked(index, card);
@@ -1817,6 +1878,11 @@ function toggleMainGameUI(show) {
 
 function renderGame(gameState) {
 	const turnPlayerObj = players[gameState.turnIndex];
+	const myHand = gameState.myHand || [];
+	const myState = gameState.playerStates[myPeerId];
+	const isMyTurn = turnPlayerObj && turnPlayerObj.id === myPeerId && !gameState.challengeData;
+	const playableCardsCount = myHand.filter(card => isValidPlay(card, myHand)).length;
+
 	if (turnPlayerObj) {
 		const headingEl = document.getElementById('current-turn-heading');
 		headingEl.textContent = t(`ถึงรอบ${getPronounName(turnPlayerObj)}`, `${getPronounName(turnPlayerObj)}'s Turn`);
@@ -1836,7 +1902,9 @@ function renderGame(gameState) {
 		}
 	}
 
+	// การประกาศเริ่มเทิร์น 2 ภาษา + จังหวะ Auto-Focus ที่ปุ่ม "จั่วการ์ด" (#btn-draw) เมื่อไม่มีไพ่ลงได้
 	if (gameState.turnIndex !== game.lastTurnIndex) {
+		clearTimeout(autoFocusDrawTimer);
 		const currentPlayer = players[gameState.turnIndex];
 		if (currentPlayer) {
 			if (currentPlayer.id === myPeerId && !currentPlayer.isBot) {
@@ -1851,16 +1919,47 @@ function renderGame(gameState) {
 
 			const pronoun = getPronounName(currentPlayer);
 			if (currentPlayer.id === myPeerId) {
-				let announceMsg = t(`ถึงรอบ${pronoun}แล้ว`, `It is ${pronoun}'s turn.`);
+				let cardName = '';
 				if (gameState.topDiscard) {
-					const displayCard = {...gameState.topDiscard};
+					const displayCard = { ...gameState.topDiscard };
 					if (displayCard.color === 'wild' && gameState.currentColor) {
 						displayCard.color = gameState.currentColor;
 					}
-					let cardName = getCardARIA(displayCard);
-					announceMsg += t(` ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่`, ` Top card is ${cardName}.`);
+					cardName = getCardARIA(displayCard);
+				}
+
+				let announceMsg = '';
+				if (playableCardsCount > 0) {
+					announceMsg = t(
+						`ถึงรอบ${pronoun}แล้ว ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่ ลงได้ ${playableCardsCount} ใบ`,
+						`It is ${pronoun}'s turn. Top card is ${cardName}. ${playableCardsCount} playable card(s).`
+					);
+				} else {
+					announceMsg = t(
+						`ถึงรอบ${pronoun}แล้ว ขณะนี้การ์ด ${cardName} กำลังแสดงอยู่ ลงไม่ได้ จั่วเลย`,
+						`It is ${pronoun}'s turn. Top card is ${cardName}. No playable cards. Draw!`
+					);
 				}
 				announce(announceMsg);
+
+				// คำนวณเวลาหน่วงแบบไดนามิกตามความยาวข้อความจริงเพื่อให้ Screen Reader อ่านจบก่อน focus ปุ่มจั่ว
+				if (playableCardsCount === 0 && !gameState.challengeData && (!myState || !myState.hasDrawn)) {
+					const speechDuration = Math.max(1000, announceMsg.length * 60) + 300;
+					autoFocusDrawTimer = setTimeout(() => {
+						const btnDrawEl = document.getElementById('btn-draw');
+						const activeTurnPlayer = players[game.turnIndex];
+						if (
+							btnDrawEl &&
+							!btnDrawEl.disabled &&
+							game.status === 'playing' &&
+							activeTurnPlayer &&
+							activeTurnPlayer.id === myPeerId &&
+							!game.challengeData
+						) {
+							btnDrawEl.focus();
+						}
+					}, speechDuration);
+				}
 			} else {
 				announce(t(`ถึงรอบ${pronoun}แล้ว`, `It is ${pronoun}'s turn.`));
 			}
@@ -1868,12 +1967,28 @@ function renderGame(gameState) {
 		game.lastTurnIndex = gameState.turnIndex;
 	}
 
-	const myHand = gameState.myHand || [];
+	// การจั่วไพ่ (Draw) และ Auto-Focus เมื่อจั่วแล้วลงได้
+	let drawnCardOriginalIndex = -1;
+	let receivedSpeechDuration = 0;
+
 	if (typeof window._myPrevHand !== 'undefined') {
 		if (myHand.length > window._myPrevHand.length) {
 			const diff = myHand.length - window._myPrevHand.length;
 			const newCards = myHand.slice(-diff);
-			newCards.forEach(c => { announce(t(`ได้รับการ์ด ${getCardARIA(c)}`, `Received ${getCardARIA(c)}`)); });
+			newCards.forEach(c => {
+				const receivedMsg = t(`ได้รับการ์ด ${getCardARIA(c)}`, `Received ${getCardARIA(c)}`);
+				announce(receivedMsg);
+				receivedSpeechDuration += Math.max(1000, receivedMsg.length * 60) + 150;
+			});
+
+			// ตรวจจับใบใหม่ที่เพิ่งจั่วเข้ามาในเทิร์นของตัวเอง หากลงได้ให้เตรียมสั่ง focus หลังเสียงประกาศจบ
+			if (diff === 1 && isMyTurn && myState && myState.hasDrawn) {
+				const lastIdx = myHand.length - 1;
+				const drawnCard = myHand[lastIdx];
+				if (drawnCard && isValidPlay(drawnCard, myHand)) {
+					drawnCardOriginalIndex = lastIdx;
+				}
+			}
 		}
 	}
 	window._myPrevHand = [...myHand];
@@ -1947,25 +2062,43 @@ function renderGame(gameState) {
 		}
 	}
 
+	// การเรียงไพ่บนมือ (Sort เฉพาะตอนแสดงผล โดยส่ง originalIndex กลับเข้า Host)
 	const myContainer = document.getElementById('my-cards-container');
 	myContainer.innerHTML = '';
 	
 	if (myHand.length > 8) myContainer.classList.add('compact');
 	else myContainer.classList.remove('compact');
 
-	const isMyTurn = turnPlayerObj && turnPlayerObj.id === myPeerId && !gameState.challengeData;
-	
-	myHand.forEach((card, idx) => {
-		const playable = isMyTurn && isValidPlay(card, myHand);
-		myContainer.appendChild(renderCardHTML(card, idx, playable));
+	const sortedHandEntries = buildSortedHandEntries(myHand, isMyTurn);
+	let drawnCardButtonToFocus = null;
+
+	sortedHandEntries.forEach(({ card, originalIndex, playable }) => {
+		const cardBtn = renderCardHTML(card, originalIndex, playable);
+		if (originalIndex === drawnCardOriginalIndex) {
+			drawnCardButtonToFocus = cardBtn;
+		}
+		myContainer.appendChild(cardBtn);
 	});
+
+	// สั่ง .focus() ไปที่ปุ่มของไพ่ใบที่เพิ่งจั่วได้ทันทีหลังเสียงประกาศจบ
+	if (drawnCardButtonToFocus) {
+		clearTimeout(autoFocusDrawnCardTimer);
+		const focusDelay = Math.max(300, receivedSpeechDuration);
+		autoFocusDrawnCardTimer = setTimeout(() => {
+			if (
+				drawnCardButtonToFocus &&
+				document.body.contains(drawnCardButtonToFocus) &&
+				!drawnCardButtonToFocus.disabled &&
+				game.status === 'playing'
+			) {
+				drawnCardButtonToFocus.focus();
+			}
+		}, focusDelay);
+	}
 
 	const btnDraw = document.getElementById('btn-draw');
 	const btnPass = document.getElementById('btn-pass');
 	const btnUno = document.getElementById('btn-uno');
-	
-	const myState = gameState.playerStates[myPeerId];
-	const playableCardsCount = myHand.filter(card => isValidPlay(card, myHand)).length;
 
 	if (isMyTurn) {
 		if (myState && myState.declaredUNO && myHand.length === 2) {
@@ -1978,7 +2111,10 @@ function renderGame(gameState) {
 		} else {
 			btnDraw.disabled = false;
 			btnPass.disabled = true;
-			btnDraw.onclick = () => { sendAction('draw'); };
+			btnDraw.onclick = () => {
+				clearTimeout(autoFocusDrawTimer);
+				sendAction('draw');
+			};
 		}
 	} else {
 		btnDraw.disabled = true;
@@ -2007,6 +2143,8 @@ window.selectWildColor = function(color) {
 };
 
 function onCardClicked(index, card) {
+	clearTimeout(autoFocusDrawTimer);
+	clearTimeout(autoFocusDrawnCardTimer);
 	if (card.color === 'wild') {
 		playSound('select'); 
 		pendingPlayCardIndex = index;
