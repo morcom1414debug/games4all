@@ -7,6 +7,655 @@ window.isStartingRound = false;
 window.hasAnnouncedMyColor = false; 
 
 // =========================================================
+// Bilingual Localization System (TH / EN) - Storage Key: cang_lang
+// =========================================================
+const LANG_STORAGE_KEY = 'cang_lang';
+let currentLang = (localStorage.getItem(LANG_STORAGE_KEY) === 'en') ? 'en' : 'th';
+let originalThaiManualHTML = null;
+let lastResultRawData = null;
+let roomsSnapshotCache = null;
+
+const EN_SUITS = { '♠': 'Spades', '♥': 'Hearts', '♦': 'Diamonds', '♣': 'Clubs' };
+const EN_RANKS = {
+    'A': 'Ace', '2': '2', '3': '3', '4': '4', '5': '5', '6': '6',
+    '7': '7', '8': '8', '9': '9', '10': '10', 'J': 'Jack', 'Q': 'Queen', 'K': 'King'
+};
+
+const SPECIAL_WIN_LABELS = {
+    th: {
+        '3A': '3A',
+        '50': '50',
+        'ตอง': 'ตอง',
+        'เรียง': 'เรียง',
+        'สี': 'สี',
+        '3คู่': '3 คู่'
+    },
+    en: {
+        '3A': '3A',
+        '50': '50 Pts',
+        'ตอง': 'Three of a Kind',
+        'เรียง': 'Straight',
+        'สี': 'Flush',
+        '3คู่': '3 Pairs'
+    }
+};
+
+function getSpecialWinDisplayName(typeKey) {
+    if (!typeKey) return '';
+    const dict = SPECIAL_WIN_LABELS[currentLang] || SPECIAL_WIN_LABELS.th;
+    return dict[typeKey] || typeKey;
+}
+
+const I18N = {
+    th: {
+        pageTitle: 'แคง1.3',
+        homeAria: 'กลับสู่ชุมชน',
+        langToggleText: 'EN',
+        langToggleAria: 'Switch language to English',
+        transitionDefault: 'กำลังเปลี่ยนตาถัดไป...',
+        disconnectHeading: 'การเชื่อมต่อกับเจ้าของห้องขาดหาย',
+        nameEntryTitle: 'ยินดีต้อนรับสู่ "แคง" ออนไลน์ 🎴',
+        nameEntryDesc: 'กรุณาตั้งชื่อของคุณเพื่อเข้าสู่เกม',
+        playerNameLabel: 'ชื่อผู้เล่นของคุณ:',
+        playerNamePlaceholder: 'พิมพ์ชื่อผู้เล่น...',
+        btnConfirmName: 'ยืนยันชื่อผู้เล่น',
+        setupTitle: '"แคง" ออนไลน์ 🎴',
+        setupDesc: 'จะสร้างหรือเลือกเข้าร่วมห้องเพื่อดวลแต้ม เลือกเลย',
+        entertainmentNote: 'สำหรับการสันทนาการเท่านั้น',
+        btnCreateRoom: 'สร้างห้องเล่นแคง',
+        btnOpenManual: 'คู่มือการเล่น',
+        roomListTitle: 'ห้องที่กำลังรอผู้เล่น:',
+        noRoomSearching: 'กำลังค้นหาห้อง...',
+        noRoomEmpty: 'ไม่มีห้องว่าง (กดสร้างห้องได้เลย)',
+        roomItemAria: (rId, count) => `เข้าร่วมห้อง ${rId} มีผู้เล่น ${count} จาก 6 คน`,
+        roomItemLabel: (rId, count) => `ห้อง ${rId} (${count}/6 คน) `,
+        roomItemJoinArrow: 'เข้า ➔',
+        manualTitle: '📖 คู่มือการเล่น ไพ่แคง',
+        btnCloseManual: 'ปิดหน้าคู่มือ กลับสู่หน้าหลัก',
+        manualOpenedAnnounce: 'เปิดหน้าคู่มือการเล่นแล้ว',
+        manualClosedAnnounce: 'ปิดหน้าคู่มือการเล่น กลับสู่หน้าหลัก',
+        waitingRoomAria: 'ห้องรอผู้เล่น',
+        btnLeaveWaiting: '🚪 ออก',
+        btnLeaveWaitingAria: 'ออกจากห้อง กลับหน้าหลัก',
+        waitingRoomTitle: '🎴 ห้องรอผู้เล่น',
+        roomIdLabel: 'รหัสห้อง (Game ID):',
+        botSelectTitle: 'เลือกจำนวนบอทในห้อง:',
+        btnBotDecAria: 'ลดจำนวนบอท',
+        btnBotIncAria: 'เพิ่มจำนวนบอท',
+        botCountUnit: (n) => `${n} ตัว`,
+        waitingPlayersTitle: 'รายชื่อผู้เล่นและบอท (เริ่มต้น 200 เหรียญ):',
+        btnHostStart: 'แจกไพ่เริ่มเกม',
+        guestWaitingText: 'รอเจ้าของห้องแจกไพ่...',
+        gameScreenAria: 'โต๊ะเล่นไพ่แคง',
+        deckLabel: 'กองจั่ว',
+        deckUnit: 'ใบ',
+        deckAria: (count) => `กองไพ่สำหรับจั่ว เหลือ ${count} ใบ`,
+        welcomeTableAnnounce: 'ยินดีต้อนรับสู่โต๊ะไพ่แคง!',
+        myHandAria: 'ไพ่ในมือของคุณ',
+        btnDraw: 'จั่วไพ่',
+        btnEndTurn: 'จบตา',
+        btnKang: 'แคง!',
+        btnKang25: 'แคง 25!',
+        btnSkipPre: 'ไม่จ้า',
+        btnNextRound: 'เริ่มรอบใหม่',
+        btnBackHomeReload: 'กลับหน้าหลัก',
+        btnResultHome: '🏠 กลับสู่ชุมชน',
+        guestWaitingNextRound: 'รอเจ้าของห้องเริ่มรอบใหม่...',
+        tempBotHeading: 'คุณถูกเปลี่ยนเป็นบอทชั่วคราว',
+        tempBotP1: 'เนื่องจากคุณหมดเวลาเล่นครบ 3 ครั้ง ระบบจึงให้บอทเล่นแทนเพื่อให้เกมดำเนินต่อไป',
+        tempBotP2: 'คุณต้องการกลับมาเล่นต่อหรือไม่?',
+        tempBotCountdown: (sec) => `กรุณาเลือกภายใน ${sec} วินาที มิฉะนั้นระบบจะถือว่าคุณเลือก "ไม่ใช่"`,
+        btnBotYes: 'ใช่',
+        btnBotNo: 'ไม่ใช่',
+        errEmptyName: 'กรุณากรอกชื่อผู้เล่นก่อนเข้าสู่เกม',
+        welcomeLobbyAnnounce: (name) => `ยินดีต้อนรับ ${name} เข้าสู่หน้าเลือกห้องเล่นแคง`,
+        creatingRoomAnnounce: 'กำลังสร้างห้อง โปรดรอสักครู่',
+        roomCreatedAnnounce: (rId) => `สร้างห้องสำเร็จ รหัสห้องคือ ${rId}`,
+        joiningRoomAnnounce: (rId) => `กำลังเข้าร่วมห้อง ${rId}`,
+        joinedRoomAnnounce: 'เข้าร่วมห้องสำเร็จ รอแจกไพ่',
+        preGameTurnInd: 'เตรียมตัว! เช็คไพ่ในมือ (40 วินาที)',
+        yourTurnInd: (name) => `🔥 ถึงรอบของ ${name} แล้ว!`,
+        otherTurnInd: (name) => `ถึงรอบของ ${name} แล้ว`,
+        topCardEmpty: 'ยังไม่มีไพ่บนกอง',
+        topCardEmptyFull: 'ยังไม่มีไพ่บนกองทิ้ง',
+        topCardCurrent: (cardName) => `ไพ่บนกองทิ้งปัจจุบันคือ ${cardName}`,
+        playHintCan: (count) => `ลงได้ ${count} ใบ`,
+        playHintCant: 'ลงไม่ได้จั่วเลย',
+        yourTurnAnnounce: (name, topTxt, hint) => `ถึงรอบของ ${name} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt}) ${hint}`,
+        otherTurnAnnounce: (name, topTxt) => `ถึงรอบของ ${name} แล้ว (ไพ่บนกองคือ ${topTxt})`,
+        statusPlayerAria: (name, pts) => `${name} มี ${pts} เหรียญ. `,
+        statusCoinsText: (pts) => `${pts} เหรียญ`,
+        statusGroupAria: (list) => `สถานะผู้เล่นทั้งหมด: ${list}`,
+        discardPileTopAria: (cardName) => `ไพ่กองทิ้งใบบนสุดคือ ${cardName}`,
+        discardPileEmptyHtml: 'กองทิ้งว่างเปล่า',
+        discardPileEmptyAria: 'กองไพ่ทิ้งยังว่างเปล่า',
+        hintFlow: ' กดเพื่อไหลไพ่ใบนี้',
+        hintDiscard: ' กดเพื่อทิ้งไพ่ใบนี้',
+        hintDiscardMore: ' กดเพื่อทิ้งเพิ่มเติม (เลขเดียวกัน)',
+        cardAria: (cardName, hint) => `ไพ่ ${cardName}${hint}`,
+        preGameSummary: (base, sum, specialKey) => `${base} ผลรวม ${sum} แต้ม${specialKey ? ` คุณใช้ ${getSpecialWinDisplayName(specialKey)} ได้` : ''}`,
+        kangAnim1_cang: (name) => `โอ้ ${name} เอ่ยคำว่า แคง`,
+        kangAnim1_cang25: (name) => `โอ้ ${name} เอ่ยคำว่า แคง25`,
+        kangAnim1_knock: () => 'KNOCK!',
+        kangAnim1_special: () => 'SPECIAL WIN!',
+        kangAnim2_cang: () => 'เปิดไพ่ทุกคนเพื่อวัดดวงกัน',
+        kangAnim2_knock: (name) => `น็อกแล้วโดย ${name}`,
+        kangAnim2_special: (name) => `กติกาพิเศษโดย ${name}`
+    },
+    en: {
+        pageTitle: 'Kang 1.3',
+        homeAria: 'Back to Community',
+        langToggleText: 'TH',
+        langToggleAria: 'เปลี่ยนภาษาเป็นภาษาไทย',
+        transitionDefault: 'Next turn...',
+        disconnectHeading: 'Connection to room host lost',
+        nameEntryTitle: 'Welcome to "Kang" Online 🎴',
+        nameEntryDesc: 'Please enter your name to join the game',
+        playerNameLabel: 'Your Player Name:',
+        playerNamePlaceholder: 'Enter player name...',
+        btnConfirmName: 'Confirm Name',
+        setupTitle: '"Kang" Online 🎴',
+        setupDesc: 'Create a room or join one to start playing',
+        entertainmentNote: 'For entertainment purposes only',
+        btnCreateRoom: 'Create Kang Room',
+        btnOpenManual: 'How to Play',
+        roomListTitle: 'Available Rooms:',
+        noRoomSearching: 'Searching for rooms...',
+        noRoomEmpty: 'No rooms available (Create one now!)',
+        roomItemAria: (rId, count) => `Join room ${rId} with ${count} of 6 players`,
+        roomItemLabel: (rId, count) => `Room ${rId} (${count}/6) `,
+        roomItemJoinArrow: 'Join ➔',
+        manualTitle: '📖 Kang Cards — How to Play',
+        btnCloseManual: 'Close Guide & Return',
+        manualOpenedAnnounce: 'Opened How to Play guide',
+        manualClosedAnnounce: 'Closed How to Play guide, returned to main menu',
+        waitingRoomAria: 'Waiting Room',
+        btnLeaveWaiting: '🚪 Leave',
+        btnLeaveWaitingAria: 'Leave room and return to main menu',
+        waitingRoomTitle: '🎴 Waiting Room',
+        roomIdLabel: 'Room Code (Game ID):',
+        botSelectTitle: 'Select Number of Bots:',
+        btnBotDecAria: 'Decrease bot count',
+        btnBotIncAria: 'Increase bot count',
+        botCountUnit: (n) => `${n} ${n === 1 ? 'Bot' : 'Bots'}`,
+        waitingPlayersTitle: 'Players & Bots (Starting 200 Coins):',
+        btnHostStart: 'Deal & Start Game',
+        guestWaitingText: 'Waiting for host to deal cards...',
+        gameScreenAria: 'Kang Card Table',
+        deckLabel: 'Draw Deck',
+        deckUnit: 'Cards',
+        deckAria: (count) => `Draw deck with ${count} cards remaining`,
+        welcomeTableAnnounce: 'Welcome to the Kang table!',
+        myHandAria: 'Your Hand',
+        btnDraw: 'Draw',
+        btnEndTurn: 'End Turn',
+        btnKang: 'Kang!',
+        btnKang25: 'Kang 25!',
+        btnSkipPre: 'Pass / Ready',
+        btnNextRound: 'Next Round',
+        btnBackHomeReload: 'Back to Main Menu',
+        btnResultHome: '🏠 Back to Community',
+        guestWaitingNextRound: 'Waiting for host to start next round...',
+        tempBotHeading: 'Switched to Temporary Bot',
+        tempBotP1: 'You timed out 3 times, so a bot is temporarily playing for you to keep the game moving.',
+        tempBotP2: 'Would you like to resume playing?',
+        tempBotCountdown: (sec) => `Please choose within ${sec} seconds, otherwise "No" will be selected automatically.`,
+        btnBotYes: 'Yes',
+        btnBotNo: 'No',
+        errEmptyName: 'Please enter your player name before continuing',
+        welcomeLobbyAnnounce: (name) => `Welcome ${name} to the Kang room lobby`,
+        creatingRoomAnnounce: 'Creating room, please wait...',
+        roomCreatedAnnounce: (rId) => `Room created! Room ID is ${rId}`,
+        joiningRoomAnnounce: (rId) => `Joining room ${rId}...`,
+        joinedRoomAnnounce: 'Joined room! Waiting for cards to be dealt',
+        preGameTurnInd: 'Get ready! Check your hand (40s)',
+        yourTurnInd: (name) => `🔥 Your turn, ${name}!`,
+        otherTurnInd: (name) => `${name}'s turn`,
+        topCardEmpty: 'No card on discard pile',
+        topCardEmptyFull: 'Discard pile is currently empty',
+        topCardCurrent: (cardName) => `Current top discard card is ${cardName}`,
+        playHintCan: (count) => `${count} playable`,
+        playHintCant: 'No match, draw a card',
+        yourTurnAnnounce: (name, topTxt, hint) => `Your turn, ${name}. Make your move (Top card: ${topTxt}). ${hint}`,
+        otherTurnAnnounce: (name, topTxt) => `${name}'s turn (Top card: ${topTxt})`,
+        statusPlayerAria: (name, pts) => `${name} has ${pts} coins. `,
+        statusCoinsText: (pts) => `${pts} Coins`,
+        statusGroupAria: (list) => `All players status: ${list}`,
+        discardPileTopAria: (cardName) => `Top discard card is ${cardName}`,
+        discardPileEmptyHtml: 'Discard Empty',
+        discardPileEmptyAria: 'Discard pile is empty',
+        hintFlow: ' — Press to Match this card',
+        hintDiscard: ' — Press to discard this card',
+        hintDiscardMore: ' — Press to discard extra card (same rank)',
+        cardAria: (cardName, hint) => `${cardName}${hint}`,
+        preGameSummary: (base, sum, specialKey) => `${base} Total: ${sum} pts.${specialKey ? ` You can use ${getSpecialWinDisplayName(specialKey)}!` : ''}`,
+        kangAnim1_cang: (name) => `Whoa! ${name} calls Kang!`,
+        kangAnim1_cang25: (name) => `Whoa! ${name} calls Kang 25!`,
+        kangAnim1_knock: () => 'KNOCK!',
+        kangAnim1_special: () => 'SPECIAL WIN!',
+        kangAnim2_cang: () => 'Reveal all hands to see who wins!',
+        kangAnim2_knock: (name) => `Knock by ${name}!`,
+        kangAnim2_special: (name) => `Special Win by ${name}!`
+    }
+};
+
+const EN_MANUAL_HTML = `
+    <h3>Objective</h3>
+    <p>Reduce the total points in your hand as low as possible, then call <b>"Kang!"</b> to win and collect coins from every other player.</p>
+
+    <h3>Rules &amp; Gameplay</h3>
+    <ul>
+        <li><b>Starting Coins (200 Coins):</b> Every player starts with 200 coins and is dealt 5 cards.</li>
+        <li><b>Pre-Game Preview Phase (40 Seconds):</b>
+            <ul>
+                <li>The first player of the round may press <b>"Kang!"</b> to immediately reveal all hands, or press <b>"Kang 25!"</b> if holding 25 or more points.</li>
+                <li>Other players holding 25 or more points may press <b>"Kang 25!"</b> to challenge for double stakes.</li>
+                <li>If 40 seconds pass with no call (or all players press <b>"Pass / Ready"</b>), the round begins and the first player draws a card.</li>
+            </ul>
+        </li>
+        <li><b>Normal Turn:</b> On your turn, either <b>"Draw"</b> 1 card from the deck or <b>"Match"</b> a card of the same rank as the top discard card. If you drew, discard 1 card (plus any additional cards of the exact same rank) and press <b>"End Turn"</b>.</li>
+        <li><b>Matching (Match):</b> If you hold a card matching the rank of the latest discarded card, you can play it directly without drawing and immediately collect 10 coins (20 coins for an Ace) from the player who discarded that card.</li>
+    </ul>
+
+    <h3>Card Values</h3>
+    <ul>
+        <li><b>A (Ace):</b> 1 point</li>
+        <li><b>2 to 10:</b> Face value</li>
+        <li><b>J, Q, K:</b> 10 points each</li>
+    </ul>
+
+    <h3>Scoring &amp; Coin Payouts</h3>
+    <ul>
+        <li><b>Kang! Succeeded:</b> If you have the lowest score (or tied for lowest), you win! Collect base coins from every player (10 coins + 10 bonus coins per Ace in your hand).</li>
+        <li><b>Kang 25! Succeeded:</b> Win double the base payout from every player.</li>
+        <li><b>Busted Kang!:</b> If you call Kang! or Kang 25! and another player has a lower score, you pay the full penalty to the lowest-scoring player.</li>
+        <li><b>Knock! (Empty Hand):</b> Knocking after drawing awards 20 coins from each player; Knocking by Matching awards 10 coins from each player.</li>
+    </ul>
+
+    <h3>Shortcut Keys</h3>
+    <ul>
+        <li><b>Alt+P</b> Draw a card</li>
+        <li><b>Alt+E</b> End turn</li>
+        <li><b>Alt+K</b> Call Kang!</li>
+        <li><b>Alt+L</b> Call Kang 25!</li>
+        <li><b>Alt+C</b> Announce top discard card</li>
+    </ul>
+
+    <h3>Special Wins</h3>
+    <ul>
+        <li><b>3A:</b> Hold three Aces (A) to claim an instant Special Win at any point in the game.</li>
+        <li><b>50 Pts:</b> Hold cards totaling exactly 50 points to claim an instant Special Win.</li>
+        <li><b>Three of a Kind:</b> Hold 3 or 4 cards of the same rank to claim an instant Special Win.</li>
+        <li><b>Straight:</b> Hold 5 consecutive cards in rank order to claim an instant Special Win.</li>
+        <li><b>Flush:</b> Hold 5 cards of the same suit to claim an instant Special Win.</li>
+        <li><b>3 Pairs:</b> Hold 3 pairs (6 cards total after your first draw) to claim an instant Special Win.</li>
+    </ul>
+
+    <p><b>Note:</b> When a Special Win condition is met, a golden Special button appears so you can claim victory immediately. All Special Wins except <b>3A</b> are valid only during each player's first turn.</p>
+`;
+
+function t(key, ...args) {
+    const dict = I18N[currentLang] || I18N.th;
+    const val = dict[key] !== undefined ? dict[key] : I18N.th[key];
+    return typeof val === 'function' ? val(...args) : val;
+}
+
+function formatCardName(rank, suit) {
+    if (currentLang === 'en') {
+        return `${EN_RANKS[rank] || rank} of ${EN_SUITS[suit] || suit}`;
+    }
+    return `${THAI_RANKS[rank] || rank} ${THAI_SUITS[suit] || suit}`;
+}
+
+function translateThaiCardPhrase(thaiCardPhrase) {
+    if (!thaiCardPhrase) return '';
+    const trimmed = thaiCardPhrase.trim();
+    for (const r of Object.keys(THAI_RANKS)) {
+        for (const s of Object.keys(THAI_SUITS)) {
+            const thStr = `${THAI_RANKS[r]} ${THAI_SUITS[s]}`;
+            if (trimmed === thStr) {
+                return `${EN_RANKS[r]} of ${EN_SUITS[s]}`;
+            }
+        }
+    }
+    return trimmed;
+}
+
+function localizeDynamicMessage(rawMsg) {
+    if (typeof rawMsg !== 'string') return '';
+    const withNames = rawMsg.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+    if (currentLang !== 'en') return withNames;
+
+    let m;
+    if (withNames === 'เปิดรอบใหม่! มีใครจะแคง 25 ไหม?') {
+        return 'New round! Anyone calling Kang 25?';
+    }
+    if (withNames === 'ไหลไพ่สำเร็จ! รอสักครู่...') {
+        return 'Match successful! Please wait...';
+    }
+    if (withNames === 'กำลังเปลี่ยนตาถัดไป...') {
+        return 'Next turn...';
+    }
+    if (withNames === 'จบเกมด้วยกติกาพิเศษ! กำลังสรุปผล...') {
+        return 'Special Win! Calculating results...';
+    }
+    if (withNames === 'จบเกม! กำลังสรุปผล...') {
+        return 'Round over! Calculating results...';
+    }
+
+    m = withNames.match(/^📢 หมดเวลาดูไพ่ 40 วินาที ไม่มีใครกดแคง! ขอเชิญ (.+?) จั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ$/);
+    if (m) return `📢 40s preview ended — no one called Kang! ${m[1]} goes first: draw a card and discard to start.`;
+
+    m = withNames.match(/^📢 ผู้เล่นทุกคนพร้อมแล้ว! ขอเชิญ (.+?) จั่วไพ่ใบแรกและทิ้งลงกองเพื่อเริ่มเกมได้เลยครับ$/);
+    if (m) return `📢 Everyone is ready! ${m[1]} goes first: draw a card and discard to start.`;
+
+    m = withNames.match(/^(.+?) เข้าร่วมห้องใหม่ รวม (\d+) คน$/);
+    if (m) return `${m[1]} joined the room (${m[2]} players total)`;
+
+    m = withNames.match(/^(.+?) ออกจากห้องรอผู้เล่น$/);
+    if (m) return `${m[1]} left the waiting room`;
+
+    m = withNames.match(/^(.+?) ออกจากห้อง ระบบเปลี่ยนเป็นบอทเล่นแทนจนจบเกม$/);
+    if (m) return `${m[1]} left the room. Replaced by a bot for the rest of the game.`;
+
+    m = withNames.match(/^✅ (.+?) กลับมาควบคุมการเล่นตามปกติแล้ว$/);
+    if (m) return `✅ ${m[1]} has resumed manual control.`;
+
+    m = withNames.match(/^⏰ (.+?) หมดเวลาเล่น \(ครั้งที่ 1\/3\) ระบบเล่นแทนอัตโนมัติ$/);
+    if (m) return `⏰ ${m[1]} timed out (1/3). Auto-playing turn.`;
+
+    m = withNames.match(/^⏰ (.+?) หมดเวลาเล่น 2 ครั้งติดต่อกัน! ตาถัดไปจะลดเวลาเหลือ 20 วินาที$/);
+    if (m) return `⏰ ${m[1]} timed out twice in a row! Next turn reduced to 20s.`;
+
+    m = withNames.match(/^🤖 (.+?) หมดเวลาครบ 3 ครั้ง ระบบเปลี่ยนเป็นบอทชั่วคราวเพื่อให้เกมดำเนินต่อไป$/);
+    if (m) return `🤖 ${m[1]} timed out 3 times. Switched to a temporary bot.`;
+
+    m = withNames.match(/^(.+?) ไหลไพ่ (.+?)! ได้รับ (\d+) เหรียญ จาก (.+)$/);
+    if (m) return `${m[1]} matched ${translateThaiCardPhrase(m[2])}! Won ${m[3]} coins from ${m[4]}`;
+
+    m = withNames.match(/^(.+?) จั่วไพ่ 1 ใบ$/);
+    if (m) return `${m[1]} drew 1 card`;
+
+    m = withNames.match(/^(.+?) จั่วได้ไพ่ (.+)$/);
+    if (m) return `${m[1]} drew ${translateThaiCardPhrase(m[2])}`;
+
+    m = withNames.match(/^(.+?) วางไพ่ (.+?) เพิ่มเติม \(เลขเดียวกัน\)$/);
+    if (m) return `${m[1]} discarded an extra ${translateThaiCardPhrase(m[2])} (same rank)`;
+
+    m = withNames.match(/^(.+?) วางไพ่ (.+)$/);
+    if (m) return `${m[1]} discarded ${translateThaiCardPhrase(m[2])}`;
+
+    m = withNames.match(/^(.+?) กดยืนยันจบตา$/);
+    if (m) return `${m[1]} ended their turn`;
+
+    m = withNames.match(/^(.+?) ชนะพิเศษกติกา: (.+?)!$/);
+    if (m) return `${m[1]} Special Win: ${getSpecialWinDisplayName(m[2])}!`;
+
+    m = withNames.match(/^(.+?) เปิดไพ่ชนะกติกา (.+)$/);
+    if (m) return `${m[1]} revealed a ${getSpecialWinDisplayName(m[2])} hand`;
+
+    m = withNames.match(/^(.+?) จั่วแล้วทิ้งไพ่หมดมือ! \(ชนะรับ (\d+) เหรียญ จากทุกคน\)$/);
+    if (m) return `${m[1]} Knocked after drawing! (Won ${m[2]} coins from each player)`;
+
+    m = withNames.match(/^(.+?) ไหลไพ่หมดมือน็อก! \(ชนะรับ (\d+) เหรียญ จากทุกคน\)$/);
+    if (m) return `${m[1]} Knocked by Matching! (Won ${m[2]} coins from each player)`;
+
+    m = withNames.match(/^(.+?) น็อค!! \(ชนะรับ (\d+) เหรียญ จากทุกคน\)$/);
+    if (m) return `${m[1]} Knocked! (Won ${m[2]} coins from each player)`;
+
+    m = withNames.match(/^กองไพ่หมด! (.+?) แต้มต่ำสุด (\d+) แต้ม \(ชนะ\)$/);
+    if (m) return `Deck empty! ${m[1]} has the lowest score (${m[2]} pts) and wins!`;
+
+    m = withNames.match(/^(.+?) แคง 25 สำเร็จ!$/);
+    if (m) return `${m[1]} Kang 25! Succeeded!`;
+
+    m = withNames.match(/^(.+?) แคง สำเร็จ!$/);
+    if (m) return `${m[1]} Kang! Succeeded!`;
+
+    m = withNames.match(/^(.+?) แคง 25 แหก! \((.+?) ชนะ\)$/);
+    if (m) return `${m[1]} Busted Kang 25! (${m[2]} wins)`;
+
+    m = withNames.match(/^(.+?) แคง แหก! \((.+?) ชนะ\)$/);
+    if (m) return `${m[1]} Busted Kang! (${m[2]} wins)`;
+
+    m = withNames.match(/^(.+?) เปิดไพ่มาแล้วได้แต้มรวม (\d+) แต้ม$/);
+    if (m) return `${m[1]} revealed ${m[2]} pts`;
+
+    m = withNames.match(/^(.+?) ได้รับ (\d+) เหรียญ$/);
+    if (m) return `${m[1]} won ${m[2]} coins`;
+
+    m = withNames.match(/^(.+?) เสีย (\d+) เหรียญ$/);
+    if (m) return `${m[1]} lost ${m[2]} coins`;
+
+    m = withNames.match(/^(.+?) ไม่ได้ไม่เสียเหรียญ$/);
+    if (m) return `${m[1]} broke even (0 coins)`;
+
+    return withNames;
+}
+
+function renderRoomListFromCache() {
+    const listContainer = document.getElementById('room-list-container');
+    if (!listContainer) return;
+    listContainer.innerHTML = '';
+    if (roomsSnapshotCache && typeof roomsSnapshotCache === 'object') {
+        let hasRoom = false;
+        for (let rId in roomsSnapshotCache) {
+            let info = roomsSnapshotCache[rId];
+            if (info && info.state === 'WAITING' && info.playerCount < 6) {
+                hasRoom = true;
+                let btn = document.createElement('button');
+                btn.className = 'room-item-btn';
+                btn.setAttribute('aria-label', t('roomItemAria', rId, info.playerCount));
+                btn.innerHTML = `${t('roomItemLabel', rId, info.playerCount)}<span aria-hidden="true">${t('roomItemJoinArrow')}</span>`;
+                btn.onclick = () => window.joinRoomDirect(rId);
+                listContainer.appendChild(btn);
+            }
+        }
+        if (!hasRoom) {
+            listContainer.innerHTML = `<div class="no-room-text" role="status">${t('noRoomEmpty')}</div>`;
+        }
+    } else {
+        listContainer.innerHTML = `<div class="no-room-text" role="status">${isSystemInitialized ? t('noRoomEmpty') : t('noRoomSearching')}</div>`;
+    }
+}
+
+function applyLanguage(shouldAnnounce = false) {
+    document.documentElement.lang = currentLang;
+    document.title = t('pageTitle');
+
+    const homeBtn = document.getElementById('btn-home-top');
+    if (homeBtn) homeBtn.setAttribute('aria-label', t('homeAria'));
+
+    const langBtn = document.getElementById('btn-lang-toggle');
+    if (langBtn) {
+        langBtn.innerText = t('langToggleText');
+        langBtn.setAttribute('aria-label', t('langToggleAria'));
+    }
+
+    const transText = document.getElementById('transition-text');
+    if (transText) transText.innerText = t('transitionDefault');
+
+    const dcHeading = document.getElementById('disconnect-heading');
+    if (dcHeading) dcHeading.innerText = t('disconnectHeading');
+
+    const dcHomeBtn = document.getElementById('btn-disconnect-home');
+    if (dcHomeBtn) dcHomeBtn.setAttribute('aria-label', t('homeAria'));
+
+    const nameTitle = document.getElementById('name-entry-title');
+    if (nameTitle) nameTitle.innerText = t('nameEntryTitle');
+
+    const nameDesc = document.getElementById('name-entry-desc');
+    if (nameDesc) nameDesc.innerText = t('nameEntryDesc');
+
+    const nameLabel = document.getElementById('player-name-label');
+    if (nameLabel) nameLabel.innerText = t('playerNameLabel');
+
+    const nameInput = document.getElementById('player-name-input');
+    if (nameInput) nameInput.setAttribute('placeholder', t('playerNamePlaceholder'));
+
+    const confirmBtnSpan = document.querySelector('#btn-confirm-name span');
+    if (confirmBtnSpan) confirmBtnSpan.innerText = t('btnConfirmName');
+
+    const setupTitle = document.getElementById('setup-title');
+    if (setupTitle) setupTitle.innerText = t('setupTitle');
+
+    const setupDesc = document.getElementById('setup-desc');
+    if (setupDesc) setupDesc.innerText = t('setupDesc');
+
+    const entNote = document.getElementById('entertainment-note');
+    if (entNote) entNote.innerText = t('entertainmentNote');
+
+    const createRoomSpan = document.querySelector('#btn-create-room span');
+    if (createRoomSpan) createRoomSpan.innerText = t('btnCreateRoom');
+
+    const openManualSpan = document.querySelector('#btn-open-manual span');
+    if (openManualSpan) openManualSpan.innerText = t('btnOpenManual');
+
+    const roomListTitle = document.getElementById('room-list-title');
+    if (roomListTitle) roomListTitle.innerText = t('roomListTitle');
+
+    const noRoomText = document.getElementById('no-room-text');
+    if (noRoomText) noRoomText.innerText = t('noRoomSearching');
+
+    const manualTitle = document.getElementById('manual-title');
+    if (manualTitle) manualTitle.innerText = t('manualTitle');
+
+    const manualBody = document.getElementById('manual-content-body');
+    if (manualBody) {
+        if (originalThaiManualHTML === null) {
+            originalThaiManualHTML = manualBody.innerHTML;
+        }
+        manualBody.innerHTML = (currentLang === 'en') ? EN_MANUAL_HTML : originalThaiManualHTML;
+    }
+
+    const closeManualSpan = document.querySelector('#btn-close-manual span');
+    if (closeManualSpan) closeManualSpan.innerText = t('btnCloseManual');
+
+    const waitingScreen = document.getElementById('waiting-room-screen');
+    if (waitingScreen) waitingScreen.setAttribute('aria-label', t('waitingRoomAria'));
+
+    const leaveWaitingBtn = document.getElementById('btn-leave-waiting');
+    if (leaveWaitingBtn) {
+        leaveWaitingBtn.innerText = t('btnLeaveWaiting');
+        leaveWaitingBtn.setAttribute('aria-label', t('btnLeaveWaitingAria'));
+    }
+
+    const waitingTitle = document.getElementById('waiting-room-title');
+    if (waitingTitle) waitingTitle.innerText = t('waitingRoomTitle');
+
+    const roomIdLabel = document.getElementById('room-id-label');
+    if (roomIdLabel) roomIdLabel.innerText = t('roomIdLabel');
+
+    const botSelectTitle = document.getElementById('bot-select-title');
+    if (botSelectTitle) botSelectTitle.innerText = t('botSelectTitle');
+
+    const botDecBtn = document.getElementById('btn-bot-dec');
+    if (botDecBtn) botDecBtn.setAttribute('aria-label', t('btnBotDecAria'));
+
+    const botIncBtn = document.getElementById('btn-bot-inc');
+    if (botIncBtn) botIncBtn.setAttribute('aria-label', t('btnBotIncAria'));
+
+    const botCountText = document.getElementById('bot-count-text');
+    if (botCountText) botCountText.innerText = t('botCountUnit', currentBotCount);
+
+    const waitingPlayersTitle = document.getElementById('waiting-players-title');
+    if (waitingPlayersTitle) waitingPlayersTitle.innerText = t('waitingPlayersTitle');
+
+    const hostStartBtn = document.getElementById('btn-host-start');
+    if (hostStartBtn) hostStartBtn.innerText = t('btnHostStart');
+
+    const guestWaitTxt = document.getElementById('guest-waiting-text');
+    if (guestWaitTxt) guestWaitTxt.innerText = t('guestWaitingText');
+
+    const gameScreen = document.getElementById('game-screen');
+    if (gameScreen) gameScreen.setAttribute('aria-label', t('gameScreenAria'));
+
+    const deckLabelText = document.getElementById('deck-label-text');
+    if (deckLabelText) deckLabelText.innerText = t('deckLabel');
+
+    const deckUnitText = document.getElementById('deck-unit-text');
+    if (deckUnitText) deckUnitText.innerText = t('deckUnit');
+
+    const visAnnouncer = document.getElementById('visible-game-announcer');
+    if (visAnnouncer && (visAnnouncer.innerText === 'ยินดีต้อนรับสู่โต๊ะไพ่แคง!' || visAnnouncer.innerText === 'Welcome to the Kang table!')) {
+        visAnnouncer.innerText = t('welcomeTableAnnounce');
+    }
+
+    const handUi = document.getElementById('my-hand-ui');
+    if (handUi) handUi.setAttribute('aria-label', t('myHandAria'));
+
+    const btnDraw = document.getElementById('btn-draw');
+    if (btnDraw) btnDraw.innerText = t('btnDraw');
+
+    const btnEnd = document.getElementById('btn-end-turn');
+    if (btnEnd) btnEnd.innerText = t('btnEndTurn');
+
+    const btnKang = document.getElementById('btn-kang');
+    if (btnKang) btnKang.innerText = t('btnKang');
+
+    const btnKang25 = document.getElementById('btn-kang25');
+    if (btnKang25) btnKang25.innerText = t('btnKang25');
+
+    const btnSkip = document.getElementById('btn-skip-pre');
+    if (btnSkip) btnSkip.innerText = t('btnSkipPre');
+
+    const btnResultHome = document.getElementById('btn-result-home');
+    if (btnResultHome) {
+        btnResultHome.innerText = t('btnResultHome');
+        btnResultHome.setAttribute('aria-label', t('homeAria'));
+    }
+
+    const guestWaitNext = document.getElementById('guest-waiting-next-round');
+    if (guestWaitNext) guestWaitNext.innerText = t('guestWaitingNextRound');
+
+    const tempBotHeading = document.getElementById('temporary-bot-heading');
+    if (tempBotHeading) tempBotHeading.innerText = t('tempBotHeading');
+
+    const tempBotP1 = document.getElementById('temporary-bot-p1');
+    if (tempBotP1) tempBotP1.innerText = t('tempBotP1');
+
+    const tempBotP2 = document.getElementById('temporary-bot-p2');
+    if (tempBotP2) tempBotP2.innerText = t('tempBotP2');
+
+    const btnBotYes = document.getElementById('btn-bot-return-yes');
+    if (btnBotYes) btnBotYes.innerText = t('btnBotYes');
+
+    const btnBotNo = document.getElementById('btn-bot-return-no');
+    if (btnBotNo) btnBotNo.innerText = t('btnBotNo');
+
+    if (roomsSnapshotCache !== null) {
+        renderRoomListFromCache();
+    }
+    if (roomId) {
+        updateLobbyUI();
+    }
+    if (window.currentPublicState) {
+        renderClientGame(window.currentPublicState, localPlayerState);
+    }
+    if (lastResultRawData && document.getElementById('result-modal')?.style.display === 'flex') {
+        window.showResultModal(
+            lastResultRawData.title,
+            lastResultRawData.detail,
+            lastResultRawData.isEnd,
+            lastResultRawData.winners,
+            lastResultRawData.losers,
+            true
+        );
+    }
+
+    if (shouldAnnounce) {
+        announce(currentLang === 'en' ? 'Language switched to English' : 'เปลี่ยนภาษาเป็นภาษาไทยแล้ว', false);
+    }
+}
+
+window.toggleLanguage = () => {
+    currentLang = (currentLang === 'th') ? 'en' : 'th';
+    localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+    playSound('select');
+    applyLanguage(true);
+};
+
+// =========================================================
 // [พื้นที่สำหรับพัฒนาต่อ #1] ระบบตรวจสอบกฎพิเศษ (Special Win)
 // =========================================================
 let currentSpecialWinType = null;
@@ -727,6 +1376,29 @@ const BOT_NAMES_POOL = [
     "บอทเจ้าขนม"
 ];
 
+const BOT_NAMES_POOL_EN = [
+    "Bot Maple",
+    "Bot Sweetie",
+    "Bot Onigiri",
+    "Bot Mochi",
+    "Bot Moneybag",
+    "Bot Jasmine",
+    "Bot Boba",
+    "Bot Cotton",
+    "Bot Cocoa",
+    "Bot Peanut",
+    "Bot Matcha",
+    "Bot Fluffy",
+    "Bot Honey",
+    "Bot Cookie",
+    "Bot Persimmon",
+    "Bot StickyRice",
+    "Bot Milkfoam",
+    "Bot Mackerel",
+    "Bot Chirpy",
+    "Bot Muffin"
+];
+
 let peer = null, myPeerId = null, roomId = null, isHost = false;
 let hostConnection = null, guestConnections = []; 
 let roomPlayers = [], botColors = [], botNames = [], currentBotCount = 0, selectedColorId = 'red';
@@ -828,27 +1500,8 @@ function initFirebaseAndPeerSystem() {
 
             const roomsRef = ref(db, GAME_DB_ID + '/rooms');
             onValue(roomsRef, (snapshot) => {
-                const listContainer = document.getElementById('room-list-container');
-                if (!listContainer) return;
-                listContainer.innerHTML = '';
-                if (snapshot.exists()) {
-                    let hasRoom = false;
-                    for (let rId in snapshot.val()) {
-                        let info = snapshot.val()[rId];
-                        if (info.state === 'WAITING' && info.playerCount < 6) {
-                            hasRoom = true;
-                            let btn = document.createElement('button');
-                            btn.className = 'room-item-btn';
-                            btn.setAttribute('aria-label', `เข้าร่วมห้อง ${rId} มีผู้เล่น ${info.playerCount} จาก 6 คน`);
-                            btn.innerHTML = `ห้อง ${rId} (${info.playerCount}/6 คน) <span aria-hidden="true">เข้า ➔</span>`;
-                            btn.onclick = () => window.joinRoomDirect(rId);
-                            listContainer.appendChild(btn);
-                        }
-                    }
-                    if(!hasRoom) listContainer.innerHTML = '<div class="no-room-text" role="status">ไม่มีห้องว่าง (กดสร้างห้องได้เลย)</div>';
-                } else {
-                    listContainer.innerHTML = '<div class="no-room-text" role="status">ไม่มีห้องว่าง (กดสร้างห้องได้เลย)</div>';
-                }
+                roomsSnapshotCache = snapshot.exists() ? snapshot.val() : {};
+                renderRoomListFromCache();
             }, (err) => {
                 console.warn("Firebase onValue error", err);
             });
@@ -906,6 +1559,7 @@ function triggerHostDisconnect() {
     
     const dcScreen = document.getElementById('disconnect-screen');
     dcScreen.style.display = 'flex';
+    updateHomeBtnVisibility();
     setTimeout(() => {
         const hd = document.getElementById('disconnect-heading');
         if(hd) hd.focus();
@@ -922,7 +1576,7 @@ function resetHeartbeat() {
 // Temporary Bot Modal & Accessibility Management
 // =========================================================
 function setBackgroundInertForBotModal(isInert) {
-    const bgIds = ['btn-home-top', 'game-screen', 'result-modal', 'waiting-room-screen', 'setup-screen', 'manual-screen', 'name-entry-screen'];
+    const bgIds = ['btn-home-top', 'btn-lang-toggle', 'game-screen', 'result-modal', 'waiting-room-screen', 'setup-screen', 'manual-screen', 'name-entry-screen'];
     bgIds.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -939,7 +1593,7 @@ function setBackgroundInertForBotModal(isInert) {
 function updateTemporaryBotModalCountdownText(seconds) {
     const cdEl = document.getElementById('temporary-bot-countdown');
     if (cdEl) {
-        cdEl.innerText = `กรุณาเลือกภายใน ${seconds} วินาที มิฉะนั้นระบบจะถือว่าคุณเลือก "ไม่ใช่"`;
+        cdEl.innerText = t('tempBotCountdown', seconds);
     }
 }
 
@@ -1246,7 +1900,7 @@ function handleHostRoomExit() {
     }, 200);
 }
 
-let currentTopCardText = "ยังไม่มีไพ่บนกอง";
+let currentTopCardText = t('topCardEmpty');
 
 // --- CHEAT MODE BUFFERS ---
 let cheatBuffer = "";
@@ -1300,11 +1954,15 @@ document.addEventListener('keydown', (e) => {
 
 function updateHomeBtnVisibility() {
     const homeBtn = document.getElementById('btn-home-top');
+    const langBtn = document.getElementById('btn-lang-toggle');
     const nameScreen = document.getElementById('name-entry-screen');
+    const setupScreen = document.getElementById('setup-screen');
     const nameDisp = nameScreen ? window.getComputedStyle(nameScreen).display : 'none';
-    const setupDisp = window.getComputedStyle(document.getElementById('setup-screen')).display;
-    if (setupDisp !== 'none' || nameDisp !== 'none') homeBtn.style.display = 'block';
-    else homeBtn.style.display = 'none';
+    const setupDisp = setupScreen ? window.getComputedStyle(setupScreen).display : 'none';
+    const isTopBarVisible = (setupDisp !== 'none' || nameDisp !== 'none');
+
+    if (homeBtn) homeBtn.style.display = isTopBarVisible ? 'block' : 'none';
+    if (langBtn) langBtn.style.display = isTopBarVisible ? 'block' : 'none';
 }
 
 const bubblesBg = document.getElementById('bg-bubbles');
@@ -1316,15 +1974,31 @@ for(let i=0; i<15; i++) {
     bubblesBg.appendChild(b);
 }
 
+function localizeBotName(rawName, fallbackIdx = 0) {
+    if (!rawName) return currentLang === 'en' ? (BOT_NAMES_POOL_EN[fallbackIdx % BOT_NAMES_POOL_EN.length] || 'Bot') : (BOT_NAMES_POOL[fallbackIdx % BOT_NAMES_POOL.length] || 'บอท');
+    const poolIdx = BOT_NAMES_POOL.indexOf(rawName);
+    if (poolIdx !== -1) {
+        return currentLang === 'en' ? BOT_NAMES_POOL_EN[poolIdx] : BOT_NAMES_POOL[poolIdx];
+    }
+    return rawName;
+}
+
 function resolveName(id) {
+    if (typeof id === 'string' && id.startsWith('bot_')) {
+        let bIdx = parseInt(id.split('_')[1]);
+        let rawBName = (!isNaN(bIdx) && botNames[bIdx]) ? botNames[bIdx] : (BOT_NAMES_POOL[(isNaN(bIdx) ? 0 : bIdx) % BOT_NAMES_POOL.length]);
+        return localizeBotName(rawBName, isNaN(bIdx) ? 0 : bIdx);
+    }
     let p = globalPlayersMap[id];
     if (p && p.name && String(p.name).trim() !== '') {
-        return String(p.name).trim();
+        const trimmed = String(p.name).trim();
+        return p.isBot ? localizeBotName(trimmed, 0) : trimmed;
     }
     if (gameState && gameState.players) {
         let gp = gameState.players.find(x => x.id === id);
         if (gp && gp.name && String(gp.name).trim() !== '') {
-            return String(gp.name).trim();
+            const trimmed = String(gp.name).trim();
+            return gp.isBot ? localizeBotName(trimmed, 0) : trimmed;
         }
     }
     if (roomPlayers) {
@@ -1333,13 +2007,8 @@ function resolveName(id) {
             return String(rp.name).trim();
         }
     }
-    if (typeof id === 'string' && id.startsWith('bot_')) {
-        let bIdx = parseInt(id.split('_')[1]);
-        if (!isNaN(bIdx) && botNames[bIdx]) return botNames[bIdx];
-        return BOT_NAMES_POOL[bIdx % BOT_NAMES_POOL.length] || "บอท";
-    }
     if (id === myPeerId && myPlayerName) return myPlayerName;
-    return "ผู้เล่น";
+    return currentLang === 'en' ? 'Player' : 'ผู้เล่น';
 }
 
 // =========================================================
@@ -1348,7 +2017,7 @@ function resolveName(id) {
 window.showTransition = (msg, duration) => {
     const overlay = document.getElementById('transition-overlay');
     const text = document.getElementById('transition-text');
-    text.innerText = msg;
+    text.innerText = localizeDynamicMessage(msg);
     overlay.style.display = 'flex';
     if (duration) setTimeout(() => { overlay.style.display = 'none'; }, duration);
 };
@@ -1364,15 +2033,12 @@ const PRE_GAME_BASE_ANNOUNCEMENT = "เปิดรอบใหม่! มีใ
 
 function buildLocalPreGameAnnouncement(baseMsg) {
     const hand = (localPlayerState && Array.isArray(localPlayerState.hand)) ? localPlayerState.hand : [];
-    if (hand.length === 0) return baseMsg;
+    if (hand.length === 0) return localizeDynamicMessage(baseMsg);
 
     const handSum = hand.reduce((sum, c) => sum + (c.val || getCardValue(c.rank)), 0);
     const specialType = getSpecialWinType(hand, localPlayerState);
-    let fullMsg = `${baseMsg} ผลรวม ${handSum} แต้ม`;
-    if (specialType) {
-        fullMsg += ` คุณใช้ ${specialType} ได้`;
-    }
-    return fullMsg;
+    const localizedBase = localizeDynamicMessage(baseMsg);
+    return t('preGameSummary', localizedBase, handSum, specialType);
 }
 
 function announce(rawMsg, showOnBanner = true) {
@@ -1389,11 +2055,11 @@ function announce(rawMsg, showOnBanner = true) {
         }
     }
 
-    if (typeof rawMsg === 'string' && rawMsg.includes('จั่วได้ไพ่')) {
+    if (typeof rawMsg === 'string' && (rawMsg.includes('จั่วได้ไพ่') || rawMsg.includes('drew '))) {
         scheduleFocusOnFirstHandCard();
     }
 
-    let formattedMsg = rawMsg.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+    let formattedMsg = localizeDynamicMessage(rawMsg);
     const srOnly = document.getElementById('sr-only-announcer');
     if (srOnly) {
         srOnly.innerText = ''; 
@@ -1427,7 +2093,7 @@ window.openManual = () => {
     document.getElementById('manual-screen').style.display = 'flex';
     updateHomeBtnVisibility();
     setTimeout(() => { document.getElementById('manual-title').focus(); }, 100);
-    announce("เปิดหน้าคู่มือการเล่นแล้ว", false);
+    announce(t('manualOpenedAnnounce'), false);
 };
 
 window.closeManual = () => {
@@ -1435,7 +2101,7 @@ window.closeManual = () => {
     document.getElementById('setup-screen').style.display = 'flex';
     updateHomeBtnVisibility();
     document.getElementById('btn-open-manual').focus();
-    announce("ปิดหน้าคู่มือการเล่น กลับสู่หน้าหลัก", false);
+    announce(t('manualClosedAnnounce'), false);
 };
 
 const SUITS = ['♠', '♥', '♦', '♣'];
@@ -1468,7 +2134,7 @@ function setupNameEntryEvents() {
 
         const trimmedName = nameInput.value.trim();
         if (!trimmedName) {
-            announce("กรุณากรอกชื่อผู้เล่นก่อนเข้าสู่เกม", false);
+            announce(t('errEmptyName'), false);
             nameInput.focus();
             return;
         }
@@ -1491,7 +2157,7 @@ function setupNameEntryEvents() {
             setupScreen.style.display = 'flex';
         }
         updateHomeBtnVisibility();
-        announce(`ยินดีต้อนรับ ${myPlayerName} เข้าสู่หน้าเลือกห้องเล่นแคง`, false);
+        announce(t('welcomeLobbyAnnounce', myPlayerName), false);
 
         setTimeout(() => {
             const createRoomBtn = document.getElementById('btn-create-room');
@@ -1512,6 +2178,11 @@ function setupNameEntryEvents() {
 // Network & Lobby Logic
 // =========================================================
 window.onload = () => {
+    const langBtn = document.getElementById('btn-lang-toggle');
+    if (langBtn) {
+        langBtn.addEventListener('click', window.toggleLanguage);
+    }
+    applyLanguage(false);
     setupNameEntryEvents();
     setupTemporaryBotModalEvents();
     updateHomeBtnVisibility();
@@ -1520,7 +2191,7 @@ window.onload = () => {
 window.createNewRoom = async () => {
     if (!myPlayerName || !myPlayerName.trim()) return;
     await initFirebaseAndPeerSystem();
-    isHost = true; announce("กำลังสร้างห้อง โปรดรอสักครู่", false);
+    isHost = true; announce(t('creatingRoomAnnounce'), false);
     const seqRef = ref(db, GAME_DB_ID + '/room_seq');
     runTransaction(seqRef, (currentData) => {
         let nextNum = (currentData || 0) + 1;
@@ -1544,7 +2215,7 @@ window.createNewRoom = async () => {
                 document.getElementById('setup-screen').style.display = 'none';
                 document.getElementById('waiting-room-screen').style.display = 'flex';
                 updateHomeBtnVisibility();
-                announce(`สร้างห้องสำเร็จ รหัสห้องคือ ${roomId}`, false);
+                announce(t('roomCreatedAnnounce', roomId), false);
                 playSound('1');
                 updateLobbyUI(); listenHostConnections();
 
@@ -1558,7 +2229,7 @@ window.joinRoomDirect = async (targetRoomId) => {
     if (!myPlayerName || !myPlayerName.trim()) return;
     await initFirebaseAndPeerSystem();
     isHost = false; roomId = targetRoomId;
-    announce(`กำลังเข้าร่วมห้อง ${roomId}`, false);
+    announce(t('joiningRoomAnnounce', roomId), false);
     document.getElementById('setup-screen').style.display = 'none';
     document.getElementById('waiting-room-screen').style.display = 'flex';
     document.getElementById('host-bot-section').style.display = 'none';
@@ -1568,7 +2239,7 @@ window.joinRoomDirect = async (targetRoomId) => {
     hostConnection = peer.connect("cang-host-" + roomId);
     hostConnection.on('open', () => { 
         hostConnection.send({ type: 'JOIN_ROOM', name: myPlayerName }); 
-        announce(`เข้าร่วมห้องสำเร็จ รอแจกไพ่`, false); 
+        announce(t('joinedRoomAnnounce'), false); 
         resetHeartbeat();
     });
     hostConnection.on('data', (data) => {
@@ -1689,7 +2360,7 @@ window.adjustBot = (delta) => {
 
 function updateLobbyUI() {
     document.getElementById('display-room-id').innerText = roomId;
-    document.getElementById('bot-count-text').innerText = `${currentBotCount} ตัว`;
+    document.getElementById('bot-count-text').innerText = t('botCountUnit', currentBotCount);
     
     globalPlayersMap = {};
     roomPlayers.forEach(p => {
@@ -2038,7 +2709,6 @@ window.playKangAnimation = (callerId, winType) => {
     text2.style.opacity = '0';
     
     let pInfo = globalPlayersMap[callerId];
-    let pColorName = pInfo ? pInfo.colorName : '';
     let pColorHex = pInfo ? pInfo.colorHex : 'white';
     
     avatar.style.color = pColorHex;
@@ -2067,24 +2737,24 @@ window.playKangAnimation = (callerId, winType) => {
 
     setTimeout(() => {
         if (winType === 'cang') {
-            text1.innerText = `โอ้ ${callerName} เอ่ยคำว่า แคง`;
+            text1.innerText = t('kangAnim1_cang', callerName);
         } else if (winType === 'cang25') {
-            text1.innerText = `โอ้ ${callerName} เอ่ยคำว่า แคง25`;
+            text1.innerText = t('kangAnim1_cang25', callerName);
         } else if (winType === 'knock') {
-            text1.innerText = "KNOCK!";
+            text1.innerText = t('kangAnim1_knock');
         } else if (winType === 'special') {
-            text1.innerText = "SPECIAL WIN!";
+            text1.innerText = t('kangAnim1_special');
         }
         text1.style.opacity = '1'; announce(text1.innerText, false);
     }, 1200);
 
     setTimeout(() => {
         if (winType === 'cang' || winType === 'cang25') {
-            text2.innerText = `เปิดไพ่ทุกคนเพื่อวัดดวงกัน`;
+            text2.innerText = t('kangAnim2_cang');
         } else if (winType === 'knock') {
-            text2.innerText = `น็อกแล้วโดย ${callerName}`;
+            text2.innerText = t('kangAnim2_knock', callerName);
         } else if (winType === 'special') {
-            text2.innerText = `กติกาพิเศษโดย ${callerName}`;
+            text2.innerText = t('kangAnim2_special', callerName);
         }
         text2.style.opacity = '1'; announce(text2.innerText, false);
     }, 3000);
@@ -2476,7 +3146,7 @@ function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 
     });
     
     let caller = active.find(p => p.id === callerId); 
-    let resultDetail = "", title = "", winnerColorName = "";
+    let resultDetail = "", title = "";
     const getBasePay = (player) => 10 + (player.aceCount * 10);
 
     if (winReason === 'FLOW_KNOCK' || winReason === 'DRAW_KNOCK' || winReason === true) {
@@ -2484,7 +3154,6 @@ function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 
         let reasonStr = (winReason === 'DRAW_KNOCK') ? 'จั่วแล้วทิ้งไพ่หมดมือ' : 'ไหลไพ่หมดมือน็อก';
         if (winReason === true) reasonStr = 'น็อค!';
         
-        winnerColorName = caller.colorInfo.name;
         title = `[PID:${caller.id}] ${reasonStr}! (ชนะรับ ${basePay} เหรียญ จากทุกคน)`;
         active.forEach(p => { 
             if(p.id !== caller.id) { p.points -= basePay; if(p.points < 0) p.points = 0; caller.points += basePay; } 
@@ -2492,7 +3161,6 @@ function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 
     } else if (isDeckEmpty) {
         let lowest = active.reduce((min, p) => p.handSum < min.handSum ? p : min, active[0]);
         let basePay = getBasePay(lowest);
-        winnerColorName = lowest.colorInfo.name;
         title = `กองไพ่หมด! [PID:${lowest.id}] แต้มต่ำสุด ${lowest.handSum} แต้ม (ชนะ)`;
         active.forEach(p => { 
             if(p.id !== lowest.id) { p.points -= basePay; if(p.points < 0) p.points = 0; lowest.points += basePay; } 
@@ -2502,12 +3170,10 @@ function resolveKang(callerId, isDeckEmpty = false, winReason = false, isKang25 
         let lowestOther = others.reduce((min, p) => p.handSum < min.handSum ? p : min, others[0]);
 
         if (caller.handSum <= lowestOther.handSum) { // เปลี่ยนจาก < เป็น <= เพื่อให้ชนะเสมอเมื่อแต้มต่ำสุดเท่ากัน
-            winnerColorName = caller.colorInfo.name;
             let payAmount = getBasePay(caller); if (isKang25) payAmount = payAmount * 2; 
             title = `[PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} สำเร็จ!`;
             others.forEach(p => { p.points -= payAmount; if(p.points < 0) p.points = 0; caller.points += payAmount; });
         } else {
-            winnerColorName = lowestOther.colorInfo.name;
             let payAmount = getBasePay(lowestOther) * totalPlayersInRoom; 
             title = `[PID:${caller.id}] ${isKang25?'แคง 25':'แคง'} แหก! ([PID:${lowestOther.id}] ชนะ)`;
             caller.points -= payAmount; if(caller.points < 0) caller.points = 0; lowestOther.points += payAmount;
@@ -2609,24 +3275,24 @@ function renderClientGame(publicState, privateState) {
         document.getElementById('main-table-area').style.display = 'flex';
         document.getElementById('action-bar-container').style.display = 'flex';
         if (publicState.status === 'PRE_GAME') {
-            turnInd.innerText = "เตรียมตัว! เช็คไพ่ในมือ (40 วินาที)";
+            turnInd.innerText = t('preGameTurnInd');
         } else {
             let oldTurnTxt = turnInd.innerText;
-            let newTurnTxt = (turnId === myPeerId && !isControlledByBot) ? `🔥 ถึงรอบของ ${currPlayerDisp} แล้ว!` : `ถึงรอบของ ${currPlayerDisp} แล้ว`;
+            let newTurnTxt = (turnId === myPeerId && !isControlledByBot) ? t('yourTurnInd', currPlayerDisp) : t('otherTurnInd', currPlayerDisp);
             if (oldTurnTxt !== newTurnTxt && publicState.status === 'PLAYING') {
                 turnInd.innerText = newTurnTxt;
-                let topTxt = topC ? `${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}` : 'ยังไม่มีไพ่บนกอง';
+                let topTxt = topC ? formatCardName(topC.rank, topC.suit) : t('topCardEmpty');
                 if (turnId === myPeerId && !isControlledByBot) {
                     let playableCount = (topC && !localPlayerState.hasDrawn && !localPlayerState.hasFlowedThisTurn)
                         ? (localPlayerState.hand || []).filter(c => c.rank === topC.rank).length
                         : 0;
-                    let playHintTxt = playableCount > 0 ? `ลงได้ ${playableCount} ใบ` : `ลงไม่ได้จั่วเลย`;
-                    announce(`ถึงรอบของ ${currPlayerDisp} แล้ว กรุณาลงมือเล่น (ไพ่บนกองคือ ${topTxt}) ${playHintTxt}`);
+                    let playHintTxt = playableCount > 0 ? t('playHintCan', playableCount) : t('playHintCant');
+                    announce(t('yourTurnAnnounce', currPlayerDisp, topTxt, playHintTxt));
                     if (playableCount === 0 && !localPlayerState.hasDrawn && !localPlayerState.hasFlowedThisTurn) {
                         scheduleFocusOnDrawButton();
                     }
                 } else {
-                    announce(`ถึงรอบของ ${currPlayerDisp} แล้ว (ไพ่บนกองคือ ${topTxt})`, false);
+                    announce(t('otherTurnAnnounce', currPlayerDisp, topTxt), false);
                 }
             }
         }
@@ -2641,13 +3307,13 @@ function renderClientGame(publicState, privateState) {
         publicState.playersInfo.forEach((p) => {
             if (!p.isOut) {
                 let dispName = resolveName(p.id);
-                groupAriaLabel += `${dispName} มี ${p.points} เหรียญ. `;
+                groupAriaLabel += t('statusPlayerAria', dispName, p.points);
                 let item = document.createElement('div');
                 item.className = `status-avatar-item ${p.id === turnId && publicState.status === 'PLAYING' ? 'active-turn' : ''}`;
                 item.id = `avatar-${containerId}-${p.id}`;
                 item.style.borderColor = p.colorHex;
                 item.innerHTML = `
-                    <div class="status-coin-header" aria-hidden="true">${p.points} เหรียญ</div>
+                    <div class="status-coin-header" aria-hidden="true">${t('statusCoinsText', p.points)}</div>
                     <div class="status-avatar-icon" style="background-color:${p.colorHex}; color:#fff;" aria-hidden="true">👤</div>
                     <div class="status-player-label" style="color:${p.colorHex};" aria-hidden="true">${dispName}</div>
                 `;
@@ -2656,7 +3322,7 @@ function renderClientGame(publicState, privateState) {
         });
         container.setAttribute('tabindex', '0');
         container.setAttribute('role', 'group');
-        container.setAttribute('aria-label', `สถานะผู้เล่นทั้งหมด: ${groupAriaLabel}`);
+        container.setAttribute('aria-label', t('statusGroupAria', groupAriaLabel));
     };
 
     renderStatusBar('players-status-bar'); renderStatusBar('result-status-bar');
@@ -2665,8 +3331,8 @@ function renderClientGame(publicState, privateState) {
     const btnKang25 = document.getElementById('btn-kang25'); const btnEnd = document.getElementById('btn-end-turn');
     const btnSkip = document.getElementById('btn-skip-pre'); const btnSpecial = document.getElementById('btn-special');
 
-    if (topC) currentTopCardText = `ไพ่บนกองทิ้งปัจจุบันคือ ${THAI_RANKS[topC.rank]} ${THAI_SUITS[topC.suit]}`;
-    else currentTopCardText = `ยังไม่มีไพ่บนกองทิ้ง`;
+    if (topC) currentTopCardText = t('topCardCurrent', formatCardName(topC.rank, topC.suit));
+    else currentTopCardText = t('topCardEmptyFull');
 
     let hasVoted = (publicState.skipVotes && publicState.skipVotes.includes(myPeerId)) || isControlledByBot;
 
@@ -2703,7 +3369,8 @@ function renderClientGame(publicState, privateState) {
     currentSpecialWinType = getSpecialWinType(localPlayerState.hand, localPlayerState);
 
     if (currentSpecialWinType && (publicState.status === 'PRE_GAME' || publicState.status === 'PLAYING') && !isControlledByBot) {
-        btnSpecial.style.display = 'inline-block'; btnSpecial.innerText = currentSpecialWinType;
+        btnSpecial.style.display = 'inline-block';
+        btnSpecial.innerText = getSpecialWinDisplayName(currentSpecialWinType);
         btnSpecial.disabled = false;
     } else {
         btnSpecial.style.display = 'none';
@@ -2719,7 +3386,7 @@ function renderClientGame(publicState, privateState) {
     if (deckAccessibleObject) {
         deckAccessibleObject.setAttribute(
             'aria-label',
-            `กองไพ่สำหรับจั่ว เหลือ ${publicState.deckCount} ใบ`
+            t('deckAria', publicState.deckCount)
         );
     }
 
@@ -2735,14 +3402,14 @@ function renderClientGame(publicState, privateState) {
             dp.style.animation = 'cardDropScale 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
         }
 
-        let tRank = THAI_RANKS[topC.rank]; let tSuit = THAI_SUITS[topC.suit];
-        dp.innerHTML = `<div class="card ${['♥','♦'].includes(topC.suit)?'red':'black'}" aria-label="ไพ่กองทิ้งใบบนสุดคือ ${tRank} ${tSuit}" role="img">
+        let cardNameStr = formatCardName(topC.rank, topC.suit);
+        dp.innerHTML = `<div class="card ${['♥','♦'].includes(topC.suit)?'red':'black'}" aria-label="${t('discardPileTopAria', cardNameStr)}" role="img">
                            <div aria-hidden="true">${topC.rank}</div><div class="card-suit" aria-hidden="true">${topC.suit}</div>
                         </div>`;
     } else {
         window._lastTopCardId = null;
-        dp.innerHTML = '<div style="color:#a0a0a0; font-size:0.85rem;">กองทิ้งว่างเปล่า</div>'; 
-        dp.setAttribute('aria-label', 'กองไพ่ทิ้งยังว่างเปล่า');
+        dp.innerHTML = `<div style="color:#a0a0a0; font-size:0.85rem;">${t('discardPileEmptyHtml')}</div>`; 
+        dp.setAttribute('aria-label', t('discardPileEmptyAria'));
     }
 
     const handUi = document.getElementById('my-hand-ui'); handUi.innerHTML = '';
@@ -2757,7 +3424,7 @@ function renderClientGame(publicState, privateState) {
             // --- [เพิ่มมิติการแสดงผล] Visual Trigger: ไพ่ทยอยแจกเข้ามือ ---
             cardEl.style.animation = `cardSlideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) ${index * 0.08}s both`;
 
-            let tRank = THAI_RANKS[c.rank]; let tSuit = THAI_SUITS[c.suit];
+            let cardNameStr = formatCardName(c.rank, c.suit);
             let actionHint = ""; cardEl.disabled = true;
             
             let canFlowCard = (topC && c.rank === topC.rank && !localPlayerState.hasDrawn && !localPlayerState.hasDiscarded);
@@ -2765,7 +3432,7 @@ function renderClientGame(publicState, privateState) {
             if (publicState.status === 'PLAYING' && !isControlledByBot) {
                 if (canFlowCard) {
                     if (isMyTurn) { // เป็น Turn ตัวเองเท่านั้นจึงจะไหลได้
-                        cardEl.disabled = false; actionHint = " กดเพื่อไหลไพ่ใบนี้";
+                        cardEl.disabled = false; actionHint = t('hintFlow');
                         cardEl.style.boxShadow = "0 0 12px var(--blue)"; 
                         cardEl.onclick = () => window.clientAction('FLOW', index);
                     } else { // ไม่ใช่ Turn ตัวเอง ไม่สามารถกดได้ และทำให้แสดงสถานะ dim/disabled
@@ -2777,18 +3444,18 @@ function renderClientGame(publicState, privateState) {
                 else if (isMyTurn) {
                     if (!localPlayerState.hasDiscarded) {
                         if (localPlayerState.hasDrawn && !localPlayerState.hasFlowedThisTurn) {
-                            cardEl.disabled = false; actionHint = " กดเพื่อทิ้งไพ่ใบนี้";
+                            cardEl.disabled = false; actionHint = t('hintDiscard');
                             cardEl.onclick = () => window.clientAction('DISCARD', index);
                         }
                     } else if (c.rank === localPlayerState.discardedRank) {
-                        cardEl.disabled = false; actionHint = " กดเพื่อทิ้งเพิ่มเติม (เลขเดียวกัน)";
+                        cardEl.disabled = false; actionHint = t('hintDiscardMore');
                         cardEl.style.boxShadow = "0 0 12px var(--green)";
                         cardEl.onclick = () => window.clientAction('DISCARD', index);
                     }
                 }
             }
             
-            cardEl.setAttribute('aria-label', `ไพ่ ${tRank} ${tSuit}${actionHint}`);
+            cardEl.setAttribute('aria-label', t('cardAria', cardNameStr, actionHint));
             cardEl.innerHTML = `<div aria-hidden="true">${c.rank}</div><div class="card-suit" aria-hidden="true">${c.suit}</div>`;
             handUi.appendChild(cardEl);
         });
@@ -2909,13 +3576,20 @@ window.showFloatingScore = (targetId, amt) => {
     }
 };
 
-window.showResultModal = (title, detail, isEnd, winners, losers) => {
-    const srOnlyAnnouncer = document.getElementById('sr-only-announcer'); if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
-    const visAnnouncer = document.getElementById('visible-game-announcer'); if (visAnnouncer) visAnnouncer.innerText = '';
-    window.isStartingRound = false;
+window.showResultModal = (title, detail, isEnd, winners, losers, isLanguageRefresh = false) => {
+    lastResultRawData = { title, detail, isEnd, winners, losers };
 
-    let resolvedTitle = title.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
-    let resolvedDetail = detail.replace(/\[PID:(.*?)\]/g, (match, id) => resolveName(id));
+    if (!isLanguageRefresh) {
+        const srOnlyAnnouncer = document.getElementById('sr-only-announcer'); if (srOnlyAnnouncer) srOnlyAnnouncer.innerText = '';
+        const visAnnouncer = document.getElementById('visible-game-announcer'); if (visAnnouncer) visAnnouncer.innerText = '';
+        window.isStartingRound = false;
+    }
+
+    let resolvedTitle = localizeDynamicMessage(title);
+    let resolvedDetail = detail
+        .split('<br>')
+        .map(line => localizeDynamicMessage(line))
+        .join('<br>');
 
     document.getElementById('result-title').innerText = resolvedTitle;
     document.getElementById('result-details').innerHTML = resolvedDetail;
@@ -2938,11 +3612,11 @@ window.showResultModal = (title, detail, isEnd, winners, losers) => {
             btnNext.style.display = 'none';
             if (waitTxt) waitTxt.style.display = 'none';
         } else if (isEnd) {
-            btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = "กลับหน้าหลัก"; btnNext.onclick = () => window.location.reload();
+            btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = t('btnBackHomeReload'); btnNext.onclick = () => window.location.reload();
             if (waitTxt) waitTxt.style.display = 'none';
         } else {
             if (isHost) {
-                btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = "เริ่มรอบใหม่"; btnNext.onclick = closeResultModal;
+                btnNext.style.display = 'block'; btnNext.disabled = false; btnNext.innerText = t('btnNextRound'); btnNext.onclick = closeResultModal;
                 if (waitTxt) waitTxt.style.display = 'none';
             } else {
                 btnNext.style.display = 'none';
@@ -2951,18 +3625,20 @@ window.showResultModal = (title, detail, isEnd, winners, losers) => {
         }
     }
 
-    if(myPeerId) {
-        if (winners && winners.includes(myPeerId)) playSound('win');
-        else if (losers && losers.includes(myPeerId)) playSound('lost');
-        else playSound('no'); 
-    }
-
-    setTimeout(() => {
-        if (!isLocalTempBotModalOpen) {
-            const resultTitle = document.getElementById('result-title');
-            if (resultTitle) resultTitle.focus();
+    if (!isLanguageRefresh) {
+        if(myPeerId) {
+            if (winners && winners.includes(myPeerId)) playSound('win');
+            else if (losers && losers.includes(myPeerId)) playSound('lost');
+            else playSound('no'); 
         }
-    }, 200);
+
+        setTimeout(() => {
+            if (!isLocalTempBotModalOpen) {
+                const resultTitle = document.getElementById('result-title');
+                if (resultTitle) resultTitle.focus();
+            }
+        }, 200);
+    }
 };
 
 // =========================================================
@@ -3027,13 +3703,13 @@ function setCheatHand(type) {
         if (p) {
             p.hand = newHand;
             syncStateToAll();
-            announce("เสกไพ่สำเร็จ (Host)", false);
+            announce(currentLang === 'en' ? 'Cheat hand applied (Host)' : 'เสกไพ่สำเร็จ (Host)', false);
         }
     } else {
         localPlayerState.hand = newHand;
         if (window.currentPublicState) {
             renderClientGame(window.currentPublicState, localPlayerState);
         }
-        announce("เสกไพ่สำเร็จ (Client)", false);
+        announce(currentLang === 'en' ? 'Cheat hand applied (Client)' : 'เสกไพ่สำเร็จ (Client)', false);
     }
 }
