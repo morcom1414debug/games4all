@@ -754,7 +754,8 @@
                 edgeHitPulse = 1.0;
                 const now = performance.now();
                 if (!isGameOver && audioCtx && (now - lastBoundarySoundTime > 600)) {
-                    playSound('edge90', 0.85);
+                    const edgePan = atLeftEdge ? -1.0 : 1.0;
+                    playSoundPanned('edge90', 0.85, edgePan);
                     lastBoundarySoundTime = now;
                 }
             } 
@@ -2434,6 +2435,78 @@
             gainNode.connect(audioCtx.destination);
             source.start(0);
         }
+
+        function playSoundPanned(bufferName, volume = 1.0, pan = 0) {
+            if (!audioBuffers[bufferName]) return;
+            const source = audioCtx.createBufferSource();
+            const gainNode = audioCtx.createGain();
+            source.buffer = audioBuffers[bufferName];
+            gainNode.gain.value = volume;
+            source.connect(gainNode);
+
+            if (typeof audioCtx.createStereoPanner === 'function') {
+                const stereoPanner = audioCtx.createStereoPanner();
+                stereoPanner.pan.value = Math.max(-1, Math.min(1, pan));
+                gainNode.connect(stereoPanner);
+                stereoPanner.connect(audioCtx.destination);
+            } else {
+                const panner = audioCtx.createPanner();
+                panner.panningModel = 'HRTF';
+                const clampedPan = Math.max(-1, Math.min(1, pan));
+                const rad = clampedPan * (Math.PI / 2);
+                const x = Math.sin(rad) * 2;
+                const z = -Math.cos(rad) * 2;
+                if (panner.positionX) {
+                    panner.positionX.value = x;
+                    panner.positionY.value = 0;
+                    panner.positionZ.value = z;
+                } else {
+                    panner.setPosition(x, 0, z);
+                }
+                gainNode.connect(panner);
+                panner.connect(audioCtx.destination);
+            }
+            source.start(0);
+        }
+
+        function playSoundAtAngle(bufferName, volume = 1.0, targetAngle = null) {
+            if (targetAngle === null || targetAngle === undefined) {
+                playSound(bufferName, volume);
+                return;
+            }
+            if (!audioBuffers[bufferName]) return;
+            const source = audioCtx.createBufferSource();
+            const gainNode = audioCtx.createGain();
+            source.buffer = audioBuffers[bufferName];
+            gainNode.gain.value = volume;
+
+            const relDeg = targetAngle - playerAngle;
+            const clampedAudioDeg = Math.max(-90, Math.min(90, relDeg));
+            const relativeAngle = clampedAudioDeg * (Math.PI / 180);
+            const radius = 0.5;
+            const x = Math.sin(relativeAngle) * radius;
+            const z = -Math.cos(relativeAngle) * radius;
+
+            const panner = audioCtx.createPanner();
+            panner.panningModel = 'HRTF';
+            panner.distanceModel = 'linear';
+            panner.refDistance = 1;
+            panner.maxDistance = 100;
+            panner.rolloffFactor = 1;
+
+            if (panner.positionX) {
+                panner.positionX.value = x;
+                panner.positionY.value = -1.6;
+                panner.positionZ.value = z;
+            } else {
+                panner.setPosition(x, -1.6, z);
+            }
+
+            source.connect(gainNode);
+            gainNode.connect(panner);
+            panner.connect(audioCtx.destination);
+            source.start(0);
+        }
         
         function playBGM() {
             if (bgmSource || !audioBuffers['bgm']) return;
@@ -2977,7 +3050,7 @@
             }
         }
 
-        function gameOver(isWin) {
+        function gameOver(isWin, attackerAngle = null) {
             isGameOver = true;
             clearTimeout(spawnTimer);
             clearTimeout(giftSpawnTimer);
@@ -3011,7 +3084,7 @@
 
             if (!isWin) {
                 gameOverScreen.classList.remove('victory-theme');
-                playSound('lose3');
+                playSoundAtAngle('lose3', 1.0, attackerAngle);
                 title.innerText = t.gameOverLoseTitle;
                 msg.innerText = t.gameOverLoseMsg(currentLevel);
                 announce(t.annGameOverLose(currentLevel));
@@ -3084,6 +3157,7 @@
 
                 // ซอมบี้ถึงระยะประชิดโจมตี (ระยะ 5 เอื้อมมือถึงตัวผู้เล่น)
                 if (z.distance <= 5) {
+                    const attackerAngle = z.angle;
                     if (!isGodMode) {
                         hp--;
                     }
@@ -3095,10 +3169,10 @@
                     updateUI();
                     
                     if (hp <= 0) {
-                        gameOver(false);
+                        gameOver(false, attackerAngle);
                         return;
                     } else {
-                        playSound('lose', 0.5);
+                        playSoundAtAngle('lose', 0.5, attackerAngle);
                         announce(t.annDamaged(hp));
                     }
                 }
