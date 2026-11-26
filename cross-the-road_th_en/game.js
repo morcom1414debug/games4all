@@ -30,7 +30,8 @@ const I18N = {
     restartBtn: 'เริ่มใหม่',
     restartBtnAria: 'เริ่มเกมใหม่',
     instIntro: 'อ่านคำแนะนำเพื่อฟังวิธีเล่น กดลูกศรขึ้น 3 ครั้ง หรือกดปุ่ม "ข้ามถนน" 3 ครั้ง เพื่อข้ามเลน',
-    pausedSR: 'หยุดเกมชั่วคราว ออกจากโหมดโฟกัสแล้ว กดปุ่ม เล่นต่อ เพื่อดำเนินการต่อ',
+    pausedSR: 'หยุดเกมชั่วคราว ออกจากโหมดโฟกัสแล้ว กดปุ่ม เล่นต่อ เพื่อดำเนินการต่อ กด R เพื่อเริ่มใหม่ หรือกด Escape เพื่อกลับหน้าหลัก',
+    returnedMainSR: 'กลับมาหน้าหลักของเกมแล้ว กดปุ่ม เริ่มเล่นเกม เพื่อเริ่มต้นใหม่',
     pressMore: (n) => `กดอีก ${n} ครั้งเพื่อข้ามเลน`,
     lanePassed: (lane, roads, crossed, score) => `ข้ามเลนที่ ${lane} สำเร็จ! คุณข้ามถนนได้ ${roads} เส้น รวม ${crossed} เลน คะแนนรวม ${score} คะแนน`,
     stageReach: (stage, lanes) => `ถึงด่านที่ ${stage} แล้ว ตอนนี้มี ${lanes} เลน`,
@@ -40,8 +41,8 @@ const I18N = {
     statusPlaying: (s, totalS, l, totalL) => `ด่านที่ ${s}/${totalS}, เลนที่ ${l}/${totalL}`,
     crossAriaPlaying: (l, totalL) => `ข้ามเลน: กด 3 ครั้งเพื่อข้ามเลนที่ ${l} จาก ${totalL}`,
     summary: (roads, crossed, totalL, score) => `คุณข้ามถนนได้ ${roads} เส้น รวม ${crossed} เลน (จากทั้งหมด ${totalL} เลน) คะแนนรวม ${score} คะแนน`,
-    srLoss: (sum) => `ชน! คุณถูกรถชน ${sum} กด R หรือปุ่มเริ่มใหม่เพื่อเล่นอีกครั้ง`,
-    srWin: (sum) => `ยินดีด้วย! คุณข้ามถนนได้สำเร็จและชนะแล้ว ${sum}`,
+    srLoss: (sum) => `ชน! คุณถูกรถชน ${sum} กด R หรือปุ่มเริ่มใหม่เพื่อเล่นอีกครั้ง หรือกด Escape เพื่อกลับหน้าหลัก`,
+    srWin: (sum) => `ยินดีด้วย! คุณข้ามถนนได้สำเร็จและชนะแล้ว ${sum} กด R เพื่อเล่นอีกครั้ง หรือกด Escape เพื่อกลับหน้าหลัก`,
     restarting: 'กำลังเริ่มเกมใหม่...',
     // Visual Canvas Labels
     canvasTitle: 'ผู้พิทักษ์ไร้สายตา',
@@ -82,7 +83,8 @@ const I18N = {
     restartBtn: 'Restart',
     restartBtnAria: 'Restart Game',
     instIntro: 'Read the instructions to learn how to play. Press Up Arrow 3 times or press the "Cross Road" button 3 times to cross a lane.',
-    pausedSR: 'Game paused. Exited focus mode. Press Resume to continue.',
+    pausedSR: 'Game paused. Exited focus mode. Press Resume to continue, press R to restart, or press Escape to return to the main menu.',
+    returnedMainSR: 'Returned to the main menu. Press Start Game to begin.',
     pressMore: (n) => `Press ${n} more time${n > 1 ? 's' : ''} to cross the lane`,
     lanePassed: (lane, roads, crossed, score) => `Lane ${lane} crossed! You crossed ${roads} road(s), ${crossed} lane(s) total. Total score: ${score} points`,
     stageReach: (stage, lanes) => `Reached Stage ${stage}. Now there are ${lanes} lanes.`,
@@ -92,8 +94,8 @@ const I18N = {
     statusPlaying: (s, totalS, l, totalL) => `Stage ${s}/${totalS}, Lane ${l}/${totalL}`,
     crossAriaPlaying: (l, totalL) => `Cross lane: Press 3 times to cross lane ${l} of ${totalL}`,
     summary: (roads, crossed, totalL, score) => `You crossed ${roads} road(s), ${crossed} lane(s) (out of ${totalL} total lanes). Total score: ${score} points`,
-    srLoss: (sum) => `Crash! You were hit by a car. ${sum}. Press R or the Restart button to play again.`,
-    srWin: (sum) => `Congratulations! You crossed the roads safely and won! ${sum}`,
+    srLoss: (sum) => `Crash! You were hit by a car. ${sum}. Press R or the Restart button to play again, or press Escape to return to the main menu.`,
+    srWin: (sum) => `Congratulations! You crossed the roads safely and won! ${sum}. Press R to play again, or press Escape to return to the main menu.`,
     restarting: 'Restarting game...',
     // Visual Canvas Labels
     canvasTitle: 'Blind Guardian',
@@ -1467,6 +1469,56 @@ class CrossroadGame {
     this.renderStatus();
   }
 
+  returnToMainMenu() {
+    if (!this.isPaused && !this.lossState && !this.winState) return;
+
+    this.gameActive = false;
+    this.isPaused = false;
+    this.lossState = false;
+    this.winState = false;
+    this.clickCounter = 0;
+    this.stageIdx = 0;
+    this.currentLaneIdx = 0;
+    this.stopDangerCheck();
+
+    this.laneManager?.stopSpawners();
+    this.audioMixer?.carObjects.forEach(car => {
+      if (car.source) { try { car.source.stop(); } catch (e) { } }
+      if (car.audio) { try { car.audio.pause(); } catch (e) { } }
+    });
+    if (this.audioMixer) this.audioMixer.carObjects = [];
+
+    if (this.renderer) {
+      this.renderer.playerDisplayLane = 0;
+      this.renderer.bonkTimer = 0;
+      this.renderer.stageBannerTimer = 0;
+    }
+
+    this.hideRestart();
+
+    const resultDiv = document.getElementById('game-result');
+    if (resultDiv) resultDiv.style.display = 'none';
+
+    const crossBtn = document.getElementById('btn-cross');
+    if (crossBtn) {
+      crossBtn.removeAttribute('role');
+      crossBtn.style.display = 'none';
+    }
+
+    updateInstructionsRegion('');
+    this.setPlayingChromeVisibility(false);
+
+    const startBtn = document.getElementById('btn-start-game');
+    if (startBtn) {
+      startBtn.innerText = t('startBtn');
+      startBtn.setAttribute('aria-label', t('startBtn'));
+      startBtn.style.display = '';
+      startBtn.focus();
+    }
+
+    updateSRFeedback(t('returnedMainSR'));
+  }
+
   async start() {
     // ซ่อนปุ่มย้อนกลับ ปุ่มสลับภาษา และส่วนเรื่องราว/วิธีเล่นระหว่างเล่นเกม
     this.setPlayingChromeVisibility(true);
@@ -1647,12 +1699,19 @@ class CrossroadGame {
   initControls() {
     const pressedKeys = new Set();
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.gameActive) {
-        e.preventDefault();
-        this.pauseGame();
-        return;
+      if (e.key === 'Escape') {
+        if (this.gameActive) {
+          e.preventDefault();
+          this.pauseGame();
+          return;
+        }
+        if (this.isPaused || this.lossState || this.winState) {
+          e.preventDefault();
+          this.returnToMainMenu();
+          return;
+        }
       }
-      if ((e.key === 'r' || e.key === 'R') && !this.gameActive && (this.lossState || this.winState)) {
+      if ((e.key === 'r' || e.key === 'R') && !this.gameActive && (this.isPaused || this.lossState || this.winState)) {
         updateSRFeedback(t('restarting'));
         this.start();
         return;
