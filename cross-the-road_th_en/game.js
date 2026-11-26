@@ -547,10 +547,10 @@ class VisualRenderer {
 
   initDemoTraffic() {
     this.demoCars = [
-      { lane: 0, dir: 'r', progress: 0.15, speed: 0.004, meta: createVehicleVisualMeta(0) },
-      { lane: 1, dir: 'l', progress: 0.72, speed: 0.005, meta: createVehicleVisualMeta(3) },
-      { lane: 2, dir: 'r', progress: 0.45, speed: 0.0032, meta: createVehicleVisualMeta(5) },
-      { lane: 3, dir: 'l', progress: 0.25, speed: 0.0045, meta: createVehicleVisualMeta(1) }
+      { lane: 0, dir: 'l', progress: 0.15, speed: 0.004, meta: createVehicleVisualMeta(0) },
+      { lane: 1, dir: 'r', progress: 0.72, speed: 0.005, meta: createVehicleVisualMeta(3) },
+      { lane: 2, dir: 'l', progress: 0.45, speed: 0.0032, meta: createVehicleVisualMeta(5) },
+      { lane: 3, dir: 'r', progress: 0.25, speed: 0.0045, meta: createVehicleVisualMeta(1) }
     ];
   }
 
@@ -862,12 +862,12 @@ class VisualRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // ลูกศรบอกทิศทางรถวิ่งในเลน
+      // ลูกศรบอกทิศทางรถวิ่งในเลน (สลับข้างให้ตรงกับเสียง)
       const dir = i < Math.floor(totalLanes / 2) ? 'r' : 'l';
       ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
       ctx.font = `bold ${Math.round(14 * proj.scale)}px system-ui`;
       ctx.textAlign = 'center';
-      const arrowChar = dir === 'r' ? '➔' : '⬅';
+      const arrowChar = dir === 'l' ? '➔' : '⬅';
       ctx.fillText(arrowChar, 45, proj.y + 4);
       ctx.fillText(arrowChar, this.width - 45, proj.y + 4);
     }
@@ -896,11 +896,11 @@ class VisualRenderer {
     // คำนวณตำแหน่ง X ให้จุดกึ่งกลางรถผ่านกลางจอ (X = 250) ที่ช่วง progress ~ 0.45 (ตรงกับช่วงอันตราย 30%-60%)
     const travelSpan = this.width + 180;
     let x;
-    if (car.direction === 'r') {
-      // วิ่งจากซ้ายไปขวา
+    if (car.direction === 'l') {
+      // วิ่งจากซ้ายไปขวา (สลับฝั่งภาพให้ตรงกับเสียง)
       x = -90 + (progress / 0.90) * travelSpan;
     } else {
-      // วิ่งจากขวาไปซ้าย
+      // วิ่งจากขวาไปซ้าย (สลับฝั่งภาพให้ตรงกับเสียง)
       x = (this.width + 90) - (progress / 0.90) * travelSpan;
     }
 
@@ -911,7 +911,7 @@ class VisualRenderer {
   drawCartoonVehicle(ctx, x, y, scale, dir, meta, timeSec) {
     ctx.save();
     ctx.translate(x, y);
-    ctx.scale(scale * (dir === 'l' ? -1 : 1), scale);
+    ctx.scale(scale * (dir === 'r' ? -1 : 1), scale);
 
     const w = meta.width;
     const h = meta.height;
@@ -1313,10 +1313,10 @@ class VisualRenderer {
       ctx.setLineDash([]);
     }
 
-    // รถ Demo วิ่งผ่านหน้าแรก
+    // รถ Demo วิ่งผ่านหน้าแรก (สลับข้างให้สอดคล้องกับในเกม)
     this.demoCars.forEach(dc => {
       const y = 148 + dc.lane * 48;
-      const x = dc.dir === 'r'
+      const x = dc.dir === 'l'
         ? -80 + dc.progress * (this.width + 160)
         : (this.width + 80) - dc.progress * (this.width + 160);
       this.drawCartoonVehicle(ctx, x, y, 0.88, dc.dir, dc.meta, timeSec);
