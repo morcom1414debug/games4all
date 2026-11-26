@@ -24,11 +24,14 @@ const I18N = {
     langChangedSR: 'เปลี่ยนภาษาเป็นภาษาไทยแล้ว',
     controlsAria: 'ปุ่มควบคุมเกม',
     startBtn: 'เริ่มเล่นเกม',
+    resumeBtn: 'เล่นต่อ',
     crossBtn: 'ข้ามถนน',
     crossBtnAriaInit: 'ข้ามถนน (แตะ 3 ครั้ง / กดลูกศรขึ้น 3 ครั้ง)',
     restartBtn: 'เริ่มใหม่',
     restartBtnAria: 'เริ่มเกมใหม่',
     instIntro: 'อ่านคำแนะนำเพื่อฟังวิธีเล่น กดลูกศรขึ้น 3 ครั้ง หรือกดปุ่ม "ข้ามถนน" 3 ครั้ง เพื่อข้ามเลน',
+    pausedSR: 'หยุดเกมชั่วคราว ออกจากโหมดโฟกัสแล้ว กดปุ่ม เล่นต่อ เพื่อดำเนินการต่อ',
+    resumedSR: 'กลับมาเล่นต่อแล้ว',
     pressMore: (n) => `กดอีก ${n} ครั้งเพื่อข้ามเลน`,
     lanePassed: (lane, roads, crossed, score) => `ข้ามเลนที่ ${lane} สำเร็จ! คุณข้ามถนนได้ ${roads} เส้น รวม ${crossed} เลน คะแนนรวม ${score} คะแนน`,
     stageReach: (stage, lanes) => `ถึงด่านที่ ${stage} แล้ว ตอนนี้มี ${lanes} เลน`,
@@ -50,6 +53,7 @@ const I18N = {
         <li>ข้ามแต่ละเลนโดย <b>กดปุ่ม "ข้ามถนน" 3 ครั้ง</b> หรือ <b>กดลูกศรขึ้น 3 ครั้ง</b> เพื่อข้ามเลน</li>
         <li>ระวัง! หากข้ามในช่วงที่มีรถอยู่ในจุดอันตราย จะเกิดอุบัติเหตุทันที</li>
         <li>ข้ามถนนให้ครบทุกเลนเพื่อพิชิตภารกิจและช่วยเหลือทุกคนอย่างปลอดภัย</li>
+        <li>ระหว่างเล่น สามารถกดปุ่ม <b>Escape (Esc)</b> เพื่อหยุดเกมชั่วคราวและออกจากโหมดโฟกัส</li>
         <li>หากต้องการเริ่มใหม่ กดปุ่ม <b>เริ่มใหม่</b> หรือกดตัว <b>R</b> บนแป้นพิมพ์</li>
       </ul>`
   },
@@ -64,11 +68,14 @@ const I18N = {
     langChangedSR: 'Language switched to English',
     controlsAria: 'Game controls',
     startBtn: 'Start Game',
+    resumeBtn: 'Resume',
     crossBtn: 'Cross Road',
     crossBtnAriaInit: 'Cross Road (Tap 3 times / Press Up Arrow 3 times)',
     restartBtn: 'Restart',
     restartBtnAria: 'Restart Game',
     instIntro: 'Read the instructions to learn how to play. Press Up Arrow 3 times or press the "Cross Road" button 3 times to cross a lane.',
+    pausedSR: 'Game paused. Exited focus mode. Press Resume to continue.',
+    resumedSR: 'Game resumed.',
     pressMore: (n) => `Press ${n} more time${n > 1 ? 's' : ''} to cross the lane`,
     lanePassed: (lane, roads, crossed, score) => `Lane ${lane} crossed! You crossed ${roads} road(s), ${crossed} lane(s) total. Total score: ${score} points`,
     stageReach: (stage, lanes) => `Reached Stage ${stage}. Now there are ${lanes} lanes.`,
@@ -90,6 +97,7 @@ const I18N = {
         <li>Cross each lane by <b>pressing the "Cross Road" button 3 times</b> or <b>pressing the Up Arrow key 3 times</b>.</li>
         <li>Watch out! Crossing while a car is in the danger zone will cause an immediate crash.</li>
         <li>Cross all lanes across every stage to complete the mission and save everyone safely.</li>
+        <li>During gameplay, press <b>Escape (Esc)</b> to pause the game and exit focus mode.</li>
         <li>To play again, press the <b>Restart</b> button or press <b>R</b> on your keyboard.</li>
       </ul>`
   }
@@ -137,8 +145,9 @@ function applyLanguageUI() {
 
   const startBtn = document.getElementById('btn-start-game');
   if (startBtn) {
-    startBtn.innerText = t('startBtn');
-    startBtn.setAttribute('aria-label', t('startBtn'));
+    const btnLabel = (window.game && window.game.isPaused) ? t('resumeBtn') : t('startBtn');
+    startBtn.innerText = btnLabel;
+    startBtn.setAttribute('aria-label', btnLabel);
   }
 
   const crossBtn = document.getElementById('btn-cross');
@@ -355,6 +364,11 @@ class CarSpawner {
       const file = carFiles[fileIdx];
       // Fire car sound via mixer, pass carObj
       const carObj = await this.audioMixer.playCar(file, this.direction, this.laneIdx);
+      if (!this.running) {
+        if (carObj.source) { try { carObj.source.stop(); } catch (e) { } }
+        if (carObj.audio) { try { carObj.audio.pause(); } catch (e) { } }
+        break;
+      }
       if (this.onCarSpawn) this.onCarSpawn(carObj);
       // รอให้รถคันก่อนเล่นไปแล้ว 90% + gap สุ่มเล็กน้อย
       const durationMs = (carObj.duration || 3) * 1000;
@@ -499,8 +513,91 @@ class CrossroadGame {
     this.laneManager = null;
     this.audioMixer = null;
     this.gameActive = false;
+    this.isPaused = false;
     this.lossState = false;
     this.winState = false;
+  }
+
+  stopAllCarAudio() {
+    this.laneManager?.stopSpawners();
+    this.audioMixer?.carObjects.forEach(car => {
+      if (car.source) { try { car.source.stop(); } catch (e) { } }
+      if (car.audio) { try { car.audio.pause(); } catch (e) { } }
+    });
+    if (this.audioMixer) {
+      this.audioMixer.carObjects = [];
+    }
+  }
+
+  pauseGame() {
+    if (!this.gameActive || this.isPaused) return;
+    this.gameActive = false;
+    this.isPaused = true;
+
+    // ป้องกันการกดรัวข้ามเลนค้างไว้และหยุดตรวจอันตรายทันที
+    this.clickCounter = 0;
+    this.stopDangerCheck();
+
+    // หยุดการ spawn และเสียงรถทั้งหมด
+    this.stopAllCarAudio();
+
+    // ถอด role="application" และซ่อนปุ่มข้ามถนนชั่วคราว
+    const crossBtn = document.getElementById('btn-cross');
+    if (crossBtn) {
+      crossBtn.removeAttribute('role');
+      crossBtn.style.display = 'none';
+    }
+
+    // คืนค่าปุ่มสลับภาษาให้ใช้งานได้เหมือนหน้าแรก
+    const langBtn = document.getElementById('btn-lang-toggle');
+    if (langBtn) langBtn.style.display = '';
+
+    // เปลี่ยนปุ่มเริ่มเกมเป็น "เล่นต่อ" และย้ายโฟกัสไปที่ปุ่มนั้นเพื่อออกจาก Focus Mode
+    const startBtn = document.getElementById('btn-start-game');
+    if (startBtn) {
+      startBtn.innerText = t('resumeBtn');
+      startBtn.setAttribute('aria-label', t('resumeBtn'));
+      startBtn.style.display = '';
+      startBtn.focus();
+    }
+
+    updateSRFeedback(t('pausedSR'));
+  }
+
+  resumeGame() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this.gameActive = true;
+    this.clickCounter = 0;
+
+    // ซ่อนปุ่มสลับภาษากลับไประหว่างเล่นเกม
+    const langBtn = document.getElementById('btn-lang-toggle');
+    if (langBtn) langBtn.style.display = 'none';
+
+    // ซ่อนปุ่มเล่นต่อ
+    const startBtn = document.getElementById('btn-start-game');
+    if (startBtn) {
+      startBtn.style.display = 'none';
+    }
+
+    // แสดงปุ่ม Cross และเปิด focus mode อีกครั้ง
+    const crossBtn = document.getElementById('btn-cross');
+    if (crossBtn) {
+      crossBtn.style.display = '';
+      crossBtn.setAttribute('role', 'application');
+      crossBtn.focus();
+    }
+
+    // เคลียร์รถที่ค้างและเริ่มปล่อยรถชุดใหม่ของด่านและเลนปัจจุบัน (ป้องกันเวลา AudioContext คลาดเคลื่อน)
+    this.stopAllCarAudio();
+    this.audioMixer = new AudioMixer(STAGES[this.stageIdx].lanes, this.currentLaneIdx);
+    this.laneManager = new LaneManager(this.stageIdx);
+    this.laneManager.startSpawners(this.audioMixer);
+    this.audioMixer.setCurrentLane(this.currentLaneIdx);
+
+    updateSRFeedback(`${t('resumedSR')} ${t('statusPlaying')(this.stageIdx + 1, STAGES.length, this.currentLaneIdx + 1, STAGES[this.stageIdx].lanes)}`);
+    document.getElementById('btn-cross').setAttribute('aria-label',
+      t('crossAriaPlaying')(this.currentLaneIdx + 1, STAGES[this.stageIdx].lanes));
   }
 
   async start() {
@@ -511,6 +608,20 @@ class CrossroadGame {
     const resultDiv = document.getElementById('game-result');
     if (resultDiv) resultDiv.style.display = 'none';
 
+    const startBtn = document.getElementById('btn-start-game');
+    if (startBtn) {
+      startBtn.innerText = t('startBtn');
+      startBtn.setAttribute('aria-label', t('startBtn'));
+      startBtn.style.display = 'none';
+    }
+
+    const crossBtn = document.getElementById('btn-cross');
+    if (crossBtn) {
+      crossBtn.style.display = '';
+      crossBtn.setAttribute('role', 'application');
+      crossBtn.focus();
+    }
+
     // Initial instructions
     updateInstructionsRegion(t('instIntro'));
     playInstructions();
@@ -518,6 +629,7 @@ class CrossroadGame {
     this.currentLaneIdx = 0;
     this.clickCounter = 0;
     this.gameActive = true;
+    this.isPaused = false;
     this.lossState = false;
     this.winState = false;
     this.hideRestart();
@@ -564,13 +676,11 @@ class CrossroadGame {
 
   endGame(loss) {
     this.gameActive = false;
+    this.isPaused = false;
     this.lossState = loss;
     this.winState = !loss;
-    this.laneManager?.stopSpawners();
-    this.audioMixer?.carObjects.forEach(car => {
-      if (car.source) { try { car.source.stop(); } catch (e) { } }
-      if (car.audio) { try { car.audio.pause(); } catch (e) { } }
-    });
+    this.stopDangerCheck();
+    this.stopAllCarAudio();
     this.audioMixer?.playEvent(loss ? AUDIO.crash : AUDIO.win);
     this.showRestart();
 
@@ -668,6 +778,12 @@ class CrossroadGame {
     // Keyboard: up arrow (3x) - ป้องกันการกดค้าง
     const pressedKeys = new Set();
     window.addEventListener('keydown', (e) => {
+      // กด Escape เพื่อหยุดเกมชั่วคราวและออกจาก Focus Mode
+      if (e.key === 'Escape' && this.gameActive) {
+        e.preventDefault();
+        this.pauseGame();
+        return;
+      }
       // กด R เพื่อ restart
       if ((e.key === 'r' || e.key === 'R') && !this.gameActive && (this.lossState || this.winState)) {
         updateSRFeedback(t('restarting'));
@@ -729,17 +845,14 @@ window.addEventListener('DOMContentLoaded', () => {
   window.game = new CrossroadGame();
   // เรียก initControls หลัง DOM โหลดเสร็จ
   window.game.initControls();
-  // ปุ่มเริ่มเล่นเกม
+  // ปุ่มเริ่มเล่นเกม / เล่นต่อ
   const startBtn = document.getElementById('btn-start-game');
   startBtn.addEventListener('click', () => {
-    startBtn.style.display = 'none';
-    // แสดงปุ่ม Cross และให้ NVDA เข้าสู่ focus mode โดยอัตโนมัติ
-    const crossBtn = document.getElementById('btn-cross');
-    if (crossBtn) {
-      crossBtn.style.display = '';
-      crossBtn.setAttribute('role', 'application');
-      crossBtn.focus();
+    if (window.game.isPaused) {
+      window.game.resumeGame();
+      return;
     }
     window.game.start();
   });
 });
+```[cite: 1]
