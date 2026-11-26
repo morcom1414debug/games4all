@@ -10,7 +10,17 @@ window.hasAnnouncedMyColor = false;
 // Bilingual Localization System (TH / EN) - Storage Key: cang_lang
 // =========================================================
 const LANG_STORAGE_KEY = 'cang_lang';
-let currentLang = (localStorage.getItem(LANG_STORAGE_KEY) === 'en') ? 'en' : 'th';
+
+function detectInitialLanguage() {
+    try {
+        const saved = localStorage.getItem(LANG_STORAGE_KEY);
+        if (saved === 'th' || saved === 'en') return saved;
+    } catch (e) {}
+    const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return browserLang.startsWith('th') ? 'th' : 'en';
+}
+
+let currentLang = detectInitialLanguage();
 let originalThaiManualHTML = null;
 let lastResultRawData = null;
 let roomsSnapshotCache = null;
@@ -650,7 +660,9 @@ function applyLanguage(shouldAnnounce = false) {
 
 window.toggleLanguage = () => {
     currentLang = (currentLang === 'th') ? 'en' : 'th';
-    localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+    try {
+        localStorage.setItem(LANG_STORAGE_KEY, currentLang);
+    } catch (e) {}
     playSound('select');
     applyLanguage(true);
 };
@@ -2177,7 +2189,7 @@ function setupNameEntryEvents() {
 // =========================================================
 // Network & Lobby Logic
 // =========================================================
-window.onload = () => {
+function initializePageUI() {
     const langBtn = document.getElementById('btn-lang-toggle');
     if (langBtn) {
         langBtn.addEventListener('click', window.toggleLanguage);
@@ -2186,7 +2198,13 @@ window.onload = () => {
     setupNameEntryEvents();
     setupTemporaryBotModalEvents();
     updateHomeBtnVisibility();
-};
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializePageUI);
+} else {
+    initializePageUI();
+}
 
 window.createNewRoom = async () => {
     if (!myPlayerName || !myPlayerName.trim()) return;
