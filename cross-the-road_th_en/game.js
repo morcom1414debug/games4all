@@ -141,9 +141,9 @@ function applyLanguageUI() {
 
   const startBtn = document.getElementById('btn-start-game');
   if (startBtn) {
-    const label = (window.game && window.game.isPaused) ? t('resumeBtn') : t('startBtn');
-    startBtn.innerText = label;
-    startBtn.setAttribute('aria-label', label);
+    const btnText = (window.game && window.game.isPaused) ? t('resumeBtn') : t('startBtn');
+    startBtn.innerText = btnText;
+    startBtn.setAttribute('aria-label', btnText);
   }
 
   const crossBtn = document.getElementById('btn-cross');
@@ -210,28 +210,11 @@ const STAGES = [
 
 const CONTROLS_REQUIRED_CLICKS = 3;
 
-// ----------- Shared AudioContext Helper -----------
-let sharedAudioCtx = null;
-const sharedAudioBuffers = {};
-
-function getSharedAudioContext() {
-  if (!sharedAudioCtx) {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (AudioCtx) {
-      sharedAudioCtx = new AudioCtx();
-    }
-  }
-  if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume().catch(() => {});
-  }
-  return sharedAudioCtx;
-}
-
 // ----------- Audio Helper -----------
 class AudioPlayer {
   constructor() {
-    this.ctx = getSharedAudioContext();
-    this.buffers = sharedAudioBuffers; // Cache for loaded audio
+    this.ctx = window.AudioContext ? new AudioContext() : null;
+    this.buffers = {}; // Cache for loaded audio
   }
 
   // Load and decode .mp3 file
@@ -246,7 +229,6 @@ class AudioPlayer {
 
   // Play an audio file with options: {volume, onEnded}
   async play(url, { volume = 1, onEnded = null } = {}) {
-    this.ctx = getSharedAudioContext();
     if (!this.ctx) {
       const audio = new Audio(url);
       audio.volume = volume;
@@ -254,7 +236,7 @@ class AudioPlayer {
         if (onEnded) onEnded();
       });
       audio.play();
-      return { audio, startedAt: Date.now() / 1000, duration: audio.duration || 0, url };
+      return { audio, startedAt: Date.now(), duration: audio.duration || 0, url };
     }
     const buffer = await this.loadBuffer(url);
     const source = this.ctx.createBufferSource();
@@ -287,8 +269,6 @@ class AudioPlayer {
 class LaneManager {
   constructor(stageIdx) {
     this.stageIdx = stageIdx;
-    this.activeCarsPerLane = [];
-    this.spawners = [];
     this.setUpLanes();
   }
 
@@ -304,26 +284,23 @@ class LaneManager {
   }
 
   startSpawners(audioMixer) {
-    // หยุดของเก่าให้หมดก่อนเริ่มใหม่เสมอ
-    this.stopSpawners();
+    // Car spawners per lane
     this.activeCarsPerLane = [];
     this.spawners = [];
     const density = STAGES[this.stageIdx].carDensity;
     for (let i = 0; i < this.laneConfigs.length; ++i) {
-      this.activeCarsPerLane.push([]);
       let spawner = new CarSpawner(this.laneConfigs[i].direction, audioMixer, density, (carObj) => {
         if (!this.activeCarsPerLane[i]) this.activeCarsPerLane[i] = [];
         this.activeCarsPerLane[i].push(carObj);
         // Remove car when audio ends
         carObj.endCallback = () => {
-          if (this.activeCarsPerLane[i]) {
-            this.activeCarsPerLane[i] = this.activeCarsPerLane[i].filter(obj => obj !== carObj);
-          }
+          this.activeCarsPerLane[i] = this.activeCarsPerLane[i].filter(obj => obj !== carObj);
         };
       });
       spawner.laneIdx = i; // เพิ่ม laneIdx ให้ spawner
       spawner.start();
       this.spawners.push(spawner);
+      this.activeCarsPerLane.push([]);
     }
   }
 
@@ -343,20 +320,7 @@ class LaneManager {
   }
 
   stopSpawners() {
-    if (this.spawners) {
-      this.spawners.forEach(spawner => spawner.stop());
-    }
-    if (this.activeCarsPerLane) {
-      for (let i = 0; i < this.activeCarsPerLane.length; i++) {
-        if (this.activeCarsPerLane[i]) {
-          this.activeCarsPerLane[i].forEach(car => {
-            if (car.source) { try { car.source.stop(); } catch (e) { } }
-            if (car.audio) { try { car.audio.pause(); } catch (e) { } }
-          });
-          this.activeCarsPerLane[i] = [];
-        }
-      }
-    }
+    this.spawners?.forEach(spawner => spawner.stop());
   }
 
   // Returns currently playing cars in a lane
@@ -372,54 +336,23 @@ class CarSpawner {
     this.density = density;
     this.onCarSpawn = onCarSpawn;
     this.running = false;
-    this.generation = 0;
-    this.startTimer = null;
-    this.loopTimer = null;
   }
-
   start() {
-    this.stop();
     this.running = true;
-    this.generation++;
-    const currentGen = this.generation;
     // เพิ่ม delay เริ่มต้นแบบสุ่ม 0-4 วินาที เพื่อให้รถแต่ละเลนมาไม่พร้อมกัน
     // แต่เลนแรก (laneIdx === 0) ให้เริ่มทันที
     const initialDelay = (this.laneIdx === 0) ? 0 : Math.random() * 4000;
-    this.startTimer = setTimeout(() => {
-      this.startTimer = null;
-      if (this.running && this.generation === currentGen) {
-        this.spawnLoop(currentGen);
-      }
+    setTimeout(() => {
+      if (this.running) this.spawnLoop();
     }, initialDelay);
   }
+  stop() { this.running = false; }
 
-  stop() {
-    this.running = false;
-    this.generation++;
-    if (this.startTimer) {
-      clearTimeout(this.startTimer);
-      this.startTimer = null;
-    }
-    if (this.loopTimer) {
-      clearTimeout(this.loopTimer);
-      this.loopTimer = null;
-    }
-  }
-
-  wait(ms, currentGen) {
-    return new Promise((resolve) => {
-      this.loopTimer = setTimeout(() => {
-        this.loopTimer = null;
-        resolve();
-      }, ms);
-    });
-  }
-
-  async spawnLoop(currentGen) {
-    while (this.running && this.generation === currentGen) {
+  async spawnLoop() {
+    while (this.running) {
       // ถ้าเลนนี้ถูกข้ามไปแล้ว ไม่ต้อง spawn รถ
       if (window.game && window.game.currentLaneIdx > this.laneIdx) {
-        await this.wait(500, currentGen);
+        await new Promise(res => setTimeout(res, 500));
         continue;
       }
       const carFiles = AUDIO.car[this.direction];
@@ -427,20 +360,17 @@ class CarSpawner {
       const file = carFiles[fileIdx];
       // Fire car sound via mixer, pass carObj
       const carObj = await this.audioMixer.playCar(file, this.direction, this.laneIdx);
-
-      // หากระหว่างโหลดไฟล์มีการกดหยุดหรือเริ่มใหม่ ให้หยุดเสียงทันทีและออกลูป
-      if (!this.running || this.generation !== currentGen) {
+      if (!this.running) {
         if (carObj.source) { try { carObj.source.stop(); } catch (e) { } }
         if (carObj.audio) { try { carObj.audio.pause(); } catch (e) { } }
         break;
       }
-
       if (this.onCarSpawn) this.onCarSpawn(carObj);
       // รอให้รถคันก่อนเล่นไปแล้ว 90% + gap สุ่มเล็กน้อย
       const durationMs = (carObj.duration || 3) * 1000;
       const safeTime = durationMs * 0.90;
       const gap = Math.random() * 40;
-      await this.wait(safeTime + gap, currentGen);
+      await new Promise(res => setTimeout(res, safeTime + gap));
     }
   }
 }
@@ -448,7 +378,7 @@ class CarSpawner {
 // ---------- Collision Detector ---------
 class CollisionDetector {
   static isCrossDanger(cars, audioCtxNow) {
-    // For each active car in the lane, determine if in danger zone (30-60% of audio)
+    // For each active car in the lane, determine if in danger zone (40-60% of audio)
     for (const car of cars) {
       let relTime = (audioCtxNow - car.startedAt);
       const duration = car.duration || 0;
@@ -503,14 +433,6 @@ class AudioMixer {
     });
   }
 
-  stopAllCars() {
-    this.carObjects.forEach(car => {
-      if (car.source) { try { car.source.stop(); } catch (e) { } }
-      if (car.audio) { try { car.audio.pause(); } catch (e) { } }
-    });
-    this.carObjects = [];
-  }
-
   async playCar(file, direction, laneIdx = 0) {
     // ปรับความดังของรถในเลนอื่นให้เบากว่าเดิม
     const volume = this.getVolumeForLane(laneIdx);
@@ -541,7 +463,7 @@ class AudioMixer {
 function playInstructions() {
   // เล่นไฟล์ instructions.mp3 เท่านั้น ไม่ใช้ TTS
   const audio = new Audio(AUDIO.instructions);
-  audio.play().catch(() => {});
+  audio.play();
 }
 
 function updateInstructionsRegion(msg) {
@@ -580,7 +502,6 @@ class CrossroadGame {
       this.dangerInterval = null;
     }
   }
-
   constructor() {
     this.stageIdx = 0;
     this.currentLaneIdx = 0;
@@ -595,30 +516,33 @@ class CrossroadGame {
 
   pauseGame() {
     if (!this.gameActive || this.isPaused) return;
-
     this.gameActive = false;
     this.isPaused = true;
 
-    // 1. ป้องกันการกดรัวข้ามเลนค้างไว้ (clickCounter) และหยุด dangerInterval ทันที
+    // รีเซ็ต clickCounter และหยุด dangerInterval ทันที
     this.clickCounter = 0;
     this.stopDangerCheck();
 
-    // 2. หยุด spawner และเสียงรถทั้งหมดในเลน
+    // หยุดการปล่อยรถและเสียงรถทั้งหมด
     this.laneManager?.stopSpawners();
-    this.audioMixer?.stopAllCars();
+    this.audioMixer?.carObjects.forEach(car => {
+      if (car.source) { try { car.source.stop(); } catch (e) { } }
+      if (car.audio) { try { car.audio.pause(); } catch (e) { } }
+    });
+    if (this.audioMixer) this.audioMixer.carObjects = [];
 
-    // 3. ถอด role="application" ออกชั่วคราว และซ่อนปุ่มข้ามถนน
+    // ถอด role="application" และซ่อนปุ่มข้ามถนนชั่วคราว
     const crossBtn = document.getElementById('btn-cross');
     if (crossBtn) {
       crossBtn.removeAttribute('role');
       crossBtn.style.display = 'none';
     }
 
-    // 4. คืนค่าปุ่มสลับภาษาให้ใช้งานได้เหมือนหน้าแรก
+    // คืนค่าปุ่มสลับภาษา
     const langBtn = document.getElementById('btn-lang-toggle');
     if (langBtn) langBtn.style.display = '';
 
-    // 5. เปลี่ยนปุ่มเริ่มเกมเป็น "เล่นต่อ" และย้ายโฟกัสไปที่ปุ่มนั้นเพื่อออกจาก Focus Mode
+    // เปลี่ยนปุ่มเริ่มเกมเป็น "เล่นต่อ" และย้ายโฟกัสไปที่ปุ่มนั้นเพื่อออกจาก Focus Mode
     const startBtn = document.getElementById('btn-start-game');
     if (startBtn) {
       startBtn.innerText = t('resumeBtn');
@@ -632,22 +556,18 @@ class CrossroadGame {
 
   resumeGame() {
     if (!this.isPaused) return;
-
     this.isPaused = false;
     this.gameActive = true;
     this.clickCounter = 0;
 
-    // ซ่อนปุ่มสลับภาษากลับไประหว่างเล่นเกม
+    // ซ่อนปุ่มสลับภาษาและปุ่มเล่นต่อ
     const langBtn = document.getElementById('btn-lang-toggle');
     if (langBtn) langBtn.style.display = 'none';
 
-    // ซ่อนปุ่มเล่นต่อ
     const startBtn = document.getElementById('btn-start-game');
-    if (startBtn) {
-      startBtn.style.display = 'none';
-    }
+    if (startBtn) startBtn.style.display = 'none';
 
-    // แสดงปุ่ม Cross และเปิด Focus Mode อีกครั้ง
+    // คืนค่า role="application" และย้ายโฟกัสกลับไปที่ปุ่มข้ามถนน
     const crossBtn = document.getElementById('btn-cross');
     if (crossBtn) {
       crossBtn.style.display = '';
@@ -655,9 +575,8 @@ class CrossroadGame {
       crossBtn.focus();
     }
 
-    // เคลียร์รถที่ค้างและเริ่มปล่อยรถใหม่ของด่านปัจจุบัน (รักษาเวลา AudioContext ให้ตรงกับจุดชนจริง)
+    // รีเซ็ต spawner ของด่านและเลนปัจจุบันเพื่อปล่อยรถใหม่ให้เวลาตรงกับ AudioContext
     this.laneManager?.stopSpawners();
-    this.audioMixer?.stopAllCars();
     this.audioMixer = new AudioMixer(STAGES[this.stageIdx].lanes, this.currentLaneIdx);
     this.laneManager = new LaneManager(this.stageIdx);
     this.laneManager.startSpawners(this.audioMixer);
@@ -687,11 +606,6 @@ class CrossroadGame {
       crossBtn.setAttribute('role', 'application');
       crossBtn.focus();
     }
-
-    // หยุดของเก่าหากมีค้างอยู่ (เช่น กด R เริ่มใหม่)
-    this.stopDangerCheck();
-    this.laneManager?.stopSpawners();
-    this.audioMixer?.stopAllCars();
 
     // Initial instructions
     updateInstructionsRegion(t('instIntro'));
@@ -750,9 +664,11 @@ class CrossroadGame {
     this.isPaused = false;
     this.lossState = loss;
     this.winState = !loss;
-    this.stopDangerCheck();
     this.laneManager?.stopSpawners();
-    this.audioMixer?.stopAllCars();
+    this.audioMixer?.carObjects.forEach(car => {
+      if (car.source) { try { car.source.stop(); } catch (e) { } }
+      if (car.audio) { try { car.audio.pause(); } catch (e) { } }
+    });
     this.audioMixer?.playEvent(loss ? AUDIO.crash : AUDIO.win);
     this.showRestart();
 
@@ -823,7 +739,6 @@ class CrossroadGame {
       updateSRFeedback(t('stageReach')(this.stageIdx, STAGES[this.stageIdx].lanes));
       this.currentLaneIdx = 0;
       this.laneManager.stopSpawners();
-      this.audioMixer.stopAllCars();
       this.audioMixer = new AudioMixer(STAGES[this.stageIdx].lanes, this.currentLaneIdx);
       this.laneManager = new LaneManager(this.stageIdx);
       this.laneManager.startSpawners(this.audioMixer);
@@ -928,9 +843,3 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
-```[cite: 4]
-
-### จุดที่ปรับแก้เพิ่มเพื่อความเสถียร
-* **แชร์ `AudioContext` ตัวเดียว (`getSharedAudioContext`)**: ป้องกันเบราว์เซอร์บล็อกหรือสร้าง AudioContext เกินโควตาเมื่อกดหยุด/เล่นต่อหรือเริ่มใหม่หลายรอบ
-* **ล้าง Timer ของ `CarSpawner` ด้วย `generation` ID**: เมื่อกด `Escape` หยุดเกม `startTimer` และ `loopTimer` ที่รอคิวอยู่จะถูกยกเลิกทันที และหากมีไฟล์เสียงที่กำลัง `await loadBuffer` ค้างอยู่ ระบบจะเช็ก `generation` แล้วสั่งหยุดทันทีไม่ให้เสียงรถหลุดออกมาตอนเกมหยุดอยู่
-* **รักษาฟังก์ชันเดิม 100%**: ไม่ได้แก้ไข `index.html` หรือ `style.css` และคงระบบ 2 ภาษา การคำนวณคะแนน และกติกาการข้ามถนนเดิมทั้งหมด[cite: 4, 5, 6]
