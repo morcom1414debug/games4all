@@ -372,6 +372,8 @@ let isHost = false;
 let gameState = null;
 let roomListener = null;
 let speechQueue = [];
+let speechPhaseTimer = null;
+let speechClearTimer = null;
 let isSpeaking = false;
 let lastAnnouncedTurn = null;
 let activeTurnLock = null; // ป้องกันการซ้อนทับของ Callback แบบระบุ Turn Key
@@ -1194,10 +1196,45 @@ function triggerVisualEffectFromLog(logObj) {
 
 // Audio System
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const audioBufferCache = new Map();
+const audioBufferPending = new Map();
+let coreAudioPreloaded = false;
+
+function loadAudioBuffer(name) {
+    if (audioBufferCache.has(name)) {
+        return Promise.resolve(audioBufferCache.get(name));
+    }
+    if (audioBufferPending.has(name)) {
+        return audioBufferPending.get(name);
+    }
+    const p = fetch(`audio/${name}`)
+        .then(res => res.arrayBuffer())
+        .then(buf => audioCtx.decodeAudioData(buf))
+        .then(decoded => {
+            audioBufferCache.set(name, decoded);
+            audioBufferPending.delete(name);
+            return decoded;
+        })
+        .catch(err => {
+            audioBufferPending.delete(name);
+            throw err;
+        });
+    audioBufferPending.set(name, p);
+    return p;
+}
+
+function preloadCoreAudio() {
+    if (coreAudioPreloaded) return;
+    coreAudioPreloaded = true;
+    const coreFiles = ['select.mp3', '1.mp3', 'start.mp3', 'turn.mp3', 'abc.mp3', 'TRUE.mp3', 'wrong.mp3', 'win.mp3', 'bgm.mp3'];
+    coreFiles.forEach(f => loadAudioBuffer(f).catch(() => {}));
+}
+
 const unlockAudio = () => {
     if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
         audioCtx.resume().catch(() => {});
     }
+    preloadCoreAudio();
 };
 document.addEventListener('click', unlockAudio, { capture: true });
 document.addEventListener('keydown', unlockAudio, { capture: true });
@@ -1212,9 +1249,7 @@ function playAudio(name) {
             if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
                 audioCtx.resume().catch(() => {});
             }
-            fetch(`audio/${name}`)
-                .then(res => res.arrayBuffer())
-                .then(buf => audioCtx.decodeAudioData(buf))
+            loadAudioBuffer(name)
                 .then(decoded => {
                     const source = audioCtx.createBufferSource();
                     source.buffer = decoded;
@@ -1246,9 +1281,7 @@ function playBGM() {
         if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
             audioCtx.resume().catch(() => {});
         }
-        fetch('audio/bgm.mp3')
-            .then(res => res.arrayBuffer())
-            .then(buf => audioCtx.decodeAudioData(buf))
+        loadAudioBuffer('bgm.mp3')
             .then(decoded => {
                 if (!isBgmPlaying) return;
                 bgmSource = audioCtx.createBufferSource();
@@ -1445,7 +1478,19 @@ function createCutsceneOverlay(theme) {
     return textEl;
 }
 
+function clearSpeechTimers() {
+    if (speechPhaseTimer) {
+        clearTimeout(speechPhaseTimer);
+        speechPhaseTimer = null;
+    }
+    if (speechClearTimer) {
+        clearTimeout(speechClearTimer);
+        speechClearTimer = null;
+    }
+}
+
 function announceSceneCue(text, clearDelay = 850) {
+    clearSpeechTimers();
     speechQueue = [];
     isSpeaking = false;
     const assertiveEl = document.getElementById('sr-assertive');
@@ -1562,6 +1607,11 @@ function runWinCutscene(winnerName, onComplete) {
 function announceSR(text, priority = 'polite') {
     if (!text) return;
     if (speechQueue.length > 0 && speechQueue[speechQueue.length - 1].text === text) return;
+    if (priority === 'assertive') {
+        speechQueue = speechQueue.filter(item => item.priority === 'assertive');
+    } else if (speechQueue.length >= 4) {
+        speechQueue.shift();
+    }
     speechQueue.push({ text, priority });
     processSpeechQueue();
 }
@@ -1569,21 +1619,30 @@ function announceSR(text, priority = 'polite') {
 function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
     isSpeaking = true;
+    clearSpeechTimers();
     const item = speechQueue.shift();
     const targetEl = document.getElementById(item.priority === 'assertive' ? 'sr-assertive' : 'sr-polite');
     if (targetEl) {
+        const spokenText = item.text;
         targetEl.textContent = '';
-        setTimeout(() => {
-            targetEl.textContent = item.text;
-            const duration = Math.max(1400, item.text.length * 45);
-            setTimeout(() => { 
-                targetEl.textContent = ''; 
-                isSpeaking = false; 
-                processSpeechQueue(); 
-            }, duration);
-        }, 70);
-    } else { 
-        isSpeaking = false; 
+        speechPhaseTimer = setTimeout(() => {
+            speechPhaseTimer = null;
+            targetEl.textContent = spokenText;
+            speechPhaseTimer = setTimeout(() => {
+                speechPhaseTimer = null;
+                isSpeaking = false;
+                processSpeechQueue();
+            }, 220);
+            speechClearTimer = setTimeout(() => {
+                speechClearTimer = null;
+                if (targetEl.textContent === spokenText) {
+                    targetEl.textContent = '';
+                }
+            }, 1500);
+        }, 40);
+    } else {
+        isSpeaking = false;
+        processSpeechQueue();
     }
 }
 
@@ -2646,7 +2705,7 @@ function openClueModal(cid) {
     document.getElementById('clue-feedback').textContent = '';
     m.style.display = 'flex';
     document.getElementById('clue-title').focus();
-    announceSR(qText);
+    setTimeout(() => announceSR(qText), 100);
     return true;
 }
 
