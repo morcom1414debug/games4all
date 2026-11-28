@@ -82,7 +82,7 @@ const I18N = {
             <p><strong>เป้าหมาย:</strong> หนีออกจากตึก 6 ชั้น เริ่มที่ชั้น 6 ลงมาถึงชั้น 1 และหาทางออกจากประตูชั้น 1</p>
             <p><strong>การเล่น:</strong> ผลัดกันเล่น 1 เทิร์นสำรวจได้ 1 ห้อง ห้องส่วนใหญ่ใช้ได้ครั้งเดียว ห้องคำใบ้อ่านซ้ำได้</p>
             <p><strong>การลงชั้น & การหนี:</strong> ต้องพบ กุญแจปกติ, กุญแจผี, ทางลับ หรือตอบปริศนาจากห้องคำใบ้ถูก เมื่อลงถึงชั้น 1 ต้องไขประตูทางออกเพื่อชนะ</p>
-            <p><strong>ซอมบี้ & HP:</strong> เริ่มต้น 200 HP หากเจอซอมบี้และไม่มีปืน/เกราะ จะติดเชื้อ เสีย 20HP/เทิร์น (สูงสุด 40HP/เทิร์น) หาก HP ต่ำกว่า 60 ต้องพักฟื้น 1 เทิร์น (ฟื้นเป็น 100 HP)</p>
+            <p><strong>ซอมบี้ & HP:</strong> เริ่มต้น 200 HP หากเจอซอมบี้และไม่มีปืน/เกราะ จะติดเชื้อ เสีย 20HP/เทิร์น (สูงสุด 40HP/เทิร์น) หาก HP ต่ำกว่า 60 ต้องพักฟื้น 1 เทิร์น (ฟื้นเป็น 150 HP)</p>
             <p><strong>ไอเท็ม:</strong> วัคซีน (รักษาติดเชื้ออัตโนมัติ), อาหาร (กินฟื้น HP ทันที หรือถ้า HP เต็ม 200 จะเก็บเข้าคลังอัตโนมัติและนำมาฟื้นฟูเมื่อบาดเจ็บในเทิร์นถัดไป), เกราะ (กันซอมบี้ 1 ครั้ง), ปืนเลเซอร์+แบตเตอรี่ (ยิงป้องกันซอมบี้)</p>
             <p><strong>ชนะ/แพ้:</strong> ชนะเมื่อเปิดประตูทางออกชั้น 1 สำเร็จ แพ้เมื่อ HP หมด ผู้ที่ตายหรือหนีสำเร็จแล้วจะถูกข้ามเทิร์น</p>
         `
@@ -2807,10 +2807,11 @@ async function executeBotTurn(botId, turnKey) {
     const canUnlock = (p.secretPassage || p.ghostKeys > 0 || p.keys > 0 || p.canUseDoor);
     
     if(p.floor === 1 && canUnlock) {
-        let used = p.secretPassage ? "ทางลับ" : (p.ghostKeys > 0 ? "กุญแจผี" : "กุญแจปกติ");
-        if(p.secretPassage) p.secretPassage = false;
-        else if(p.ghostKeys > 0) p.ghostKeys--;
-        else if(p.keys > 0) p.keys--;
+        let used = "";
+        if(p.secretPassage) { p.secretPassage = false; used = "ทางลับ"; }
+        else if(p.canUseDoor) { p.canUseDoor = false; used = "รหัสคำใบ้"; }
+        else if(p.ghostKeys > 0) { p.ghostKeys--; used = "กุญแจผี"; }
+        else if(p.keys > 0) { p.keys--; used = "กุญแจปกติ"; }
         p.canUseDoor = false;
         
         p.status = 'escaped';
@@ -2823,10 +2824,11 @@ async function executeBotTurn(botId, turnKey) {
     
     if(p.floor > 1 && canUnlock) {
         let down = p.secretPassage ? 2 : 1;
-        let used = p.secretPassage ? "ทางลับ" : (p.ghostKeys > 0 ? "กุญแจผี" : "กุญแจปกติ");
-        if(p.secretPassage) p.secretPassage = false;
-        else if(p.ghostKeys > 0) p.ghostKeys--;
-        else if(p.keys > 0) p.keys--;
+        let used = "";
+        if(p.secretPassage) { p.secretPassage = false; used = "ทางลับ"; }
+        else if(p.canUseDoor) { p.canUseDoor = false; used = "รหัสคำใบ้"; }
+        else if(p.ghostKeys > 0) { p.ghostKeys--; used = "กุญแจผี"; }
+        else if(p.keys > 0) { p.keys--; used = "กุญแจปกติ"; }
         p.canUseDoor = false;
         
         p.floor = Math.max(1, p.floor - down);
@@ -3016,7 +3018,7 @@ function renderResult() {
         
         // หากอยู่ชั้นเดียวกัน เรียงตามผู้ที่มีสิทธิ์เปิดประตู/กุญแจพร้อมกว่า
         const aReady = (a.keys > 0 || a.ghostKeys > 0 || a.secretPassage || a.canUseDoor) ? 1 : 0;
-        const bReady = (b.keys > 0 || b.ghostKeys > 0 || a.secretPassage || b.canUseDoor) ? 1 : 0;
+        const bReady = (b.keys > 0 || b.ghostKeys > 0 || b.secretPassage || b.canUseDoor) ? 1 : 0;
         if (aReady !== bReady) return bReady - aReady;
         
         // หากเท่ากันอีก เรียงตาม HP มากที่สุด
